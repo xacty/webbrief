@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
+import { Node, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Heading from '@tiptap/extension-heading'
 import Image from '@tiptap/extension-image'
@@ -79,6 +80,153 @@ const MOCK_PAGES = [
 ]
 
 // ---------------------------------------------------------------------------
+// SectionDivider — TipTap Node Extension
+//
+// Nodo block/atom que delimita secciones dentro del documento.
+// Selectable (se puede borrar con una selección), no editable internamente.
+// ---------------------------------------------------------------------------
+function SectionDividerView({ node }) {
+  return (
+    <NodeViewWrapper
+      contentEditable={false}
+      data-section-divider=""
+      data-section-id={node.attrs.sectionId}
+      data-section-name={node.attrs.sectionName}
+    >
+      <div style={styles.sectionDivider}>
+        <span style={styles.sectionDividerLabel}>{node.attrs.sectionName}</span>
+        <hr style={styles.sectionDividerHr} />
+      </div>
+    </NodeViewWrapper>
+  )
+}
+
+const SectionDividerNode = Node.create({
+  name: 'sectionDivider',
+  group: 'block',
+  atom: true,
+  selectable: true,
+  draggable: false,
+
+  addAttributes() {
+    return {
+      sectionId: { default: '' },
+      sectionName: { default: 'Section' },
+    }
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-section-divider]' }]
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes({ 'data-section-divider': '' }, HTMLAttributes)]
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(SectionDividerView)
+  },
+})
+
+// ---------------------------------------------------------------------------
+// Helper: buildDocumentHTML — convierte sections[] en HTML para el editor
+// ---------------------------------------------------------------------------
+function buildDocumentHTML(sections) {
+  if (!sections || sections.length === 0) return '<p></p>'
+  return sections.map((section) => {
+    const divider = `<div data-section-divider data-section-id="${section.id}" data-section-name="${section.name}"></div>`
+    return divider + (section.content || '<p></p>')
+  }).join('')
+}
+
+// ---------------------------------------------------------------------------
+// Helper: getNextSectionNumber — devuelve el siguiente número para auto-nombrar
+// ---------------------------------------------------------------------------
+function getNextSectionNumber(sections) {
+  const nums = sections.map((s) => {
+    const match = s.name?.match(/^Sección (\d+)$/)
+    return match ? parseInt(match[1], 10) : 0
+  })
+  return Math.max(0, ...nums) + 1
+}
+
+// ---------------------------------------------------------------------------
+// Helper: deriveSectionsFromDoc — extrae secciones del documento del editor
+// Todas las secciones están delimitadas por nodos sectionDivider.
+// ---------------------------------------------------------------------------
+function deriveSectionsFromDoc(editor) {
+  if (!editor) return []
+  const json = editor.getJSON()
+  if (!json.content) return []
+
+  const sections = []
+  let currentSection = null
+
+  for (const node of json.content) {
+    if (node.type === 'sectionDivider') {
+      if (currentSection) sections.push(currentSection)
+      currentSection = {
+        id: node.attrs.sectionId,
+        name: node.attrs.sectionName,
+        headings: [],
+        isEmpty: true,
+      }
+      continue
+    }
+
+    if (!currentSection) continue
+
+    // Check if node has real content
+    const hasContent = node.content && node.content.some(
+      (child) => child.text && child.text.trim().length > 0
+    )
+    if (hasContent) currentSection.isEmpty = false
+
+    // Collect headings (h1-h3)
+    if (node.type === 'heading' && node.attrs?.level <= 3) {
+      const text = (node.content || []).map((c) => c.text || '').join('')
+      if (text.trim()) {
+        currentSection.headings.push({
+          tag: `h${node.attrs.level}`,
+          text: text.trim(),
+        })
+      }
+    }
+  }
+  if (currentSection) sections.push(currentSection)
+  return sections
+}
+
+// ---------------------------------------------------------------------------
+// Helper: mapHeadingsToSections — maps DOM headings to their section IDs
+// Used by scroll listener and heading click
+// ---------------------------------------------------------------------------
+function mapHeadingsInDOM(pmEl, firstSectionId) {
+  if (!pmEl) return []
+  const result = []
+  let currentSectionId = firstSectionId
+  let headingIndex = 0
+
+  for (const child of pmEl.children) {
+    // Check if this is a section divider NodeView
+    const dividerWrapper = child.querySelector?.('[data-section-divider]') || (child.hasAttribute?.('data-section-divider') ? child : null)
+    if (dividerWrapper) {
+      currentSectionId = dividerWrapper.getAttribute('data-section-id') || currentSectionId
+      headingIndex = 0
+      continue
+    }
+
+    // Check if it's a heading
+    const tag = child.tagName?.toLowerCase()
+    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+      result.push({ el: child, sectionId: currentSectionId, headingIndex })
+      headingIndex++
+    }
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Componente principal — ProjectEditor
 // ---------------------------------------------------------------------------
 export default function ProjectEditor() {
@@ -87,91 +235,262 @@ export default function ProjectEditor() {
   const [pages, setPages]               = useState(MOCK_PAGES)
   const [activePageId, setActivePageId] = useState(MOCK_PAGES[0].id)
   const [activeSectionId, setActiveSectionId] = useState(MOCK_PAGES[0].sections[0].id)
+  // Heading activo en el editor — { sectionId, headingIndex } | null
+  const [activeHeading, setActiveHeading] = useState(null)
+  // Sections derivadas del contenido del editor (source of truth = editor)
+  const [derivedSections, setDerivedSections] = useState([])
 
-  // Ref al editor activo (el último en recibir focus) — usado por Navbar undo/redo
-  const activeEditorRef = useRef(null)
+  // scrollTarget: solo se actualiza en sidebar clicks (no en focus del editor).
+  const [scrollTarget, setScrollTarget] = useState(null)
+  // Counter to force scroll even when clicking the same section twice
+  const [scrollCounter, setScrollCounter] = useState(0)
+
+  // Ref al editor único
+  const editorRef = useRef(null)
 
   const activePage = pages.find((p) => p.id === activePageId)
 
-  // ── Guarda el HTML de una sección cuando el usuario edita ──
-  const handleContentUpdate = useCallback((sectionId, html) => {
-    setPages((prev) =>
-      prev.map((page) =>
-        page.id === activePageId
-          ? {
-              ...page,
-              sections: page.sections.map((s) =>
-                s.id === sectionId ? { ...s, content: html } : s
-              ),
-            }
-          : page
-      )
-    )
-  }, [activePageId])
+  // ── Contenido inicial para el editor ──
+  const initialContentRef = useRef(buildDocumentHTML(MOCK_PAGES[0].sections))
 
-  // ── Navega a otra página: activa su primera sección ──
+  // ── Callback cuando el editor se actualiza ──
+  // Flag to prevent re-entrant auto-remove
+  const isAutoRemoving = useRef(false)
+  // ID de la sección recién creada — no se auto-elimina aunque esté vacía
+  const justAddedSectionId = useRef(null)
+
+  const handleDocUpdate = useCallback((editor) => {
+    if (isAutoRemoving.current) return
+
+    const sections = deriveSectionsFromDoc(editor)
+
+    // Si el doc tiene contenido pero no hay secciones (usuario escribió sin crear sección),
+    // auto-insertar un identificador "Sección 1" al principio del documento.
+    if (sections.length === 0) {
+      const json = editor.getJSON()
+      const hasContent = json.content?.some((n) => {
+        if (n.content && n.content.some((c) => c.text && c.text.trim().length > 0)) return true
+        if (n.type === 'heading') return true
+        return false
+      })
+      if (hasContent) {
+        const id = `s_${Date.now()}`
+        isAutoRemoving.current = true
+        editor.chain()
+          .insertContentAt(0, { type: 'sectionDivider', attrs: { sectionId: id, sectionName: 'Sección 1' } })
+          .run()
+        isAutoRemoving.current = false
+        const newSections = deriveSectionsFromDoc(editor)
+        setDerivedSections(newSections)
+        setActiveSectionId(newSections[0]?.id ?? null)
+        return
+      }
+    }
+
+    setDerivedSections(sections)
+
+    // Si la sección recién añadida ya tiene contenido real, limpiar el ref
+    if (justAddedSectionId.current) {
+      const justAdded = sections.find((s) => s.id === justAddedSectionId.current)
+      if (justAdded && !justAdded.isEmpty) {
+        justAddedSectionId.current = null
+      }
+    }
+
+    // Auto-remove empty sections (aplica a todas, incluida la primera).
+    // Solo cuando hay más de una sección para no borrar la única existente.
+    if (sections.length > 1) {
+      const emptySection = sections.find((s) => s.isEmpty && s.id !== justAddedSectionId.current)
+      if (emptySection) {
+        const { state } = editor
+        let dividerPos = null
+        let nextDividerPos = null
+        let foundTarget = false
+
+        state.doc.forEach((node, offset) => {
+          if (node.type.name === 'sectionDivider') {
+            if (node.attrs.sectionId === emptySection.id) {
+              dividerPos = offset
+              foundTarget = true
+            } else if (foundTarget && nextDividerPos === null) {
+              nextDividerPos = offset
+            }
+          }
+        })
+
+        if (dividerPos !== null) {
+          const from = dividerPos
+          const to = nextDividerPos !== null ? nextDividerPos : state.doc.content.size
+          isAutoRemoving.current = true
+          editor.chain().deleteRange({ from, to }).run()
+          isAutoRemoving.current = false
+          // Actualizar secciones después de la eliminación
+          const updated = deriveSectionsFromDoc(editor)
+          setDerivedSections(updated)
+        }
+      }
+    }
+  }, [])
+
+  // ── Editor listo: guardar ref y derivar secciones iniciales ──
+  const handleEditorReady = useCallback((editor) => {
+    editorRef.current = editor
+    const sections = deriveSectionsFromDoc(editor)
+    setDerivedSections(sections)
+  }, [])
+
+  // ── Navega a otra página: guarda contenido actual y carga la nueva ──
   function handlePageClick(pageId) {
-    const page = pages.find((p) => p.id === pageId)
-    if (!page) return
+    const newPage = pages.find((p) => p.id === pageId)
+    if (!newPage) return
+
+    // Guardar contenido actual de la página que estamos dejando
+    if (editorRef.current && activePage) {
+      const html = editorRef.current.getHTML()
+      setPages((prev) =>
+        prev.map((page) =>
+          page.id === activePageId ? { ...page, fullContent: html } : page
+        )
+      )
+    }
+
     setActivePageId(pageId)
-    setActiveSectionId(page.sections[0]?.id ?? null)
+
+    // Cargar contenido de la nueva página
+    const content = newPage.fullContent || buildDocumentHTML(newPage.sections)
+
+    if (editorRef.current) {
+      editorRef.current.commands.setContent(content)
+      const sections = deriveSectionsFromDoc(editorRef.current)
+      setDerivedSections(sections)
+      const firstId = sections[0]?.id ?? null
+      setActiveSectionId(firstId)
+      setScrollTarget(firstId)
+      setScrollCounter((c) => c + 1)
+    }
   }
 
   // ── Selecciona una sección del sidebar (el EditorPanel hace el scroll) ──
   function handleSectionClick(sectionId) {
     setActiveSectionId(sectionId)
+    setScrollTarget(sectionId)
+    setScrollCounter((c) => c + 1)
   }
 
-  // ── Agrega una sección nueva a la página activa ──
-  function addSection() {
+  // ── Recibe el foco del caret desde el editor ──
+  function handleSectionFocus(sectionId) {
+    setActiveSectionId(sectionId)
+    setActiveHeading({ sectionId, headingIndex: 0 })
+  }
+
+  // ── Click en un heading del sidebar → activa sección + heading ──
+  function handleHeadingClick(sectionId, headingIndex) {
+    setActiveSectionId(sectionId)
+    setActiveHeading({ sectionId, headingIndex })
+  }
+
+  // ── Scroll manual detectó un nuevo heading en el trigger point ──
+  const handleScrollHeadingChange = useCallback(({ sectionId, headingIndex }) => {
+    setActiveSectionId(sectionId)
+    setActiveHeading({ sectionId, headingIndex })
+  }, [])
+
+  // ── Agrega una sección nueva via TipTap ──
+  function addSection(name) {
     const id = `s_${Date.now()}`
-    setPages((prev) =>
-      prev.map((page) =>
-        page.id === activePageId
-          ? { ...page, sections: [...page.sections, { id, name: 'Nueva sección', content: '<p></p>' }] }
-          : page
-      )
-    )
+    const sectionCount = derivedSections.length
+    const finalName = name?.trim() || `Sección ${getNextSectionNumber(derivedSections)}`
+
+    if (!editorRef.current) return
+
+    justAddedSectionId.current = id
+
+    if (sectionCount === 0) {
+      // Documento vacío — insertar el identificador al inicio con un párrafo para escribir
+      const html = `<div data-section-divider data-section-id="${id}" data-section-name="${finalName}"></div><p></p>`
+      editorRef.current.commands.setContent(html)
+      editorRef.current.commands.focus('end')
+      setDerivedSections([{ id, name: finalName, headings: [], isEmpty: true }])
+    } else {
+      // Agregar nueva sección con identificador al final
+      editorRef.current.chain().focus('end').insertContent([
+        { type: 'sectionDivider', attrs: { sectionId: id, sectionName: finalName } },
+        { type: 'paragraph' },
+      ]).run()
+    }
+
     setActiveSectionId(id)
+    setScrollTarget(id)
+    setScrollCounter((c) => c + 1)
   }
 
   // ── Renombra una sección ──
   function renameSection(sectionId, newName) {
-    setPages((prev) =>
-      prev.map((page) =>
-        page.id === activePageId
-          ? { ...page, sections: page.sections.map((s) => s.id === sectionId ? { ...s, name: newName } : s) }
-          : page
-      )
-    )
+    if (!editorRef.current) return
+    const { state } = editorRef.current
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === 'sectionDivider' && node.attrs.sectionId === sectionId) {
+        editorRef.current.view.dispatch(
+          state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, sectionName: newName })
+        )
+        return false
+      }
+    })
   }
 
-  // ── Elimina una sección ──
+  // ── Elimina una sección (desde el sidebar) ──
+  // Todas las secciones tienen identificador, la lógica es uniforme para todas.
   function deleteSection(sectionId) {
-    setPages((prev) =>
-      prev.map((page) => {
-        if (page.id !== activePageId) return page
-        const filtered = page.sections.filter((s) => s.id !== sectionId)
-        return { ...page, sections: filtered }
-      })
-    )
-    if (sectionId === activeSectionId) {
-      const remaining = activePage.sections.filter((s) => s.id !== sectionId)
-      setActiveSectionId(remaining[0]?.id ?? null)
+    if (!editorRef.current) return
+    const { state } = editorRef.current
+
+    let dividerPos = null
+    let nextDividerPos = null
+    let foundTarget = false
+
+    state.doc.forEach((node, offset) => {
+      if (node.type.name === 'sectionDivider') {
+        if (node.attrs.sectionId === sectionId) {
+          dividerPos = offset
+          foundTarget = true
+        } else if (foundTarget && nextDividerPos === null) {
+          nextDividerPos = offset
+        }
+      }
+    })
+
+    if (dividerPos !== null) {
+      const from = dividerPos
+      const to = nextDividerPos !== null ? nextDividerPos : state.doc.content.size
+      editorRef.current.chain().deleteRange({ from, to }).run()
+    }
+
+    const updated = deriveSectionsFromDoc(editorRef.current)
+    setDerivedSections(updated)
+    if (sectionId === activeSectionId || updated.length === 0) {
+      setActiveSectionId(updated[0]?.id ?? null)
     }
   }
 
   // ── Agrega una nueva página ──
   function addPage() {
     const id = `page_${Date.now()}`
+    const sectionId = `s_${Date.now()}`
     const newPage = {
       id,
       name: 'Nueva página',
-      sections: [{ id: `s_${Date.now()}`, name: 'Sección 1', content: '<p></p>' }],
+      sections: [{ id: sectionId, name: 'Sección 1', content: '<p></p>' }],
     }
     setPages((prev) => [...prev, newPage])
     setActivePageId(id)
-    setActiveSectionId(newPage.sections[0].id)
+
+    if (editorRef.current) {
+      const html = buildDocumentHTML(newPage.sections)
+      editorRef.current.commands.setContent(html)
+      const sections = deriveSectionsFromDoc(editorRef.current)
+      setDerivedSections(sections)
+    }
+    setActiveSectionId(sectionId)
   }
 
   return (
@@ -198,8 +517,8 @@ export default function ProjectEditor() {
         activePageId={activePageId}
         onPageClick={handlePageClick}
         onAddPage={addPage}
-        onUndo={() => activeEditorRef.current?.chain().focus().undo().run()}
-        onRedo={() => activeEditorRef.current?.chain().focus().redo().run()}
+        onUndo={() => editorRef.current?.chain().focus().undo().run()}
+        onRedo={() => editorRef.current?.chain().focus().redo().run()}
         onLogoClick={() => navigate('/dashboard')}
       />
 
@@ -207,20 +526,25 @@ export default function ProjectEditor() {
       <div style={styles.body}>
         {/* Sidebar izquierdo: secciones */}
         <SectionsPanel
-          sections={activePage?.sections ?? []}
+          sections={derivedSections}
           activeSectionId={activeSectionId}
           onSectionClick={handleSectionClick}
           onAddSection={addSection}
           onRename={renameSection}
           onDelete={deleteSection}
+          activeHeading={activeHeading}
+          onHeadingClick={handleHeadingClick}
         />
 
         {/* Área central: editor */}
         <EditorPanel
-          sections={activePage?.sections ?? []}
-          activeSectionId={activeSectionId}
-          onContentUpdate={handleContentUpdate}
-          onEditorFocus={(editor) => { activeEditorRef.current = editor }}
+          initialContent={initialContentRef.current}
+          scrollTarget={scrollTarget}
+          scrollCounter={scrollCounter}
+          onDocUpdate={handleDocUpdate}
+          onEditorReady={handleEditorReady}
+          onScrollHeadingChange={handleScrollHeadingChange}
+          firstSectionId={derivedSections[0]?.id ?? ''}
         />
 
         {/* Sidebar derecho: actualizaciones del documento */}
@@ -232,8 +556,6 @@ export default function ProjectEditor() {
 
 // ---------------------------------------------------------------------------
 // Navbar — 3 columnas: [logo + undo/redo] | [pills] | [iconos + save]
-// Recibe onUndo/onRedo en lugar de un editor concreto,
-// porque el editor activo puede cambiar entre secciones.
 // ---------------------------------------------------------------------------
 function Navbar({ pages, activePageId, onPageClick, onAddPage, onUndo, onRedo, onLogoClick }) {
   return (
@@ -289,14 +611,75 @@ function Navbar({ pages, activePageId, onPageClick, onAddPage, onUndo, onRedo, o
 }
 
 // ---------------------------------------------------------------------------
+// AddSectionModal — modal centrado para nombrar una nueva sección
+// ---------------------------------------------------------------------------
+function AddSectionModal({ onConfirm, onSkip, onClose }) {
+  const [value, setValue] = useState('')
+
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <p style={styles.modalTitle}>Nombre de la sección</p>
+        <input
+          style={styles.modalInput}
+          type="text"
+          placeholder="Ej: Hero, Servicios, Contacto…"
+          value={value}
+          autoFocus
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && value.trim()) onConfirm(value.trim()) }}
+        />
+        <div style={styles.modalActions}>
+          <button
+            style={{ ...styles.modalBtnPrimary, opacity: value.trim() ? 1 : 0.4 }}
+            onClick={() => { if (value.trim()) onConfirm(value.trim()) }}
+          >
+            Agregar
+          </button>
+          <button style={styles.modalBtnSecondary} onClick={onSkip}>
+            Saltar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // SectionsPanel — sidebar izquierdo con la lista de secciones
 // ---------------------------------------------------------------------------
-function SectionsPanel({ sections, activeSectionId, onSectionClick, onAddSection, onRename, onDelete }) {
+function SectionsPanel({ sections, activeSectionId, onSectionClick, onAddSection, onRename, onDelete, activeHeading, onHeadingClick }) {
+  const [showModal, setShowModal] = useState(false)
+
+  function handleConfirm(name) {
+    setShowModal(false)
+    onAddSection(name)
+  }
+
+  function handleSkip() {
+    setShowModal(false)
+    onAddSection('')
+  }
+
   return (
     <div style={styles.leftPanel}>
+      {showModal && (
+        <AddSectionModal
+          onConfirm={handleConfirm}
+          onSkip={handleSkip}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+
       <div style={styles.panelHeader}>
         <span style={styles.panelTitle}>Page sections</span>
-        <button style={styles.panelAddBtn} onClick={onAddSection} title="Agregar sección">
+        <button style={styles.panelAddBtn} onClick={() => setShowModal(true)} title="Agregar sección">
           <Plus size={24} color="#2a2a2a" />
         </button>
       </div>
@@ -309,6 +692,10 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onAddSection
             onClick={() => onSectionClick(section.id)}
             onRename={(name) => onRename(section.id, name)}
             onDelete={() => onDelete(section.id)}
+            headings={section.headings || []}
+            sectionId={section.id}
+            activeHeading={activeHeading}
+            onHeadingClick={onHeadingClick}
           />
         ))}
         {sections.length === 0 && (
@@ -319,11 +706,66 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onAddSection
   )
 }
 
-// Ítem de sección: nav-button (Tag + nombre + menú) + content preview
-function SectionItem({ section, isActive, onClick, onRename, onDelete }) {
+// Ítem de sección: nav-button (Tag + nombre + menú) + lista de headings
+function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp }) {
+
+  // ── Scroll al heading correspondiente en el editor al hacer click ──
+  function handleHeadingClick(e, index) {
+    e.stopPropagation()
+    onHeadingClickProp?.(sectionId, index)
+
+    // Find heading in the single editor DOM
+    const pm = document.querySelector('.ProseMirror')
+    if (!pm) return
+
+    // Find the divider for this section, then count headings after it
+    const allChildren = Array.from(pm.children)
+    let inSection = false
+    let headingCount = 0
+
+    for (const child of allChildren) {
+      const divider = child.querySelector?.('[data-section-divider]') || (child.hasAttribute?.('data-section-divider') ? child : null)
+      if (divider) {
+        if (divider.getAttribute('data-section-id') === sectionId) {
+          inSection = true
+          headingCount = 0
+          continue
+        } else if (inSection) {
+          break // reached next section
+        }
+      }
+
+      if (!inSection) continue
+
+      const tag = child.tagName?.toLowerCase()
+      if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+        if (headingCount === index) {
+          // Scroll with offset
+          let container = child.parentElement
+          while (container && getComputedStyle(container).overflowY !== 'scroll') {
+            container = container.parentElement
+          }
+          if (container) {
+            const targetRect = child.getBoundingClientRect()
+            const containerRect = container.getBoundingClientRect()
+            const offset = targetRect.top - containerRect.top + container.scrollTop - 70
+            container.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
+          } else {
+            child.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+          return
+        }
+        headingCount++
+      }
+    }
+  }
+
   const [editing, setEditing] = useState(false)
   const [draft, setDraft]     = useState(section.name)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // Sync draft when section.name changes externally
+  useEffect(() => { setDraft(section.name) }, [section.name])
 
   function commitRename() {
     setEditing(false)
@@ -333,12 +775,10 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete }) {
 
   return (
     <div style={styles.sectionItem}>
-      {/* Nav-button: activo con borde #212222, inactivo con borde transparente */}
       <div
         style={isActive ? styles.sectionNavBtnActive : styles.sectionNavBtn}
         onClick={onClick}
       >
-        {/* Izquierda: ícono Tag + nombre editable */}
         <div style={styles.sectionNavLeft}>
           <Tag size={18} color="#2a2a2a" strokeWidth={1.8} />
           {editing ? (
@@ -361,7 +801,6 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete }) {
           )}
         </div>
 
-        {/* Derecha: MoreVertical → menú contextual */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <button
             style={styles.menuBtn}
@@ -383,13 +822,44 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete }) {
         </div>
       </div>
 
-      {/* Content preview: línea vertical coloreada + "Title" + "Subtitle" */}
-      <div style={styles.sectionContent}>
-        <div style={isActive ? styles.sectionPreviewItemActive : styles.sectionPreviewItem}>
-          <span style={styles.sectionPreviewTitle}>Title</span>
-          <span style={styles.sectionPreviewSubtitle}>Subtitle</span>
+      {headings.length > 0 && (
+        <div style={styles.sectionContent}>
+          {headings.map((h, i) => {
+            const isHeadingActive =
+              activeHeading?.sectionId === sectionId &&
+              activeHeading?.headingIndex === i
+            return (
+              <div
+                key={i}
+                style={{
+                  borderLeft: `2px solid ${isHeadingActive ? '#0088ff' : '#e0e0e0'}`,
+                  paddingLeft: 10,
+                  marginBottom: 1,
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => handleHeadingClick(e, i)}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: h.tag === 'h1' ? 600 : 400,
+                    paddingLeft: h.tag === 'h1' ? 0 : 8,
+                    color: '#2a2a2a',
+                    lineHeight: 1.6,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    display: 'block',
+                    userSelect: 'none',
+                  }}
+                >
+                  {h.text}
+                </span>
+              </div>
+            )
+          })}
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -412,42 +882,32 @@ function getBlockLabel(el) {
 }
 
 // ---------------------------------------------------------------------------
-// SectionDivider — separador visual entre secciones
-// HR fina + label con el nombre de la sección (11px, gris, uppercase)
-// ---------------------------------------------------------------------------
-function SectionDivider({ name }) {
-  return (
-    <div style={styles.sectionDivider}>
-      <span style={styles.sectionDividerLabel}>{name}</span>
-      <hr style={styles.sectionDividerHr} />
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // TypeLabelsColumn — columna de etiquetas de tipo alineadas con cada bloque
-//
-// Usa MutationObserver para detectar cambios en el DOM del editor y
-// recalcular las posiciones. Las etiquetas se posicionan absolutamente
-// dentro de una columna de ancho fijo a la izquierda del editor.
-//
-// Al hacer click en una etiqueta: dropdown para cambiar el tipo del bloque.
 // ---------------------------------------------------------------------------
 function TypeLabelsColumn({ wrapperRef, editor }) {
   const [labels, setLabels]   = useState([])
   const [openIdx, setOpenIdx] = useState(-1)
 
-  // ── Recalcula las etiquetas leyendo los bloques del .ProseMirror ──
   function rebuild() {
     const wrapper = wrapperRef.current
     if (!wrapper) return
     const pm = wrapper.querySelector('.ProseMirror')
     if (!pm) return
 
+    const blocks = Array.from(pm.children)
+      .filter((block) => {
+        // Skip section divider NodeViews
+        if (block.hasAttribute?.('data-section-divider')) return false
+        if (block.querySelector?.('[data-section-divider]')) return false
+        return true
+      })
+
+    // Only show labels for blocks that have actual content
+    const visibleBlocks = blocks.filter((block) => block.textContent?.trim())
+
     setLabels(
-      Array.from(pm.children).map((block) => ({
-        // Centra la etiqueta verticalmente en el bloque (botón de 30px)
-        top: block.offsetTop + Math.max(0, block.offsetHeight / 2 - 15),
+      visibleBlocks.map((block) => ({
+        top: block.offsetTop,
         label: getBlockLabel(block),
         blockEl: block,
       }))
@@ -455,7 +915,6 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
   }
 
   useEffect(() => {
-    // Recalcula inmediatamente y luego con un pequeño delay (por si el layout no terminó)
     rebuild()
     const t = setTimeout(rebuild, 50)
 
@@ -464,11 +923,9 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
     const pm = wrapper.querySelector('.ProseMirror')
     if (!pm) return () => clearTimeout(t)
 
-    // MutationObserver: detecta cambios en el contenido
     const mutObs = new MutationObserver(rebuild)
     mutObs.observe(pm, { childList: true, subtree: true, characterData: true })
 
-    // ResizeObserver: detecta cambios de tamaño (tipeo, imágenes, etc.)
     const resObs = new ResizeObserver(rebuild)
     resObs.observe(pm)
 
@@ -477,13 +934,11 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
       mutObs.disconnect()
       resObs.disconnect()
     }
-  }, [editor]) // re-corre cuando cambia el editor (nueva instancia al navegar)
+  }, [editor])
 
-  // ── Cambia el tipo del bloque usando comandos de TipTap ──
   function applyType(opt, blockEl) {
     if (!editor) return
     try {
-      // posAtDOM da la posición ProseMirror del nodo DOM
       const pos = editor.view.posAtDOM(blockEl, 0)
       editor.chain().focus().setTextSelection(pos).run()
       if (opt === 'paragraph') {
@@ -501,11 +956,9 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
   const TYPE_OPTIONS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'Párrafo']
 
   return (
-    // position: relative → los labels usan position: absolute dentro
     <div style={styles.typeLabelsCol}>
       {labels.map((item, idx) => (
         <div key={idx} style={{ position: 'absolute', top: item.top, left: 4, zIndex: 20 }}>
-          {/* Botón de etiqueta: 30×30px, fondo #d0d0d0, border-radius 6px */}
           <button
             style={styles.typeLabelBtn}
             onClick={(e) => { e.stopPropagation(); setOpenIdx(idx === openIdx ? -1 : idx) }}
@@ -514,7 +967,6 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
             {item.label}
           </button>
 
-          {/* Dropdown de opciones de tipo */}
           {openIdx === idx && (
             <div style={styles.typeLabelDropdown} onMouseLeave={() => setOpenIdx(-1)}>
               {TYPE_OPTIONS.map((opt) => (
@@ -535,81 +987,9 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
 }
 
 // ---------------------------------------------------------------------------
-// SectionEditor — editor TipTap individual por sección
-//
-// Cada sección tiene su propia instancia de TipTap.
-// Todos los editores están en el mismo contenedor scroll → "documento único".
-// ---------------------------------------------------------------------------
-function SectionEditor({ section, isLast, onReady, onFocus, onContentUpdate }) {
-  // ref al div wrapper que contiene el .ProseMirror — usado por TypeLabelsColumn
-  const wrapperRef = useRef(null)
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: false }),         // heading se maneja por separado
-      Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
-      Image.configure({
-        inline: false,
-        HTMLAttributes: {
-          // Limita el tamaño de las imágenes insertadas
-          style: 'max-height:300px; max-width:100%; height:auto; display:block;',
-        },
-      }),
-      Link.configure({ openOnClick: false }),
-      Underline,
-      TextStyle,
-      Color,
-    ],
-    content: section.content,
-    onUpdate({ editor }) {
-      onContentUpdate?.(section.id, editor.getHTML())
-    },
-    onFocus({ editor }) {
-      onFocus?.(editor) // notifica al EditorPanel cuál editor está activo
-    },
-  })
-
-  // Reporta la instancia del editor al padre cuando esté lista
-  useEffect(() => {
-    if (editor) onReady?.(section.id, editor)
-  }, [editor])
-
-  if (!editor) return null
-
-  return (
-    // Fila horizontal: [etiquetas tipo] [contenido editor] [ícono ⓘ si aplica]
-    <div style={styles.sectionEditorRow}>
-
-      {/* Columna izquierda: etiquetas de tipo (MutationObserver) */}
-      <TypeLabelsColumn wrapperRef={wrapperRef} editor={editor} />
-
-      {/* Contenido TipTap */}
-      <div ref={wrapperRef} style={styles.sectionEditorContent}>
-        <EditorContent editor={editor} />
-      </div>
-
-      {/* Columna derecha: ícono ⓘ para bloques modificados (hardcoded en última sección) */}
-      <div style={styles.infoCol}>
-        {isLast && (
-          <span title="Bloque modificado">
-            <Info size={20} color="#bbb" strokeWidth={1.5} />
-          </span>
-        )}
-      </div>
-
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Toolbar — barra de herramientas compartida
-//
-// Opera sobre `activeEditor` (el último editor enfocado por el usuario).
-// Se re-renderiza en cada transacción del editor activo para reflejar
-// el estado actual de la selección (bold, italic, tipo de bloque, etc.).
 // ---------------------------------------------------------------------------
 function Toolbar({ editor }) {
-  // Fuerza re-render en cada transacción del editor para actualizar los estados
   const [, forceUpdate] = useState(0)
 
   useEffect(() => {
@@ -619,7 +999,6 @@ function Toolbar({ editor }) {
     return () => editor.off('transaction', handler)
   }, [editor])
 
-  // ── Inserta imagen desde archivo local ──
   function handleImageUpload(e) {
     const file = e.target.files?.[0]
     if (!file || !editor) return
@@ -628,7 +1007,6 @@ function Toolbar({ editor }) {
     e.target.value = ''
   }
 
-  // ── Inserta o edita un link ──
   function handleLink() {
     if (!editor) return
     const url = window.prompt('URL del enlace:')
@@ -636,7 +1014,6 @@ function Toolbar({ editor }) {
     editor.chain().focus().setLink({ href: url }).run()
   }
 
-  // ── Detecta el tipo de bloque activo para el <select> ──
   function getActiveBlockType() {
     if (!editor) return 'paragraph'
     for (let i = 1; i <= 6; i++) {
@@ -650,7 +1027,6 @@ function Toolbar({ editor }) {
   return (
     <div style={styles.toolbar}>
 
-      {/* Selector de tipo de bloque: Párrafo, H1–H6 */}
       <select
         style={{ ...styles.blockSelect, opacity: disabled ? 0.5 : 1 }}
         disabled={disabled}
@@ -670,7 +1046,6 @@ function Toolbar({ editor }) {
 
       <div style={styles.toolbarSep} />
 
-      {/* Bold */}
       <ToolBtn
         active={editor?.isActive('bold')}
         disabled={disabled}
@@ -678,7 +1053,6 @@ function Toolbar({ editor }) {
         title="Negrita (Ctrl+B)"
       ><b>B</b></ToolBtn>
 
-      {/* Italic */}
       <ToolBtn
         active={editor?.isActive('italic')}
         disabled={disabled}
@@ -686,7 +1060,6 @@ function Toolbar({ editor }) {
         title="Cursiva (Ctrl+I)"
       ><i>I</i></ToolBtn>
 
-      {/* Underline */}
       <ToolBtn
         active={editor?.isActive('underline')}
         disabled={disabled}
@@ -696,7 +1069,6 @@ function Toolbar({ editor }) {
 
       <div style={styles.toolbarSep} />
 
-      {/* Color de texto — input type="color" oculto detrás de un label */}
       <label
         style={{ ...styles.toolBtn, cursor: disabled ? 'default' : 'pointer', position: 'relative' }}
         title="Color de texto"
@@ -711,7 +1083,6 @@ function Toolbar({ editor }) {
 
       <div style={styles.toolbarSep} />
 
-      {/* Enlace */}
       <ToolBtn
         active={editor?.isActive('link')}
         disabled={disabled}
@@ -719,7 +1090,6 @@ function Toolbar({ editor }) {
         title="Insertar enlace"
       >🔗</ToolBtn>
 
-      {/* Imagen — abre file picker */}
       <label
         style={{ ...styles.toolBtn, cursor: disabled ? 'default' : 'pointer' }}
         title="Insertar imagen"
@@ -738,7 +1108,6 @@ function Toolbar({ editor }) {
   )
 }
 
-// Botón de toolbar reutilizable
 function ToolBtn({ children, active, disabled, onClick, title }) {
   return (
     <button
@@ -757,95 +1126,132 @@ function ToolBtn({ children, active, disabled, onClick, title }) {
 }
 
 // ---------------------------------------------------------------------------
-// EditorPanel — panel central
-//
-// Contiene la Toolbar y el área de scroll con TODAS las secciones de la página.
-// Las secciones se muestran como un documento único con scroll continuo.
-// Al cambiar `activeSectionId` (click en sidebar), hace scroll suave a esa sección.
+// EditorPanel — panel central con editor TipTap único
 // ---------------------------------------------------------------------------
-function EditorPanel({ sections, activeSectionId, onContentUpdate, onEditorFocus }) {
-  // Editor activo = el que tiene el foco en este momento
-  const [activeEditor, setActiveEditor] = useState(null)
+function EditorPanel({ initialContent, scrollTarget, scrollCounter, onDocUpdate, onEditorReady, onScrollHeadingChange, firstSectionId }) {
+  const wrapperRef = useRef(null)
+  const scrollAreaRef = useRef(null)
 
-  // ── Scroll a la sección activa cuando cambia desde el sidebar ──
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: false }),
+      Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+      Image.configure({
+        inline: false,
+        HTMLAttributes: {
+          style: 'max-height:300px; max-width:100%; height:auto; display:block;',
+        },
+      }),
+      Link.configure({ openOnClick: false }),
+      Underline,
+      TextStyle,
+      Color,
+      SectionDividerNode,
+    ],
+    content: initialContent,
+    onUpdate({ editor }) {
+      onDocUpdate?.(editor)
+    },
+  })
+
+  // Report editor to parent when ready
   useEffect(() => {
-    if (!activeSectionId) return
-    const el = document.getElementById(`section-${activeSectionId}`)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [activeSectionId])
+    if (editor) onEditorReady?.(editor)
+  }, [editor])
 
-  function handleEditorFocus(editor) {
-    setActiveEditor(editor)
-    onEditorFocus?.(editor) // reporta al padre para undo/redo del Navbar
-  }
+  // ── Scroll to section when sidebar clicks ──
+  useEffect(() => {
+    if (!scrollTarget || !scrollAreaRef.current) return
+
+    const scrollEl = scrollAreaRef.current
+    const pm = scrollEl.querySelector('.ProseMirror')
+    if (!pm) return
+
+    // Find the target: either a section divider or the start of the document
+    const dividerEl = pm.querySelector(`[data-section-id="${scrollTarget}"]`)
+
+    if (dividerEl) {
+      // Scroll to divider with offset
+      const targetRect = dividerEl.getBoundingClientRect()
+      const containerRect = scrollEl.getBoundingClientRect()
+      const offset = targetRect.top - containerRect.top + scrollEl.scrollTop - 70
+      scrollEl.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
+    } else {
+      // First section — scroll to top
+      scrollEl.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [scrollTarget, scrollCounter])
+
+  // ── Scroll listener: detects heading at trigger point ──
+  useEffect(() => {
+    const scrollEl = scrollAreaRef.current
+    if (!scrollEl) return
+
+    const OFFSET = 70
+
+    function onScroll() {
+      const pm = scrollEl.querySelector('.ProseMirror')
+      if (!pm) return
+
+      const containerRect = scrollEl.getBoundingClientRect()
+      const triggerY = containerRect.top + OFFSET
+
+      const headings = mapHeadingsInDOM(pm, firstSectionId)
+
+      let best = null
+      for (const h of headings) {
+        const rect = h.el.getBoundingClientRect()
+        if (rect.top <= triggerY) {
+          best = { sectionId: h.sectionId, headingIndex: h.headingIndex }
+        }
+      }
+
+      if (!best && headings.length > 0) {
+        best = { sectionId: headings[0].sectionId, headingIndex: 0 }
+      }
+
+      if (best) onScrollHeadingChange?.(best)
+    }
+
+    scrollEl.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => scrollEl.removeEventListener('scroll', onScroll)
+  }, [firstSectionId, onScrollHeadingChange])
+
+  if (!editor) return <div style={styles.centerPanel} />
 
   return (
     <div style={styles.centerPanel}>
-
-      {/* Toolbar: opera sobre el editor activo */}
-      <Toolbar editor={activeEditor} />
-
-      {/* Área de scroll: todas las secciones juntas en un "documento" */}
-      <div style={styles.editorScrollArea}>
-        {/* La "página": max-width 800px, centrada, fondo #f8f8f8, borde, padding */}
+      <Toolbar editor={editor} />
+      <div ref={scrollAreaRef} style={styles.editorScrollArea}>
         <div style={styles.editorPage}>
-          {sections.map((section, idx) => (
-            // Cada sección tiene un id para que scrollIntoView funcione
-            <div key={section.id} id={`section-${section.id}`}>
-
-              {/* Separador visual entre secciones (excepto la primera) */}
-              {idx > 0 && <SectionDivider name={section.name} />}
-
-              {/* Editor TipTap de la sección */}
-              <SectionEditor
-                section={section}
-                isLast={idx === sections.length - 1}
-                onReady={() => {}}
-                onFocus={handleEditorFocus}
-                onContentUpdate={onContentUpdate}
-              />
-
+          <div style={styles.sectionEditorRow}>
+            <TypeLabelsColumn wrapperRef={wrapperRef} editor={editor} />
+            <div ref={wrapperRef} style={styles.sectionEditorContent}>
+              <EditorContent editor={editor} />
             </div>
-          ))}
+          </div>
         </div>
       </div>
-
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
 // UpdatesPanel — sidebar derecho
-//
-// Props:
-//   changes  Array de objetos con forma { id, field, datetime }
-//            - field:    nombre del campo modificado (ej. "Hero / Banner")
-//            - datetime: string con la fecha/hora del cambio
-//
-// Comportamiento:
-//   - changes vacío  → muestra "Sin cambios aún."
-//   - changes con ítems → lista con campo, fecha/hora y link "Ver" (sin acción)
 // ---------------------------------------------------------------------------
 function UpdatesPanel({ changes = [] }) {
   return (
     <div style={styles.rightPanel}>
-
-      {/* Header del panel */}
       <span style={styles.panelTitle}>Document updates</span>
-
       {changes.length === 0 ? (
-        // Estado vacío
         <p style={styles.updatesEmpty}>Sin cambios aún.</p>
       ) : (
-        // Lista de cambios
         <ul style={styles.updatesList}>
           {changes.map((change) => (
             <li key={change.id} style={styles.updatesItem}>
-              {/* Nombre del campo modificado */}
               <span style={styles.updatesField}>{change.field}</span>
-              {/* Fecha/hora del cambio */}
               <span style={styles.updatesDatetime}>{change.datetime}</span>
-              {/* Link "Ver" — sin acción por ahora */}
               {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
               <a href="#" style={styles.updatesLink} onClick={(e) => e.preventDefault()}>
                 Ver
@@ -854,7 +1260,6 @@ function UpdatesPanel({ changes = [] }) {
           ))}
         </ul>
       )}
-
     </div>
   )
 }
@@ -875,7 +1280,7 @@ const styles = {
     color: '#2a2a2a',
   },
 
-  // ── Navbar (70px, fondo #f0f0f0, borde inferior #212222) ──
+  // ── Navbar ──
   navbar: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr 1fr',
@@ -1151,7 +1556,6 @@ const styles = {
     backgroundColor: '#f2f2f2',
   },
 
-  // Toolbar: fondo blanco, borde inferior
   toolbar: {
     display: 'flex',
     alignItems: 'center',
@@ -1196,24 +1600,26 @@ const styles = {
     border: '1px solid #d9d9d9',
   },
 
-  // Área de scroll del editor (fondo #f2f2f2, padding 10px)
   editorScrollArea: {
     flex: 1,
-    overflowY: 'auto',
+    overflowY: 'scroll',
     padding: 10,
+    position: 'relative',
   },
 
-  // La "página": max-width 800px, centrada, fondo #f8f8f8, borde, padding 20px
   editorPage: {
     maxWidth: 800,
     margin: '0 auto',
+    minHeight: 'calc(100vh - 120px)',
     backgroundColor: '#f8f8f8',
     border: '1px solid #d9d9d9',
     borderRadius: 4,
     padding: 20,
+    paddingTop: 60,
+    paddingBottom: 1000,
   },
 
-  // ── Separador de sección ──
+  // ── Separador de sección (usado por el NodeView) ──
   sectionDivider: {
     margin: '20px 0 12px',
   },
@@ -1232,21 +1638,18 @@ const styles = {
     margin: 0,
   },
 
-  // ── Fila de sección: [etiquetas tipo] [editor] [info] ──
   sectionEditorRow: {
     display: 'flex',
     alignItems: 'flex-start',
   },
 
-  // Columna de etiquetas de tipo — position: relative para los labels absolutos
   typeLabelsCol: {
     position: 'relative',
     width: 48,
     flexShrink: 0,
-    alignSelf: 'stretch',  // misma altura que el editor
+    alignSelf: 'stretch',
   },
 
-  // Botón de etiqueta de tipo: 30×30px, fondo #d0d0d0, border-radius 6px
   typeLabelBtn: {
     width: 30,
     height: 30,
@@ -1264,7 +1667,6 @@ const styles = {
     padding: 0,
   },
 
-  // Dropdown del tipo de bloque (aparece a la derecha del botón)
   typeLabelDropdown: {
     position: 'absolute',
     left: 34,
@@ -1285,13 +1687,11 @@ const styles = {
     fontFamily: 'inherit',
   },
 
-  // Contenido del editor TipTap (flex 1)
   sectionEditorContent: {
     flex: 1,
     overflow: 'hidden',
   },
 
-  // Columna del ícono ⓘ (derecha del editor)
   infoCol: {
     width: 36,
     flexShrink: 0,
@@ -1312,7 +1712,6 @@ const styles = {
     padding: 30,
   },
 
-  // Mensaje cuando no hay cambios
   updatesEmpty: {
     fontSize: 14,
     color: '#999',
@@ -1320,7 +1719,6 @@ const styles = {
     marginTop: 16,
   },
 
-  // Lista de cambios: sin estilos de lista nativa
   updatesList: {
     listStyle: 'none',
     margin: 0,
@@ -1328,7 +1726,6 @@ const styles = {
     padding: 0,
   },
 
-  // Ítem de cambio: borde inferior + padding vertical
   updatesItem: {
     display: 'flex',
     flexDirection: 'column',
@@ -1337,25 +1734,91 @@ const styles = {
     padding: '10px 0',
   },
 
-  // Nombre del campo modificado
   updatesField: {
     fontSize: 13,
     fontWeight: 600,
     color: '#2a2a2a',
   },
 
-  // Fecha/hora del cambio
   updatesDatetime: {
     fontSize: 12,
     color: '#999',
   },
 
-  // Link "Ver" — apagado visualmente hasta que tenga acción
   updatesLink: {
     fontSize: 12,
     color: '#0088ff',
     textDecoration: 'none',
     marginTop: 2,
     alignSelf: 'flex-start',
+  },
+
+  // ── Modal ──
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 200,
+  },
+
+  modal: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
+    padding: '24px 28px',
+    width: 320,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+  },
+
+  modalTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#2a2a2a',
+    margin: 0,
+  },
+
+  modalInput: {
+    padding: '9px 12px',
+    border: '1px solid #d9d9d9',
+    borderRadius: 6,
+    fontSize: 14,
+    color: '#2a2a2a',
+    outline: 'none',
+    fontFamily: 'inherit',
+  },
+
+  modalActions: {
+    display: 'flex',
+    gap: 10,
+  },
+
+  modalBtnPrimary: {
+    flex: 1,
+    padding: '8px 0',
+    backgroundColor: '#2a2a2a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 6,
+    fontSize: 14,
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  },
+
+  modalBtnSecondary: {
+    flex: 1,
+    padding: '8px 0',
+    backgroundColor: 'transparent',
+    color: '#64748b',
+    border: '1px solid #d9d9d9',
+    borderRadius: 6,
+    fontSize: 14,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
 }
