@@ -6,7 +6,11 @@
       "Bash(npx vite:*)",
       "Bash(grep -v \"^$\")",
       "Bash(node -e \"const m = require\\(''/Users/adrian/GitHub/webbrief/frontend/node_modules/@tiptap/extension-text-style/dist/index.js''\\); console.log\\(Object.keys\\(m\\)\\)\")",
-      "Bash(node -e \"const m = require\\(''/Users/adrian/GitHub/webbrief/frontend/node_modules/@tiptap/extension-underline/dist/index.js''\\); console.log\\(Object.keys\\(m\\)\\)\")"
+      "Bash(node -e \"const m = require\\(''/Users/adrian/GitHub/webbrief/frontend/node_modules/@tiptap/extension-underline/dist/index.js''\\); console.log\\(Object.keys\\(m\\)\\)\")",
+      "Bash(/Users/adrian/GitHub/webbrief/CONTEXT.md:*)",
+      "Bash(find /Users/adrian/GitHub/webbrief -not -path */node_modules* -not -path */.git* -not -path */dist/* -type f)",
+      "WebSearch",
+      "Bash(git checkout:*)"
     ]
   }
 }
