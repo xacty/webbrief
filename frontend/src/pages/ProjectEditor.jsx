@@ -110,8 +110,16 @@ const SectionDividerNode = Node.create({
 
   addAttributes() {
     return {
-      sectionId: { default: '' },
-      sectionName: { default: 'Section' },
+      sectionId: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-section-id') || '',
+        renderHTML: (attributes) => ({ 'data-section-id': attributes.sectionId }),
+      },
+      sectionName: {
+        default: 'Section',
+        parseHTML: (element) => element.getAttribute('data-section-name') || 'Section',
+        renderHTML: (attributes) => ({ 'data-section-name': attributes.sectionName }),
+      },
     }
   },
 
@@ -142,12 +150,14 @@ function buildDocumentHTML(sections) {
 // ---------------------------------------------------------------------------
 // Helper: getNextSectionNumber — devuelve el siguiente número para auto-nombrar
 // ---------------------------------------------------------------------------
+const AUTO_SECTION_NAME_RE = /^Sección (\d+)$/
+
+function isAutoSectionName(name) {
+  return AUTO_SECTION_NAME_RE.test(name?.trim() || '')
+}
+
 function getNextSectionNumber(sections) {
-  const nums = sections.map((s) => {
-    const match = s.name?.match(/^Sección (\d+)$/)
-    return match ? parseInt(match[1], 10) : 0
-  })
-  return Math.max(0, ...nums) + 1
+  return sections.length + 1
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +207,80 @@ function deriveSectionsFromDoc(editor) {
   return sections
 }
 
+function getFirstEditableTextPos(editor) {
+  if (!editor) return null
+
+  let targetPos = null
+
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === 'sectionDivider') return false
+    if (node.isTextblock) {
+      targetPos = pos + 1
+      return false
+    }
+    return true
+  })
+
+  return targetPos
+}
+
+function getSectionInsertPos(editor, afterSectionId) {
+  if (!editor || !afterSectionId) return null
+
+  let insertPos = null
+  let foundTarget = false
+
+  editor.state.doc.forEach((node, offset) => {
+    if (node.type.name !== 'sectionDivider') return
+
+    if (foundTarget && insertPos === null) {
+      insertPos = offset
+      return
+    }
+
+    if (node.attrs.sectionId === afterSectionId) {
+      foundTarget = true
+    }
+  })
+
+  if (!foundTarget) return null
+  return insertPos ?? editor.state.doc.content.size
+}
+
+function getSectionInfoFromSelection(editor) {
+  if (!editor) return null
+
+  const selectionPos = editor.state.selection.from
+  let sectionId = null
+  let headingCursor = 0
+  let lastHeadingIndex = 0
+
+  editor.state.doc.forEach((node, offset) => {
+    if (offset > selectionPos) return
+
+    if (node.type.name === 'sectionDivider') {
+      sectionId = node.attrs.sectionId || null
+      headingCursor = 0
+      lastHeadingIndex = 0
+      return
+    }
+
+    if (!sectionId) return
+
+    if (node.type.name === 'heading' && node.attrs?.level <= 3) {
+      lastHeadingIndex = headingCursor
+      headingCursor += 1
+    }
+  })
+
+  if (!sectionId) return null
+
+  return {
+    sectionId,
+    headingIndex: lastHeadingIndex,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helper: mapHeadingsToSections — maps DOM headings to their section IDs
 // Used by scroll listener and heading click
@@ -226,6 +310,24 @@ function mapHeadingsInDOM(pmEl, firstSectionId) {
   return result
 }
 
+function mapSectionsInDOM(pmEl) {
+  if (!pmEl) return []
+
+  const result = []
+
+  for (const child of pmEl.children) {
+    const dividerWrapper = child.querySelector?.('[data-section-divider]') || (child.hasAttribute?.('data-section-divider') ? child : null)
+    if (!dividerWrapper) continue
+
+    result.push({
+      el: dividerWrapper,
+      sectionId: dividerWrapper.getAttribute('data-section-id') || '',
+    })
+  }
+
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // Componente principal — ProjectEditor
 // ---------------------------------------------------------------------------
@@ -239,11 +341,13 @@ export default function ProjectEditor() {
   const [activeHeading, setActiveHeading] = useState(null)
   // Sections derivadas del contenido del editor (source of truth = editor)
   const [derivedSections, setDerivedSections] = useState([])
+  const [sectionModalState, setSectionModalState] = useState({
+    isOpen: false,
+    insertAfterSectionId: null,
+  })
 
-  // scrollTarget: solo se actualiza en sidebar clicks (no en focus del editor).
-  const [scrollTarget, setScrollTarget] = useState(null)
-  // Counter to force scroll even when clicking the same section twice
-  const [scrollCounter, setScrollCounter] = useState(0)
+  // scrollRequest: navegación programática desde el sidebar.
+  const [scrollRequest, setScrollRequest] = useState(null)
 
   // Ref al editor único
   const editorRef = useRef(null)
@@ -256,13 +360,56 @@ export default function ProjectEditor() {
   // ── Callback cuando el editor se actualiza ──
   // Flag to prevent re-entrant auto-remove
   const isAutoRemoving = useRef(false)
-  // ID de la sección recién creada — no se auto-elimina aunque esté vacía
-  const justAddedSectionId = useRef(null)
+  const isRenumberingSections = useRef(false)
+  // Secciones creadas manualmente y todavía vacías: no se auto-eliminan
+  const protectedEmptySectionIds = useRef(new Set())
+
+  const syncProtectedEmptySections = useCallback((sections) => {
+    const nextIds = new Set(sections.map((section) => section.id))
+    for (const sectionId of Array.from(protectedEmptySectionIds.current)) {
+      const section = sections.find((item) => item.id === sectionId)
+      if (!nextIds.has(sectionId) || !section?.isEmpty) {
+        protectedEmptySectionIds.current.delete(sectionId)
+      }
+    }
+  }, [])
+
+  const renumberAutoSections = useCallback((editor) => {
+    if (!editor) return false
+
+    const { state } = editor
+    let tr = state.tr
+    let sectionIndex = 0
+    let changed = false
+
+    state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'sectionDivider') return true
+
+      sectionIndex += 1
+
+      if (isAutoSectionName(node.attrs.sectionName)) {
+        const expectedName = `Sección ${sectionIndex}`
+        if (node.attrs.sectionName !== expectedName) {
+          tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, sectionName: expectedName })
+          changed = true
+        }
+      }
+
+      return false
+    })
+
+    if (!changed) return false
+
+    isRenumberingSections.current = true
+    editor.view.dispatch(tr)
+    isRenumberingSections.current = false
+    return true
+  }, [])
 
   const handleDocUpdate = useCallback((editor) => {
-    if (isAutoRemoving.current) return
+    if (isAutoRemoving.current || isRenumberingSections.current) return
 
-    const sections = deriveSectionsFromDoc(editor)
+    let sections = deriveSectionsFromDoc(editor)
 
     // Si el doc tiene contenido pero no hay secciones (usuario escribió sin crear sección),
     // auto-insertar un identificador "Sección 1" al principio del documento.
@@ -275,10 +422,12 @@ export default function ProjectEditor() {
       })
       if (hasContent) {
         const id = `s_${Date.now()}`
+        const { from, to } = editor.state.selection
         isAutoRemoving.current = true
         editor.chain()
           .insertContentAt(0, { type: 'sectionDivider', attrs: { sectionId: id, sectionName: 'Sección 1' } })
           .run()
+        editor.commands.setTextSelection({ from: from + 1, to: to + 1 })
         isAutoRemoving.current = false
         const newSections = deriveSectionsFromDoc(editor)
         setDerivedSections(newSections)
@@ -287,20 +436,21 @@ export default function ProjectEditor() {
       }
     }
 
-    setDerivedSections(sections)
+    syncProtectedEmptySections(sections)
 
-    // Si la sección recién añadida ya tiene contenido real, limpiar el ref
-    if (justAddedSectionId.current) {
-      const justAdded = sections.find((s) => s.id === justAddedSectionId.current)
-      if (justAdded && !justAdded.isEmpty) {
-        justAddedSectionId.current = null
-      }
+    if (renumberAutoSections(editor)) {
+      sections = deriveSectionsFromDoc(editor)
+      syncProtectedEmptySections(sections)
     }
+
+    setDerivedSections(sections)
 
     // Auto-remove empty sections (aplica a todas, incluida la primera).
     // Solo cuando hay más de una sección para no borrar la única existente.
     if (sections.length > 1) {
-      const emptySection = sections.find((s) => s.isEmpty && s.id !== justAddedSectionId.current)
+      const emptySection = sections.find((s) => (
+        s.isEmpty && !protectedEmptySectionIds.current.has(s.id)
+      ))
       if (emptySection) {
         const { state } = editor
         let dividerPos = null
@@ -325,19 +475,30 @@ export default function ProjectEditor() {
           editor.chain().deleteRange({ from, to }).run()
           isAutoRemoving.current = false
           // Actualizar secciones después de la eliminación
-          const updated = deriveSectionsFromDoc(editor)
+          let updated = deriveSectionsFromDoc(editor)
+          syncProtectedEmptySections(updated)
+          if (renumberAutoSections(editor)) {
+            updated = deriveSectionsFromDoc(editor)
+            syncProtectedEmptySections(updated)
+          }
           setDerivedSections(updated)
         }
       }
     }
-  }, [])
+  }, [renumberAutoSections, syncProtectedEmptySections])
 
   // ── Editor listo: guardar ref y derivar secciones iniciales ──
   const handleEditorReady = useCallback((editor) => {
     editorRef.current = editor
+    protectedEmptySectionIds.current = new Set()
+    if (renumberAutoSections(editor)) {
+      const sections = deriveSectionsFromDoc(editor)
+      setDerivedSections(sections)
+      return
+    }
     const sections = deriveSectionsFromDoc(editor)
     setDerivedSections(sections)
-  }, [])
+  }, [renumberAutoSections])
 
   // ── Navega a otra página: guarda contenido actual y carga la nueva ──
   function handlePageClick(pageId) {
@@ -360,21 +521,24 @@ export default function ProjectEditor() {
     const content = newPage.fullContent || buildDocumentHTML(newPage.sections)
 
     if (editorRef.current) {
+      protectedEmptySectionIds.current = new Set()
       editorRef.current.commands.setContent(content)
+      renumberAutoSections(editorRef.current)
       const sections = deriveSectionsFromDoc(editorRef.current)
       setDerivedSections(sections)
       const firstId = sections[0]?.id ?? null
       setActiveSectionId(firstId)
-      setScrollTarget(firstId)
-      setScrollCounter((c) => c + 1)
+      if (firstId) {
+        setScrollRequest({ type: 'section', sectionId: firstId, requestId: Date.now() })
+      }
     }
   }
 
   // ── Selecciona una sección del sidebar (el EditorPanel hace el scroll) ──
   function handleSectionClick(sectionId) {
     setActiveSectionId(sectionId)
-    setScrollTarget(sectionId)
-    setScrollCounter((c) => c + 1)
+    setActiveHeading({ sectionId, headingIndex: 0 })
+    setScrollRequest({ type: 'section', sectionId, requestId: Date.now() })
   }
 
   // ── Recibe el foco del caret desde el editor ──
@@ -383,10 +547,16 @@ export default function ProjectEditor() {
     setActiveHeading({ sectionId, headingIndex: 0 })
   }
 
+  function handleSelectionFocus({ sectionId, headingIndex }) {
+    setActiveSectionId(sectionId)
+    setActiveHeading({ sectionId, headingIndex })
+  }
+
   // ── Click en un heading del sidebar → activa sección + heading ──
   function handleHeadingClick(sectionId, headingIndex) {
     setActiveSectionId(sectionId)
     setActiveHeading({ sectionId, headingIndex })
+    setScrollRequest({ type: 'heading', sectionId, headingIndex, requestId: Date.now() })
   }
 
   // ── Scroll manual detectó un nuevo heading en el trigger point ──
@@ -395,33 +565,60 @@ export default function ProjectEditor() {
     setActiveHeading({ sectionId, headingIndex })
   }, [])
 
-  // ── Agrega una sección nueva via TipTap ──
-  function addSection(name) {
-    const id = `s_${Date.now()}`
-    const sectionCount = derivedSections.length
-    const finalName = name?.trim() || `Sección ${getNextSectionNumber(derivedSections)}`
+  function openSectionModal(insertAfterSectionId = null) {
+    setSectionModalState({
+      isOpen: true,
+      insertAfterSectionId,
+    })
+  }
 
+  function closeSectionModal() {
+    setSectionModalState({
+      isOpen: false,
+      insertAfterSectionId: null,
+    })
+  }
+
+  // ── Agrega una sección nueva via TipTap ──
+  function addSection(name, insertAfterSectionId = null) {
     if (!editorRef.current) return
 
-    justAddedSectionId.current = id
+    const id = `s_${Date.now()}`
+    const currentSections = deriveSectionsFromDoc(editorRef.current)
+    const sectionCount = currentSections.length
+    const finalName = name?.trim() || `Sección ${getNextSectionNumber(currentSections)}`
+
+    protectedEmptySectionIds.current.add(id)
 
     if (sectionCount === 0) {
       // Documento vacío — insertar el identificador al inicio con un párrafo para escribir
       const html = `<div data-section-divider data-section-id="${id}" data-section-name="${finalName}"></div><p></p>`
       editorRef.current.commands.setContent(html)
-      editorRef.current.commands.focus('end')
+      const firstEditablePos = getFirstEditableTextPos(editorRef.current)
+      if (firstEditablePos !== null) {
+        editorRef.current.chain().focus().setTextSelection(firstEditablePos).run()
+      } else {
+        editorRef.current.commands.focus('end')
+      }
       setDerivedSections([{ id, name: finalName, headings: [], isEmpty: true }])
     } else {
-      // Agregar nueva sección con identificador al final
-      editorRef.current.chain().focus('end').insertContent([
+      const insertPos = getSectionInsertPos(editorRef.current, insertAfterSectionId)
+      const sectionContent = [
         { type: 'sectionDivider', attrs: { sectionId: id, sectionName: finalName } },
         { type: 'paragraph' },
-      ]).run()
+      ]
+
+      if (insertPos !== null) {
+        editorRef.current.chain().insertContentAt(insertPos, sectionContent).run()
+      } else {
+        // Sidebar: si no hay sección objetivo, agregar al final
+        editorRef.current.chain().focus('end').insertContent(sectionContent).run()
+      }
     }
 
+    renumberAutoSections(editorRef.current)
     setActiveSectionId(id)
-    setScrollTarget(id)
-    setScrollCounter((c) => c + 1)
+    setScrollRequest({ type: 'section', sectionId: id, requestId: Date.now() })
   }
 
   // ── Renombra una sección ──
@@ -443,6 +640,7 @@ export default function ProjectEditor() {
   function deleteSection(sectionId) {
     if (!editorRef.current) return
     const { state } = editorRef.current
+    protectedEmptySectionIds.current.delete(sectionId)
 
     let dividerPos = null
     let nextDividerPos = null
@@ -465,6 +663,7 @@ export default function ProjectEditor() {
       editorRef.current.chain().deleteRange({ from, to }).run()
     }
 
+    renumberAutoSections(editorRef.current)
     const updated = deriveSectionsFromDoc(editorRef.current)
     setDerivedSections(updated)
     if (sectionId === activeSectionId || updated.length === 0) {
@@ -485,8 +684,10 @@ export default function ProjectEditor() {
     setActivePageId(id)
 
     if (editorRef.current) {
+      protectedEmptySectionIds.current = new Set()
       const html = buildDocumentHTML(newPage.sections)
       editorRef.current.commands.setContent(html)
+      renumberAutoSections(editorRef.current)
       const sections = deriveSectionsFromDoc(editorRef.current)
       setDerivedSections(sections)
     }
@@ -495,6 +696,22 @@ export default function ProjectEditor() {
 
   return (
     <div style={styles.root}>
+      {sectionModalState.isOpen && (
+        <AddSectionModal
+          onConfirm={(name) => {
+            const insertAfterSectionId = sectionModalState.insertAfterSectionId
+            closeSectionModal()
+            addSection(name, insertAfterSectionId)
+          }}
+          onSkip={() => {
+            const insertAfterSectionId = sectionModalState.insertAfterSectionId
+            closeSectionModal()
+            addSection('', insertAfterSectionId)
+          }}
+          onClose={closeSectionModal}
+        />
+      )}
+
       {/* ── CSS global para el editor TipTap ── */}
       <style>{`
         .ProseMirror { outline: none; position: relative; min-height: 40px; }
@@ -529,7 +746,7 @@ export default function ProjectEditor() {
           sections={derivedSections}
           activeSectionId={activeSectionId}
           onSectionClick={handleSectionClick}
-          onAddSection={addSection}
+          onOpenAddSectionModal={() => openSectionModal(null)}
           onRename={renameSection}
           onDelete={deleteSection}
           activeHeading={activeHeading}
@@ -539,12 +756,14 @@ export default function ProjectEditor() {
         {/* Área central: editor */}
         <EditorPanel
           initialContent={initialContentRef.current}
-          scrollTarget={scrollTarget}
-          scrollCounter={scrollCounter}
+          scrollRequest={scrollRequest}
           onDocUpdate={handleDocUpdate}
           onEditorReady={handleEditorReady}
           onScrollHeadingChange={handleScrollHeadingChange}
+          onSelectionSectionChange={handleSelectionFocus}
           firstSectionId={derivedSections[0]?.id ?? ''}
+          activeSectionId={activeSectionId}
+          onOpenAddSectionAfter={(sectionId) => openSectionModal(sectionId)}
         />
 
         {/* Sidebar derecho: actualizaciones del documento */}
@@ -633,12 +852,12 @@ function AddSectionModal({ onConfirm, onSkip, onClose }) {
           value={value}
           autoFocus
           onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && value.trim()) onConfirm(value.trim()) }}
+          onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value.trim()) }}
         />
         <div style={styles.modalActions}>
           <button
-            style={{ ...styles.modalBtnPrimary, opacity: value.trim() ? 1 : 0.4 }}
-            onClick={() => { if (value.trim()) onConfirm(value.trim()) }}
+            style={styles.modalBtnPrimary}
+            onClick={() => onConfirm(value.trim())}
           >
             Agregar
           </button>
@@ -654,32 +873,12 @@ function AddSectionModal({ onConfirm, onSkip, onClose }) {
 // ---------------------------------------------------------------------------
 // SectionsPanel — sidebar izquierdo con la lista de secciones
 // ---------------------------------------------------------------------------
-function SectionsPanel({ sections, activeSectionId, onSectionClick, onAddSection, onRename, onDelete, activeHeading, onHeadingClick }) {
-  const [showModal, setShowModal] = useState(false)
-
-  function handleConfirm(name) {
-    setShowModal(false)
-    onAddSection(name)
-  }
-
-  function handleSkip() {
-    setShowModal(false)
-    onAddSection('')
-  }
-
+function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, activeHeading, onHeadingClick }) {
   return (
     <div style={styles.leftPanel}>
-      {showModal && (
-        <AddSectionModal
-          onConfirm={handleConfirm}
-          onSkip={handleSkip}
-          onClose={() => setShowModal(false)}
-        />
-      )}
-
       <div style={styles.panelHeader}>
         <span style={styles.panelTitle}>Page sections</span>
-        <button style={styles.panelAddBtn} onClick={() => setShowModal(true)} title="Agregar sección">
+        <button style={styles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar sección">
           <Plus size={24} color="#2a2a2a" />
         </button>
       </div>
@@ -713,51 +912,6 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
   function handleHeadingClick(e, index) {
     e.stopPropagation()
     onHeadingClickProp?.(sectionId, index)
-
-    // Find heading in the single editor DOM
-    const pm = document.querySelector('.ProseMirror')
-    if (!pm) return
-
-    // Find the divider for this section, then count headings after it
-    const allChildren = Array.from(pm.children)
-    let inSection = false
-    let headingCount = 0
-
-    for (const child of allChildren) {
-      const divider = child.querySelector?.('[data-section-divider]') || (child.hasAttribute?.('data-section-divider') ? child : null)
-      if (divider) {
-        if (divider.getAttribute('data-section-id') === sectionId) {
-          inSection = true
-          headingCount = 0
-          continue
-        } else if (inSection) {
-          break // reached next section
-        }
-      }
-
-      if (!inSection) continue
-
-      const tag = child.tagName?.toLowerCase()
-      if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
-        if (headingCount === index) {
-          // Scroll with offset
-          let container = child.parentElement
-          while (container && getComputedStyle(container).overflowY !== 'scroll') {
-            container = container.parentElement
-          }
-          if (container) {
-            const targetRect = child.getBoundingClientRect()
-            const containerRect = container.getBoundingClientRect()
-            const offset = targetRect.top - containerRect.top + container.scrollTop - 70
-            container.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
-          } else {
-            child.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-          return
-        }
-        headingCount++
-      }
-    }
   }
 
   const [editing, setEditing] = useState(false)
@@ -885,12 +1039,14 @@ function getBlockLabel(el) {
 // TypeLabelsColumn — columna de etiquetas de tipo alineadas con cada bloque
 // ---------------------------------------------------------------------------
 function TypeLabelsColumn({ wrapperRef, editor }) {
+  const columnRef = useRef(null)
   const [labels, setLabels]   = useState([])
   const [openIdx, setOpenIdx] = useState(-1)
 
   function rebuild() {
     const wrapper = wrapperRef.current
-    if (!wrapper) return
+    const column = columnRef.current
+    if (!wrapper || !column) return
     const pm = wrapper.querySelector('.ProseMirror')
     if (!pm) return
 
@@ -907,7 +1063,7 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
 
     setLabels(
       visibleBlocks.map((block) => ({
-        top: block.offsetTop,
+        top: block.getBoundingClientRect().top - column.getBoundingClientRect().top,
         label: getBlockLabel(block),
         blockEl: block,
       }))
@@ -956,7 +1112,7 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
   const TYPE_OPTIONS = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'Párrafo']
 
   return (
-    <div style={styles.typeLabelsCol}>
+    <div ref={columnRef} style={styles.typeLabelsCol}>
       {labels.map((item, idx) => (
         <div key={idx} style={{ position: 'absolute', top: item.top, left: 4, zIndex: 20 }}>
           <button
@@ -1128,9 +1284,22 @@ function ToolBtn({ children, active, disabled, onClick, title }) {
 // ---------------------------------------------------------------------------
 // EditorPanel — panel central con editor TipTap único
 // ---------------------------------------------------------------------------
-function EditorPanel({ initialContent, scrollTarget, scrollCounter, onDocUpdate, onEditorReady, onScrollHeadingChange, firstSectionId }) {
+function EditorPanel({
+  initialContent,
+  scrollRequest,
+  onDocUpdate,
+  onEditorReady,
+  onScrollHeadingChange,
+  onSelectionSectionChange,
+  firstSectionId,
+  activeSectionId,
+  onOpenAddSectionAfter,
+}) {
   const wrapperRef = useRef(null)
   const scrollAreaRef = useRef(null)
+  const programmaticScrollRef = useRef(null)
+  const programmaticScrollRafRef = useRef(null)
+  const [activeSectionAddTop, setActiveSectionAddTop] = useState(null)
 
   const editor = useEditor({
     extensions: [
@@ -1152,6 +1321,14 @@ function EditorPanel({ initialContent, scrollTarget, scrollCounter, onDocUpdate,
     onUpdate({ editor }) {
       onDocUpdate?.(editor)
     },
+    onSelectionUpdate({ editor }) {
+      const sectionInfo = getSectionInfoFromSelection(editor)
+      if (sectionInfo) onSelectionSectionChange?.(sectionInfo)
+    },
+    onFocus({ editor }) {
+      const sectionInfo = getSectionInfoFromSelection(editor)
+      if (sectionInfo) onSelectionSectionChange?.(sectionInfo)
+    },
   })
 
   // Report editor to parent when ready
@@ -1159,28 +1336,105 @@ function EditorPanel({ initialContent, scrollTarget, scrollCounter, onDocUpdate,
     if (editor) onEditorReady?.(editor)
   }, [editor])
 
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollRafRef.current) {
+        cancelAnimationFrame(programmaticScrollRafRef.current)
+      }
+    }
+  }, [])
+
   // ── Scroll to section when sidebar clicks ──
   useEffect(() => {
-    if (!scrollTarget || !scrollAreaRef.current) return
+    if (!scrollRequest || !scrollAreaRef.current) return
 
     const scrollEl = scrollAreaRef.current
     const pm = scrollEl.querySelector('.ProseMirror')
     if (!pm) return
 
-    // Find the target: either a section divider or the start of the document
-    const dividerEl = pm.querySelector(`[data-section-id="${scrollTarget}"]`)
-
-    if (dividerEl) {
-      // Scroll to divider with offset
-      const targetRect = dividerEl.getBoundingClientRect()
-      const containerRect = scrollEl.getBoundingClientRect()
-      const offset = targetRect.top - containerRect.top + scrollEl.scrollTop - 70
-      scrollEl.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
-    } else {
-      // First section — scroll to top
-      scrollEl.scrollTo({ top: 0, behavior: 'smooth' })
+    if (programmaticScrollRafRef.current) {
+      cancelAnimationFrame(programmaticScrollRafRef.current)
+      programmaticScrollRafRef.current = null
     }
-  }, [scrollTarget, scrollCounter])
+
+    const OFFSET = 70
+    let targetEl = null
+    let targetHeadingIndex = 0
+
+    if (scrollRequest.type === 'heading') {
+      const headings = mapHeadingsInDOM(pm, firstSectionId)
+      targetEl = headings.find(
+        (heading) =>
+          heading.sectionId === scrollRequest.sectionId &&
+          heading.headingIndex === scrollRequest.headingIndex
+      )?.el || null
+      targetHeadingIndex = scrollRequest.headingIndex
+    }
+
+    if (!targetEl) {
+      targetEl = pm.querySelector(`[data-section-id="${scrollRequest.sectionId}"]`)
+    }
+
+    const rawOffset = targetEl
+      ? targetEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop - OFFSET
+      : 0
+    const maxScrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+    const targetTop = Math.max(0, Math.min(maxScrollTop, rawOffset))
+
+    programmaticScrollRef.current = {
+      sectionId: scrollRequest.sectionId,
+      headingIndex: targetHeadingIndex,
+      targetTop,
+    }
+
+    scrollEl.scrollTo({ top: targetTop, behavior: 'smooth' })
+
+    let started = false
+    let stableFrames = 0
+    let frames = 0
+    let lastTop = scrollEl.scrollTop
+
+    const monitorScroll = () => {
+      frames += 1
+      const currentTop = scrollEl.scrollTop
+      const delta = Math.abs(currentTop - lastTop)
+      const nearTarget = Math.abs(currentTop - targetTop) <= 2
+
+      if (!started && (delta > 1 || nearTarget)) {
+        started = true
+      }
+
+      if (started && (nearTarget || delta <= 1)) {
+        stableFrames += 1
+      } else {
+        stableFrames = 0
+      }
+
+      lastTop = currentTop
+
+      if ((started && stableFrames >= 4) || frames >= 120) {
+        programmaticScrollRef.current = null
+        programmaticScrollRafRef.current = null
+        onScrollHeadingChange?.({
+          sectionId: scrollRequest.sectionId,
+          headingIndex: targetHeadingIndex,
+        })
+        return
+      }
+
+      programmaticScrollRafRef.current = requestAnimationFrame(monitorScroll)
+    }
+
+    programmaticScrollRafRef.current = requestAnimationFrame(monitorScroll)
+
+    return () => {
+      if (programmaticScrollRafRef.current) {
+        cancelAnimationFrame(programmaticScrollRafRef.current)
+        programmaticScrollRafRef.current = null
+      }
+      programmaticScrollRef.current = null
+    }
+  }, [firstSectionId, onScrollHeadingChange, scrollRequest])
 
   // ── Scroll listener: detects heading at trigger point ──
   useEffect(() => {
@@ -1190,33 +1444,127 @@ function EditorPanel({ initialContent, scrollTarget, scrollCounter, onDocUpdate,
     const OFFSET = 70
 
     function onScroll() {
+      if (programmaticScrollRef.current) return
+
       const pm = scrollEl.querySelector('.ProseMirror')
       if (!pm) return
 
       const containerRect = scrollEl.getBoundingClientRect()
       const triggerY = containerRect.top + OFFSET
 
+      const sections = mapSectionsInDOM(pm)
       const headings = mapHeadingsInDOM(pm, firstSectionId)
+      let activeSectionId = firstSectionId
+      const maxScrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+      const isAtBottom = scrollEl.scrollTop >= maxScrollTop - 2
 
-      let best = null
-      for (const h of headings) {
-        const rect = h.el.getBoundingClientRect()
-        if (rect.top <= triggerY) {
-          best = { sectionId: h.sectionId, headingIndex: h.headingIndex }
+      if (isAtBottom && sections.length > 0) {
+        activeSectionId = sections[sections.length - 1].sectionId
+      } else {
+        for (const section of sections) {
+          const rect = section.el.getBoundingClientRect()
+          if (rect.top <= triggerY) {
+            activeSectionId = section.sectionId
+          }
         }
       }
 
-      if (!best && headings.length > 0) {
-        best = { sectionId: headings[0].sectionId, headingIndex: 0 }
+      if (!activeSectionId && sections.length > 0) {
+        activeSectionId = sections[0].sectionId
       }
 
-      if (best) onScrollHeadingChange?.(best)
+      const sectionHeadings = headings.filter((h) => h.sectionId === activeSectionId)
+
+      let headingIndex = 0
+      for (const h of sectionHeadings) {
+        const rect = h.el.getBoundingClientRect()
+        if (rect.top <= triggerY) {
+          headingIndex = h.headingIndex
+        }
+      }
+
+      if (activeSectionId) {
+        onScrollHeadingChange?.({ sectionId: activeSectionId, headingIndex })
+      }
     }
 
     scrollEl.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
     return () => scrollEl.removeEventListener('scroll', onScroll)
   }, [firstSectionId, onScrollHeadingChange])
+
+  useEffect(() => {
+    if (!editor || !wrapperRef.current || !activeSectionId) {
+      setActiveSectionAddTop(null)
+      return
+    }
+
+    function rebuildAddButtonPosition() {
+      const wrapper = wrapperRef.current
+      const pm = wrapper?.querySelector('.ProseMirror')
+      if (!pm) {
+        setActiveSectionAddTop(null)
+        return
+      }
+
+      const children = Array.from(pm.children)
+      let activeDividerIndex = -1
+      let nextDividerIndex = -1
+
+      children.forEach((child, index) => {
+        const dividerWrapper =
+          child.querySelector?.('[data-section-divider]') ||
+          (child.hasAttribute?.('data-section-divider') ? child : null)
+        if (!dividerWrapper) return
+
+        const sectionId = dividerWrapper.getAttribute('data-section-id') || ''
+        if (sectionId === activeSectionId) {
+          activeDividerIndex = index
+          return
+        }
+
+        if (activeDividerIndex !== -1 && nextDividerIndex === -1) {
+          nextDividerIndex = index
+        }
+      })
+
+      if (activeDividerIndex === -1) {
+        setActiveSectionAddTop(null)
+        return
+      }
+
+      const lastSectionChildIndex =
+        nextDividerIndex === -1 ? children.length - 1 : Math.max(activeDividerIndex, nextDividerIndex - 1)
+      const anchorEl = children[lastSectionChildIndex] || children[activeDividerIndex]
+      if (!anchorEl) {
+        setActiveSectionAddTop(null)
+        return
+      }
+
+      setActiveSectionAddTop(anchorEl.offsetTop + anchorEl.offsetHeight + 12)
+    }
+
+    rebuildAddButtonPosition()
+    const timeoutId = setTimeout(rebuildAddButtonPosition, 50)
+
+    const wrapper = wrapperRef.current
+    const pm = wrapper?.querySelector('.ProseMirror')
+    if (!pm) {
+      return () => clearTimeout(timeoutId)
+    }
+
+    const mutationObserver = new MutationObserver(rebuildAddButtonPosition)
+    mutationObserver.observe(pm, { childList: true, subtree: true, characterData: true })
+
+    const resizeObserver = new ResizeObserver(rebuildAddButtonPosition)
+    resizeObserver.observe(pm)
+
+    return () => {
+      clearTimeout(timeoutId)
+      mutationObserver.disconnect()
+      resizeObserver.disconnect()
+    }
+  }, [activeSectionId, editor])
 
   if (!editor) return <div style={styles.centerPanel} />
 
@@ -1229,6 +1577,17 @@ function EditorPanel({ initialContent, scrollTarget, scrollCounter, onDocUpdate,
             <TypeLabelsColumn wrapperRef={wrapperRef} editor={editor} />
             <div ref={wrapperRef} style={styles.sectionEditorContent}>
               <EditorContent editor={editor} />
+              {activeSectionId && activeSectionAddTop !== null && (
+                <div style={{ ...styles.canvasAddSectionWrap, top: activeSectionAddTop }}>
+                  <button
+                    style={styles.canvasAddSectionBtn}
+                    onClick={() => onOpenAddSectionAfter?.(activeSectionId)}
+                  >
+                    <Plus size={14} color="#2a2a2a" />
+                    Agregar sección debajo
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1689,7 +2048,34 @@ const styles = {
 
   sectionEditorContent: {
     flex: 1,
-    overflow: 'hidden',
+    overflow: 'visible',
+    position: 'relative',
+  },
+
+  canvasAddSectionWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    display: 'flex',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    zIndex: 20,
+  },
+  canvasAddSectionBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 12px',
+    border: '1px dashed #b8b8b8',
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    color: '#2a2a2a',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+    pointerEvents: 'auto',
   },
 
   infoCol: {
