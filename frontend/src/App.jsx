@@ -12,6 +12,7 @@ const CompanyPage = lazy(() => import('./pages/CompanyPage'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
 const SharePage = lazy(() => import('./pages/SharePage'))
 const TrashPage = lazy(() => import('./pages/TrashPage'))
+const AccountSettingsPage = lazy(() => import('./pages/AccountSettingsPage'))
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
@@ -54,6 +55,7 @@ function AppRoutes() {
           <Route path="/companies" element={<CompaniesPage />} />
           <Route path="/companies/:companyId" element={<CompanyPage />} />
           <Route path="/users" element={<UsersPage />} />
+          <Route path="/settings" element={<AccountSettingsPage />} />
           <Route path="/archive" element={<TrashPage mode="archived" />} />
           <Route path="/trash" element={<TrashPage mode="trashed" />} />
           <Route path="/new-project" element={<NewProject />} />

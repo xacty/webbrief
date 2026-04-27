@@ -271,6 +271,7 @@ async function loadUsersPayload(currentUser) {
 }
 
 async function canAccessUser(currentUser, userId) {
+  if (currentUser.id === userId) return true
   if (isAdmin(currentUser)) return true
 
   const managedCompanyIds = getManagedCompanyIds(currentUser)

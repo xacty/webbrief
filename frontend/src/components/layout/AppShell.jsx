@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Settings } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import styles from './AppShell.module.css'
 
@@ -79,6 +80,16 @@ export default function AppShell() {
               {currentUser?.platformRole === 'admin' ? 'Admin de plataforma' : canManageUsers ? 'Manager' : 'Usuario'}
             </p>
           </div>
+
+          <NavLink
+            to="/settings"
+            className={({ isActive }) => (
+              isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+            )}
+          >
+            <Settings className={styles.navIcon} aria-hidden="true" />
+            Ajustes de cuenta
+          </NavLink>
 
           <button className={styles.logoutButton} onClick={handleLogout}>
             Cerrar sesión
