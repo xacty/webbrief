@@ -440,3 +440,4 @@
 
 - richer deliverables UI beyond compact editor panel
 - notification read/unread UI actions
+- CRITICAL deploy follow-up: Namecheap VPS CPU does not support current prebuilt `sharp` linux-x64 binary (`requires v2 microarchitecture`). Backend now lazy-loads `sharp` so API can boot, but raster project asset uploads and avatar processing may return 503 until image processing is fixed. Resolve before serious beta/production because image uploads are core to app value. Options to evaluate: build `sharp` from source/system libvips on VPS, use an image-processing service, temporarily store originals without conversion, or move to a VPS CPU/provider that supports the binary.
