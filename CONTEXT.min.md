@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-04-26
+- Updated: 2026-04-27
 
 ## Targets
 
@@ -48,6 +48,11 @@
 - Page review flow: pages start `draft`; `Enviar a revisión` creates `project_page_versions` baseline and switches page to `ready_for_review`; section alerts only emit for pages in review/approved/changes_requested
 - Editor top navbar is reserved for logo/undo/page pills/profile; mode, handoff audience, review status/action, save status/action live in a bottom floating editor bar
 - Backend: Express + Supabase Postgres/Auth
+- Production deploy is live at `https://webrief.app` on Namecheap VPS `199.192.22.74` as user `deploy`
+- Prod stack: Nginx serves `frontend/dist`, proxies `/api` to PM2 process `webrief-backend` on `127.0.0.1:3000`, Certbot manages HTTPS
+- GitHub `main` is the production code source; deploy flow is local commit -> push `main` -> VPS `git pull` -> backend install/restart + frontend build
+- Operational guide lives at `docs/WEBRIEF_OPERATIONS_GUIDE.md`
+- Local `.env` files currently determine whether local dev hits Supabase Prod or a future Supabase Dev; using Prod locally is risky for DB/schema tests
 
 ## Editor Invariants
 
@@ -209,9 +214,13 @@
 - public share document is gated behind viewer name/email before rendering, then supports comments/approvals/change requests
 - added admin-only test-company creation mode and QA platform role plumbing
 - section-level activity markers live to the right of the canvas, aligned by existing section DOM measurements; do not alter the editor scroll/height model
+- deployed WeBrief to Namecheap VPS with Nginx, PM2, Certbot HTTPS, firewall, Supabase hosted, and GitHub deploy key
+- fixed frontend audit vulnerabilities by updating lockfile to Vite 6.4.2, PostCSS 8.5.12, and Picomatch 4.0.4; audit is 0 vulnerabilities locally and on VPS
+- documented basic operations/deploy flow in `docs/WEBRIEF_OPERATIONS_GUIDE.md`
 
 ## Pending
 
 - richer deliverables UI beyond compact editor panel
 - notification read/unread UI actions
 - CRITICAL deploy follow-up: Namecheap VPS CPU does not support current prebuilt `sharp` linux-x64 binary (`requires v2 microarchitecture`). Backend now lazy-loads `sharp` so API can boot, but raster project asset uploads and avatar processing may return 503 until image processing is fixed. Resolve before serious beta/production because image uploads are core to app value.
+- Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.

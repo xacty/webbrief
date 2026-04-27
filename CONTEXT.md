@@ -436,8 +436,20 @@
 - Users page now supports admin/manager user management: invites, profile edits, avatar upload, company role changes without access deletion, and admin-only account deletion with guardrails.
 - Users page UI moved from cards to a compact table with expandable access rows for denser admin/manager workflows.
 
+## Completed (2026-04-27)
+
+- Deployed WeBrief to Namecheap VPS `199.192.22.74` at `https://webrief.app`.
+- Production stack: Nginx serves `/var/www/webrief/frontend/dist`; `/api` proxies to PM2 process `webrief-backend` on `127.0.0.1:3000`; Certbot manages HTTPS; UFW allows OpenSSH + Nginx Full.
+- GitHub `main` is production source. Manual deploy flow: local commit/push -> VPS `git pull origin main` -> `backend npm ci --omit=dev` + PM2 restart -> `frontend npm ci` + `npm run build`.
+- Supabase hosted is production DB/Auth/Storage; local development depends on local `.env` values. If local `.env` points to Prod, local tests mutate Prod.
+- Added operation/deploy guide at `docs/WEBRIEF_OPERATIONS_GUIDE.md`.
+- Fixed frontend audit vulnerabilities by updating lockfile to Vite 6.4.2, PostCSS 8.5.12, and Picomatch 4.0.4. `npm audit` reports 0 vulnerabilities locally and on VPS.
+- Added GitHub deploy key for VPS read access and local GitHub SSH push flow.
+- Verified production: app loads, login works, `/api/health` returns OK, Nginx active, PM2 online, Certbot dry-run successful.
+
 ## Pending
 
 - richer deliverables UI beyond compact editor panel
 - notification read/unread UI actions
 - CRITICAL deploy follow-up: Namecheap VPS CPU does not support current prebuilt `sharp` linux-x64 binary (`requires v2 microarchitecture`). Backend now lazy-loads `sharp` so API can boot, but raster project asset uploads and avatar processing may return 503 until image processing is fixed. Resolve before serious beta/production because image uploads are core to app value. Options to evaluate: build `sharp` from source/system libvips on VPS, use an image-processing service, temporarily store originals without conversion, or move to a VPS CPU/provider that supports the binary.
+- Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.
