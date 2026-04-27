@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import multer from 'multer'
-import sharp from 'sharp'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { ensureUserProfile, inviteUserToCompany, normalizeEmail } from '../lib/users.js'
 import { requireAuth } from '../middleware/auth.js'
@@ -15,8 +14,14 @@ const COMPANY_ROLES = new Set(['manager', 'editor', 'designer', 'developer'])
 const MANAGER_COMPANY_ROLES = new Set(['editor', 'designer', 'developer'])
 const PLATFORM_ROLES = new Set(['admin', 'user', 'qa'])
 const USER_AVATARS_BUCKET = process.env.USER_AVATARS_BUCKET || 'user-avatars'
+let sharpModulePromise = null
 
 router.use(requireAuth)
+
+async function getSharp() {
+  sharpModulePromise ||= import('sharp').then((module) => module.default)
+  return sharpModulePromise
+}
 
 function httpError(status, message) {
   const error = new Error(message)
@@ -444,6 +449,14 @@ router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
 
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(req.file.mimetype)) {
       return res.status(400).json({ error: 'Solo se aceptan JPEG, PNG o WebP' })
+    }
+
+    let sharp
+    try {
+      sharp = await getSharp()
+    } catch (error) {
+      console.error('Sharp is unavailable for avatar processing', error)
+      return res.status(503).json({ error: 'El procesamiento de avatares no esta disponible en este servidor' })
     }
 
     const outputBuffer = await sharp(req.file.buffer)
