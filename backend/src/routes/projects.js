@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import multer from 'multer'
-import sharp from 'sharp'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
 import { seedProjectPages } from '../data/projectTemplates.js'
@@ -31,6 +30,7 @@ let projectPageReviewColumnsAvailable = true
 let projectPageVersionsTableAvailable = true
 let projectActivityTableAvailable = true
 let projectActivityRetryAt = 0
+let sharpModulePromise = null
 
 router.use(requireAuth)
 
@@ -152,6 +152,11 @@ function coerceUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '')
     ? value
     : crypto.randomUUID()
+}
+
+async function getSharp() {
+  sharpModulePromise ||= import('sharp').then((module) => module.default)
+  return sharpModulePromise
 }
 
 function normalizeProjectList(projects, companyMap) {
@@ -990,6 +995,14 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
     let height = null
 
     if (isRaster) {
+      let sharp
+      try {
+        sharp = await getSharp()
+      } catch (error) {
+        console.error('Sharp is unavailable for raster asset processing', error)
+        return res.status(503).json({ error: 'El procesamiento de imagenes raster no esta disponible en este servidor' })
+      }
+
       const image = sharp(req.file.buffer).rotate()
       const metadata = await image.metadata()
       width = metadata.width || null
