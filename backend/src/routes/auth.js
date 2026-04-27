@@ -1,67 +1,63 @@
-// Rutas de autenticación: registro e inicio de sesión del diseñador
 import { Router } from 'express'
-import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
-import db from '../db.js'
+import { inviteUserToCompany } from '../lib/users.js'
+import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
 
-// POST /api/auth/register
-// Crea el diseñador. Solo funciona si no existe ninguno todavía.
-router.post('/register', async (req, res) => {
-  const { email, password, name } = req.body
-
-  // Validar que llegaron los datos necesarios
-  if (!email || !password || !name) {
-    return res.status(400).json({ error: 'Email, password y name son requeridos' })
+function canInvite(currentUser, companyId, role) {
+  if (currentUser.platformRole === 'admin') {
+    return ['manager', 'editor', 'designer', 'developer'].includes(role)
   }
 
-  // Verificar que no exista ningún diseñador registrado
-  const existing = db.prepare('SELECT id FROM designers LIMIT 1').get()
-  if (existing) {
-    return res.status(403).json({ error: 'Ya existe un diseñador registrado' })
-  }
+  return currentUser.memberships.some((membership) => (
+    membership.role === 'manager' &&
+    membership.companyId === companyId &&
+    ['editor', 'designer', 'developer'].includes(role)
+  ))
+}
 
-  // Encriptar la contraseña antes de guardarla
-  const password_hash = await bcrypt.hash(password, 10)
+function getAllowedPlatformRole(currentUser, requestedRole) {
+  if (currentUser.platformRole !== 'admin') return 'user'
+  if (requestedRole === 'qa') return 'qa'
+  return 'user'
+}
 
-  // Guardar el nuevo diseñador en la base de datos
-  const result = db
-    .prepare('INSERT INTO designers (email, password_hash, name) VALUES (?, ?, ?)')
-    .run(email, password_hash, name)
-
-  res.status(201).json({ message: 'Diseñador creado', id: result.lastInsertRowid })
+router.get('/me', requireAuth, async (req, res) => {
+  return res.json({ user: req.currentUser })
 })
 
-// POST /api/auth/login
-// Valida email y password, devuelve un token JWT si son correctos
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body
+router.post('/invite-user', requireAuth, async (req, res) => {
+  const { email, fullName, role, companyId, platformRole } = req.body
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email y password son requeridos' })
+  if (!email || !role) {
+    return res.status(400).json({ error: 'email y role son requeridos' })
   }
 
-  // Buscar el diseñador por email
-  const designer = db.prepare('SELECT * FROM designers WHERE email = ?').get(email)
-  if (!designer) {
-    return res.status(401).json({ error: 'Credenciales incorrectas' })
+  const targetCompanyId = companyId || req.currentUser.memberships[0]?.companyId
+  if (!targetCompanyId) {
+    return res.status(400).json({ error: 'No hay una empresa valida para la invitacion' })
   }
 
-  // Comparar la contraseña con el hash guardado
-  const valid = await bcrypt.compare(password, designer.password_hash)
-  if (!valid) {
-    return res.status(401).json({ error: 'Credenciales incorrectas' })
+  if (!canInvite(req.currentUser, targetCompanyId, role)) {
+    return res.status(403).json({ error: 'No tienes permisos para invitar ese rol a esa empresa' })
   }
 
-  // Generar el token JWT con los datos del diseñador (expira en 7 días)
-  const token = jwt.sign(
-    { id: designer.id, email: designer.email, name: designer.name },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-  )
+  try {
+    const invitedUser = await inviteUserToCompany({
+      email,
+      fullName,
+      role,
+      companyId: targetCompanyId,
+      platformRole: getAllowedPlatformRole(req.currentUser, platformRole),
+    })
 
-  res.json({ token, name: designer.name })
+    return res.status(201).json({
+      message: invitedUser.inviteSent ? 'Invitacion enviada' : 'Usuario asignado',
+      invitedUser,
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo crear la invitacion' })
+  }
 })
 
 export default router

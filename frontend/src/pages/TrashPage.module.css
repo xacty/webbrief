@@ -1,0 +1,396 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wb-text-muted);
+}
+
+.title {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.subtitle {
+  margin: 12px 0 0;
+  max-width: 760px;
+  color: var(--wb-text-muted);
+  line-height: 1.6;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 22px;
+}
+
+.sectionMeta {
+  margin: 6px 0 0;
+  color: var(--wb-text-muted);
+}
+
+.controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+  padding-bottom: 8px;
+}
+
+.tabButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  padding: 0 18px;
+  background: transparent;
+  color: var(--wb-text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.tabButton:hover {
+  color: var(--wb-text);
+  background: var(--wb-surface-muted);
+}
+
+.tabButtonActive {
+  border-bottom-color: var(--wb-primary);
+  color: var(--wb-text);
+}
+
+.tabButton:focus-visible {
+  outline: 2px solid rgba(15, 23, 42, 0.22);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.dateFilter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--wb-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dateFilter select {
+  width: auto;
+  min-width: 164px;
+  height: 36px;
+  border: 1px solid var(--wb-border);
+  border-radius: 10px;
+  padding: 0 42px 0 14px;
+  background-color: var(--wb-surface);
+  color: var(--wb-text);
+  font-size: 13px;
+}
+
+.dateFilter select:focus {
+  outline: none;
+  border-color: var(--wb-border-strong);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+
+.listSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.itemCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-md);
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-sm);
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.itemTitle {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.itemMeta {
+  margin: 5px 0 0;
+  color: var(--wb-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.archivedBadge,
+.trashedBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.archivedBadge {
+  background: var(--wb-primary-soft);
+  color: #334155;
+}
+
+.trashedBadge {
+  background: #fef2f2;
+  color: var(--wb-danger);
+}
+
+.metaList {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.metaRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.metaLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wb-text-muted);
+}
+
+.metaValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wb-text);
+  text-align: right;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.primaryButton,
+.secondaryButton,
+.tertiaryButton,
+.dangerButton {
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.primaryButton {
+  border: none;
+  background: var(--wb-primary);
+  color: #fff;
+}
+
+.primaryButton:hover {
+  background: var(--wb-primary-hover);
+}
+
+.secondaryButton {
+  border: 1px solid var(--wb-border);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+}
+
+.secondaryButton:hover {
+  background: var(--wb-surface-muted);
+  border-color: var(--wb-border-strong);
+}
+
+.tertiaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  border: none;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--wb-text-muted);
+  font-weight: 600;
+}
+
+.tertiaryButton:hover {
+  background: var(--wb-surface-muted);
+  color: var(--wb-text);
+}
+
+.refreshIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.refreshIconLoading {
+  animation: spin 800ms linear infinite;
+}
+
+.dangerButton {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: var(--wb-danger);
+}
+
+.dangerButton:hover {
+  background: #fee2e2;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.tertiaryButton:disabled,
+.dangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.emptyState {
+  padding: 24px;
+  border: 1px dashed var(--wb-border);
+  border-radius: var(--wb-radius-lg);
+  background: var(--wb-surface);
+}
+
+.emptyTitle {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.emptyText {
+  margin: 0;
+  color: var(--wb-text-muted);
+  line-height: 1.6;
+}
+
+.info,
+.error {
+  margin: 0;
+  padding: 12px 0;
+}
+
+.info {
+  color: var(--wb-text-muted);
+}
+
+.error {
+  color: var(--wb-danger);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1040px) {
+  .cardsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .header,
+  .sectionHeader,
+  .controls,
+  .cardTop {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tabs {
+    order: 1;
+    width: 100%;
+  }
+
+  .tabButton {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .toolbarActions {
+    order: 2;
+    width: 100%;
+    justify-content: space-between;
+    padding-bottom: 12px;
+  }
+
+  .dateFilter {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dateFilter select {
+    min-width: min(190px, 60vw);
+  }
+
+  .cardsGrid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,73 +1,117 @@
 // Pantalla de inicio de sesión del diseñador
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
+import { supabase } from '../lib/supabase'
+import styles from './AuthPage.module.css'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [feedback, setFeedback] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [resetMode, setResetMode] = useState(false)
   const navigate = useNavigate()
+  const { signIn } = useAuth()
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    setFeedback('')
+    setSubmitting(true)
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.error || 'Error al iniciar sesión')
-        return
-      }
-
-      // Guardar el token en localStorage para mantener la sesión
-      localStorage.setItem('token', data.token)
+      await signIn(email, password)
       navigate('/dashboard')
-    } catch {
-      setError('No se pudo conectar con el servidor')
+    } catch (err) {
+      setError(err.message || 'No se pudo iniciar sesión')
+    } finally {
+      setSubmitting(false)
     }
   }
 
+  async function handlePasswordReset(e) {
+    e.preventDefault()
+    setError('')
+    setFeedback('')
+    setSubmitting(true)
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/set-password`,
+      })
+
+      if (resetError) throw resetError
+
+      setFeedback('Si el email existe, Supabase enviará un enlace para crear una nueva contraseña.')
+    } catch (err) {
+      setError(err.message || 'No se pudo enviar el enlace de recuperación')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  function toggleResetMode() {
+    setResetMode((current) => !current)
+    setError('')
+    setFeedback('')
+  }
+
   return (
-    <div style={{ maxWidth: 360, margin: '100px auto', padding: '0 16px' }}>
-      <h1 style={{ marginBottom: 24 }}>WebBrief</h1>
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 12 }}>
-          <label>Email</label>
-          <br />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }}
-          />
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <label>Contraseña</label>
-          <br />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' }}
-          />
-        </div>
+    <div className={styles.page}>
+      <div className={styles.card}>
+        <h1 className={styles.title}>WeBrief</h1>
+        <h2 className={styles.subtitle}>
+          {resetMode ? 'Restablecer contraseña' : 'Iniciar sesión'}
+        </h2>
+        <p className={styles.help}>
+          {resetMode
+            ? 'Ingresa tu email y te enviaremos un enlace para definir una nueva contraseña.'
+            : 'Entra con un usuario activo para administrar empresas, proyectos y accesos.'}
+        </p>
 
-        {/* Mostrar error si las credenciales son incorrectas */}
-        {error && <p style={{ color: 'red', marginBottom: 12 }}>{error}</p>}
+        <form className={styles.form} onSubmit={resetMode ? handlePasswordReset : handleSubmit}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="login-email">Email</label>
+            <input
+              id="login-email"
+              className={styles.input}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
 
-        <button type="submit" style={{ width: '100%', padding: 10 }}>
-          Iniciar sesión
-        </button>
-      </form>
+          {!resetMode && (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="login-password">Contraseña</label>
+              <input
+                id="login-password"
+                className={styles.input}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
+          {error && <p className={styles.error}>{error}</p>}
+          {feedback && <p className={styles.success}>{feedback}</p>}
+
+          <button className={styles.button} type="submit" disabled={submitting}>
+            {submitting
+              ? (resetMode ? 'Enviando...' : 'Ingresando...')
+              : (resetMode ? 'Enviar enlace' : 'Iniciar sesión')}
+          </button>
+
+          <button className={styles.textButton} type="button" onClick={toggleResetMode}>
+            {resetMode ? 'Volver al login' : 'Olvidé mi contraseña'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }

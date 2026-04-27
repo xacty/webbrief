@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { apiFetch } from '../lib/api'
+import styles from './NewProject.module.css'
 
-// Estructura sugerida de páginas y secciones por tipo de negocio
 const ESTRUCTURAS = {
   clinica: {
     label: 'Clínica / Salud',
@@ -70,270 +71,232 @@ const ESTRUCTURAS = {
   },
 }
 
+function getDefaultCompanyId(companies) {
+  return companies.find((company) => !company.isInternal)?.id || companies[0]?.id || ''
+}
+
 export default function NewProject() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const requestedCompanyId = searchParams.get('companyId')
 
-  const [nombre, setNombre] = useState('')
-  const [cliente, setCliente] = useState('')
-  const [email, setEmail] = useState('')
-  const [tipo, setTipo] = useState('')
+  const [companies, setCompanies] = useState([])
+  const [companiesLoading, setCompaniesLoading] = useState(true)
+  const [name, setName] = useState('')
+  const [clientName, setClientName] = useState('')
+  const [clientEmail, setClientEmail] = useState('')
+  const [businessType, setBusinessType] = useState('')
+  const [companyId, setCompanyId] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  // La estructura sugerida se muestra cuando hay un tipo seleccionado
-  const estructura = tipo ? ESTRUCTURAS[tipo] : null
+  useEffect(() => {
+    let active = true
+
+    async function loadCompanies() {
+      try {
+        setCompaniesLoading(true)
+        const data = await apiFetch('/api/companies')
+        if (!active) return
+
+        setCompanies(data.companies)
+        const hasRequestedCompany = data.companies.some((company) => company.id === requestedCompanyId)
+        setCompanyId(hasRequestedCompany ? requestedCompanyId : getDefaultCompanyId(data.companies))
+      } catch (err) {
+        if (!active) return
+        setError(err.message || 'No se pudieron cargar las empresas')
+      } finally {
+        if (active) setCompaniesLoading(false)
+      }
+    }
+
+    loadCompanies()
+
+    return () => {
+      active = false
+    }
+  }, [requestedCompanyId])
+
+  const estructura = useMemo(
+    () => (businessType ? ESTRUCTURAS[businessType] : null),
+    [businessType]
+  )
+
+  const selectedCompany = companies.find((company) => company.id === companyId) || null
+
+  async function handleCreateProject(e) {
+    e.preventDefault()
+    setError('')
+    setSubmitting(true)
+
+    try {
+      const data = await apiFetch('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          clientName,
+          clientEmail,
+          businessType,
+          companyId: companyId || undefined,
+        }),
+      })
+
+      navigate(`/project/${data.project.id}/editor`)
+    } catch (err) {
+      setError(err.message || 'No se pudo crear el proyecto')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
-    <div style={styles.page}>
-      {/* Encabezado */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>WebBrief</h1>
+    <div className={styles.page}>
+      <div className={styles.breadcrumbs}>
+        <button className={styles.backButton} onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}>
+          ← Volver
+        </button>
       </div>
 
-      <h2 style={styles.pageTitle}>Nuevo proyecto</h2>
+      <header className={styles.header}>
+        <div>
+          <p className={styles.eyebrow}>Proyecto</p>
+          <h1 className={styles.title}>Nuevo proyecto</h1>
+          <p className={styles.subtitle}>
+            Crea el proyecto dentro de una empresa concreta y siembra su estructura inicial según el tipo de negocio.
+          </p>
+        </div>
+      </header>
 
-      <div style={styles.layout}>
-        {/* Columna izquierda: formulario */}
-        <div style={styles.formColumn}>
-          <div style={styles.field}>
-            <label style={styles.label}>Nombre del proyecto</label>
+      <div className={styles.layout}>
+        <form className={styles.formColumn} onSubmit={handleCreateProject}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="project-name">Nombre del proyecto</label>
             <input
-              style={styles.input}
+              id="project-name"
+              className={styles.input}
               type="text"
               placeholder="Ej: Rediseño web corporativo"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
             />
           </div>
 
-          <div style={styles.field}>
-            <label style={styles.label}>Nombre del cliente</label>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="client-name">Nombre del cliente</label>
             <input
-              style={styles.input}
+              id="client-name"
+              className={styles.input}
               type="text"
               placeholder="Ej: Estudio Nómade"
-              value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              required
             />
           </div>
 
-          <div style={styles.field}>
-            <label style={styles.label}>Email del cliente</label>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="client-email">Email del cliente</label>
             <input
-              style={styles.input}
+              id="client-email"
+              className={styles.input}
               type="email"
               placeholder="cliente@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={clientEmail}
+              onChange={(e) => setClientEmail(e.target.value)}
             />
           </div>
 
-          <div style={styles.field}>
-            <label style={styles.label}>Tipo de negocio</label>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="project-company">Empresa</label>
             <select
-              style={styles.select}
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
+              id="project-company"
+              className={styles.select}
+              value={companyId}
+              onChange={(e) => setCompanyId(e.target.value)}
+              disabled={companiesLoading || companies.length === 0}
+            >
+              {companies.length === 0 && <option value="">Sin empresas disponibles</option>}
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}{company.isInternal ? ' · Interna' : ''}
+                </option>
+              ))}
+            </select>
+            {selectedCompany && requestedCompanyId && (
+              <span className={styles.fieldHint}>
+                Empresa preseleccionada desde {selectedCompany.name}.
+              </span>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="business-type">Tipo de negocio</label>
+            <select
+              id="business-type"
+              className={styles.select}
+              value={businessType}
+              onChange={(e) => setBusinessType(e.target.value)}
+              required
             >
               <option value="">— Seleccionar —</option>
-              {Object.entries(ESTRUCTURAS).map(([key, val]) => (
-                <option key={key} value={key}>{val.label}</option>
+              {Object.entries(ESTRUCTURAS).map(([key, value]) => (
+                <option key={key} value={key}>{value.label}</option>
               ))}
             </select>
           </div>
 
-          {/* Acciones */}
-          <div style={styles.actions}>
-            <button style={styles.btnPrimary}>Crear proyecto</button>
-            <button style={styles.btnGhost} onClick={() => navigate('/dashboard')}>
+          <div className={styles.actions}>
+            <button
+              className={styles.primaryButton}
+              type="submit"
+              disabled={submitting || companiesLoading || companies.length === 0}
+            >
+              {submitting ? 'Creando...' : 'Crear proyecto'}
+            </button>
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}
+            >
               Cancelar
             </button>
           </div>
-        </div>
 
-        {/* Columna derecha: preview de estructura (visible solo cuando hay tipo) */}
-        <div style={styles.previewColumn}>
+          {error && <p className={styles.error}>{error}</p>}
+        </form>
+
+        <aside className={styles.previewColumn}>
           {estructura ? (
-            <div style={styles.preview}>
-              <p style={styles.previewTitle}>
+            <div className={styles.preview}>
+              <p className={styles.previewTitle}>
                 Estructura sugerida para <strong>{estructura.label}</strong>
               </p>
-              <div style={styles.pagesList}>
+              <div className={styles.pagesList}>
                 {estructura.pages.map((page) => (
-                  <div key={page.name} style={styles.pageBlock}>
-                    <p style={styles.pageName}>{page.name}</p>
-                    <ul style={styles.sectionList}>
+                  <div key={page.name} className={styles.pageBlock}>
+                    <p className={styles.pageName}>{page.name}</p>
+                    <ul className={styles.sectionList}>
                       {page.sections.map((section) => (
-                        <li key={section} style={styles.sectionItem}>{section}</li>
+                        <li key={section} className={styles.sectionItem}>{section}</li>
                       ))}
                     </ul>
                   </div>
                 ))}
               </div>
-              <p style={styles.previewNote}>
+              <p className={styles.previewNote}>
                 Podrás editar esta estructura después de crear el proyecto.
               </p>
             </div>
           ) : (
-            // Placeholder cuando no hay tipo seleccionado
-            <div style={styles.previewEmpty}>
-              <p style={styles.previewEmptyText}>
-                Seleccioná un tipo de negocio para ver la estructura de páginas sugerida.
+            <div className={styles.previewEmpty}>
+              <p className={styles.previewEmptyText}>
+                Selecciona un tipo de negocio para ver la estructura sugerida.
               </p>
             </div>
           )}
-        </div>
+        </aside>
       </div>
     </div>
   )
-}
-
-const styles = {
-  page: {
-    maxWidth: 900,
-    margin: '0 auto',
-    padding: '32px 24px',
-    fontFamily: 'system-ui, sans-serif',
-  },
-  header: {
-    marginBottom: 28,
-  },
-  title: {
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 700,
-  },
-  pageTitle: {
-    margin: '0 0 28px 0',
-    fontSize: 20,
-    fontWeight: 600,
-    color: '#0f172a',
-  },
-  layout: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 32,
-    alignItems: 'start',
-  },
-  formColumn: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 20,
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: 500,
-    color: '#374151',
-  },
-  input: {
-    padding: '9px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: 6,
-    fontSize: 14,
-    color: '#0f172a',
-    outline: 'none',
-  },
-  select: {
-    padding: '9px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: 6,
-    fontSize: 14,
-    color: '#0f172a',
-    backgroundColor: '#fff',
-    outline: 'none',
-    cursor: 'pointer',
-  },
-  actions: {
-    display: 'flex',
-    gap: 12,
-    marginTop: 4,
-  },
-  btnPrimary: {
-    padding: '9px 20px',
-    backgroundColor: '#0f172a',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 6,
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: 'pointer',
-  },
-  btnGhost: {
-    padding: '9px 20px',
-    backgroundColor: 'transparent',
-    color: '#64748b',
-    border: '1px solid #e2e8f0',
-    borderRadius: 6,
-    fontSize: 14,
-    cursor: 'pointer',
-  },
-  // Preview de estructura
-  previewColumn: {
-    position: 'sticky',
-    top: 24,
-  },
-  preview: {
-    border: '1px solid #e2e8f0',
-    borderRadius: 10,
-    padding: 20,
-    backgroundColor: '#f8fafc',
-  },
-  previewTitle: {
-    margin: '0 0 16px 0',
-    fontSize: 13,
-    color: '#64748b',
-  },
-  pagesList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-  },
-  pageBlock: {
-    borderLeft: '3px solid #0f172a',
-    paddingLeft: 12,
-  },
-  pageName: {
-    margin: '0 0 6px 0',
-    fontSize: 13,
-    fontWeight: 600,
-    color: '#0f172a',
-  },
-  sectionList: {
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 3,
-  },
-  sectionItem: {
-    fontSize: 12,
-    color: '#64748b',
-    paddingLeft: 8,
-    position: 'relative',
-  },
-  previewNote: {
-    margin: '16px 0 0 0',
-    fontSize: 12,
-    color: '#94a3b8',
-    fontStyle: 'italic',
-  },
-  previewEmpty: {
-    border: '1px dashed #cbd5e1',
-    borderRadius: 10,
-    padding: 32,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewEmptyText: {
-    margin: 0,
-    fontSize: 13,
-    color: '#94a3b8',
-    textAlign: 'center',
-    lineHeight: 1.6,
-  },
 }

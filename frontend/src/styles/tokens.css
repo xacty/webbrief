@@ -1,0 +1,20 @@
+:root {
+  --wb-bg: #f8fafc;
+  --wb-surface: #ffffff;
+  --wb-surface-muted: #f1f5f9;
+  --wb-border: #dbe3f0;
+  --wb-border-strong: #c7d2e5;
+  --wb-text: #0f172a;
+  --wb-text-muted: #64748b;
+  --wb-primary: #0f172a;
+  --wb-primary-hover: #1e293b;
+  --wb-primary-soft: #e2e8f0;
+  --wb-success: #0f766e;
+  --wb-danger: #dc2626;
+  --wb-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --wb-shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.18);
+  --wb-radius-sm: 10px;
+  --wb-radius-md: 14px;
+  --wb-radius-lg: 18px;
+  --wb-content-width: 1180px;
+}

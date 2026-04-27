@@ -1,45 +1,64 @@
-// Punto de entrada de la app: define las rutas y protege el dashboard
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import NewProject from './pages/NewProject'
-import ProjectEditor from './pages/ProjectEditor'
+import { AuthProvider, useAuth } from './auth/AuthContext'
+import AppShell from './components/layout/AppShell'
 
-// Componente que protege rutas privadas.
-// Si no hay token en localStorage, redirige al login.
+const Login = lazy(() => import('./pages/Login'))
+const NewProject = lazy(() => import('./pages/NewProject'))
+const ProjectEditor = lazy(() => import('./pages/ProjectEditor'))
+const SetPassword = lazy(() => import('./pages/SetPassword'))
+const CompaniesPage = lazy(() => import('./pages/CompaniesPage'))
+const CompanyPage = lazy(() => import('./pages/CompanyPage'))
+const UsersPage = lazy(() => import('./pages/UsersPage'))
+const SharePage = lazy(() => import('./pages/SharePage'))
+const TrashPage = lazy(() => import('./pages/TrashPage'))
+
 function PrivateRoute({ children }) {
-  const token = localStorage.getItem('token')
-  return token ? children : <Navigate to="/login" replace />
+  const { isAuthenticated, loading } = useAuth()
+
+  if (loading) {
+    return <div className="pageLoading">Cargando...</div>
+  }
+
+  return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
-function App() {
+function RootRedirect() {
+  const { isAuthenticated, loading } = useAuth()
+
+  if (loading) {
+    return <div className="pageLoading">Cargando...</div>
+  }
+
+  return isAuthenticated
+    ? <Navigate to="/companies" replace />
+    : <Navigate to="/login" replace />
+}
+
+function AppRoutes() {
   return (
-    <BrowserRouter>
+    <Suspense fallback={<div className="pageLoading">Cargando...</div>}>
       <Routes>
-        {/* Ruta pública: login */}
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/set-password" element={<SetPassword />} />
+        <Route path="/share/:token" element={<SharePage />} />
 
-        {/* Ruta protegida: dashboard */}
         <Route
-          path="/dashboard"
           element={
             <PrivateRoute>
-              <Dashboard />
+              <AppShell />
             </PrivateRoute>
           }
-        />
+        >
+          <Route path="/dashboard" element={<Navigate to="/companies" replace />} />
+          <Route path="/companies" element={<CompaniesPage />} />
+          <Route path="/companies/:companyId" element={<CompanyPage />} />
+          <Route path="/users" element={<UsersPage />} />
+          <Route path="/archive" element={<TrashPage mode="archived" />} />
+          <Route path="/trash" element={<TrashPage mode="trashed" />} />
+          <Route path="/new-project" element={<NewProject />} />
+        </Route>
 
-        {/* Ruta protegida: nuevo proyecto */}
-        <Route
-          path="/new-project"
-          element={
-            <PrivateRoute>
-              <NewProject />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Ruta protegida: editor de proyecto */}
         <Route
           path="/project/:id/editor"
           element={
@@ -49,16 +68,18 @@ function App() {
           }
         />
 
-        {/* Ruta raíz: redirige según si hay sesión o no */}
-        <Route
-          path="/"
-          element={
-            localStorage.getItem('token')
-              ? <Navigate to="/dashboard" replace />
-              : <Navigate to="/login" replace />
-          }
-        />
+        <Route path="/" element={<RootRedirect />} />
       </Routes>
+    </Suspense>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   )
 }

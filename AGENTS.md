@@ -49,6 +49,11 @@
 - Do not refactor adjacent systems or alter stable behavior unless the user explicitly asks.
 - If a broader refactor seems beneficial, mention it separately instead of bundling it into the requested change.
 
+## Design / UX Research
+
+- Before redesigning an existing section or designing a new user-facing surface, first research relevant UX/UI rules, patterns, and accessibility guidance.
+- Briefly state the pattern decision before implementation and cite sources when internet research was used.
+
 ## Clarification Rule
 
 - If the user request is materially ambiguous, under-specified, or open to multiple reasonable implementations, ask a short clarifying question before making changes.

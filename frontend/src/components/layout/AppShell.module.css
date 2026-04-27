@@ -1,0 +1,141 @@
+.shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px 18px;
+  background: var(--wb-surface);
+  border-right: 1px solid var(--wb-border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--wb-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.brandTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.brandMeta {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--wb-text-muted);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.navSection {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wb-text-muted);
+}
+
+.navItem {
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--wb-text-muted);
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.navItem:hover {
+  background: var(--wb-surface-muted);
+  color: var(--wb-text);
+}
+
+.navItemActive {
+  background: var(--wb-primary);
+  color: #fff;
+}
+
+.sidebarFooter {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profileCard {
+  padding: 14px;
+  border: 1px solid var(--wb-border);
+  border-radius: 14px;
+  background: var(--wb-surface-muted);
+}
+
+.profileName {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.profileRole {
+  margin: 0;
+  font-size: 13px;
+  color: var(--wb-text-muted);
+}
+
+.logoutButton {
+  border: 1px solid var(--wb-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.logoutButton:hover {
+  border-color: var(--wb-border-strong);
+  background: var(--wb-surface-muted);
+}
+
+.main {
+  min-width: 0;
+}
+
+.content {
+  max-width: var(--wb-content-width);
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+@media (max-width: 960px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--wb-border);
+    gap: 24px;
+  }
+
+  .content {
+    padding-top: 24px;
+  }
+}

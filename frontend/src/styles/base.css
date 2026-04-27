@@ -1,0 +1,106 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+select:not([multiple]) {
+  appearance: none;
+  padding-right: var(--wb-select-padding-right, 42px);
+  background-image: var(
+    --wb-select-chevron,
+    url("data:image/svg+xml,%3csvg width='16' height='16' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='m6 9 6 6 6-6' stroke='%2364758b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e")
+  );
+  background-repeat: no-repeat;
+  background-position: right var(--wb-select-chevron-inset, 14px) center;
+  background-size: var(--wb-select-chevron-size, 16px) var(--wb-select-chevron-size, 16px);
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pageLoading {
+  padding: 32px;
+  color: var(--wb-text-muted);
+}
+
+.tiptap {
+  outline: none;
+  min-height: 300px;
+}
+
+.tiptap h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-bottom: 0.5em;
+  color: var(--wb-text);
+}
+
+.tiptap h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-bottom: 0.4em;
+  color: var(--wb-text);
+}
+
+.tiptap h3 {
+  font-size: 1.2em;
+  font-weight: 600;
+  margin-bottom: 0.4em;
+  color: var(--wb-text);
+}
+
+.tiptap p {
+  line-height: 1.7;
+  margin-bottom: 0.75em;
+  color: #374151;
+}
+
+.tiptap ul,
+.tiptap ol {
+  margin-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+
+.tiptap li {
+  line-height: 1.7;
+  color: #374151;
+}
+
+.tiptap img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 8px 0;
+  display: block;
+}
+
+.tiptap a {
+  color: #2563eb;
+  text-decoration: underline;
+}

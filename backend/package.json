@@ -1,5 +1,5 @@
 {
-  "name": "webbrief-backend",
+  "name": "webrief-backend",
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -7,11 +7,11 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^11.0.0",
+    "@supabase/supabase-js": "^2.103.3",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^4.21.0",
-    "jsonwebtoken": "^9.0.3"
+    "multer": "^2.1.1",
+    "sharp": "^0.34.5"
   }
 }
