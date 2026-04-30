@@ -1,0 +1,281 @@
+.navbar {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr);
+  align-items: center;
+  height: 70px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #212222;
+  flex-shrink: 0;
+  padding: 0 24px;
+}
+
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.navLogo {
+  font-size: 35px;
+  color: #2a2a2a;
+  cursor: pointer;
+  line-height: 1;
+  user-select: none;
+}
+
+.navBackBtn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d9d9d9;
+  border-radius: 999px;
+  background: #fff;
+  color: #2a2a2a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.projectNameBtn,
+.projectNameReadOnly {
+  min-width: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2a2a2a;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 7px 9px;
+}
+
+.projectNameBtn {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: text;
+  font-family: inherit;
+  text-align: left;
+}
+
+.projectNameInput {
+  min-width: 180px;
+  max-width: 280px;
+  height: 34px;
+  border: 1px solid #212222;
+  border-radius: 8px;
+  background: #fff;
+  color: #2a2a2a;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0 9px;
+  outline: none;
+  font-family: inherit;
+}
+
+.navCenter {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0 8px;
+}
+
+.navPillWrapper {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  border-radius: 100px;
+  background: #f8f8f8;
+  position: relative;
+}
+
+.navPillWrapperActive {
+  background: #212222;
+}
+
+.navPill,
+.navPillActive {
+  height: 30px;
+  padding: 0 4px 0 14px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+}
+
+.navPill {
+  color: #2a2a2a;
+  font-weight: 400;
+}
+
+.navPillActive {
+  color: #f2f2f2;
+  font-weight: 500;
+}
+
+.navPillNoMenu {
+  padding-right: 14px;
+}
+
+.navPillMenuBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 8px 0 2px;
+  height: 30px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.navPillMenuBtnActive {
+  color: #f2f2f2;
+}
+
+.navPillMenuBtnInactive {
+  color: #999;
+}
+
+.navPillMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  padding: 4px 0;
+  z-index: 100;
+  min-width: 130px;
+}
+
+.navPillMenuItem,
+.navPillMenuItemDanger {
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.navPillMenuItem {
+  color: #2a2a2a;
+}
+
+.navPillMenuItemDanger {
+  color: #ef4444;
+}
+
+.navPillInput {
+  height: 30px;
+  padding: 0 8px 0 14px;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  width: 90px;
+}
+
+.navPillInputNoMenu {
+  padding-right: 14px;
+  width: 110px;
+}
+
+.navPillInputActive {
+  color: #f2f2f2;
+}
+
+.navPillInputInactive {
+  color: #2a2a2a;
+}
+
+.navPillAdd {
+  width: 30px;
+  height: 30px;
+  border-radius: 100px;
+  border: none;
+  background: #f8f8f8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.navSaveStatus {
+  min-width: 74px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.navSaveBtn {
+  min-width: 86px;
+  height: 34px;
+  padding: 0 14px;
+  background: #0088ff;
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.navSaveBtnDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.navIcons {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.navIconBtn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.navBadge {
+  position: absolute;
+  top: -7px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}

@@ -447,6 +447,20 @@
 - Added GitHub deploy key for VPS read access and local GitHub SSH push flow.
 - Verified production: app loads, login works, `/api/health` returns OK, Nginx active, PM2 online, Certbot dry-run successful.
 
+## Completed (2026-04-30)
+
+- Added project types `page`, `document`, and `faq`. Visible UI labels are `Página Web`, `Artículo`, and `FAQs`; the internal `document` value remains unchanged for data compatibility.
+- Página Web keeps the section-divider model. Artículo uses a linear document flow with a heading outline. FAQs uses H2 questions with answer content below and CSV export semantics.
+- Paste handling now extracts SEO metadata lines, splits Página Web content into sections from H1/H2, creates FAQ question/answer groups from H2, preserves common rich formatting from Google Docs/Word, and supports prefixed labels like H1/H2/H3/CTA.
+- Added page SEO metadata and content rules persistence through `project_pages.seo_metadata` and `project_pages.content_rules`; Supabase schema and migration files were updated accordingly.
+- Added compact editor-side content rules UI with editable limits for authorized roles and read/status visibility for content writers.
+- Expanded editor toolbar with text alignment, indentation, color, highlight, spacing, table picker behavior, and global dropdown dismissal fixes.
+- Added role preview for admins, shared frontend/backend capability helpers, scoped role behavior for manager/editor/content_writer/designer/developer, and route/action gating aligned with those capabilities.
+- Added designer proposal support through `project_page_change_proposals`; reviewer roles can accept/reject pending designer proposals.
+- Company project cards now display project type and infer legacy project types from first page names when `projects.project_type` is null.
+- App shell routing was normalized to a rooted layout with relative children. `UsersPage` now memoizes invite role options and avoids no-op invite form state writes to prevent render loops that freeze shell navigation.
+- Removed the visible `Operación` label from the app shell sidebar.
+
 ## Pending
 
 - richer deliverables UI beyond compact editor panel

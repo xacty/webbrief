@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Archive, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
+import {
+  canCreateProjects as canCreateProjectsForRole,
+  canInviteMembers,
+  canManageProjectLifecycle as canManageProjectLifecycleForRole,
+  getInviteRoleOptions,
+} from '../lib/roleCapabilities'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -52,7 +59,21 @@ function formatDate(isoDate) {
 function getCompanyRoleLabel(currentUser, membershipRole) {
   if (currentUser?.platformRole === 'admin') return 'Admin de plataforma'
   if (!membershipRole) return 'Sin rol asignado'
+  if (membershipRole === 'content_writer') return 'Content Writer'
   return membershipRole.charAt(0).toUpperCase() + membershipRole.slice(1)
+}
+
+function roleLabel(role) {
+  if (role === 'content_writer') return 'Content Writer'
+  if (role === 'designer') return 'Diseño'
+  if (role === 'developer') return 'Dev'
+  return role.charAt(0).toUpperCase() + role.slice(1)
+}
+
+function projectTypeLabel(projectType) {
+  if (projectType === 'document') return 'Artículo'
+  if (projectType === 'faq') return 'FAQs'
+  return 'Página Web'
 }
 
 export default function CompanyPage() {
@@ -71,11 +92,10 @@ export default function CompanyPage() {
   const [inviteFeedback, setInviteFeedback] = useState('')
   const [inviting, setInviting] = useState(false)
 
-  const canInvite = currentUser?.platformRole === 'admin' || company?.membershipRole === 'manager'
-  const canManageProjects = currentUser?.platformRole === 'admin' || company?.membershipRole === 'manager'
-  const inviteRoles = currentUser?.platformRole === 'admin'
-    ? ['manager', 'editor', 'designer', 'developer']
-    : ['editor', 'designer', 'developer']
+  const canInvite = canInviteMembers(currentUser, company?.membershipRole)
+  const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
+  const canCreateProjects = canCreateProjectsForRole(currentUser, company?.membershipRole)
+  const inviteRoles = getInviteRoleOptions(currentUser, company?.membershipRole)
 
   useEffect(() => {
     let active = true
@@ -120,8 +140,8 @@ export default function CompanyPage() {
 
   useEffect(() => {
     setInviteFeedback('')
-    setInviteRole(currentUser?.platformRole === 'admin' ? 'manager' : 'editor')
-  }, [currentUser, companyId])
+    setInviteRole((current) => (inviteRoles.includes(current) ? current : inviteRoles[0] || 'editor'))
+  }, [currentUser, companyId, inviteRoles])
 
   async function handleInvite(e) {
     e.preventDefault()
@@ -258,12 +278,14 @@ export default function CompanyPage() {
                   </p>
                 </div>
 
-                <button
-                  className={styles.primaryButton}
-                  onClick={() => navigate(`/new-project?companyId=${companyId}`)}
-                >
-                  + Nuevo proyecto
-                </button>
+                {canCreateProjects && (
+                  <button
+                    className={styles.primaryButton}
+                    onClick={() => navigate(`/new-project?companyId=${companyId}`)}
+                  >
+                    + Nuevo proyecto
+                  </button>
+                )}
               </div>
 
               {projects.length === 0 ? (
@@ -294,7 +316,7 @@ export default function CompanyPage() {
                       <div className={styles.projectMetaList}>
                         <div className={styles.projectMetaRow}>
                           <span className={styles.metaLabel}>Tipo</span>
-                          <span className={styles.metaValue}>{project.businessType}</span>
+                          <span className={styles.metaValue}>{projectTypeLabel(project.projectType)}</span>
                         </div>
                         <div className={styles.projectMetaRow}>
                           <span className={styles.metaLabel}>Actividad</span>
@@ -302,11 +324,35 @@ export default function CompanyPage() {
                         </div>
                       </div>
 
-                      <p className={styles.projectEmail}>{project.clientEmail || 'Sin email de cliente'}</p>
-
                       <div className={styles.projectActions}>
+                        {canManageProjects && (
+                          <>
+                            <button
+                              className={styles.archiveActionButton}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleProjectArchive(project.id)
+                              }}
+                              title="Archivar proyecto"
+                              aria-label={`Archivar ${project.name}`}
+                            >
+                              <Archive size={16} />
+                            </button>
+                            <button
+                              className={styles.trashIconButton}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleProjectTrash(project.id)
+                              }}
+                              title="Enviar a papelera"
+                              aria-label={`Enviar ${project.name} a papelera`}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                         <button
-                          className={styles.primaryButton}
+                          className={styles.openProjectButton}
                           onClick={(event) => {
                             event.stopPropagation()
                             openProject(project.id)
@@ -314,28 +360,6 @@ export default function CompanyPage() {
                         >
                           Abrir
                         </button>
-                        {canManageProjects && (
-                          <>
-                            <button
-                              className={styles.secondaryButton}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectArchive(project.id)
-                              }}
-                            >
-                              Archivar
-                            </button>
-                            <button
-                              className={styles.dangerButton}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectTrash(project.id)
-                              }}
-                            >
-                              Papelera
-                            </button>
-                          </>
-                        )}
                       </div>
                     </article>
                   ))}
@@ -377,7 +401,7 @@ export default function CompanyPage() {
                   >
                     {inviteRoles.map((role) => (
                       <option key={role} value={role}>
-                        {role}
+                        {roleLabel(role)}
                       </option>
                     ))}
                   </select>
@@ -387,7 +411,7 @@ export default function CompanyPage() {
                 </form>
               ) : (
                 <div className={styles.inlineNotice}>
-                  Solo admin o manager pueden enviar invitaciones en esta empresa.
+                  Tu rol no puede enviar invitaciones en esta empresa.
                 </div>
               )}
 
@@ -413,7 +437,7 @@ export default function CompanyPage() {
                         </div>
 
                         <div className={styles.memberMeta}>
-                          <span className={styles.memberRole}>{member.role}</span>
+                          <span className={styles.memberRole}>{roleLabel(member.role)}</span>
                           <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
                         </div>
                       </article>

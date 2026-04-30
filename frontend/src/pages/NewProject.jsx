@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import styles from './NewProject.module.css'
 
 const ESTRUCTURAS = {
+  tabula_rasa: {
+    label: 'Tabula rasa',
+    pages: [
+      { name: 'Inicio', sections: ['Lienzo en blanco'] },
+    ],
+  },
   clinica: {
     label: 'Clínica / Salud',
     pages: [
@@ -71,24 +78,55 @@ const ESTRUCTURAS = {
   },
 }
 
+const PROJECT_TYPES = {
+  page: {
+    label: 'Página Web',
+    description: 'Brief seccionado para páginas web, landing pages y sitios.',
+    previewTitle: 'Estructura sugerida',
+  },
+  document: {
+    label: 'Artículo',
+    description: 'Editor lineal para blog posts, artículos y contenido largo.',
+    previewTitle: 'Artículo inicial',
+    pages: [
+      { name: 'Documento', sections: ['Índice por H1/H2/H3', 'SEO metadata por página', 'Contenido lineal sin divisores'] },
+    ],
+  },
+  faq: {
+    label: 'FAQ',
+    description: 'Preguntas y respuestas con exportación CSV universal.',
+    previewTitle: 'Estructura FAQ',
+    pages: [
+      { name: 'FAQs', sections: ['Título general opcional en H1', 'Pregunta Frecuente en H2', 'Respuesta debajo de cada pregunta', 'Export CSV: question, answer'] },
+    ],
+  },
+}
+
 function getDefaultCompanyId(companies) {
   return companies.find((company) => !company.isInternal)?.id || companies[0]?.id || ''
+}
+
+function normalizeRuleValue(value) {
+  if (value === '' || value === null || value === undefined) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null
 }
 
 export default function NewProject() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { currentUser } = useAuth()
   const requestedCompanyId = searchParams.get('companyId')
 
   const [companies, setCompanies] = useState([])
   const [companiesLoading, setCompaniesLoading] = useState(true)
   const [name, setName] = useState('')
-  const [clientName, setClientName] = useState('')
-  const [clientEmail, setClientEmail] = useState('')
-  const [businessType, setBusinessType] = useState('')
+  const [projectType, setProjectType] = useState('page')
+  const [businessType, setBusinessType] = useState('tabula_rasa')
   const [companyId, setCompanyId] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [contentRules, setContentRules] = useState({})
 
   useEffect(() => {
     let active = true
@@ -118,14 +156,27 @@ export default function NewProject() {
   }, [requestedCompanyId])
 
   const estructura = useMemo(
-    () => (businessType ? ESTRUCTURAS[businessType] : null),
-    [businessType]
+    () => {
+      if (projectType === 'page') return businessType ? ESTRUCTURAS[businessType] : null
+      return PROJECT_TYPES[projectType]
+    },
+    [businessType, projectType]
   )
 
   const selectedCompany = companies.find((company) => company.id === companyId) || null
+  const selectedCompanyRole = currentUser?.memberships?.find((membership) => membership.companyId === companyId)?.role || null
+  const canCreateProject = currentUser?.platformRole === 'admin' || ['manager', 'editor'].includes(selectedCompanyRole)
+
+  function updateContentRule(field, value) {
+    setContentRules((current) => ({
+      ...current,
+      [field]: normalizeRuleValue(value),
+    }))
+  }
 
   async function handleCreateProject(e) {
     e.preventDefault()
+    if (!canCreateProject) return
     setError('')
     setSubmitting(true)
 
@@ -134,10 +185,10 @@ export default function NewProject() {
         method: 'POST',
         body: JSON.stringify({
           name,
-          clientName,
-          clientEmail,
-          businessType,
+          projectType,
+          businessType: businessType || undefined,
           companyId: companyId || undefined,
+          contentRules: projectType === 'document' ? contentRules : undefined,
         }),
       })
 
@@ -162,7 +213,7 @@ export default function NewProject() {
           <p className={styles.eyebrow}>Proyecto</p>
           <h1 className={styles.title}>Nuevo proyecto</h1>
           <p className={styles.subtitle}>
-            Crea el proyecto dentro de una empresa concreta y siembra su estructura inicial según el tipo de negocio.
+            Crea el proyecto dentro de una empresa concreta y siembra su estructura inicial según el tipo de contenido.
           </p>
         </div>
       </header>
@@ -183,55 +234,28 @@ export default function NewProject() {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="client-name">Nombre del cliente</label>
-            <input
-              id="client-name"
-              className={styles.input}
-              type="text"
-              placeholder="Ej: Estudio Nómade"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="client-email">Email del cliente</label>
-            <input
-              id="client-email"
-              className={styles.input}
-              type="email"
-              placeholder="cliente@email.com"
-              value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="project-company">Empresa</label>
+            <label className={styles.label} htmlFor="project-type">Tipo de proyecto</label>
             <select
-              id="project-company"
+              id="project-type"
               className={styles.select}
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              disabled={companiesLoading || companies.length === 0}
+              value={projectType}
+              onChange={(e) => {
+                setProjectType(e.target.value)
+                setBusinessType('tabula_rasa')
+              }}
+              required
             >
-              {companies.length === 0 && <option value="">Sin empresas disponibles</option>}
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.name}{company.isInternal ? ' · Interna' : ''}
-                </option>
+              {Object.entries(PROJECT_TYPES).map(([key, value]) => (
+                <option key={key} value={key}>{value.label}</option>
               ))}
             </select>
-            {selectedCompany && requestedCompanyId && (
-              <span className={styles.fieldHint}>
-                Empresa preseleccionada desde {selectedCompany.name}.
-              </span>
-            )}
+            <span className={styles.fieldHint}>{PROJECT_TYPES[projectType].description}</span>
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="business-type">Tipo de negocio</label>
+            <label className={styles.label} htmlFor="business-type">
+              {projectType === 'page' ? 'Tipo de negocio' : 'Contexto del negocio'}
+            </label>
             <select
               id="business-type"
               className={styles.select}
@@ -239,18 +263,48 @@ export default function NewProject() {
               onChange={(e) => setBusinessType(e.target.value)}
               required
             >
-              <option value="">— Seleccionar —</option>
               {Object.entries(ESTRUCTURAS).map(([key, value]) => (
                 <option key={key} value={key}>{value.label}</option>
               ))}
             </select>
+            {selectedCompany && (
+              <span className={styles.fieldHint}>
+                Se creará en {selectedCompany.name}.
+              </span>
+            )}
           </div>
+
+          {projectType === 'document' && (
+            <div className={styles.field}>
+              <label className={styles.label}>Reglas de contenido</label>
+              <div className={styles.preview}>
+                <div className={styles.pagesList}>
+                  <div className={styles.pageBlock}>
+                    <p className={styles.pageName}>Opcional</p>
+                    <div className={styles.sectionList} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                      <input className={styles.input} type="number" min="1" placeholder="Title min" value={contentRules.titleTagMinChars || ''} onChange={(e) => updateContentRule('titleTagMinChars', e.target.value)} />
+                      <input className={styles.input} type="number" min="1" placeholder="Title max" value={contentRules.titleTagMaxChars || ''} onChange={(e) => updateContentRule('titleTagMaxChars', e.target.value)} />
+                      <input className={styles.input} type="number" min="1" placeholder="Meta min" value={contentRules.metaDescriptionMinChars || ''} onChange={(e) => updateContentRule('metaDescriptionMinChars', e.target.value)} />
+                      <input className={styles.input} type="number" min="1" placeholder="Meta max" value={contentRules.metaDescriptionMaxChars || ''} onChange={(e) => updateContentRule('metaDescriptionMaxChars', e.target.value)} />
+                      <input className={styles.input} type="number" min="1" placeholder="Slug max palabras" value={contentRules.urlSlugMaxWords || ''} onChange={(e) => updateContentRule('urlSlugMaxWords', e.target.value)} />
+                      <input className={styles.input} type="number" min="1" placeholder="Documento max palabras" value={contentRules.documentMaxWords || ''} onChange={(e) => updateContentRule('documentMaxWords', e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+                <p className={styles.previewNote}>Si lo dejas vacío, el documento se crea sin límites.</p>
+              </div>
+            </div>
+          )}
+
+          {!canCreateProject && selectedCompany && (
+            <p className={styles.error}>Tu rol actual en {selectedCompany.name} no puede crear proyectos.</p>
+          )}
 
           <div className={styles.actions}>
             <button
               className={styles.primaryButton}
               type="submit"
-              disabled={submitting || companiesLoading || companies.length === 0}
+              disabled={submitting || companiesLoading || companies.length === 0 || !canCreateProject}
             >
               {submitting ? 'Creando...' : 'Crear proyecto'}
             </button>
@@ -270,7 +324,7 @@ export default function NewProject() {
           {estructura ? (
             <div className={styles.preview}>
               <p className={styles.previewTitle}>
-                Estructura sugerida para <strong>{estructura.label}</strong>
+                {PROJECT_TYPES[projectType].previewTitle} {projectType === 'page' && estructura.label && <>para <strong>{estructura.label}</strong></>}
               </p>
               <div className={styles.pagesList}>
                 {estructura.pages.map((page) => (

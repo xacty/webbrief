@@ -179,15 +179,15 @@
 
 .projectGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
 .projectCard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px;
+  gap: 14px;
+  padding: 25px;
   border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-md);
   background: var(--wb-surface);
@@ -226,6 +226,7 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
+  margin-top: auto;
 }
 
 .projectMetaRow {
@@ -257,9 +258,60 @@
 .projectActions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   margin-top: auto;
+}
+
+.openProjectButton {
+  min-height: 38px;
+  border: none;
+  border-radius: 12px;
+  padding: 0 16px;
+  background: var(--wb-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.openProjectButton:hover {
+  background: var(--wb-primary-hover);
+}
+
+.archiveActionButton {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--wb-border);
+  border-radius: 12px;
+  padding: 0;
+  background: #fff;
+  color: #94a3b8;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.archiveActionButton:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.trashIconButton {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--wb-danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trashIconButton:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
 }
 
 .inviteForm {

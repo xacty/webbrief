@@ -2,6 +2,12 @@ import { Router } from 'express'
 import crypto from 'node:crypto'
 import multer from 'multer'
 import { supabaseAdmin } from '../lib/supabase.js'
+import {
+  canInviteCompanyRole,
+  canManageCompanyUsers,
+  canRequestUserRemoval,
+  getAccessibleCompanyIds,
+} from '../lib/projectAccess.js'
 import { ensureUserProfile, inviteUserToCompany, normalizeEmail } from '../lib/users.js'
 import { requireAuth } from '../middleware/auth.js'
 
@@ -10,8 +16,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
 })
-const COMPANY_ROLES = new Set(['manager', 'editor', 'designer', 'developer'])
-const MANAGER_COMPANY_ROLES = new Set(['editor', 'designer', 'developer'])
+const COMPANY_ROLES = new Set(['manager', 'editor', 'content_writer', 'designer', 'developer'])
 const PLATFORM_ROLES = new Set(['admin', 'user', 'qa'])
 const USER_AVATARS_BUCKET = process.env.USER_AVATARS_BUCKET || 'user-avatars'
 let sharpModulePromise = null
@@ -40,18 +45,17 @@ function getManagedCompanyIds(currentUser) {
 }
 
 function canUseUsersPage(currentUser) {
-  return isAdmin(currentUser) || getManagedCompanyIds(currentUser).length > 0
+  return isAdmin(currentUser) || currentUser.memberships.length > 0
 }
 
 function canAssignRole(currentUser, companyId, role) {
   if (!COMPANY_ROLES.has(role)) return false
-  if (isAdmin(currentUser)) return true
-  return getManagedCompanyIds(currentUser).includes(companyId) && MANAGER_COMPANY_ROLES.has(role)
+  return canInviteCompanyRole(currentUser, companyId, role)
 }
 
 function canManageMembership(currentUser, companyId, targetRole) {
-  if (isAdmin(currentUser)) return true
-  return getManagedCompanyIds(currentUser).includes(companyId) && targetRole !== 'manager'
+  if (!canManageCompanyUsers(currentUser, companyId)) return false
+  return isAdmin(currentUser) || targetRole !== 'manager'
 }
 
 function normalizePlatformRole(currentUser, requestedRole) {
@@ -125,10 +129,10 @@ async function assertAdminCanChangeRole(userId) {
 
 async function loadUsersPayload(currentUser) {
   if (!canUseUsersPage(currentUser)) {
-    throw httpError(403, 'Solo admin o managers pueden ver usuarios')
+    throw httpError(403, 'No tienes acceso al directorio de usuarios')
   }
 
-  const managedCompanyIds = getManagedCompanyIds(currentUser)
+  const accessibleCompanyIds = getAccessibleCompanyIds(currentUser)
 
   let profiles = []
   let memberships = []
@@ -162,7 +166,7 @@ async function loadUsersPayload(currentUser) {
     memberships = membershipRows || []
     companies = companyRows || []
   } else {
-    if (managedCompanyIds.length === 0) {
+    if (!accessibleCompanyIds || accessibleCompanyIds.length === 0) {
       return { users: [], companies: [] }
     }
 
@@ -173,14 +177,14 @@ async function loadUsersPayload(currentUser) {
       supabaseAdmin
         .from('companies')
         .select('id, name, slug')
-        .in('id', managedCompanyIds)
+        .in('id', accessibleCompanyIds)
         .is('archived_at', null)
         .is('trashed_at', null)
         .order('name', { ascending: true }),
       supabaseAdmin
         .from('company_memberships')
         .select('user_id, company_id, role, created_at, updated_at')
-        .in('company_id', managedCompanyIds),
+        .in('company_id', accessibleCompanyIds),
     ])
 
     if (companiesError) throw companiesError
@@ -274,13 +278,13 @@ async function canAccessUser(currentUser, userId) {
   if (currentUser.id === userId) return true
   if (isAdmin(currentUser)) return true
 
-  const managedCompanyIds = getManagedCompanyIds(currentUser)
-  if (managedCompanyIds.length === 0) return false
+  const accessibleCompanyIds = getAccessibleCompanyIds(currentUser)
+  if (!accessibleCompanyIds || accessibleCompanyIds.length === 0) return false
 
   const { data: activeCompanies, error: activeCompaniesError } = await supabaseAdmin
     .from('companies')
     .select('id')
-    .in('id', managedCompanyIds)
+    .in('id', accessibleCompanyIds)
     .is('archived_at', null)
     .is('trashed_at', null)
 
@@ -298,6 +302,35 @@ async function canAccessUser(currentUser, userId) {
 
   if (error) throw error
   return (data || []).length > 0
+}
+
+async function canEditUserProfile(currentUser, userId) {
+  if (currentUser.id === userId) return true
+  if (isAdmin(currentUser)) return true
+
+  const managedCompanyIds = getManagedCompanyIds(currentUser)
+  if (managedCompanyIds.length === 0) return false
+
+  const { data, error } = await supabaseAdmin
+    .from('company_memberships')
+    .select('user_id')
+    .eq('user_id', userId)
+    .in('company_id', managedCompanyIds)
+    .limit(1)
+
+  if (error) throw error
+  return (data || []).length > 0
+}
+
+async function loadProfileBasic(userId) {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, full_name')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
 }
 
 router.get('/', async (req, res) => {
@@ -365,7 +398,7 @@ router.patch('/:id', async (req, res) => {
   const { fullName, email, platformRole } = req.body
 
   try {
-    if (!await canAccessUser(req.currentUser, userId)) {
+    if (!await canEditUserProfile(req.currentUser, userId)) {
       return res.status(404).json({ error: 'Usuario no encontrado' })
     }
 
@@ -440,7 +473,7 @@ router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
   const userId = req.params.id
 
   try {
-    if (!await canAccessUser(req.currentUser, userId)) {
+    if (!await canEditUserProfile(req.currentUser, userId)) {
       return res.status(404).json({ error: 'Usuario no encontrado' })
     }
 
@@ -551,9 +584,98 @@ router.delete('/:id/memberships/:companyId', async (req, res) => {
       return res.status(403).json({ error: 'No tienes permisos para gestionar este acceso' })
     }
 
-    return res.status(400).json({ error: 'No se pueden eliminar accesos desde este panel; cambia el rol o borra la cuenta' })
+    if (membership.role === 'manager') {
+      await assertCompanyKeepsManager(companyId, userId)
+    }
+
+    const { error } = await supabaseAdmin
+      .from('company_memberships')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('user_id', userId)
+
+    if (error) throw error
+    return res.json({ removed: true })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo quitar el acceso' })
+  }
+})
+
+router.post('/:id/removal-requests', async (req, res) => {
+  const targetUserId = req.params.id
+  const { companyId } = req.body || {}
+
+  if (!companyId) {
+    return res.status(400).json({ error: 'companyId es requerido' })
+  }
+
+  try {
+    if (!canRequestUserRemoval(req.currentUser, companyId)) {
+      return res.status(403).json({ error: 'Tu rol no puede solicitar esta eliminación' })
+    }
+
+    const [requesterMembership, targetMembership, targetProfile, companyResult] = await Promise.all([
+      getMembership(req.currentUser.id, companyId),
+      getMembership(targetUserId, companyId),
+      loadProfileBasic(targetUserId),
+      supabaseAdmin
+        .from('companies')
+        .select('id, name')
+        .eq('id', companyId)
+        .maybeSingle(),
+    ])
+
+    if (!requesterMembership || !targetMembership || !targetProfile || !companyResult.data) {
+      return res.status(404).json({ error: 'No se encontró el usuario o la empresa para esta solicitud' })
+    }
+
+    const { data: managerMemberships, error: managersError } = await supabaseAdmin
+      .from('company_memberships')
+      .select('user_id')
+      .eq('company_id', companyId)
+      .eq('role', 'manager')
+
+    if (managersError) throw managersError
+
+    const recipients = (managerMemberships || [])
+      .map((membership) => membership.user_id)
+      .filter((userId) => userId && userId !== req.currentUser.id)
+
+    if (recipients.length === 0) {
+      return res.status(400).json({ error: 'No hay managers disponibles para revisar esta solicitud' })
+    }
+
+    const timestamp = new Date().toISOString()
+    const requesterLabel = req.currentUser.fullName || req.currentUser.email || 'Usuario'
+    const targetLabel = targetProfile.full_name || targetProfile.email || 'Usuario'
+    const companyName = companyResult.data.name
+    const payload = recipients.map((userId) => ({
+      user_id: userId,
+      project_id: null,
+      event_type: 'user_removal_requested',
+      title: 'Solicitud de eliminación de usuario',
+      body: `${requesterLabel} solicitó eliminar a ${targetLabel} de ${companyName}.`,
+      metadata: {
+        companyId,
+        companyName,
+        requesterUserId: req.currentUser.id,
+        requesterLabel,
+        targetUserId,
+        targetUserLabel: targetLabel,
+        targetRole: targetMembership.role,
+        requestedAt: timestamp,
+      },
+    }))
+
+    const { error: notificationsError } = await supabaseAdmin
+      .from('notifications')
+      .insert(payload)
+
+    if (notificationsError) throw notificationsError
+
+    return res.status(201).json({ requested: true })
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message || 'No se pudo crear la solicitud' })
   }
 })
 

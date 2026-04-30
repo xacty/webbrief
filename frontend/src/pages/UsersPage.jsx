@@ -2,11 +2,12 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Camera, ChevronDown, ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
+import { getCompanyRole, getInviteRoleOptions } from '../lib/roleCapabilities'
 import styles from './UsersPage.module.css'
 
 const PAGE_SIZE = 10
-const COMPANY_ROLE_OPTIONS = ['manager', 'editor', 'designer', 'developer']
-const MANAGER_ROLE_OPTIONS = ['editor', 'designer', 'developer']
+const COMPANY_ROLE_OPTIONS = ['manager', 'editor', 'content_writer', 'designer', 'developer']
+const MANAGER_ROLE_OPTIONS = ['editor', 'content_writer', 'designer', 'developer']
 const PLATFORM_ROLE_OPTIONS = ['user', 'qa', 'admin']
 
 const EMPTY_INVITE_FORM = {
@@ -29,6 +30,7 @@ function formatDate(isoDate) {
 
 function roleLabel(role) {
   if (role === 'manager') return 'Manager'
+  if (role === 'content_writer') return 'Content Writer'
   if (role === 'designer') return 'Diseño'
   if (role === 'developer') return 'Dev'
   return 'Editor'
@@ -90,13 +92,20 @@ export default function UsersPage() {
   const [expandedUserId, setExpandedUserId] = useState('')
 
   const isAdmin = currentUser?.platformRole === 'admin'
+  const primaryCompanyRole = getCompanyRole(currentUser)
   const managedCompanyIds = useMemo(() => (
     currentUser?.memberships
       ?.filter((membership) => membership.role === 'manager')
       .map((membership) => membership.companyId) || []
   ), [currentUser])
-  const canManageUsers = isAdmin || managedCompanyIds.length > 0
-  const inviteRoleOptions = isAdmin ? COMPANY_ROLE_OPTIONS : MANAGER_ROLE_OPTIONS
+  const canManageUsers = isAdmin || currentUser?.memberships?.length > 0
+  const canManageRoles = isAdmin || managedCompanyIds.length > 0
+  const inviteCompanyRole = getCompanyRole(currentUser, inviteForm.companyId) || primaryCompanyRole
+  const inviteRoleOptions = useMemo(
+    () => getInviteRoleOptions(currentUser, inviteCompanyRole),
+    [currentUser, inviteCompanyRole]
+  )
+  const canInviteUsers = inviteRoleOptions.length > 0 || isAdmin
   const inviteNeedsCompany = !isAdmin || inviteForm.platformRole === 'user'
 
   async function loadUsers() {
@@ -145,11 +154,13 @@ export default function UsersPage() {
       const companyStillAvailable = companies.some((company) => company.id === current.companyId)
       const nextCompanyId = companyStillAvailable ? current.companyId : companies[0]?.id || ''
       const roleStillAvailable = inviteRoleOptions.includes(current.role)
+      const nextRole = roleStillAvailable ? current.role : inviteRoleOptions[0] || current.role
 
+      if (current.companyId === nextCompanyId && current.role === nextRole) return current
       return {
         ...current,
         companyId: nextCompanyId,
-        role: roleStillAvailable ? current.role : inviteRoleOptions[0],
+        role: nextRole,
       }
     })
   }, [companies, inviteRoleOptions])
@@ -213,13 +224,30 @@ export default function UsersPage() {
     setInviteForm({
       ...EMPTY_INVITE_FORM,
       companyId: companies[0]?.id || '',
-      role: inviteRoleOptions[0],
+      role: inviteRoleOptions[0] || 'editor',
     })
   }
 
   function canManageMembership(company) {
     if (isAdmin) return true
     return managedCompanyIds.includes(company.companyId) && company.role !== 'manager'
+  }
+
+  function canEditUser(user) {
+    if (isAdmin) return true
+    if (user.id === currentUser?.id) return true
+    return (user.companies || []).some((company) => managedCompanyIds.includes(company.companyId))
+  }
+
+  function getRequestableCompany(user) {
+    if (isAdmin) return null
+
+    const sharedMembership = (user.companies || []).find((company) => {
+      const myRole = getCompanyRole(currentUser, company.companyId)
+      return ['editor', 'designer', 'developer'].includes(myRole)
+    })
+
+    return sharedMembership || null
   }
 
   function membershipRoleOptions(company) {
@@ -371,6 +399,44 @@ export default function UsersPage() {
     }
   }
 
+  async function handleRemoveMembership(userId, companyId) {
+    if (!window.confirm('¿Quitar este acceso de empresa?')) return
+
+    const key = `membership-remove:${userId}:${companyId}`
+    setBusyKey(key)
+    setError('')
+    setActionMessage('')
+
+    try {
+      await apiFetch(`/api/users/${userId}/memberships/${companyId}`, { method: 'DELETE' })
+      await loadUsers()
+      setActionMessage('Acceso eliminado')
+    } catch (err) {
+      setError(err.message || 'No se pudo quitar el acceso')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  async function handleRequestRemoval(userId, companyId) {
+    const key = `request-removal:${userId}:${companyId}`
+    setBusyKey(key)
+    setError('')
+    setActionMessage('')
+
+    try {
+      await apiFetch(`/api/users/${userId}/removal-requests`, {
+        method: 'POST',
+        body: JSON.stringify({ companyId }),
+      })
+      setActionMessage('Solicitud enviada al manager')
+    } catch (err) {
+      setError(err.message || 'No se pudo enviar la solicitud')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -380,11 +446,13 @@ export default function UsersPage() {
           <p className={styles.subtitle}>
             {isAdmin
               ? 'Gestiona cuentas, roles de plataforma y accesos por empresa.'
-              : 'Gestiona invitaciones y accesos de las empresas donde tienes rol manager.'}
+              : canManageRoles
+                ? 'Gestiona invitaciones y accesos de las empresas donde tienes rol manager.'
+                : 'Consulta los usuarios de tus empresas y administra tu propio perfil.'}
           </p>
         </div>
 
-        {canManageUsers && (companies.length > 0 || isAdmin) && (
+        {canInviteUsers && canManageUsers && (companies.length > 0 || isAdmin) && (
           <button className={styles.primaryButton} onClick={() => setInviteOpen(true)}>
             <Plus className={styles.buttonIcon} aria-hidden="true" />
             Agregar usuario
@@ -630,9 +698,11 @@ export default function UsersPage() {
 
                       <td>
                         <div className={styles.rowActions}>
-                          <button className={styles.rowActionButton} onClick={() => openEditUser(user)} title="Editar usuario" aria-label="Editar usuario">
-                            <Pencil aria-hidden="true" />
-                          </button>
+                          {canEditUser(user) && (
+                            <button className={styles.rowActionButton} onClick={() => openEditUser(user)} title="Editar usuario" aria-label="Editar usuario">
+                              <Pencil aria-hidden="true" />
+                            </button>
+                          )}
                           {isAdmin && user.id !== currentUser?.id && (
                             <button
                               className={styles.rowDangerButton}
@@ -673,6 +743,9 @@ export default function UsersPage() {
                                     {userCompanies.map((company) => {
                                       const membershipBusy = busyKey.startsWith(`membership:${user.id}:${company.companyId}`)
                                       const manageable = canManageMembership(company)
+                                      const requestable = getRequestableCompany(user)?.companyId === company.companyId
+                                      const removeBusy = busyKey === `membership-remove:${user.id}:${company.companyId}`
+                                      const requestBusy = busyKey === `request-removal:${user.id}:${company.companyId}`
 
                                       return (
                                         <div key={`${user.id}-${company.companyId}`} className={styles.assignmentItem}>
@@ -682,16 +755,37 @@ export default function UsersPage() {
                                           </div>
 
                                           {manageable ? (
-                                            <select
-                                              className={styles.roleSelect}
-                                              value={company.role}
-                                              onChange={(event) => handleMembershipRoleChange(user.id, company.companyId, event.target.value)}
-                                              disabled={membershipBusy}
+                                            <div className={styles.membershipActions}>
+                                              <select
+                                                className={styles.roleSelect}
+                                                value={company.role}
+                                                onChange={(event) => handleMembershipRoleChange(user.id, company.companyId, event.target.value)}
+                                                disabled={membershipBusy || removeBusy}
+                                              >
+                                                {membershipRoleOptions(company).map((role) => (
+                                                  <option key={role} value={role}>{roleLabel(role)}</option>
+                                                ))}
+                                              </select>
+                                              <button
+                                                type="button"
+                                                className={styles.rowDangerButton}
+                                                onClick={() => handleRemoveMembership(user.id, company.companyId)}
+                                                disabled={membershipBusy || removeBusy}
+                                                title="Quitar acceso"
+                                                aria-label="Quitar acceso"
+                                              >
+                                                <Trash2 aria-hidden="true" />
+                                              </button>
+                                            </div>
+                                          ) : requestable ? (
+                                            <button
+                                              type="button"
+                                              className={styles.secondaryButton}
+                                              onClick={() => handleRequestRemoval(user.id, company.companyId)}
+                                              disabled={requestBusy}
                                             >
-                                              {membershipRoleOptions(company).map((role) => (
-                                                <option key={role} value={role}>{roleLabel(role)}</option>
-                                              ))}
-                                            </select>
+                                              {requestBusy ? 'Enviando...' : 'Solicitar baja'}
+                                            </button>
                                           ) : (
                                             <span className={styles.membershipBadge}>{roleLabel(company.role)}</span>
                                           )}

@@ -7,6 +7,7 @@ import styles from './AccountSettingsPage.module.css'
 
 function roleLabel(role) {
   if (role === 'manager') return 'Manager'
+  if (role === 'content_writer') return 'Content Writer'
   if (role === 'designer') return 'Diseño'
   if (role === 'developer') return 'Dev'
   return 'Editor'

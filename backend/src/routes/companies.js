@@ -1,6 +1,11 @@
 import { Router } from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { inviteUserToCompany, normalizeEmail } from '../lib/users.js'
+import {
+  canAccessCompany,
+  canManageCompanyLifecycle,
+  getAccessibleCompanyIds,
+} from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
@@ -17,16 +22,6 @@ function slugifyCompanyName(name) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 50) || 'company'
-}
-
-function getAccessibleCompanyIds(currentUser) {
-  if (currentUser.platformRole === 'admin') return null
-  return currentUser.memberships.map((membership) => membership.companyId)
-}
-
-function canAccessCompany(currentUser, companyId) {
-  if (currentUser.platformRole === 'admin') return true
-  return currentUser.memberships.some((membership) => membership.companyId === companyId)
 }
 
 function isMissingArchiveColumn(error) {
@@ -129,6 +124,27 @@ function serializeCompany(company, membershipMap, statsMap) {
   }
 }
 
+function normalizeProjectType(value) {
+  return ['page', 'document', 'faq'].includes(value) ? value : 'page'
+}
+
+function inferProjectType(project, firstPageName = '') {
+  const explicitType = project?.project_type
+  if (explicitType === 'document' || explicitType === 'faq') return explicitType
+
+  const normalizedFirstPageName = String(firstPageName || '').trim().toLowerCase()
+  if (normalizedFirstPageName === 'documento') return 'document'
+  if (
+    normalizedFirstPageName === 'faq' ||
+    normalizedFirstPageName === 'faqs' ||
+    normalizedFirstPageName === 'preguntas frecuentes'
+  ) {
+    return 'faq'
+  }
+
+  return normalizeProjectType(explicitType)
+}
+
 router.get('/', async (req, res) => {
   try {
     const membershipMap = new Map(
@@ -205,7 +221,7 @@ router.get('/:id', async (req, res) => {
       runWithoutArchiveColumns((withArchiveColumns) => {
         let query = supabaseAdmin
           .from('projects')
-          .select('id, name, client_name, client_email, business_type, updated_at')
+          .select('*')
           .eq('company_id', companyId)
           .order('updated_at', { ascending: false })
 
@@ -247,6 +263,27 @@ router.get('/:id', async (req, res) => {
       req.currentUser.memberships.map((membership) => [membership.companyId, membership.role])
     )
     const statsMap = await fetchCompanyStats([companyId])
+    const projectIdsNeedingInference = (projects || [])
+      .filter((project) => !project.project_type)
+      .map((project) => project.id)
+    let firstPageNameByProjectId = new Map()
+
+    if (projectIdsNeedingInference.length > 0) {
+      const { data: firstPages, error: firstPagesError } = await supabaseAdmin
+        .from('project_pages')
+        .select('project_id, name, position')
+        .in('project_id', projectIdsNeedingInference)
+        .order('position', { ascending: true })
+
+      if (firstPagesError) throw firstPagesError
+
+      firstPageNameByProjectId = new Map()
+      for (const page of firstPages || []) {
+        if (!firstPageNameByProjectId.has(page.project_id)) {
+          firstPageNameByProjectId.set(page.project_id, page.name || '')
+        }
+      }
+    }
 
     return res.json({
       company: serializeCompany(company, membershipMap, statsMap),
@@ -256,6 +293,7 @@ router.get('/:id', async (req, res) => {
         client: project.client_name,
         clientEmail: project.client_email,
         businessType: project.business_type,
+        projectType: inferProjectType(project, firstPageNameByProjectId.get(project.id)),
         lastActivity: project.updated_at,
       })),
       members: (memberships || []).map((membership) => {
@@ -369,8 +407,8 @@ router.post('/', async (req, res) => {
 })
 
 router.post('/:id/archive', async (req, res) => {
-  if (req.currentUser.platformRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo admin puede archivar empresas' })
+  if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
+    return res.status(403).json({ error: 'Tu rol no puede archivar esta empresa' })
   }
 
   try {
@@ -400,8 +438,8 @@ router.post('/:id/archive', async (req, res) => {
 })
 
 router.post('/:id/trash', async (req, res) => {
-  if (req.currentUser.platformRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo admin puede enviar empresas a papelera' })
+  if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
+    return res.status(403).json({ error: 'Tu rol no puede enviar esta empresa a papelera' })
   }
 
   try {
@@ -436,8 +474,8 @@ router.post('/:id/trash', async (req, res) => {
 })
 
 router.post('/:id/restore', async (req, res) => {
-  if (req.currentUser.platformRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo admin puede restaurar empresas' })
+  if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
+    return res.status(403).json({ error: 'Tu rol no puede restaurar esta empresa' })
   }
 
   try {

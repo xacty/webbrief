@@ -66,6 +66,7 @@ export default function CompaniesPage() {
   const [testMode, setTestMode] = useState(false)
   const [companyFeedback, setCompanyFeedback] = useState('')
   const [creatingCompany, setCreatingCompany] = useState(false)
+  const canCreateCompanies = currentUser?.platformRole === 'admin'
 
   useEffect(() => {
     let active = true
@@ -254,7 +255,7 @@ export default function CompaniesPage() {
           </p>
         </div>
 
-        {currentUser?.platformRole === 'admin' && (
+        {canCreateCompanies && (
           <button className={styles.primaryButton} onClick={openModal}>
             + Nueva empresa
           </button>
@@ -312,7 +313,7 @@ export default function CompaniesPage() {
                   <span>Abrir</span>
                   <ArrowRight aria-hidden="true" />
                 </button>
-                {currentUser?.platformRole === 'admin' && !company.isInternal && (
+                {(currentUser?.platformRole === 'admin' || company.membershipRole === 'manager') && !company.isInternal && (
                   <>
                     <button
                       className={styles.cardIconButton}

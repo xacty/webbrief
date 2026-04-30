@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import AppShell from './components/layout/AppShell'
 
@@ -14,6 +14,15 @@ const SharePage = lazy(() => import('./pages/SharePage'))
 const TrashPage = lazy(() => import('./pages/TrashPage'))
 const AccountSettingsPage = lazy(() => import('./pages/AccountSettingsPage'))
 
+const ROLE_PREVIEW_OPTIONS = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'editor', label: 'Editor' },
+  { value: 'content_writer', label: 'Content Writer' },
+  { value: 'designer', label: 'Diseño' },
+  { value: 'developer', label: 'Dev' },
+]
+
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
 
@@ -24,19 +33,12 @@ function PrivateRoute({ children }) {
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
-function RootRedirect() {
-  const { isAuthenticated, loading } = useAuth()
-
-  if (loading) {
-    return <div className="pageLoading">Cargando...</div>
-  }
-
-  return isAuthenticated
-    ? <Navigate to="/companies" replace />
-    : <Navigate to="/login" replace />
-}
-
 function AppRoutes() {
+  const { realCurrentUser, rolePreview, setRolePreview } = useAuth()
+  const location = useLocation()
+  const canPreviewRoles = realCurrentUser?.platformRole === 'admin'
+  const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
+
   return (
     <Suspense fallback={<div className="pageLoading">Cargando...</div>}>
       <Routes>
@@ -45,20 +47,22 @@ function AppRoutes() {
         <Route path="/share/:token" element={<SharePage />} />
 
         <Route
+          path="/"
           element={
             <PrivateRoute>
               <AppShell />
             </PrivateRoute>
           }
         >
-          <Route path="/dashboard" element={<Navigate to="/companies" replace />} />
-          <Route path="/companies" element={<CompaniesPage />} />
-          <Route path="/companies/:companyId" element={<CompanyPage />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/settings" element={<AccountSettingsPage />} />
-          <Route path="/archive" element={<TrashPage mode="archived" />} />
-          <Route path="/trash" element={<TrashPage mode="trashed" />} />
-          <Route path="/new-project" element={<NewProject />} />
+          <Route index element={<Navigate to="companies" replace />} />
+          <Route path="dashboard" element={<Navigate to="/companies" replace />} />
+          <Route path="companies" element={<CompaniesPage />} />
+          <Route path="companies/:companyId" element={<CompanyPage />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="settings" element={<AccountSettingsPage />} />
+          <Route path="archive" element={<TrashPage mode="archived" />} />
+          <Route path="trash" element={<TrashPage mode="trashed" />} />
+          <Route path="new-project" element={<NewProject />} />
         </Route>
 
         <Route
@@ -69,11 +73,58 @@ function AppRoutes() {
             </PrivateRoute>
           }
         />
-
-        <Route path="/" element={<RootRedirect />} />
       </Routes>
+      {canPreviewRoles && (
+        <div style={{ ...rolePreviewStyles.wrap, ...(isEditorRoute ? rolePreviewStyles.wrapEditor : {}) }}>
+          <label style={rolePreviewStyles.label} htmlFor="global-role-preview-select">Ver como</label>
+          <select
+            id="global-role-preview-select"
+            style={rolePreviewStyles.select}
+            value={rolePreview || 'admin'}
+            onChange={(event) => setRolePreview(event.target.value)}
+          >
+            {ROLE_PREVIEW_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </Suspense>
   )
+}
+
+const rolePreviewStyles = {
+  wrap: {
+    position: 'fixed',
+    right: 18,
+    bottom: 18,
+    zIndex: 3000,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 10px',
+    border: '1px solid #d9e1ec',
+    borderRadius: 12,
+    background: '#fff',
+    boxShadow: '0 12px 30px rgba(15, 23, 42, 0.16)',
+  },
+  wrapEditor: {
+    right: 318,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#64748b',
+  },
+  select: {
+    border: '1px solid #d9e1ec',
+    borderRadius: 9,
+    padding: '7px 30px 7px 9px',
+    background: '#fff',
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: 700,
+  },
 }
 
 function App() {

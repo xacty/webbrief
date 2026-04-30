@@ -1,20 +1,28 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Extension, Node, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Heading from '@tiptap/extension-heading'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { Underline } from '@tiptap/extension-underline'
 import { TextStyle, Color } from '@tiptap/extension-text-style'
+import TextAlign from '@tiptap/extension-text-align'
+import Highlight from '@tiptap/extension-highlight'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
+import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
+import navStyles from './ProjectEditorNav.module.css'
+import toolbarStyles from './ProjectEditorToolbar.module.css'
+import seoRulesStyles from './ProjectEditorSeoRules.module.css'
+import panelStyles from './ProjectEditorPanels.module.css'
 
 // ---------------------------------------------------------------------------
 // Mock data — E-commerce con contenido rico por sección
@@ -221,6 +229,88 @@ const CtaButtonNode = Node.create({
   },
 })
 
+const GoogleDocsHeadingShortcuts = Extension.create({
+  name: 'googleDocsHeadingShortcuts',
+
+  addKeyboardShortcuts() {
+    const shortcuts = {
+      'Mod-Alt-0': () => this.editor.chain().focus().setParagraph().run(),
+    }
+
+    for (let level = 1; level <= 6; level += 1) {
+      shortcuts[`Mod-Alt-${level}`] = () => this.editor.chain().focus().setHeading({ level }).run()
+    }
+
+    return shortcuts
+  },
+})
+
+const BLOCK_SPACING_PRESETS = {
+  single: { label: 'Simple', lineHeight: '1.2', marginBottom: '0.45em' },
+  normal: { label: 'Normal', lineHeight: '1.65', marginBottom: '0.9em' },
+  relaxed: { label: '1.5', lineHeight: '1.85', marginBottom: '1.15em' },
+  double: { label: 'Doble', lineHeight: '2', marginBottom: '1.35em' },
+}
+
+const TEXT_BLOCK_LAYOUT_TYPES = ['paragraph', 'heading', 'listItem']
+
+function cx(...classes) {
+  return classes.filter(Boolean).join(' ')
+}
+
+function normalizeTextBlockLayout(layout) {
+  const next = {
+    blockSpacing: layout?.blockSpacing || null,
+    indentLevel: Math.max(0, Math.min(8, Number(layout?.indentLevel) || 0)),
+  }
+
+  return next.blockSpacing || next.indentLevel > 0 ? next : null
+}
+
+const TextBlockLayoutExtension = Extension.create({
+  name: 'textBlockLayout',
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: TEXT_BLOCK_LAYOUT_TYPES,
+        attributes: {
+          textBlockLayout: {
+            default: null,
+            parseHTML: (element) => normalizeTextBlockLayout({
+              blockSpacing: element.getAttribute('data-block-spacing') || null,
+              indentLevel: element.getAttribute('data-indent-level') || 0,
+            }),
+            renderHTML: (attributes) => {
+              const layout = normalizeTextBlockLayout(attributes.textBlockLayout)
+              if (!layout) return {}
+
+              const styles = []
+              if (layout.blockSpacing) {
+                const preset = BLOCK_SPACING_PRESETS[layout.blockSpacing]
+                if (preset) {
+                  styles.push(`line-height: ${preset.lineHeight}`)
+                  styles.push(`margin-bottom: ${preset.marginBottom}`)
+                }
+              }
+
+              if (layout.indentLevel > 0) {
+                styles.push(`margin-left: ${layout.indentLevel * 1.5}em`)
+              }
+
+              return {
+                ...(layout.blockSpacing ? { 'data-block-spacing': layout.blockSpacing } : {}),
+                ...(layout.indentLevel > 0 ? { 'data-indent-level': String(layout.indentLevel) } : {}),
+                ...(styles.length > 0 ? { style: `${styles.join('; ')};` } : {}),
+              }
+            },
+          },
+        },
+      },
+    ]
+  },
+})
+
 // ---------------------------------------------------------------------------
 // Helper: buildDocumentHTML — convierte sections[] en HTML para el editor
 // ---------------------------------------------------------------------------
@@ -284,20 +374,727 @@ function parseSectionsFromHtml(html) {
   return sections
 }
 
-function mapPersistedPage(page) {
-  const sections = parseSectionsFromHtml(page.contentHtml)
+function stripSectionDividersFromHtml(html) {
+  if (!html || typeof DOMParser === 'undefined') return html || '<p></p>'
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return html || '<p></p>'
+  root.querySelectorAll('div[data-section-divider]').forEach((node) => node.remove())
+  return root.innerHTML || '<p></p>'
+}
+
+function createLocalId(prefix = 's') {
+  return `${prefix}_${crypto.randomUUID?.() || Date.now()}`
+}
+
+function serializeNodes(nodes, doc) {
+  const container = doc.createElement('div')
+  nodes.forEach((node) => container.appendChild(node.cloneNode(true)))
+  return container.innerHTML || '<p></p>'
+}
+
+function escapeEditorHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function htmlToPlainLines(html) {
+  if (!html || typeof DOMParser === 'undefined') return []
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return []
+
+  const blocks = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, div'))
+    .filter((node) => !node.matches?.('div[data-section-divider]'))
+    .map((node) => node.textContent?.replace(/\s+/g, ' ').trim() || '')
+    .filter(Boolean)
+
+  return blocks.length > 0 ? blocks : (root.textContent || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+}
+
+function parseSeoLine(line) {
+  const normalized = line.trim()
+  if (!normalized) return null
+
+  const titleMatch = normalized.match(/^title\s*tag\s*:\s*(.+)$/i)
+  if (titleMatch) return { field: 'titleTag', value: titleMatch[1].trim() }
+
+  const metaMatch = normalized.match(/^meta\s*(description|descripci[oó]n|descripcion|descirption)?\s*:\s*(.+)$/i)
+  if (metaMatch) return { field: 'metaDescription', value: metaMatch[2].trim() }
+
+  const compactMetaMatch = normalized.match(/^metadesc(?:ription|ripci[oó]n|ripcion|irption)\s*:\s*(.+)$/i)
+  if (compactMetaMatch) return { field: 'metaDescription', value: compactMetaMatch[1].trim() }
+
+  const urlMatch = normalized.match(/^url\s*:\s*(.+)$/i)
+  if (urlMatch) return { field: 'urlSlug', value: urlMatch[1].trim() }
+
+  return null
+}
+
+function parsePastedSeo(lines) {
+  const seo = {}
+  const contentLines = []
+
+  lines.forEach((line) => {
+    const parsedSeo = parseSeoLine(line)
+    if (parsedSeo) {
+      seo[parsedSeo.field] = parsedSeo.value
+      return
+    }
+
+    contentLines.push(line)
+  })
+
+  return { seo, contentLines }
+}
+
+function htmlBlockFromPlainLine(line) {
+  const trimmed = line.trim()
+  if (!trimmed) return ''
+
+  const h1 = trimmed.match(/^h1\s*:\s*(.+)$/i)
+  if (h1) return `<h1>${escapeEditorHtml(h1[1].trim())}</h1>`
+
+  const h2 = trimmed.match(/^h2\s*:\s*(.+)$/i)
+  if (h2) return `<h2>${escapeEditorHtml(h2[1].trim())}</h2>`
+
+  const h3 = trimmed.match(/^h3\s*:\s*(.+)$/i)
+  if (h3) return `<h3>${escapeEditorHtml(h3[1].trim())}</h3>`
+
+  const cta = trimmed.match(/^cta\/bot[oó]n\s*:\s*(.+)$/i)
+  if (cta) {
+    return `<div data-cta-button data-cta-text="${escapeEditorHtml(cta[1].trim())}" data-cta-url=""></div>`
+  }
+
+  return `<p>${escapeEditorHtml(trimmed)}</p>`
+}
+
+function buildSectionedHtmlFromPlainLines(lines) {
+  const { contentLines } = parsePastedSeo(lines)
+  const sections = []
+  let current = null
+
+  contentLines.forEach((line) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+
+    const headingMatch = trimmed.match(/^(h1|h2)\s*:\s*(.+)$/i)
+    if (headingMatch) {
+      if (current) sections.push(current)
+      current = {
+        headingLevel: headingMatch[1].toLowerCase(),
+        title: headingMatch[2].trim(),
+        lines: [trimmed],
+      }
+      return
+    }
+
+    if (!current) return
+    current.lines.push(trimmed)
+  })
+
+  if (current) sections.push(current)
+  if (sections.length === 0) return null
+
+  return sections.map((section, index) => {
+    const sectionName = index === 0 ? 'Hero - ATF' : `Sección ${index + 1}`
+    const sectionId = createLocalId('s')
+    const content = section.lines.map(htmlBlockFromPlainLine).join('')
+    return `<div data-section-divider data-section-id="${sectionId}" data-section-name="${escapeEditorHtml(sectionName)}"></div>${content || '<p></p>'}`
+  }).join('')
+}
+
+function buildFaqHtmlFromPlainLines(lines) {
+  const { contentLines } = parsePastedSeo(lines)
+  const blocks = []
+
+  contentLines.forEach((line) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+
+    const h1 = trimmed.match(/^h1\s*:\s*(.+)$/i)
+    if (h1) {
+      blocks.push(`<h1>${escapeEditorHtml(h1[1].trim())}</h1>`)
+      return
+    }
+
+    const h2 = trimmed.match(/^h2\s*:\s*(.+)$/i)
+    if (h2) {
+      blocks.push(`<h2>${escapeEditorHtml(h2[1].trim())}</h2>`)
+      return
+    }
+
+    blocks.push(htmlBlockFromPlainLine(trimmed))
+  })
+
+  return blocks.some((block) => block.startsWith('<h2>')) ? blocks.join('') : null
+}
+
+function buildDocumentHtmlFromPlainLines(lines) {
+  const { seo, contentLines } = parsePastedSeo(lines)
+  let changed = Object.keys(seo).length > 0
+  const blocks = []
+
+  contentLines.forEach((line) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+
+    if (/^(h1|h2|h3)\s*:/i.test(trimmed) || /^cta\/bot[oó]n\s*:/i.test(trimmed)) {
+      changed = true
+    }
+    blocks.push(htmlBlockFromPlainLine(trimmed))
+  })
+
+  return changed ? blocks.join('') || '<p></p>' : null
+}
+
+function parsePastePayload({ html = '', text = '' }) {
+  const lines = (text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const fallbackLines = lines.length > 0 ? lines : htmlToPlainLines(html)
+  return parsePastedSeo(fallbackLines)
+}
+
+function getBlockPrefixInfo(node) {
+  const text = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+  if (!text) return null
+
+  const seo = parseSeoLine(text)
+  if (seo) return { type: 'seo', field: seo.field, text: seo.value }
+
+  const heading = text.match(/^(h1|h2|h3)\s*:\s*(.+)$/i)
+  if (heading) return { type: heading[1].toLowerCase(), text: heading[2].trim() }
+
+  const cta = text.match(/^cta\/bot[oó]n\s*:\s*(.+)$/i)
+  if (cta) return { type: 'cta', text: cta[1].trim() }
+
+  return null
+}
+
+function isBlankPasteElement(node) {
+  if (!node || node.nodeType !== 1) return false
+  if (node.matches?.('br, hr')) return true
+  if (node.querySelector?.('img, table, [data-cta-button]')) return false
+  return (node.textContent || '').replace(/\u00a0/g, ' ').trim().length === 0
+}
+
+function cleanDocumentPasteHtml(html) {
+  if (!html || typeof DOMParser === 'undefined') return html || ''
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return html || ''
+
+  Array.from(root.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6')).forEach((node) => {
+    const text = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+    if (parseSeoLine(text) || isBlankPasteElement(node)) {
+      node.remove()
+    }
+  })
+
+  root.querySelectorAll('br, hr').forEach((node) => node.remove())
+  return root.innerHTML || '<p></p>'
+}
+
+function normalizeRichInlineMarks(root) {
+  root.querySelectorAll('span[style], p[style], div[style]').forEach((node) => {
+    const style = node.getAttribute('style') || ''
+    if (/font-weight\s*:\s*(bold|[6-9]00)/i.test(style)) {
+      const strong = root.ownerDocument.createElement('strong')
+      strong.innerHTML = node.innerHTML
+      node.replaceChildren(strong)
+    }
+    if (/font-style\s*:\s*italic/i.test(style)) {
+      const em = root.ownerDocument.createElement('em')
+      em.innerHTML = node.innerHTML
+      node.replaceChildren(em)
+    }
+    if (/text-decoration[^;]*underline/i.test(style)) {
+      const underline = root.ownerDocument.createElement('u')
+      underline.innerHTML = node.innerHTML
+      node.replaceChildren(underline)
+    }
+    if (/text-decoration[^;]*line-through/i.test(style)) {
+      const strike = root.ownerDocument.createElement('s')
+      strike.innerHTML = node.innerHTML
+      node.replaceChildren(strike)
+    }
+  })
+}
+
+function hasBlockChildren(element) {
+  return Array.from(element.children || []).some((child) => (
+    ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'TABLE', 'BLOCKQUOTE'].includes(child.tagName)
+  ))
+}
+
+function collectPasteBlocks(root) {
+  const blocks = []
+
+  function walk(parent) {
+    Array.from(parent.childNodes).forEach((node) => {
+      if (node.nodeType === 3) {
+        if (node.textContent?.trim()) {
+          const p = root.ownerDocument.createElement('p')
+          p.textContent = node.textContent.trim()
+          blocks.push(p)
+        }
+        return
+      }
+
+      if (node.nodeType !== 1) return
+
+      const tag = node.tagName
+      const prefix = getBlockPrefixInfo(node)
+      const hasChildren = hasBlockChildren(node)
+      const isAtomicBlock = ['UL', 'OL', 'TABLE', 'IMG'].includes(tag)
+      const isTextBlock = ['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE'].includes(tag)
+
+      if (isAtomicBlock || isTextBlock || (prefix && !hasChildren)) {
+        blocks.push(node)
+        return
+      }
+
+      if (hasChildren) {
+        walk(node)
+        return
+      }
+
+      if (node.textContent?.trim()) {
+        blocks.push(node)
+      }
+    })
+  }
+
+  walk(root)
+  return blocks
+}
+
+function buildRichDocumentHtmlFromPaste(html) {
+  if (!html || typeof DOMParser === 'undefined') return null
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return null
+
+  root.querySelectorAll('meta, style, script, div[data-section-divider]').forEach((node) => node.remove())
+  normalizeRichInlineMarks(root)
+  const blocks = collectPasteBlocks(root)
+  let changed = false
+  const nextBlocks = []
+
+  blocks.forEach((node) => {
+    if (node.nodeType !== 1) {
+      const text = (node.textContent || '').trim()
+      if (text) nextBlocks.push(escapeEditorHtml(text))
+      return
+    }
+
+    if (isBlankPasteElement(node)) return
+
+    const prefix = getBlockPrefixInfo(node)
+    if (prefix?.type === 'seo') {
+      changed = true
+      return
+    }
+
+    if (['h1', 'h2', 'h3'].includes(prefix?.type)) {
+      changed = true
+      nextBlocks.push(`<${prefix.type}>${escapeEditorHtml(prefix.text)}</${prefix.type}>`)
+      return
+    }
+
+    if (prefix?.type === 'cta') {
+      changed = true
+      nextBlocks.push(`<div data-cta-button data-cta-text="${escapeEditorHtml(prefix.text)}" data-cta-url=""></div>`)
+      return
+    }
+
+    nextBlocks.push(node.outerHTML)
+  })
+
+  return changed ? cleanDocumentPasteHtml(nextBlocks.join('')) || '<p></p>' : null
+}
+
+function buildRichSectionsFromPaste(html, { mode = 'page' } = {}) {
+  if (!html || typeof DOMParser === 'undefined') return null
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return null
+
+  root.querySelectorAll('meta, style, script, div[data-section-divider]').forEach((node) => node.remove())
+  normalizeRichInlineMarks(root)
+  const blocks = collectPasteBlocks(root)
+
+  if (mode === 'faq') {
+    const faqBlocks = []
+    let hasQuestion = false
+    blocks.forEach((node) => {
+      if (node.nodeType !== 1) return
+      const prefix = getBlockPrefixInfo(node)
+      if (prefix?.type === 'seo') return
+      if (prefix?.type === 'h1') {
+        faqBlocks.push(`<h1>${escapeEditorHtml(prefix.text)}</h1>`)
+        return
+      }
+      if (prefix?.type === 'h2') {
+        hasQuestion = true
+        faqBlocks.push(`<h2>${escapeEditorHtml(prefix.text)}</h2>`)
+        return
+      }
+      if (prefix?.type === 'h3') {
+        faqBlocks.push(`<h3>${escapeEditorHtml(prefix.text)}</h3>`)
+        return
+      }
+      if (prefix?.type === 'cta') {
+        faqBlocks.push(`<div data-cta-button data-cta-text="${escapeEditorHtml(prefix.text)}" data-cta-url=""></div>`)
+        return
+      }
+      faqBlocks.push(node.outerHTML)
+    })
+    return hasQuestion ? faqBlocks.join('') : null
+  }
+
+  const sections = []
+  let current = null
+  blocks.forEach((node) => {
+    if (node.nodeType !== 1) {
+      if (current) current.nodes.push(node)
+      return
+    }
+
+    const tag = node.tagName?.toLowerCase()
+    const prefix = getBlockPrefixInfo(node)
+    const isHeading = tag === 'h1' || tag === 'h2' || prefix?.type === 'h1' || prefix?.type === 'h2'
+
+    if (prefix?.type === 'seo') return
+
+    if (isHeading) {
+      if (current) sections.push(current)
+      const level = tag === 'h1' || prefix?.type === 'h1' ? 'h1' : 'h2'
+      const text = prefix?.text || node.textContent?.replace(/\s+/g, ' ').trim() || ''
+      current = {
+        nodes: [`<${level}>${escapeEditorHtml(text)}</${level}>`],
+      }
+      return
+    }
+
+    if (!current) return
+
+    if (prefix?.type === 'h3') {
+      current.nodes.push(`<h3>${escapeEditorHtml(prefix.text)}</h3>`)
+      return
+    }
+
+    if (prefix?.type === 'cta') {
+      current.nodes.push(`<div data-cta-button data-cta-text="${escapeEditorHtml(prefix.text)}" data-cta-url=""></div>`)
+      return
+    }
+
+    current.nodes.push(node.outerHTML)
+  })
+
+  if (current) sections.push(current)
+  if (sections.length === 0) return null
+
+  return sections.map((section, index) => {
+    const sectionName = index === 0 ? 'Hero - ATF' : `Sección ${index + 1}`
+    const sectionId = createLocalId('s')
+    return `<div data-section-divider data-section-id="${sectionId}" data-section-name="${escapeEditorHtml(sectionName)}"></div>${section.nodes.join('') || '<p></p>'}`
+  }).join('')
+}
+
+function buildSectionedHtmlFromPaste(html) {
+  if (!html || typeof DOMParser === 'undefined') return null
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return null
+
+  const hasSectionHeading = Array.from(root.children).some((node) => {
+    const tag = node.tagName?.toLowerCase()
+    return tag === 'h1' || tag === 'h2'
+  })
+  if (!hasSectionHeading) return null
+
+  const sections = []
+  let currentNodes = []
+  let started = false
+
+  Array.from(root.childNodes).forEach((node) => {
+    const tag = node.nodeType === 1 ? node.tagName?.toLowerCase() : ''
+    const isSectionHeading = tag === 'h1' || tag === 'h2'
+
+    if (isSectionHeading) {
+      if (started) sections.push(currentNodes)
+      currentNodes = [node]
+      started = true
+      return
+    }
+
+    if (!started) {
+      started = true
+      currentNodes = []
+    }
+    currentNodes.push(node)
+  })
+
+  if (started) sections.push(currentNodes)
+  if (sections.length === 0) return null
+
+  return sections.map((nodes, index) => {
+    const sectionName = index === 0 ? 'Hero - ATF' : `Sección ${index + 1}`
+    const sectionId = createLocalId('s')
+    return `<div data-section-divider data-section-id="${sectionId}" data-section-name="${sectionName}"></div>${serializeNodes(nodes, doc)}`
+  }).join('')
+}
+
+function deriveDocumentOutline(editor) {
+  if (!editor) return []
+  const json = editor.getJSON()
+  const items = []
+  ;(json.content || []).forEach((node) => {
+    if (node.type !== 'heading' || node.attrs?.level > 3) return
+    const text = (node.content || []).map((child) => child.text || '').join('').trim()
+    if (!text) return
+    items.push({
+      id: `heading-${items.length}`,
+      headingIndex: items.length,
+      level: node.attrs.level,
+      text,
+    })
+  })
+  return items
+}
+
+function deriveFaqItems(editor) {
+  if (!editor) return []
+  const json = editor.getJSON()
+  const items = []
+  let current = null
+
+  ;(json.content || []).forEach((node) => {
+    if (node.type === 'heading' && node.attrs?.level === 2) {
+      if (current) items.push(current)
+      const question = (node.content || []).map((child) => child.text || '').join('').trim()
+      current = {
+        id: `faq-${items.length}`,
+        headingIndex: items.length,
+        question: question || `Pregunta Frecuente ${items.length + 1}`,
+        answer: '',
+      }
+      return
+    }
+
+    if (!current) return
+    const text = (node.content || []).map((child) => child.text || '').join('').trim()
+    if (text) current.answer = current.answer ? `${current.answer} ${text}` : text
+  })
+
+  if (current) items.push(current)
+  return items
+}
+
+function parseFaqItemsFromHtml(html) {
+  if (!html || typeof DOMParser === 'undefined') return []
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return []
+
+  const items = []
+  let current = null
+  Array.from(root.children).forEach((element) => {
+    const tag = element.tagName?.toLowerCase()
+    if (tag === 'h2') {
+      if (current) items.push(current)
+      current = { question: element.textContent?.replace(/\s+/g, ' ').trim() || '', answerNodes: [] }
+      return
+    }
+    if (tag === 'h1' && !current) return
+    if (current) current.answerNodes.push(element)
+  })
+  if (current) items.push(current)
+
+  return items
+    .map((item) => ({
+      question: item.question,
+      answer: item.answerNodes.map((node) => node.textContent?.replace(/\s+/g, ' ').trim() || '').filter(Boolean).join('\n'),
+    }))
+    .filter((item) => item.question)
+}
+
+function csvCell(value) {
+  return `"${String(value || '').replaceAll('"', '""')}"`
+}
+
+function exportFaqCsv(page) {
+  const items = parseFaqItemsFromHtml(page?.fullContent || buildDocumentHTML(page?.sections || []))
+  const csv = [
+    'question,answer',
+    ...items.map((item) => `${csvCell(item.question)},${csvCell(item.answer)}`),
+  ].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${(page?.name || 'faqs').toLowerCase().replace(/[^a-z0-9]+/gi, '-') || 'faqs'}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function getPageSeoMetadata(page) {
+  return {
+    titleTag: page?.seoMetadata?.titleTag || '',
+    metaDescription: page?.seoMetadata?.metaDescription || '',
+    urlSlug: page?.seoMetadata?.urlSlug || '',
+  }
+}
+
+const DEFAULT_CONTENT_RULES = Object.freeze({
+  titleTagMinChars: null,
+  titleTagMaxChars: null,
+  metaDescriptionMinChars: null,
+  metaDescriptionMaxChars: null,
+  urlSlugMaxWords: null,
+  documentMaxWords: null,
+})
+
+function normalizeRuleNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return Math.round(parsed)
+}
+
+function normalizeContentRules(rules) {
+  const normalized = {
+    titleTagMinChars: normalizeRuleNumber(rules?.titleTagMinChars),
+    titleTagMaxChars: normalizeRuleNumber(rules?.titleTagMaxChars),
+    metaDescriptionMinChars: normalizeRuleNumber(rules?.metaDescriptionMinChars),
+    metaDescriptionMaxChars: normalizeRuleNumber(rules?.metaDescriptionMaxChars),
+    urlSlugMaxWords: normalizeRuleNumber(rules?.urlSlugMaxWords),
+    documentMaxWords: normalizeRuleNumber(rules?.documentMaxWords),
+  }
+
+  if (normalized.titleTagMinChars && normalized.titleTagMaxChars && normalized.titleTagMinChars > normalized.titleTagMaxChars) {
+    normalized.titleTagMaxChars = normalized.titleTagMinChars
+  }
+
+  if (
+    normalized.metaDescriptionMinChars
+    && normalized.metaDescriptionMaxChars
+    && normalized.metaDescriptionMinChars > normalized.metaDescriptionMaxChars
+  ) {
+    normalized.metaDescriptionMaxChars = normalized.metaDescriptionMinChars
+  }
+
+  return normalized
+}
+
+function hasContentRules(rules) {
+  return Object.values(normalizeContentRules(rules)).some((value) => value !== null)
+}
+
+function getPageContentRules(page) {
+  return normalizeContentRules(page?.contentRules || page?.content_rules || null)
+}
+
+function normalizeSlugValue(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' y ')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}
+
+function getSlugWordCount(value) {
+  return normalizeSlugValue(value).split('-').filter(Boolean).length
+}
+
+function getFieldRuleState(value, min, max) {
+  const current = Array.from(String(value || '')).length
+  return {
+    current,
+    min: min || null,
+    max: max || null,
+    underMin: Boolean(min) && current < min,
+    overMax: Boolean(max) && current > max,
+  }
+}
+
+function getDocumentRuleWarnings({ contentRules, seoMetadata, documentWords }) {
+  const rules = getPageContentRules({ contentRules })
+  const warnings = []
+  const titleState = getFieldRuleState(seoMetadata?.titleTag || '', rules.titleTagMinChars, rules.titleTagMaxChars)
+  const metaState = getFieldRuleState(seoMetadata?.metaDescription || '', rules.metaDescriptionMinChars, rules.metaDescriptionMaxChars)
+  const slugWords = getSlugWordCount(seoMetadata?.urlSlug || '')
+
+  if (titleState.underMin) warnings.push(`Title tag: mínimo ${rules.titleTagMinChars} caracteres`)
+  if (titleState.overMax) warnings.push(`Title tag: máximo ${rules.titleTagMaxChars} caracteres`)
+  if (metaState.underMin) warnings.push(`Meta description: mínimo ${rules.metaDescriptionMinChars} caracteres`)
+  if (metaState.overMax) warnings.push(`Meta description: máximo ${rules.metaDescriptionMaxChars} caracteres`)
+  if (rules.urlSlugMaxWords && slugWords > rules.urlSlugMaxWords) warnings.push(`URL slug: máximo ${rules.urlSlugMaxWords} palabras`)
+  if (rules.documentMaxWords && Number(documentWords || 0) > rules.documentMaxWords) warnings.push(`Documento: máximo ${rules.documentMaxWords} palabras`)
+
+  return warnings
+}
+
+function buildDocumentLimitNotice(label, limit) {
+  if (!limit) return ''
+  return `${label} llegó al límite de ${limit}.`
+}
+
+function inferProjectType(project, pages = []) {
+  const explicitType = project?.projectType
+  if (explicitType === 'document' || explicitType === 'faq') return explicitType
+
+  const firstPage = pages[0]
+  const firstName = (firstPage?.name || '').trim().toLowerCase()
+  if (firstName === 'documento') return 'document'
+  if (firstName === 'faqs' || firstName === 'faq' || firstName === 'preguntas frecuentes') return 'faq'
+
+  return 'page'
+}
+
+function mapPersistedPage(page, projectType = 'page') {
+  const contentHtml = projectType === 'page'
+    ? page.contentHtml
+    : stripSectionDividersFromHtml(page.contentHtml)
+  const sections = projectType === 'page' ? parseSectionsFromHtml(contentHtml) : []
 
   return {
     id: page.id,
     name: page.name,
     sections,
-    fullContent: page.contentHtml || buildDocumentHTML(sections),
+    fullContent: contentHtml || buildDocumentHTML(sections),
     contentJson: page.contentJson || null,
+    seoMetadata: getPageSeoMetadata(page),
+    contentRules: getPageContentRules(page),
     version: page.version || 1,
     reviewStatus: page.reviewStatus || 'draft',
     reviewBaselineVersionId: page.reviewBaselineVersionId || null,
     reviewBaselineAt: page.reviewBaselineAt || null,
     reviewRequestedBy: page.reviewRequestedBy || null,
+    pendingProposal: page.pendingProposal ? {
+      id: page.pendingProposal.id,
+      proposerUserId: page.pendingProposal.proposerUserId,
+      contentHtml: page.pendingProposal.contentHtml || '',
+      contentJson: page.pendingProposal.contentJson || null,
+      seoMetadata: page.pendingProposal.seoMetadata || {},
+      status: page.pendingProposal.status || 'pending',
+      reviewerUserId: page.pendingProposal.reviewerUserId || null,
+      reviewerNote: page.pendingProposal.reviewerNote || '',
+      reviewedAt: page.pendingProposal.reviewedAt || null,
+      createdAt: page.pendingProposal.createdAt || null,
+      updatedAt: page.pendingProposal.updatedAt || null,
+    } : null,
   }
 }
 
@@ -480,6 +1277,57 @@ function formatActivityChangeTypes(changeTypes = []) {
   }
 
   return changeTypes.map((type) => labels[type] || 'Editó contenido').join(' · ')
+}
+
+const EMPTY_WORD_STATS = {
+  words: 0,
+  characters: 0,
+  charactersNoSpaces: 0,
+  selectedWords: 0,
+  selectedCharacters: 0,
+  selectedCharactersNoSpaces: 0,
+  hasSelection: false,
+}
+
+function getTextStats(text = '') {
+  const normalized = String(text || '').replace(/\u00a0/g, ' ')
+  const words = normalized.match(/[\p{L}\p{N}]+(?:[’'-][\p{L}\p{N}]+)*/gu) || []
+
+  return {
+    words: words.length,
+    characters: Array.from(normalized).length,
+    charactersNoSpaces: Array.from(normalized.replace(/\s/g, '')).length,
+  }
+}
+
+function getEditorWordStats(editor) {
+  if (!editor) return EMPTY_WORD_STATS
+
+  const fullText = editor.state.doc.textBetween(0, editor.state.doc.content.size, ' ', ' ')
+  const total = getTextStats(fullText)
+  const { from, to, empty } = editor.state.selection
+  const selected = empty ? getTextStats('') : getTextStats(editor.state.doc.textBetween(from, to, ' ', ' '))
+
+  return {
+    ...total,
+    selectedWords: selected.words,
+    selectedCharacters: selected.characters,
+    selectedCharactersNoSpaces: selected.charactersNoSpaces,
+    hasSelection: !empty,
+  }
+}
+
+function getEditorTextAfterReplace(editor, from, to, insertedText = '') {
+  if (!editor) return ''
+  const before = editor.state.doc.textBetween(0, from, ' ', ' ')
+  const after = editor.state.doc.textBetween(to, editor.state.doc.content.size, ' ', ' ')
+  return `${before}${insertedText}${after}`
+}
+
+function htmlToTextContent(html = '') {
+  if (!html || typeof DOMParser === 'undefined') return ''
+  const doc = new DOMParser().parseFromString(`<div id="clipboard-root">${html}</div>`, 'text/html')
+  return doc.getElementById('clipboard-root')?.textContent?.replace(/\s+/g, ' ').trim() || ''
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +1518,7 @@ function mapSectionsInDOM(pmEl) {
 export default function ProjectEditor() {
   const navigate = useNavigate()
   const { id: projectId } = useParams()
+  const { currentUser } = useAuth()
 
   const [projectMeta, setProjectMeta] = useState(null)
   const [pages, setPages] = useState([])
@@ -679,6 +1528,9 @@ export default function ProjectEditor() {
   const [activeHeading, setActiveHeading] = useState(null)
   // Sections derivadas del contenido del editor (source of truth = editor)
   const [derivedSections, setDerivedSections] = useState([])
+  const [documentOutline, setDocumentOutline] = useState([])
+  const [faqItems, setFaqItems] = useState([])
+  const [seoExpanded, setSeoExpanded] = useState(false)
   const [loadingProject, setLoadingProject] = useState(true)
   const [projectError, setProjectError] = useState('')
   const [isDirty, setIsDirty] = useState(false)
@@ -710,8 +1562,27 @@ export default function ProjectEditor() {
   // Ref al editor único
   const editorRef = useRef(null)
   const saveInFlightRef = useRef(false)
+  const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
+  const activeContentRulesRef = useRef(getPageContentRules(null))
 
   const activePage = pages.find((p) => p.id === activePageId)
+  const projectType = inferProjectType(projectMeta, pages)
+  const {
+    canManageProjectMeta,
+    canManageProjectStructure: canEditProjectStructure,
+    canWriteContent,
+    canUseHandoff,
+    canSendToReview,
+    canReviewDesignerProposals,
+    isDesigner,
+    canEditContentRules,
+  } = useMemo(() => (
+    getProjectEditorCapabilities(currentUser, projectMeta?.companyId)
+  ), [currentUser, projectMeta?.companyId])
+  const availableEditorModes = useMemo(() => (
+    canUseHandoff ? ['brief', 'handoff', 'preview'] : ['brief', 'preview']
+  ), [canUseHandoff])
+  const [contentRuleNotice, setContentRuleNotice] = useState('')
   const activePageForRead = useMemo(() => {
     if (!activePage) return null
     if (editorMode === 'brief' && editorRef.current && activePage.id === activePageId) {
@@ -728,6 +1599,24 @@ export default function ProjectEditor() {
   const sectionReviewActivities = useMemo(() => (
     activity.filter((item) => isUnreadSectionActivity(item))
   ), [activity])
+
+  useEffect(() => {
+    activeSeoMetadataRef.current = getPageSeoMetadata(activePage)
+  }, [activePageId, activePage?.seoMetadata])
+
+  useEffect(() => {
+    activeContentRulesRef.current = getPageContentRules(activePage)
+  }, [activePageId, activePage?.contentRules])
+
+  useEffect(() => {
+    setContentRuleNotice('')
+  }, [activePageId])
+
+  useEffect(() => {
+    if (!availableEditorModes.includes(editorMode)) {
+      setEditorMode('brief')
+    }
+  }, [availableEditorModes, editorMode])
 
   // ── Contenido inicial para el editor ──
   const initialContentRef = useRef('<p></p>')
@@ -750,23 +1639,27 @@ export default function ProjectEditor() {
         const data = await apiFetch(`/api/projects/${projectId}`)
         if (!active) return
 
-        const nextPages = data.pages.map(mapPersistedPage)
+        const loadedProjectType = inferProjectType(data.project, data.pages)
+        const nextPages = data.pages.map((page) => mapPersistedPage(page, loadedProjectType))
         const firstPage = nextPages[0]
         const initialSections = firstPage?.sections || []
 
-        setProjectMeta(data.project)
+        setProjectMeta({ ...data.project, projectType: loadedProjectType })
         setPages(nextPages)
         setActivePageId(firstPage?.id || null)
-        setActiveSectionId(initialSections[0]?.id || null)
-        setDerivedSections(initialSections.map((section) => ({
+        setActiveSectionId(loadedProjectType === 'page' ? initialSections[0]?.id || null : null)
+        setDerivedSections(loadedProjectType === 'page' ? initialSections.map((section) => ({
           id: section.id,
           name: section.name,
           headings: [],
           isEmpty: false,
-        })))
+        })) : [])
+        setDocumentOutline([])
+        setFaqItems([])
         initialContentRef.current = firstPage?.fullContent || '<p></p>'
         setIsDirty(false)
         setSaveMessage('')
+        setContentRuleNotice('')
       } catch (error) {
         if (!active) return
         setProjectError(error.message || 'No se pudo cargar el proyecto')
@@ -858,9 +1751,24 @@ export default function ProjectEditor() {
   const handleDocUpdate = useCallback((editor) => {
     if (isAutoRemoving.current || isRenumberingSections.current) return
 
-    let sections = deriveSectionsFromDoc(editor)
     setIsDirty(true)
     setSaveMessage('')
+
+    if (projectType === 'document') {
+      setDocumentOutline(deriveDocumentOutline(editor))
+      setDerivedSections([])
+      setFaqItems([])
+      return
+    }
+
+    if (projectType === 'faq') {
+      setFaqItems(deriveFaqItems(editor))
+      setDocumentOutline([])
+      setDerivedSections([])
+      return
+    }
+
+    let sections = deriveSectionsFromDoc(editor)
 
     // Si el doc tiene contenido pero no hay secciones (usuario escribió sin crear sección),
     // auto-insertar un identificador "Sección 1" al principio del documento.
@@ -936,12 +1844,24 @@ export default function ProjectEditor() {
         }
       }
     }
-  }, [renumberAutoSections, syncProtectedEmptySections])
+  }, [projectType, renumberAutoSections, syncProtectedEmptySections])
 
   // ── Editor listo: guardar ref y derivar secciones iniciales ──
   const handleEditorReady = useCallback((editor) => {
     editorRef.current = editor
     protectedEmptySectionIds.current = new Set()
+    if (projectType === 'document') {
+      setDocumentOutline(deriveDocumentOutline(editor))
+      setDerivedSections([])
+      setFaqItems([])
+      return
+    }
+    if (projectType === 'faq') {
+      setFaqItems(deriveFaqItems(editor))
+      setDerivedSections([])
+      setDocumentOutline([])
+      return
+    }
     if (renumberAutoSections(editor)) {
       const sections = deriveSectionsFromDoc(editor)
       setDerivedSections(sections)
@@ -949,7 +1869,7 @@ export default function ProjectEditor() {
     }
     const sections = deriveSectionsFromDoc(editor)
     setDerivedSections(sections)
-  }, [renumberAutoSections])
+  }, [projectType, renumberAutoSections])
 
   const snapshotActivePage = useCallback(() => {
     if (!editorRef.current || !activePageId) return null
@@ -957,14 +1877,16 @@ export default function ProjectEditor() {
     const html = editorRef.current.getHTML()
     const json = editorRef.current.getJSON()
     const sections = parseSectionsFromHtml(html)
+    const seoMetadata = getPageSeoMetadata({ seoMetadata: activeSeoMetadataRef.current })
+    const contentRules = getPageContentRules({ contentRules: activeContentRulesRef.current })
 
     setPages((prev) => prev.map((page) => (
       page.id === activePageId
-        ? { ...page, fullContent: html, contentJson: json, sections }
+        ? { ...page, fullContent: html, contentJson: json, sections, seoMetadata, contentRules }
         : page
     )))
 
-    return { html, json, sections }
+    return { html, json, sections, seoMetadata, contentRules }
   }, [activePageId])
 
   const loadPageIntoEditor = useCallback((page, shouldScroll = true) => {
@@ -973,6 +1895,23 @@ export default function ProjectEditor() {
     const content = page.fullContent || buildDocumentHTML(page.sections)
     protectedEmptySectionIds.current = new Set()
     editorRef.current.commands.setContent(content)
+
+    if (projectType === 'document') {
+      setDocumentOutline(deriveDocumentOutline(editorRef.current))
+      setDerivedSections([])
+      setFaqItems([])
+      setActiveSectionId(null)
+      return
+    }
+
+    if (projectType === 'faq') {
+      setFaqItems(deriveFaqItems(editorRef.current))
+      setDerivedSections([])
+      setDocumentOutline([])
+      setActiveSectionId(null)
+      return
+    }
+
     renumberAutoSections(editorRef.current)
 
     const sections = deriveSectionsFromDoc(editorRef.current)
@@ -985,10 +1924,10 @@ export default function ProjectEditor() {
     if (shouldScroll && firstId) {
       setScrollRequest({ type: 'section', sectionId: firstId, requestId: Date.now() })
     }
-  }, [renumberAutoSections])
+  }, [projectType, renumberAutoSections])
 
   const saveProjectPages = useCallback(async (source = 'manual') => {
-    if (!projectId || !activePage || saveInFlightRef.current) return false
+    if (!projectId || !activePage || saveInFlightRef.current || !canWriteContent) return false
 
     const snapshot = snapshotActivePage()
     const payload = pages.map((page) => {
@@ -998,6 +1937,8 @@ export default function ProjectEditor() {
           name: page.name,
           contentHtml: snapshot.html,
           contentJson: snapshot.json,
+          seoMetadata: snapshot.seoMetadata,
+          contentRules: snapshot.contentRules,
           version: page.version,
           reviewStatus: page.reviewStatus || 'draft',
           reviewBaselineVersionId: page.reviewBaselineVersionId || null,
@@ -1011,6 +1952,8 @@ export default function ProjectEditor() {
         name: page.name,
         contentHtml: page.fullContent || buildDocumentHTML(page.sections),
         contentJson: page.contentJson || null,
+        seoMetadata: getPageSeoMetadata(page),
+        contentRules: getPageContentRules(page),
         version: page.version,
         reviewStatus: page.reviewStatus || 'draft',
         reviewBaselineVersionId: page.reviewBaselineVersionId || null,
@@ -1030,10 +1973,22 @@ export default function ProjectEditor() {
         body: JSON.stringify({ pages: payload, source, sectionEvents }),
       })
 
-      const persistedPages = data.pages.map(mapPersistedPage)
+      const persistedPages = data.pages.map((page) => {
+        const mappedPage = mapPersistedPage(page, projectType)
+        if (mappedPage.id !== activePageId) return mappedPage
+        return {
+          ...mappedPage,
+          seoMetadata: getPageSeoMetadata({ seoMetadata: activeSeoMetadataRef.current }),
+          contentRules: getPageContentRules({ contentRules: activeContentRulesRef.current }),
+        }
+      })
       setPages(persistedPages)
       setIsDirty(false)
-      setSaveMessage(source === 'autosave' ? 'Autoguardado' : 'Guardado')
+      setSaveMessage(
+        data.proposalSaved
+          ? (source === 'autosave' ? 'Propuesta autoguardada' : 'Propuesta guardada')
+          : (source === 'autosave' ? 'Autoguardado' : 'Guardado')
+      )
       if (source !== 'autosave' || sectionEvents.length > 0) {
         loadSidePanelData()
       }
@@ -1045,13 +2000,14 @@ export default function ProjectEditor() {
       saveInFlightRef.current = false
       setIsSaving(false)
     }
-  }, [activePage, activePageId, loadSidePanelData, pages, projectId, snapshotActivePage])
+  }, [activePage, activePageId, canWriteContent, loadSidePanelData, pages, projectId, snapshotActivePage])
 
   async function handleSave() {
     await saveProjectPages('manual')
   }
 
   async function sendPageToReview() {
+    if (!canEditProjectStructure) return
     if (!activePageId || isSaving) return
 
     const saved = await saveProjectPages('manual')
@@ -1065,7 +2021,7 @@ export default function ProjectEditor() {
         method: 'POST',
         body: JSON.stringify({ versionName: `Revisión: ${activePage?.name || 'Página'}` }),
       })
-      const nextPage = mapPersistedPage(data.page)
+      const nextPage = mapPersistedPage(data.page, projectType)
       setPages((current) => current.map((page) => (
         page.id === nextPage.id ? nextPage : page
       )))
@@ -1083,6 +2039,7 @@ export default function ProjectEditor() {
   }
 
   async function createShareLink() {
+    if (!canEditProjectStructure) return
     try {
       const data = await apiFetch(`/api/projects/${projectId}/share-links`, {
         method: 'POST',
@@ -1100,6 +2057,7 @@ export default function ProjectEditor() {
   }
 
   async function createDeliverable({ title, serviceType }) {
+    if (!canEditProjectStructure) return false
     try {
       const data = await apiFetch(`/api/projects/${projectId}/deliverables`, {
         method: 'POST',
@@ -1116,6 +2074,7 @@ export default function ProjectEditor() {
   }
 
   async function updateDeliverableStatus(deliverableId, status) {
+    if (!canEditProjectStructure) return
     try {
       const data = await apiFetch(`/api/projects/${projectId}/deliverables/${deliverableId}`, {
         method: 'PATCH',
@@ -1128,6 +2087,33 @@ export default function ProjectEditor() {
       loadSidePanelData()
     } catch (error) {
       setPanelError(error.message || 'No se pudo actualizar el entregable')
+    }
+  }
+
+  async function handleDesignerProposalDecision(status) {
+    if (!canReviewDesignerProposals || !activePage?.pendingProposal?.id) return
+
+    setPanelError('')
+    setSaveMessage(status === 'accepted' ? 'Aprobando propuesta...' : 'Rechazando propuesta...')
+
+    try {
+      await apiFetch(`/api/projects/${projectId}/pages/${activePage.id}/proposals/${activePage.pendingProposal.id}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ status }),
+      })
+
+      await loadSidePanelData()
+
+      const data = await apiFetch(`/api/projects/${projectId}`)
+      const loadedProjectType = inferProjectType(data.project, data.pages)
+      const nextPages = data.pages.map((page) => mapPersistedPage(page, loadedProjectType))
+      setProjectMeta({ ...data.project, projectType: loadedProjectType })
+      setPages(nextPages)
+      setSaveMessage(status === 'accepted' ? 'Propuesta aprobada' : 'Propuesta rechazada')
+      setIsDirty(false)
+    } catch (error) {
+      setSaveMessage(error.message || 'No se pudo revisar la propuesta')
+      setPanelError(error.message || 'No se pudo revisar la propuesta')
     }
   }
 
@@ -1187,6 +2173,17 @@ export default function ProjectEditor() {
     setActiveSectionId(sectionId)
     setActiveHeading({ sectionId, headingIndex })
     setScrollRequest({ type: 'heading', sectionId, headingIndex, requestId: Date.now() })
+  }
+
+  function handleDocumentHeadingClick(headingIndex) {
+    setActiveSectionId(null)
+    setActiveHeading({ sectionId: '__document__', headingIndex })
+    setScrollRequest({ type: 'documentHeading', headingIndex, requestId: Date.now() })
+  }
+
+  function handleSeoPanelClick() {
+    setSeoExpanded((value) => !value)
+    setScrollRequest({ type: 'seo', requestId: Date.now() })
   }
 
   function navigateToActivity(item) {
@@ -1253,6 +2250,7 @@ export default function ProjectEditor() {
 
   // ── Agrega una sección nueva via TipTap ──
   function addSection(name, insertAfterSectionId = null) {
+    if (!canEditProjectStructure) return
     if (!editorRef.current) return
 
     const id = `s_${Date.now()}`
@@ -1295,6 +2293,7 @@ export default function ProjectEditor() {
 
   // ── Renombra una sección ──
   function renameSection(sectionId, newName) {
+    if (!canEditProjectStructure) return
     if (!editorRef.current) return
     const { state } = editorRef.current
     state.doc.descendants((node, pos) => {
@@ -1310,6 +2309,7 @@ export default function ProjectEditor() {
   // ── Elimina una sección (desde el sidebar) ──
   // Todas las secciones tienen identificador, la lógica es uniforme para todas.
   function deleteSection(sectionId) {
+    if (!canEditProjectStructure) return
     if (!editorRef.current) return
     const { state } = editorRef.current
     protectedEmptySectionIds.current.delete(sectionId)
@@ -1345,6 +2345,7 @@ export default function ProjectEditor() {
 
   // ── Mover sección (drag & drop reorder) ──
   function moveSection(fromIndex, toIndex) {
+    if (!canEditProjectStructure) return
     if (!editorRef.current || fromIndex === toIndex) return
     const editor = editorRef.current
     const { state } = editor
@@ -1401,14 +2402,20 @@ export default function ProjectEditor() {
 
   // ── Agrega una nueva página ──
   function addPage() {
+    if (!canEditProjectStructure) return
     const id = crypto.randomUUID()
     const sectionId = `s_${Date.now()}`
+    const baseContent = projectType === 'page'
+      ? buildDocumentHTML([{ id: sectionId, name: 'Sección 1', content: '<p></p>' }])
+      : '<p></p>'
     const newPage = {
       id,
       name: 'Nueva página',
-      sections: [{ id: sectionId, name: 'Sección 1', content: '<p></p>' }],
-      fullContent: buildDocumentHTML([{ id: sectionId, name: 'Sección 1', content: '<p></p>' }]),
+      sections: projectType === 'page' ? [{ id: sectionId, name: 'Sección 1', content: '<p></p>' }] : [],
+      fullContent: baseContent,
       contentJson: null,
+      seoMetadata: {},
+      contentRules: {},
       version: 0,
       reviewStatus: 'draft',
       reviewBaselineVersionId: null,
@@ -1422,17 +2429,23 @@ export default function ProjectEditor() {
 
     if (editorRef.current) {
       protectedEmptySectionIds.current = new Set([sectionId])
-      const html = buildDocumentHTML(newPage.sections)
-      editorRef.current.commands.setContent(html)
-      renumberAutoSections(editorRef.current)
-      const sections = deriveSectionsFromDoc(editorRef.current)
-      setDerivedSections(sections)
+      editorRef.current.commands.setContent(baseContent)
+      if (projectType === 'page') {
+        renumberAutoSections(editorRef.current)
+        const sections = deriveSectionsFromDoc(editorRef.current)
+        setDerivedSections(sections)
+      } else {
+        setDerivedSections([])
+        setDocumentOutline(projectType === 'document' ? deriveDocumentOutline(editorRef.current) : [])
+        setFaqItems(projectType === 'faq' ? deriveFaqItems(editorRef.current) : [])
+      }
     }
-    setActiveSectionId(sectionId)
+    setActiveSectionId(projectType === 'page' ? sectionId : null)
   }
 
   // ── Elimina una página (con confirmación) ──
   function deletePage(pageId) {
+    if (!canEditProjectStructure) return
     if (pages.length <= 1) return // no borrar la última página
     const remaining = pages.filter((p) => p.id !== pageId)
     setPages(remaining)
@@ -1450,12 +2463,110 @@ export default function ProjectEditor() {
 
   // ── Renombrar una página ──
   function renamePage(pageId, newName) {
+    if (!canEditProjectStructure) return
     if (!newName.trim()) return
     setPages((prev) =>
       prev.map((p) => (p.id === pageId ? { ...p, name: newName.trim() } : p))
     )
     setIsDirty(true)
     setSaveMessage('')
+  }
+
+  function updateActivePageSeo(field, value) {
+    if (!activePageId) return
+    const activeRules = getPageContentRules({ contentRules: activeContentRulesRef.current })
+    let nextValue = value
+
+    if (field === 'urlSlug') {
+      const normalizedSlug = normalizeSlugValue(value)
+      const currentSlugWords = getSlugWordCount(activeSeoMetadataRef.current.urlSlug)
+      const nextSlugWords = getSlugWordCount(normalizedSlug)
+      if (
+        activeRules.urlSlugMaxWords
+        && nextSlugWords > activeRules.urlSlugMaxWords
+        && nextSlugWords > currentSlugWords
+      ) {
+        setContentRuleNotice(buildDocumentLimitNotice('El URL slug', `${activeRules.urlSlugMaxWords} palabras`))
+        return
+      }
+      nextValue = normalizedSlug
+    }
+
+    if (field === 'titleTag' && activeRules.titleTagMaxChars) {
+      const currentLength = Array.from(activeSeoMetadataRef.current.titleTag || '').length
+      const nextLength = Array.from(String(nextValue || '')).length
+      if (nextLength > activeRules.titleTagMaxChars && nextLength > currentLength) {
+        setContentRuleNotice(buildDocumentLimitNotice('El Title tag', `${activeRules.titleTagMaxChars} caracteres`))
+        return
+      }
+    }
+
+    if (field === 'metaDescription' && activeRules.metaDescriptionMaxChars) {
+      const currentLength = Array.from(activeSeoMetadataRef.current.metaDescription || '').length
+      const nextLength = Array.from(String(nextValue || '')).length
+      if (nextLength > activeRules.metaDescriptionMaxChars && nextLength > currentLength) {
+        setContentRuleNotice(buildDocumentLimitNotice('La Meta description', `${activeRules.metaDescriptionMaxChars} caracteres`))
+        return
+      }
+    }
+
+    const nextSeoMetadata = {
+      ...activeSeoMetadataRef.current,
+      [field]: nextValue,
+    }
+    activeSeoMetadataRef.current = getPageSeoMetadata({ seoMetadata: nextSeoMetadata })
+    setContentRuleNotice('')
+
+    setPages((prev) => prev.map((page) => (
+      page.id === activePageId
+        ? {
+            ...page,
+            seoMetadata: activeSeoMetadataRef.current,
+          }
+        : page
+    )))
+    setIsDirty(true)
+    setSaveMessage('')
+  }
+
+  function updateActivePageContentRules(field, value) {
+    if (!activePageId || !canEditContentRules) return
+
+    const nextRules = normalizeContentRules({
+      ...activeContentRulesRef.current,
+      [field]: value,
+    })
+
+    activeContentRulesRef.current = nextRules
+
+    setPages((prev) => prev.map((page) => (
+      page.id === activePageId
+        ? { ...page, contentRules: nextRules }
+        : page
+    )))
+    setIsDirty(true)
+    setSaveMessage('')
+  }
+
+  async function renameProject(name) {
+    if (!canEditProjectStructure) return
+    const nextName = name.trim()
+    if (!nextName || nextName === projectMeta?.name) return
+    const previousMeta = projectMeta
+
+    setProjectMeta((current) => ({ ...current, name: nextName }))
+
+    try {
+      const data = await apiFetch(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: nextName }),
+      })
+      setProjectMeta((current) => ({ ...current, ...data.project, name: data.project?.name || nextName }))
+      setPanelError('')
+    } catch (error) {
+      setProjectMeta(previousMeta)
+      setPanelError(error.message || 'No se pudo renombrar el proyecto')
+    }
   }
 
   if (loadingProject) {
@@ -1494,16 +2605,18 @@ export default function ProjectEditor() {
       {/* ── CSS global para el editor TipTap ── */}
       <style>{`
         .ProseMirror { outline: none; position: relative; min-height: 40px; }
-        .ProseMirror > * + * { margin-top: 0.5em; }
+        .ProseMirror > * + * { margin-top: 0; }
         .ProseMirror img { max-height: 300px; max-width: 100%; height: auto; display: block; border-radius: 4px; }
-        .ProseMirror p { margin: 0; line-height: 1.6; }
-        .ProseMirror h1 { font-size: 2em; font-weight: 700; margin: 0 0 0.3em; }
-        .ProseMirror h2 { font-size: 1.5em; font-weight: 700; margin: 0 0 0.3em; }
-        .ProseMirror h3 { font-size: 1.25em; font-weight: 600; margin: 0 0 0.3em; }
-        .ProseMirror h4 { font-size: 1.1em; font-weight: 600; margin: 0 0 0.3em; }
-        .ProseMirror h5, .ProseMirror h6 { font-size: 1em; font-weight: 600; margin: 0 0 0.3em; }
-        .ProseMirror ul, .ProseMirror ol { padding-left: 1.4em; margin: 0.3em 0; }
-        .ProseMirror li { margin: 0.1em 0; }
+        .ProseMirror p { margin: 0 0 0.9em; line-height: 1.65; }
+        .ProseMirror h1 { font-size: 2em; line-height: 1.15; font-weight: 700; margin: 1.05em 0 0.45em; }
+        .ProseMirror h2 { font-size: 1.5em; line-height: 1.22; font-weight: 700; margin: 1.15em 0 0.45em; }
+        .ProseMirror h3 { font-size: 1.25em; line-height: 1.28; font-weight: 600; margin: 1em 0 0.35em; }
+        .ProseMirror h4 { font-size: 1.1em; line-height: 1.35; font-weight: 600; margin: 0.9em 0 0.35em; }
+        .ProseMirror h5, .ProseMirror h6 { font-size: 1em; line-height: 1.4; font-weight: 600; margin: 0.8em 0 0.3em; }
+        .ProseMirror ul, .ProseMirror ol { padding-left: 1.45em; margin: 0.35em 0 1em; line-height: 1.65; }
+        .ProseMirror li { margin: 0.25em 0; }
+        .ProseMirror li p { margin: 0.15em 0; }
+        .ProseMirror h1:first-child, .ProseMirror h2:first-child, .ProseMirror h3:first-child { margin-top: 0; }
         .ProseMirror a { color: #0088ff; text-decoration: underline; }
         .ProseMirror [data-cta-button] a { color: #fff; text-decoration: none; }
         .ProseMirror blockquote { border-left: 3px solid #d9d9d9; margin: 0.5em 0; padding-left: 1em; color: #555; }
@@ -1517,16 +2630,28 @@ export default function ProjectEditor() {
       `}</style>
 
       {/* ── NAVBAR ── */}
-      <Navbar
+        <Navbar
         pages={pages}
         activePageId={activePageId}
+        projectName={projectMeta?.name || 'Proyecto'}
+        companyId={projectMeta?.companyId || ''}
+        saveMessage={saveMessage}
+        isDirty={isDirty}
+        isSaving={isSaving}
+        pendingCount={notifications.filter((item) => !item.readAt).length}
+        canManagePages={canEditProjectStructure}
+        canRenameProject={canManageProjectMeta}
+        canSave={canWriteContent}
         onPageClick={handlePageClick}
         onAddPage={addPage}
         onRenamePage={renamePage}
+        onRenameProject={renameProject}
         onRequestDeletePage={(pageId) => setDeletePageConfirm(pageId)}
-        onUndo={() => editorRef.current?.chain().focus().undo().run()}
-        onRedo={() => editorRef.current?.chain().focus().redo().run()}
         onLogoClick={() => navigate('/dashboard')}
+        onBack={() => navigate(projectMeta?.companyId ? `/companies/${projectMeta.companyId}` : '/companies')}
+        onSave={handleSave}
+        onRefreshNotifications={loadSidePanelData}
+        onSettings={() => navigate('/settings')}
         openMenuId={openMenuId}
         onSetOpenMenuId={setOpenMenuId}
       />
@@ -1550,25 +2675,61 @@ export default function ProjectEditor() {
       {/* ── BODY: 3 columnas ── */}
       <div style={styles.body}>
         {/* Sidebar izquierdo: secciones */}
-        <SectionsPanel
-          sections={derivedSections}
-          activeSectionId={activeSectionId}
-          onSectionClick={handleSectionClick}
-          onOpenAddSectionModal={() => openSectionModal(null)}
-          onRename={renameSection}
-          onDelete={deleteSection}
-          onMoveSection={moveSection}
-          activeHeading={activeHeading}
-          onHeadingClick={handleHeadingClick}
-          openMenuId={openMenuId}
-          onSetOpenMenuId={setOpenMenuId}
-        />
+        {projectType === 'page' ? (
+          <SectionsPanel
+            sections={derivedSections}
+            activeSectionId={activeSectionId}
+            onSectionClick={handleSectionClick}
+            onOpenAddSectionModal={() => openSectionModal(null)}
+            onRename={renameSection}
+            onDelete={deleteSection}
+            onMoveSection={moveSection}
+            canManageSections={canEditProjectStructure}
+            activeHeading={activeHeading}
+            onHeadingClick={handleHeadingClick}
+            openMenuId={openMenuId}
+            onSetOpenMenuId={setOpenMenuId}
+            seoExpanded={seoExpanded}
+            onSeoClick={handleSeoPanelClick}
+          />
+        ) : projectType === 'faq' ? (
+          <FaqPanel
+            items={faqItems}
+            activeHeading={activeHeading}
+            onFaqClick={handleDocumentHeadingClick}
+            onExportCsv={() => exportFaqCsv(activePageForRead)}
+            seoExpanded={seoExpanded}
+            onSeoClick={handleSeoPanelClick}
+          />
+        ) : (
+          <DocumentOutlinePanel
+            items={documentOutline}
+            activeHeading={activeHeading}
+            onHeadingClick={handleDocumentHeadingClick}
+            seoExpanded={seoExpanded}
+            onSeoClick={handleSeoPanelClick}
+          />
+        )}
 
         {/* Área central: editor / handoff / preview */}
         {editorMode === 'brief' && (
           <EditorPanel
             projectId={projectId}
+            projectType={projectType}
             initialContent={activePage?.fullContent || initialContentRef.current}
+            seoMetadata={getPageSeoMetadata(activePage)}
+            contentRules={getPageContentRules(activePage)}
+            seoExpanded={seoExpanded}
+            onSeoExpandedChange={setSeoExpanded}
+            onSeoChange={updateActivePageSeo}
+            onContentRulesChange={updateActivePageContentRules}
+            ruleNotice={contentRuleNotice}
+            onRuleNoticeChange={setContentRuleNotice}
+            canEditContentRules={canEditContentRules}
+            canManageSections={canEditProjectStructure}
+            canWriteContent={canWriteContent}
+            onUndo={() => editorRef.current?.chain().focus().undo().run()}
+            onRedo={() => editorRef.current?.chain().focus().redo().run()}
             scrollRequest={scrollRequest}
             onDocUpdate={handleDocUpdate}
             onEditorReady={handleEditorReady}
@@ -1586,6 +2747,7 @@ export default function ProjectEditor() {
         {editorMode === 'handoff' && (
           <HandoffPanel
             page={activePageForRead}
+            projectType={projectType}
             audience={handoffAudience}
           />
         )}
@@ -1600,15 +2762,25 @@ export default function ProjectEditor() {
           notifications={notifications}
           deliverables={deliverables}
           sections={derivedSections}
+          activePage={activePage}
           activePageId={activePageId}
+          projectType={projectType}
+          contentRules={getPageContentRules(activePage)}
+          canEditContentRules={canEditContentRules}
+          onContentRulesChange={updateActivePageContentRules}
           selectedActivityId={selectedActivityId}
           error={panelError}
           notice={panelNotice}
+          canManageProjectMeta={canManageProjectMeta}
+          canReviewDesignerProposals={canReviewDesignerProposals}
+          isDesigner={isDesigner}
           onRefresh={loadSidePanelData}
           shareUrl={shareUrl}
           onCreateShareLink={createShareLink}
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
+          onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
+          onRejectDesignerProposal={() => handleDesignerProposalDecision('rejected')}
           onActivityClick={navigateToActivity}
           onMarkActivityRead={markActivityRead}
         />
@@ -1619,6 +2791,7 @@ export default function ProjectEditor() {
         onSendToReview={sendPageToReview}
         editorMode={editorMode}
         onEditorModeChange={(mode) => {
+          if (!availableEditorModes.includes(mode)) return
           if (mode !== 'brief') {
             const snapshot = snapshotActivePage()
             if (snapshot) initialContentRef.current = snapshot.html
@@ -1627,10 +2800,8 @@ export default function ProjectEditor() {
         }}
         handoffAudience={handoffAudience}
         onHandoffAudienceChange={setHandoffAudience}
-        onSave={handleSave}
-        isSaving={isSaving}
-        isDirty={isDirty}
-        saveMessage={saveMessage}
+        canSendToReview={canSendToReview}
+        availableModes={availableEditorModes}
         disabled={!pages.length}
       />
     </div>
@@ -1640,34 +2811,55 @@ export default function ProjectEditor() {
 // ---------------------------------------------------------------------------
 // Navbar — 3 columnas: [logo + undo/redo] | [pills] | [iconos + save]
 // ---------------------------------------------------------------------------
-function Navbar({ pages, activePageId, onPageClick, onAddPage, onRenamePage, onRequestDeletePage, onUndo, onRedo, onLogoClick, openMenuId, onSetOpenMenuId }) {
+function Navbar({
+  pages,
+  activePageId,
+  projectName,
+  companyId,
+  saveMessage,
+  isDirty,
+  isSaving,
+  pendingCount = 0,
+  canManagePages = true,
+  canRenameProject = true,
+  canSave = true,
+  onPageClick,
+  onAddPage,
+  onRenamePage,
+  onRenameProject,
+  onRequestDeletePage,
+  onLogoClick,
+  onBack,
+  onSave,
+  onRefreshNotifications,
+  onSettings,
+  openMenuId,
+  onSetOpenMenuId,
+}) {
+  const saveLabel = saveMessage || (isDirty ? 'Sin guardar' : 'Guardado')
   return (
-    <div style={styles.navbar}>
+    <div className={navStyles.navbar}>
 
-      {/* Columna izquierda: Logo + Undo/Redo */}
-      <div style={styles.navLeft}>
-        <span style={styles.navLogo} onClick={onLogoClick}>
+      <div className={navStyles.navLeft}>
+        <span className={navStyles.navLogo} onClick={onLogoClick}>
           <span style={{ fontWeight: 200 }}>We</span>
           <span style={{ fontWeight: 700 }}>Brief</span>
         </span>
-        <div style={styles.navUndoRedo}>
-          <button style={styles.navIconBtn} onClick={onUndo} title="Deshacer (Ctrl+Z)">
-            <Undo2 size={20} color="#2a2a2a" />
-          </button>
-          <button style={styles.navIconBtn} onClick={onRedo} title="Rehacer (Ctrl+Y)">
-            <Redo2 size={20} color="#2a2a2a" />
-          </button>
-        </div>
+        <button className={navStyles.navBackBtn} onClick={onBack} title={companyId ? 'Volver a la empresa' : 'Volver a empresas'}>
+          <ArrowLeft size={18} />
+        </button>
+        <ProjectNameInput name={projectName} onRename={canRenameProject ? onRenameProject : null} />
       </div>
 
       {/* Columna central: Pills de páginas */}
-      <div style={styles.navCenter}>
+      <div className={navStyles.navCenter}>
         {pages.map((page) => (
           <PagePill
             key={page.id}
             page={page}
             isActive={page.id === activePageId}
             canDelete={pages.length > 1}
+            canManagePages={canManagePages}
             onClick={() => onPageClick(page.id)}
             onRename={(name) => onRenamePage(page.id, name)}
             onRequestDelete={() => onRequestDeletePage(page.id)}
@@ -1676,24 +2868,79 @@ function Navbar({ pages, activePageId, onPageClick, onAddPage, onRenamePage, onR
             onCloseMenu={() => onSetOpenMenuId(null)}
           />
         ))}
-        <button style={styles.navPillAdd} onClick={onAddPage} title="Agregar página">
-          <Plus size={16} color="#2a2a2a" />
-        </button>
+        {canManagePages && (
+          <button className={navStyles.navPillAdd} onClick={onAddPage} title="Agregar página">
+            <Plus size={16} color="#2a2a2a" />
+          </button>
+        )}
       </div>
 
       {/* Columna derecha: Iconos + Save */}
-      <div style={styles.navRight}>
-        <div style={styles.navIcons}>
-          <button style={styles.navIconBtn} title="Perfil">
+      <div className={navStyles.navRight}>
+        <span className={navStyles.navSaveStatus}>{saveLabel}</span>
+        <button
+          type="button"
+          className={`${navStyles.navSaveBtn} ${isSaving ? navStyles.navSaveBtnDisabled : ''}`}
+          onClick={onSave}
+          disabled={isSaving || !canSave}
+        >
+          {isSaving ? 'Guardando...' : 'Guardar'}
+        </button>
+        <div className={navStyles.navIcons}>
+          <button className={navStyles.navIconBtn} title="Ajustes de cuenta" onClick={onSettings}>
             <User size={20} color="#2a2a2a" />
           </button>
-          <button style={styles.navIconBtn} title="Notificaciones">
+          <button className={navStyles.navIconBtn} title={pendingCount > 0 ? `${pendingCount} notificaciones pendientes` : 'Actualizar notificaciones'} onClick={onRefreshNotifications}>
             <Bell size={20} color="#2a2a2a" />
+            {pendingCount > 0 && <span className={navStyles.navBadge}>{pendingCount}</span>}
           </button>
         </div>
       </div>
 
     </div>
+  )
+}
+
+function ProjectNameInput({ name, onRename }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(name)
+
+  useEffect(() => setDraft(name), [name])
+
+  function commit() {
+    setEditing(false)
+    const next = draft.trim()
+    if (next && next !== name) onRename?.(next)
+    else setDraft(name)
+  }
+
+  if (editing) {
+    return (
+      <input
+        className={navStyles.projectNameInput}
+        value={draft}
+        autoFocus
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit()
+          if (event.key === 'Escape') {
+            setDraft(name)
+            setEditing(false)
+          }
+        }}
+      />
+    )
+  }
+
+  return (
+    onRename ? (
+      <button type="button" className={navStyles.projectNameBtn} onClick={() => setEditing(true)} title="Editar nombre del proyecto">
+        {name}
+      </button>
+    ) : (
+      <span className={navStyles.projectNameReadOnly}>{name}</span>
+    )
   )
 }
 
@@ -1704,15 +2951,17 @@ function FloatingEditorBar({
   onEditorModeChange,
   handoffAudience,
   onHandoffAudienceChange,
-  onSave,
-  isSaving,
-  isDirty,
-  saveMessage,
+  availableModes = ['brief', 'handoff', 'preview'],
+  canSendToReview = true,
   disabled,
 }) {
   const reviewReady = reviewStatus !== 'draft'
   const statusLabel = reviewReady ? 'En revisión' : 'Draft'
-  const saveLabel = saveMessage || (isDirty ? 'Sin guardar' : 'Guardado')
+  const modeOptions = [
+    { id: 'brief', label: 'Brief', icon: FileText },
+    { id: 'handoff', label: 'Handoff', icon: MousePointerClick },
+    { id: 'preview', label: 'Preview', icon: Eye },
+  ].filter((mode) => availableModes.includes(mode.id))
 
   return (
     <div style={styles.floatingBar} aria-label="Controles de editor">
@@ -1724,10 +2973,10 @@ function FloatingEditorBar({
           type="button"
           style={{
             ...styles.floatingReviewBtn,
-            ...((isSaving || reviewReady || disabled) ? styles.floatingBtnDisabled : {}),
+            ...((reviewReady || disabled) ? styles.floatingBtnDisabled : {}),
           }}
           onClick={onSendToReview}
-          disabled={isSaving || reviewReady || disabled}
+          disabled={reviewReady || disabled || !canSendToReview}
           title={reviewReady ? 'La página ya está en revisión' : 'Crear baseline y activar alertas de revisión'}
         >
           Enviar a revisión
@@ -1737,11 +2986,7 @@ function FloatingEditorBar({
       <div style={styles.floatingDivider} />
 
       <div style={styles.floatingSegment} aria-label="Modo del editor">
-        {[
-          { id: 'brief', label: 'Brief', icon: FileText },
-          { id: 'handoff', label: 'Handoff', icon: MousePointerClick },
-          { id: 'preview', label: 'Preview', icon: Eye },
-        ].map((mode) => {
+        {modeOptions.map((mode) => {
           const Icon = mode.icon
           const active = editorMode === mode.id
           return (
@@ -1781,29 +3026,12 @@ function FloatingEditorBar({
           </div>
         </>
       )}
-
-      <div style={styles.floatingDivider} />
-
-      <div style={styles.floatingGroup}>
-        <span style={styles.floatingSaveStatus}>{saveLabel}</span>
-        <button
-          type="button"
-          style={{
-            ...styles.floatingSaveBtn,
-            ...((isSaving || disabled) ? styles.floatingBtnDisabled : {}),
-          }}
-          onClick={onSave}
-          disabled={isSaving || disabled}
-        >
-          {isSaving ? 'Guardando...' : 'Guardar'}
-        </button>
-      </div>
     </div>
   )
 }
 
 // Pill individual de página con menú contextual (renombrar / eliminar)
-function PagePill({ page, isActive, canDelete, onClick, onRename, onRequestDelete, menuOpen, onOpenMenu, onCloseMenu }) {
+function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, onRename, onRequestDelete, menuOpen, onOpenMenu, onCloseMenu }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(page.name)
 
@@ -1815,15 +3043,17 @@ function PagePill({ page, isActive, canDelete, onClick, onRename, onRequestDelet
     else setDraft(page.name)
   }
 
+  const wrapperClassName = `${navStyles.navPillWrapper} ${isActive ? navStyles.navPillWrapperActive : ''}`
+  const pillClassName = `${isActive ? navStyles.navPillActive : navStyles.navPill} ${!canManagePages ? navStyles.navPillNoMenu : ''}`
+  const inputClassName = `${navStyles.navPillInput} ${!canManagePages ? navStyles.navPillInputNoMenu : ''} ${isActive ? navStyles.navPillInputActive : navStyles.navPillInputInactive}`
+  const menuButtonClassName = `${navStyles.navPillMenuBtn} ${isActive ? navStyles.navPillMenuBtnActive : navStyles.navPillMenuBtnInactive}`
+
   return (
-    <div style={{ ...styles.navPillWrapper, ...(isActive ? styles.navPillWrapperActive : {}), position: 'relative' }}>
+    <div className={wrapperClassName}>
       {editing ? (
         <input
-          style={{
-            ...styles.navPillInput,
-            color: isActive ? '#f2f2f2' : '#2a2a2a',
-            backgroundColor: 'transparent',
-          }}
+          className={inputClassName}
+          style={{ backgroundColor: 'transparent' }}
           value={draft}
           autoFocus
           onChange={(e) => setDraft(e.target.value)}
@@ -1833,30 +3063,32 @@ function PagePill({ page, isActive, canDelete, onClick, onRename, onRequestDelet
         />
       ) : (
         <button
-          style={isActive ? styles.navPillActive : styles.navPill}
+          className={pillClassName}
           onClick={onClick}
         >
           {page.name}
         </button>
       )}
-      <button
-        style={{ ...styles.navPillMenuBtn, color: isActive ? '#f2f2f2' : '#999' }}
-        onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
-        title="Opciones"
-      >
-        <MoreVertical size={14} />
-      </button>
-      {menuOpen && (
-        <div style={styles.navPillMenu} onMouseLeave={onCloseMenu}>
+      {canManagePages && (
+        <button
+          className={menuButtonClassName}
+          onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
+          title="Opciones"
+        >
+          <MoreVertical size={14} />
+        </button>
+      )}
+      {canManagePages && menuOpen && (
+        <div className={navStyles.navPillMenu} onMouseLeave={onCloseMenu}>
           <div
-            style={styles.navPillMenuItem}
+            className={navStyles.navPillMenuItem}
             onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}
           >
             Renombrar
           </div>
           {canDelete && (
             <div
-              style={{ ...styles.navPillMenuItem, color: '#ef4444' }}
+              className={navStyles.navPillMenuItemDanger}
               onClick={(e) => { e.stopPropagation(); onCloseMenu(); onRequestDelete() }}
             >
               Eliminar
@@ -1912,7 +3144,85 @@ function AddSectionModal({ onConfirm, onSkip, onClose }) {
 // ---------------------------------------------------------------------------
 // SectionsPanel — sidebar izquierdo con la lista de secciones
 // ---------------------------------------------------------------------------
-function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId }) {
+function SeoPanelButton({ active = false, onClick }) {
+  return (
+    <button
+      type="button"
+      className={cx(panelStyles.seoPanelButton, active && panelStyles.seoPanelButtonActive)}
+      onClick={onClick}
+    >
+      <Search size={16} />
+      <span>SEO metadata</span>
+    </button>
+  )
+}
+
+function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoExpanded = false, onSeoClick }) {
+  return (
+    <div className={panelStyles.leftPanel}>
+      <div className={panelStyles.panelHeader}>
+        <span className={panelStyles.panelTitle}>Índice</span>
+      </div>
+      <SeoPanelButton active={seoExpanded} onClick={onSeoClick} />
+      <div className={panelStyles.sectionList}>
+        {items.map((item) => {
+          const isActive = activeHeading?.sectionId === '__document__' && activeHeading?.headingIndex === item.headingIndex
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={isActive ? panelStyles.outlineItemActive : panelStyles.outlineItem}
+              style={{ paddingLeft: 10 + ((item.level - 1) * 12) }}
+              onClick={() => onHeadingClick?.(item.headingIndex)}
+            >
+              <span className={panelStyles.outlineTag}>H{item.level}</span>
+              <span className={panelStyles.outlineText}>{item.text}</span>
+            </button>
+          )
+        })}
+        {items.length === 0 && (
+          <p className={panelStyles.emptyMsg}>Usa H1, H2 o H3 para formar el índice.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FaqPanel({ items = [], activeHeading, onFaqClick, onExportCsv, seoExpanded = false, onSeoClick }) {
+  return (
+    <div className={panelStyles.leftPanel}>
+      <div className={panelStyles.panelHeader}>
+        <span className={panelStyles.panelTitle}>Preguntas frecuentes</span>
+        <button className={panelStyles.panelAddBtn} onClick={onExportCsv} title="Exportar CSV">
+          <Download size={20} color="#2a2a2a" />
+        </button>
+      </div>
+      <SeoPanelButton active={seoExpanded} onClick={onSeoClick} />
+      <div className={panelStyles.sectionList}>
+        {items.map((item, index) => {
+          const isActive = activeHeading?.sectionId === '__document__' && activeHeading?.headingIndex === item.headingIndex
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={isActive ? panelStyles.faqItemActive : panelStyles.faqItem}
+              onClick={() => onFaqClick?.(item.headingIndex)}
+            >
+              <span className={panelStyles.faqItemKicker}>Pregunta Frecuente {index + 1}</span>
+              <span className={panelStyles.faqQuestion}>{item.question}</span>
+              <span className={panelStyles.faqAnswer}>{item.answer || 'Sin respuesta todavía'}</span>
+            </button>
+          )
+        })}
+        {items.length === 0 && (
+          <p className={panelStyles.emptyMsg}>Pega o escribe preguntas como H2 y respuestas como párrafos.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -1942,14 +3252,17 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSec
   }
 
   return (
-    <div style={styles.leftPanel}>
-      <div style={styles.panelHeader}>
-        <span style={styles.panelTitle}>Page sections</span>
-        <button style={styles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar sección">
-          <Plus size={24} color="#2a2a2a" />
-        </button>
+    <div className={panelStyles.leftPanel}>
+      <div className={panelStyles.panelHeader}>
+        <span className={panelStyles.panelTitle}>Page sections</span>
+        {canManageSections && (
+          <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar sección">
+            <Plus size={24} color="#2a2a2a" />
+          </button>
+        )}
       </div>
-      <div style={styles.sectionList} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      <SeoPanelButton active={seoExpanded} onClick={onSeoClick} />
+      <div className={panelStyles.sectionList} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         {sections.map((section, i) => (
           <SectionItem
             key={section.id}
@@ -1966,7 +3279,8 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSec
             isDragging={dragIndex === i}
             showDropBefore={dropTargetIndex === i}
             showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
-            canDrag={sections.length > 1}
+            canDrag={canManageSections && sections.length > 1}
+            canManageSection={canManageSections}
             onDragStart={() => setDragIndex(i)}
             onDragEnd={handleDragEnd}
             onDragOver={(e) => handleDragOver(e, i)}
@@ -1976,7 +3290,7 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSec
           />
         ))}
         {sections.length === 0 && (
-          <p style={styles.emptyMsg}>Sin secciones. Agregá una con +</p>
+          <p className={panelStyles.emptyMsg}>Sin secciones. Agregá una con +</p>
         )}
       </div>
     </div>
@@ -1984,7 +3298,7 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSec
 }
 
 // Ítem de sección: nav-button (Tag + nombre + menú) + lista de headings
-function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu }) {
+function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu }) {
 
   // ── Scroll al heading correspondiente en el editor al hacer click ──
   function handleHeadingClick(e, index) {
@@ -2006,15 +3320,16 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
 
   return (
     <div
-      style={{ ...styles.sectionItem, opacity: isDragging ? 0.4 : 1 }}
+      className={panelStyles.sectionItem}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
       onDragOver={onDragOver}
     >
-      {showDropBefore && <div style={styles.dropIndicator} />}
+      {showDropBefore && <div className={panelStyles.dropIndicator} />}
       <div
-        style={isActive ? styles.sectionNavBtnActive : styles.sectionNavBtn}
+        className={isActive ? panelStyles.sectionNavBtnActive : panelStyles.sectionNavBtn}
         onClick={onClick}
       >
-        <div style={styles.sectionNavLeft}>
+        <div className={panelStyles.sectionNavLeft}>
           {canDrag && (
             <div
               draggable
@@ -2031,7 +3346,7 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
                 onDragStart()
               }}
               onDragEnd={onDragEnd}
-              style={styles.dragHandle}
+              className={panelStyles.dragHandle}
             >
               <GripVertical size={16} color="#999" />
             </div>
@@ -2039,7 +3354,7 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
           <Tag size={18} color="#2a2a2a" strokeWidth={1.8} />
           {editing ? (
             <input
-              style={styles.sectionNameInput}
+              className={panelStyles.sectionNameInput}
               value={draft}
               autoFocus
               onChange={(e) => setDraft(e.target.value)}
@@ -2049,28 +3364,34 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
             />
           ) : (
             <span
-              style={styles.sectionName}
-              onDoubleClick={(e) => { e.stopPropagation(); setEditing(true) }}
+              className={panelStyles.sectionName}
+              onDoubleClick={(e) => {
+                if (!canManageSection) return
+                e.stopPropagation()
+                setEditing(true)
+              }}
             >
               {section.name}
             </span>
           )}
         </div>
 
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <button
-            style={styles.menuBtn}
-            onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
-            title="Opciones"
-          >
-            <MoreVertical size={24} color="#2a2a2a" />
-          </button>
-          {menuOpen && (
-            <div style={styles.menu} onMouseLeave={onCloseMenu}>
-              <div style={styles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}>
+        <div className={panelStyles.menuWrap}>
+          {canManageSection && (
+            <button
+              className={panelStyles.menuBtn}
+              onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
+              title="Opciones"
+            >
+              <MoreVertical size={24} color="#2a2a2a" />
+            </button>
+          )}
+          {canManageSection && menuOpen && (
+            <div className={panelStyles.menu} onMouseLeave={onCloseMenu}>
+              <div className={panelStyles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}>
                 Renombrar
               </div>
-              <div style={{ ...styles.menuItem, color: '#ef4444' }} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onDelete() }}>
+              <div className={cx(panelStyles.menuItem, panelStyles.menuItemDanger)} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onDelete() }}>
                 Eliminar
               </div>
             </div>
@@ -2079,7 +3400,7 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
       </div>
 
       {headings.length > 0 && (
-        <div style={styles.sectionContent}>
+        <div className={panelStyles.sectionContent}>
           {headings.map((h, i) => {
             const isHeadingActive =
               activeHeading?.sectionId === sectionId &&
@@ -2087,27 +3408,14 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
             return (
               <div
                 key={i}
-                style={{
-                  borderLeft: `2px solid ${isHeadingActive ? '#0088ff' : '#e0e0e0'}`,
-                  paddingLeft: 10,
-                  marginBottom: 1,
-                  cursor: 'pointer',
-                }}
+                className={cx(panelStyles.sectionHeadingItem, isHeadingActive && panelStyles.sectionHeadingItemActive)}
                 onClick={(e) => handleHeadingClick(e, i)}
               >
                 <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: h.tag === 'h1' ? 600 : 400,
-                    paddingLeft: h.tag === 'h1' ? 0 : 8,
-                    color: '#2a2a2a',
-                    lineHeight: 1.6,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    display: 'block',
-                    userSelect: 'none',
-                  }}
+                  className={cx(
+                    panelStyles.sectionHeadingText,
+                    h.tag === 'h1' ? panelStyles.sectionHeadingTextLevel1 : panelStyles.sectionHeadingTextNested,
+                  )}
                 >
                   {h.text}
                 </span>
@@ -2116,7 +3424,7 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
           })}
         </div>
       )}
-      {showDropAfter && <div style={styles.dropIndicator} />}
+      {showDropAfter && <div className={panelStyles.dropIndicator} />}
     </div>
   )
 }
@@ -2357,8 +3665,10 @@ function SectionActivityMarkers({ wrapperRef, editor, activities = [], selectedA
 // ---------------------------------------------------------------------------
 // Toolbar — barra de herramientas compartida
 // ---------------------------------------------------------------------------
-function Toolbar({ editor, projectId }) {
+function Toolbar({ editor, projectId, onUndo, onRedo }) {
+  const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
+  const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
 
   useEffect(() => {
     if (!editor) return
@@ -2366,6 +3676,18 @@ function Toolbar({ editor, projectId }) {
     editor.on('transaction', handler)
     return () => editor.off('transaction', handler)
   }, [editor])
+
+  useEffect(() => {
+    if (!openToolbarMenu) return undefined
+
+    function handlePointerDown(event) {
+      if (toolbarRef.current?.contains(event.target)) return
+      setOpenToolbarMenu(null)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [openToolbarMenu])
 
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
@@ -2422,29 +3744,176 @@ function Toolbar({ editor, projectId }) {
     return 'paragraph'
   }
 
+  function applyBlockType(value) {
+    if (!editor) return
+    if (value === 'paragraph') {
+      editor.chain().focus().setParagraph().run()
+    } else {
+      editor.chain().focus().setHeading({ level: parseInt(value) }).run()
+    }
+    setOpenToolbarMenu(null)
+  }
+
+  function getActiveBlockSpacing() {
+    if (!editor) return ''
+    return editor.getAttributes('paragraph')?.textBlockLayout?.blockSpacing
+      || editor.getAttributes('heading')?.textBlockLayout?.blockSpacing
+      || editor.getAttributes('listItem')?.textBlockLayout?.blockSpacing
+      || ''
+  }
+
+  function getActiveAlignment() {
+    if (!editor) return 'left'
+    if (editor.isActive({ textAlign: 'center' })) return 'center'
+    if (editor.isActive({ textAlign: 'right' })) return 'right'
+    if (editor.isActive({ textAlign: 'justify' })) return 'justify'
+    return 'left'
+  }
+
+  function getAlignmentIcon(alignment = getActiveAlignment()) {
+    if (alignment === 'center') return <AlignCenter size={16} />
+    if (alignment === 'right') return <AlignRight size={16} />
+    if (alignment === 'justify') return <AlignJustify size={16} />
+    return <AlignLeft size={16} />
+  }
+
+  function updateSelectedTextBlockLayout(updater) {
+    if (!editor) return
+    editor.commands.focus()
+
+    const { state, view } = editor
+    const { selection } = state
+    const targets = new Map()
+
+    if (selection.empty) {
+      let fallbackTarget = null
+      for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+        const node = selection.$from.node(depth)
+        if (node.type.name === 'listItem') {
+          targets.set(selection.$from.before(depth), node)
+          break
+        }
+        if (!fallbackTarget && TEXT_BLOCK_LAYOUT_TYPES.includes(node.type.name)) {
+          fallbackTarget = { pos: selection.$from.before(depth), node }
+        }
+      }
+      if (targets.size === 0 && fallbackTarget) {
+        targets.set(fallbackTarget.pos, fallbackTarget.node)
+      }
+    } else {
+      state.doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+        if (!TEXT_BLOCK_LAYOUT_TYPES.includes(node.type.name)) return true
+        targets.set(pos, node)
+        return node.type.name !== 'listItem'
+      })
+    }
+
+    if (targets.size === 0) return
+
+    let tr = state.tr
+    let changed = false
+    targets.forEach((node, pos) => {
+      const currentLayout = normalizeTextBlockLayout(node.attrs.textBlockLayout) || {}
+      const nextLayout = normalizeTextBlockLayout(updater(currentLayout))
+      const currentSignature = JSON.stringify(normalizeTextBlockLayout(node.attrs.textBlockLayout) || {})
+      const nextSignature = JSON.stringify(nextLayout || {})
+      if (currentSignature === nextSignature) return
+      tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, textBlockLayout: nextLayout })
+      changed = true
+    })
+
+    if (changed) view.dispatch(tr.scrollIntoView())
+  }
+
+  function applyBlockSpacing(value) {
+    updateSelectedTextBlockLayout((layout) => ({
+      ...layout,
+      blockSpacing: value || null,
+    }))
+    setOpenToolbarMenu(null)
+  }
+
+  function applyIndent(delta) {
+    if (!editor) return
+
+    updateSelectedTextBlockLayout((layout) => ({
+      ...layout,
+      indentLevel: Math.max(0, Math.min(8, (Number(layout.indentLevel) || 0) + delta)),
+    }))
+  }
+
   const disabled = !editor
+  const activeBlockType = getActiveBlockType()
+  const activeAlignment = getActiveAlignment()
+  const blockOptions = [
+    { value: 'paragraph', label: 'Párrafo' },
+    ...[1, 2, 3, 4, 5, 6].map((level) => ({ value: String(level), label: `H${level}` })),
+  ]
+  const alignmentOptions = [
+    { value: 'left', label: 'Izquierda', icon: <AlignLeft size={16} /> },
+    { value: 'center', label: 'Centro', icon: <AlignCenter size={16} /> },
+    { value: 'right', label: 'Derecha', icon: <AlignRight size={16} /> },
+    { value: 'justify', label: 'Justificado', icon: <AlignJustify size={16} /> },
+  ]
 
   return (
-    <div style={styles.toolbar}>
-
-      <select
-        style={{ ...styles.blockSelect, opacity: disabled ? 0.5 : 1 }}
+    <div
+      ref={toolbarRef}
+      className={toolbarStyles.toolbar}
+      onPointerDownCapture={(event) => {
+        if (!openToolbarMenu) return
+        if (event.target.closest?.('[data-toolbar-menu]')) return
+        setOpenToolbarMenu(null)
+      }}
+    >
+      <ToolBtn
         disabled={disabled}
-        value={getActiveBlockType()}
-        onChange={(e) => {
-          if (!editor) return
-          const val = e.target.value
-          if (val === 'paragraph') editor.chain().focus().setParagraph().run()
-          else editor.chain().focus().setHeading({ level: parseInt(val) }).run()
-        }}
-      >
-        <option value="paragraph">Párrafo</option>
-        {[1, 2, 3, 4, 5, 6].map((l) => (
-          <option key={l} value={String(l)}>H{l}</option>
-        ))}
-      </select>
+        onClick={onUndo}
+        title="Deshacer (Ctrl+Z)"
+      ><Undo2 size={16} /></ToolBtn>
 
-      <div style={styles.toolbarSep} />
+      <ToolBtn
+        disabled={disabled}
+        onClick={onRedo}
+        title="Rehacer (Ctrl+Y)"
+      ><Redo2 size={16} /></ToolBtn>
+
+      <div className={toolbarStyles.separator} />
+
+      <div className={toolbarStyles.menu} data-toolbar-menu="">
+        <button
+          type="button"
+          className={cx(
+            toolbarStyles.blockSelectButton,
+            disabled && toolbarStyles.blockSelectButtonDisabled,
+          )}
+          disabled={disabled}
+          onClick={() => setOpenToolbarMenu((value) => value === 'block' ? null : 'block')}
+          title="Estilo de texto"
+        >
+          <span>{blockOptions.find((option) => option.value === activeBlockType)?.label || 'Párrafo'}</span>
+          <ChevronDown size={12} />
+        </button>
+        {openToolbarMenu === 'block' && (
+          <div className={cx(toolbarStyles.dropdown, toolbarStyles.dropdownBlock)}>
+            {blockOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={cx(
+                  toolbarStyles.dropdownItem,
+                  activeBlockType === option.value && toolbarStyles.dropdownItemActive,
+                )}
+                onClick={() => applyBlockType(option.value)}
+              >
+                <span>{option.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={toolbarStyles.separator} />
 
       <ToolBtn
         active={editor?.isActive('bold')}
@@ -2474,21 +3943,133 @@ function Toolbar({ editor, projectId }) {
         title="Tachado (Ctrl+Shift+X)"
       ><Strikethrough size={16} /></ToolBtn>
 
-      <div style={styles.toolbarSep} />
+      <div className={toolbarStyles.separator} />
 
       <label
-        style={{ ...styles.toolBtn, cursor: disabled ? 'default' : 'pointer', position: 'relative' }}
+        className={cx(
+          toolbarStyles.toolLabel,
+          toolbarStyles.toolLabelRelative,
+          disabled && toolbarStyles.toolLabelDisabled,
+        )}
         title="Color de texto"
       >
-        <span style={{ borderBottom: '3px solid #2a2a2a', lineHeight: 1, paddingBottom: 1 }}>A</span>
+        <span className={toolbarStyles.colorTrigger}>
+          <Palette size={14} />
+          <span className={toolbarStyles.textColorSample}>A</span>
+        </span>
         <input
           type="color"
-          style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: disabled ? 'none' : 'auto' }}
+          className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
           onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
         />
       </label>
 
-      <div style={styles.toolbarSep} />
+      <label
+        className={cx(
+          toolbarStyles.toolLabel,
+          toolbarStyles.toolLabelRelative,
+          disabled && toolbarStyles.toolLabelDisabled,
+        )}
+        title="Color de resaltado"
+      >
+        <span className={toolbarStyles.highlightSample}>H</span>
+        <input
+          type="color"
+          className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
+          defaultValue="#fef08a"
+          onChange={(e) => editor?.chain().focus().setHighlight({ color: e.target.value }).run()}
+        />
+      </label>
+
+      <div className={toolbarStyles.separator} />
+
+      <div className={toolbarStyles.menu} data-toolbar-menu="">
+        <ToolBtn
+          active={openToolbarMenu === 'align'}
+          disabled={disabled}
+          onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
+          title="Alineación"
+        >
+          {getAlignmentIcon(activeAlignment)}
+          <ChevronDown size={12} />
+        </ToolBtn>
+        {openToolbarMenu === 'align' && (
+          <div className={toolbarStyles.dropdown}>
+            {alignmentOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={cx(
+                  toolbarStyles.dropdownItem,
+                  activeAlignment === option.value && toolbarStyles.dropdownItemActive,
+                )}
+                onClick={() => {
+                  editor?.chain().focus().setTextAlign(option.value).run()
+                  setOpenToolbarMenu(null)
+                }}
+              >
+                {option.icon}
+                <span>{option.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={toolbarStyles.menu} data-toolbar-menu="">
+        <ToolBtn
+          active={openToolbarMenu === 'spacing'}
+          disabled={disabled}
+          onClick={() => setOpenToolbarMenu((value) => value === 'spacing' ? null : 'spacing')}
+          title="Interlineado y espacio de párrafo"
+        >
+          <ListCollapse size={16} />
+          <ChevronDown size={12} />
+        </ToolBtn>
+        {openToolbarMenu === 'spacing' && (
+          <div className={toolbarStyles.dropdown}>
+            <button
+              type="button"
+              className={cx(
+                toolbarStyles.dropdownItem,
+                getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
+              )}
+              onClick={() => applyBlockSpacing('')}
+            >
+              <ListCollapse size={16} />
+              <span>Predeterminado</span>
+            </button>
+            {Object.entries(BLOCK_SPACING_PRESETS).map(([key, preset]) => (
+              <button
+                key={key}
+                type="button"
+                className={cx(
+                  toolbarStyles.dropdownItem,
+                  getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
+                )}
+                onClick={() => applyBlockSpacing(key)}
+              >
+                <ListCollapse size={16} />
+                <span>{preset.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <ToolBtn
+        disabled={disabled}
+        onClick={() => applyIndent(-1)}
+        title="Disminuir sangría"
+      ><IndentDecrease size={16} /></ToolBtn>
+
+      <ToolBtn
+        disabled={disabled}
+        onClick={() => applyIndent(1)}
+        title="Aumentar sangría"
+      ><IndentIncrease size={16} /></ToolBtn>
+
+      <div className={toolbarStyles.separator} />
 
       <ToolBtn
         active={editor?.isActive('bulletList')}
@@ -2511,14 +4092,17 @@ function Toolbar({ editor, projectId }) {
         title="Cita"
       ><Quote size={16} /></ToolBtn>
 
-      <div style={styles.toolbarSep} />
+      <div className={toolbarStyles.separator} />
 
       <TableGridPicker
         disabled={disabled}
+        open={openToolbarMenu === 'table'}
+        onToggle={() => setOpenToolbarMenu((value) => value === 'table' ? null : 'table')}
+        onClose={() => setOpenToolbarMenu(null)}
         onInsert={(rows, cols) => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()}
       />
 
-      <div style={styles.toolbarSep} />
+      <div className={toolbarStyles.separator} />
 
       <ToolBtn
         active={editor?.isActive('link')}
@@ -2535,14 +4119,14 @@ function Toolbar({ editor, projectId }) {
       ><MousePointerClick size={16} /></ToolBtn>
 
       <label
-        style={{ ...styles.toolBtn, cursor: disabled ? 'default' : 'pointer' }}
+        className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
         title="Insertar imagen"
       >
         🖼
         <input
           type="file"
           accept="image/*"
-          style={{ display: 'none' }}
+          className={toolbarStyles.hiddenFileInput}
           onChange={handleImageUpload}
           disabled={disabled}
         />
@@ -2555,12 +4139,12 @@ function Toolbar({ editor, projectId }) {
 function ToolBtn({ children, active, disabled, onClick, title }) {
   return (
     <button
-      style={{
-        ...styles.toolBtn,
-        ...(active ? styles.toolBtnActive : {}),
-        opacity: disabled ? 0.4 : 1,
-        cursor: disabled ? 'default' : 'pointer',
-      }}
+      type="button"
+      className={cx(
+        toolbarStyles.toolBtn,
+        active && toolbarStyles.toolBtnActive,
+        disabled && toolbarStyles.toolBtnDisabled,
+      )}
       onClick={disabled ? undefined : onClick}
       title={title}
     >
@@ -2570,43 +4154,36 @@ function ToolBtn({ children, active, disabled, onClick, title }) {
 }
 
 // Grid picker para insertar tablas con dimensiones personalizadas
-function TableGridPicker({ disabled, onInsert }) {
-  const [open, setOpen] = useState(false)
+function TableGridPicker({ disabled, open, onToggle, onClose, onInsert }) {
   const [hover, setHover] = useState({ r: 0, c: 0 })
   const maxRows = 8
   const maxCols = 8
 
   return (
-    <div style={{ position: 'relative' }}>
-      <ToolBtn disabled={disabled} onClick={() => setOpen((v) => !v)} title="Insertar tabla">
+    <div className={toolbarStyles.tablePickerWrapper} data-toolbar-menu="">
+      <ToolBtn active={open} disabled={disabled} onClick={onToggle} title="Insertar tabla">
         <TableIcon size={16} />
       </ToolBtn>
       {open && (
         <div
-          style={styles.tablePickerDropdown}
+          className={toolbarStyles.tablePickerDropdown}
           onMouseLeave={() => setHover({ r: 0, c: 0 })}
         >
-          <div style={styles.tablePickerLabel}>
+          <div className={toolbarStyles.tablePickerLabel}>
             {hover.r > 0 ? `${hover.r} × ${hover.c}` : 'Elegir tamaño'}
           </div>
-          <div style={styles.tablePickerGrid}>
+          <div className={toolbarStyles.tablePickerGrid}>
             {Array.from({ length: maxRows }, (_, r) => (
-              <div key={r} style={{ display: 'flex', gap: 2 }}>
+              <div key={r} className={toolbarStyles.tablePickerGridRow}>
                 {Array.from({ length: maxCols }, (_, c) => (
                   <div
                     key={c}
                     onMouseEnter={() => setHover({ r: r + 1, c: c + 1 })}
-                    onClick={() => { onInsert(r + 1, c + 1); setOpen(false); setHover({ r: 0, c: 0 }) }}
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 2,
-                      border: '1px solid',
-                      borderColor: (r < hover.r && c < hover.c) ? '#0088ff' : '#d9d9d9',
-                      backgroundColor: (r < hover.r && c < hover.c) ? '#e0f0ff' : '#fff',
-                      cursor: 'pointer',
-                      transition: 'all 0.05s',
-                    }}
+                    onClick={() => { onInsert(r + 1, c + 1); onClose?.(); setHover({ r: 0, c: 0 }) }}
+                    className={cx(
+                      toolbarStyles.tablePickerCell,
+                      r < hover.r && c < hover.c && toolbarStyles.tablePickerCellActive,
+                    )}
                   />
                 ))}
               </div>
@@ -2814,7 +4391,21 @@ function TableInlineButtons({ editor, wrapperRef }) {
 // ---------------------------------------------------------------------------
 function EditorPanel({
   projectId,
+  projectType = 'page',
   initialContent,
+  seoMetadata = {},
+  contentRules = {},
+  seoExpanded = false,
+  onSeoExpandedChange,
+  onSeoChange,
+  onContentRulesChange,
+  ruleNotice = '',
+  onRuleNoticeChange,
+  canEditContentRules = false,
+  canManageSections = false,
+  canWriteContent = true,
+  onUndo,
+  onRedo,
   scrollRequest,
   onDocUpdate,
   onEditorReady,
@@ -2831,7 +4422,31 @@ function EditorPanel({
   const scrollAreaRef = useRef(null)
   const programmaticScrollRef = useRef(null)
   const programmaticScrollRafRef = useRef(null)
+  const normalizedRules = useMemo(() => getPageContentRules({ contentRules }), [contentRules])
+  const rulesRef = useRef(normalizedRules)
+  const onRuleNoticeChangeRef = useRef(onRuleNoticeChange)
   const [activeSectionAddTop, setActiveSectionAddTop] = useState(null)
+  const [wordStats, setWordStats] = useState(EMPTY_WORD_STATS)
+  const ruleWarnings = useMemo(() => (
+    getDocumentRuleWarnings({
+      contentRules: normalizedRules,
+      seoMetadata,
+      documentWords: wordStats.words,
+    })
+  ), [normalizedRules, seoMetadata, wordStats.words])
+
+  const refreshWordStats = useCallback((nextEditor) => {
+    if (projectType !== 'document') return
+    setWordStats(getEditorWordStats(nextEditor))
+  }, [projectType])
+
+  useEffect(() => {
+    rulesRef.current = normalizedRules
+  }, [normalizedRules])
+
+  useEffect(() => {
+    onRuleNoticeChangeRef.current = onRuleNoticeChange
+  }, [onRuleNoticeChange])
 
   const editor = useEditor({
     extensions: [
@@ -2847,22 +4462,91 @@ function EditorPanel({
       Underline,
       TextStyle,
       Color,
+      Highlight.configure({ multicolor: true }),
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      TextBlockLayoutExtension,
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
       TableCell,
       SectionDividerNode,
       CtaButtonNode,
+      GoogleDocsHeadingShortcuts,
     ],
     content: initialContent,
+    editable: canWriteContent,
+    editorProps: {
+      handleTextInput(view, from, to, text) {
+        const liveRules = rulesRef.current
+        if (projectType !== 'document' || !liveRules.documentMaxWords) return false
+        const currentWords = getTextStats(view.state.doc.textBetween(0, view.state.doc.content.size, ' ', ' ')).words
+        const nextText = getEditorTextAfterReplace({ state: view.state }, from, to, text)
+        const nextWords = getTextStats(nextText).words
+        if (nextWords > liveRules.documentMaxWords && nextWords > currentWords) {
+          onRuleNoticeChangeRef.current?.(buildDocumentLimitNotice('El documento', `${liveRules.documentMaxWords} palabras`))
+          return true
+        }
+        onRuleNoticeChangeRef.current?.('')
+        return false
+      },
+      handlePaste(view, event) {
+        const html = event.clipboardData?.getData('text/html') || ''
+        const text = event.clipboardData?.getData('text/plain') || ''
+        const plainLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+        const fallbackLines = plainLines.length > 0 ? plainLines : htmlToPlainLines(html)
+        const { seo } = parsePastePayload({ html, text })
+
+        if (seo.titleTag) onSeoChange?.('titleTag', seo.titleTag)
+        if (seo.metaDescription) onSeoChange?.('metaDescription', seo.metaDescription)
+        if (seo.urlSlug) onSeoChange?.('urlSlug', seo.urlSlug)
+        if (seo.titleTag || seo.metaDescription || seo.urlSlug) onSeoExpandedChange?.(true)
+
+        let nextHtml = null
+        if (projectType === 'page') {
+          nextHtml = buildRichSectionsFromPaste(html, { mode: 'page' }) || buildSectionedHtmlFromPlainLines(fallbackLines) || buildSectionedHtmlFromPaste(html)
+        } else if (projectType === 'faq') {
+          nextHtml = buildRichSectionsFromPaste(html, { mode: 'faq' }) || buildFaqHtmlFromPlainLines(fallbackLines)
+        } else if (projectType === 'document') {
+          nextHtml = buildRichDocumentHtmlFromPaste(html) || buildDocumentHtmlFromPlainLines(fallbackLines)
+        }
+
+        if (!nextHtml) return false
+        const liveRules = rulesRef.current
+        if (projectType === 'document' && liveRules.documentMaxWords) {
+          const insertedText = htmlToTextContent(nextHtml)
+          const currentText = view.state.doc.textBetween(0, view.state.doc.content.size, ' ', ' ')
+          const selectedText = view.state.doc.textBetween(view.state.selection.from, view.state.selection.to, ' ', ' ')
+          const currentWords = getTextStats(currentText).words
+          const selectedWords = getTextStats(selectedText).words
+          const insertedWords = getTextStats(insertedText).words
+          const nextWords = currentWords - selectedWords + insertedWords
+          if (nextWords > liveRules.documentMaxWords && nextWords > currentWords) {
+            onRuleNoticeChangeRef.current?.(buildDocumentLimitNotice('El documento', `${liveRules.documentMaxWords} palabras`))
+            event.preventDefault()
+            return true
+          }
+        }
+        event.preventDefault()
+        editor?.chain().focus().insertContent(nextHtml).run()
+        onRuleNoticeChangeRef.current?.('')
+        return true
+      },
+      transformPastedHTML(html) {
+        if (projectType !== 'page') return stripSectionDividersFromHtml(html)
+        return html
+      },
+    },
     onUpdate({ editor }) {
       onDocUpdate?.(editor)
+      refreshWordStats(editor)
     },
     onSelectionUpdate({ editor }) {
+      refreshWordStats(editor)
       const sectionInfo = getSectionInfoFromSelection(editor)
       if (sectionInfo) onSelectionSectionChange?.(sectionInfo)
     },
     onFocus({ editor }) {
+      refreshWordStats(editor)
       const sectionInfo = getSectionInfoFromSelection(editor)
       if (sectionInfo) onSelectionSectionChange?.(sectionInfo)
     },
@@ -2870,8 +4554,15 @@ function EditorPanel({
 
   // Report editor to parent when ready
   useEffect(() => {
-    if (editor) onEditorReady?.(editor)
-  }, [editor])
+    if (editor) {
+      onEditorReady?.(editor)
+      refreshWordStats(editor)
+    }
+  }, [editor, refreshWordStats])
+
+  useEffect(() => {
+    if (editor) editor.setEditable(canWriteContent)
+  }, [canWriteContent, editor])
 
   useEffect(() => {
     return () => {
@@ -2880,6 +4571,14 @@ function EditorPanel({
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (projectType !== 'document') {
+      setWordStats(EMPTY_WORD_STATS)
+      return
+    }
+    if (editor) refreshWordStats(editor)
+  }, [editor, projectType, refreshWordStats])
 
   // ── Scroll to section when sidebar clicks ──
   useEffect(() => {
@@ -2898,6 +4597,10 @@ function EditorPanel({
     let targetEl = null
     let targetHeadingIndex = 0
 
+    if (scrollRequest.type === 'seo') {
+      targetEl = scrollEl.querySelector('[data-seo-tray]')
+    }
+
     if (scrollRequest.type === 'heading') {
       const headings = mapHeadingsInDOM(pm, firstSectionId)
       targetEl = headings.find(
@@ -2905,6 +4608,11 @@ function EditorPanel({
           heading.sectionId === scrollRequest.sectionId &&
           heading.headingIndex === scrollRequest.headingIndex
       )?.el || null
+      targetHeadingIndex = scrollRequest.headingIndex
+    }
+
+    if (scrollRequest.type === 'documentHeading') {
+      targetEl = Array.from(pm.querySelectorAll('h1, h2, h3'))[scrollRequest.headingIndex] || null
       targetHeadingIndex = scrollRequest.headingIndex
     }
 
@@ -2919,7 +4627,7 @@ function EditorPanel({
     const targetTop = Math.max(0, Math.min(maxScrollTop, rawOffset))
 
     programmaticScrollRef.current = {
-      sectionId: scrollRequest.sectionId,
+      sectionId: scrollRequest.sectionId || '__document__',
       headingIndex: targetHeadingIndex,
       targetTop,
     }
@@ -2952,10 +4660,12 @@ function EditorPanel({
       if ((started && stableFrames >= 4) || frames >= 120) {
         programmaticScrollRef.current = null
         programmaticScrollRafRef.current = null
-        onScrollHeadingChange?.({
-          sectionId: scrollRequest.sectionId,
-          headingIndex: targetHeadingIndex,
-        })
+        if (scrollRequest.type !== 'seo') {
+          onScrollHeadingChange?.({
+            sectionId: scrollRequest.sectionId || '__document__',
+            headingIndex: targetHeadingIndex,
+          })
+        }
         return
       }
 
@@ -2988,6 +4698,18 @@ function EditorPanel({
 
       const containerRect = scrollEl.getBoundingClientRect()
       const triggerY = containerRect.top + OFFSET
+
+      if (projectType !== 'page') {
+        const headings = Array.from(pm.querySelectorAll('h1, h2, h3'))
+        let headingIndex = 0
+        headings.forEach((heading, index) => {
+          if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
+        })
+        if (headings.length > 0) {
+          onScrollHeadingChange?.({ sectionId: '__document__', headingIndex })
+        }
+        return
+      }
 
       const sections = mapSectionsInDOM(pm)
       const headings = mapHeadingsInDOM(pm, firstSectionId)
@@ -3028,7 +4750,7 @@ function EditorPanel({
     scrollEl.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
     return () => scrollEl.removeEventListener('scroll', onScroll)
-  }, [firstSectionId, onScrollHeadingChange])
+  }, [firstSectionId, onScrollHeadingChange, projectType])
 
   useEffect(() => {
     if (!editor || !wrapperRef.current || !activeSectionId) {
@@ -3105,20 +4827,50 @@ function EditorPanel({
 
   if (!editor) return <div style={styles.centerPanel} />
 
+  function focusEditorFromPage(event) {
+    if (!editor) return
+    if (event.target.closest?.('.ProseMirror')) return
+    if (event.target.closest?.('button, input, select, textarea, a, [data-editor-overlay]')) return
+
+    event.preventDefault()
+    editor.commands.focus('end')
+  }
+
   return (
     <div style={styles.centerPanel}>
-      <Toolbar editor={editor} projectId={projectId} />
+      <Toolbar editor={editor} projectId={projectId} onUndo={onUndo} onRedo={onRedo} />
       <TableContextBar editor={editor} />
+      {projectType === 'document' && (
+        null
+      )}
       <div ref={scrollAreaRef} style={styles.editorScrollArea}>
+        <div className={seoRulesStyles.topTrayRow} data-seo-tray="">
+          <div className={seoRulesStyles.topTraySpacer} />
+          <div className={seoRulesStyles.topTraySurface}>
+            <SeoMetadataPanel
+              metadata={seoMetadata}
+              contentRules={normalizedRules}
+              expanded={seoExpanded}
+              onExpandedChange={onSeoExpandedChange}
+              onChange={onSeoChange}
+            />
+          </div>
+        </div>
         <div style={styles.editorPageRow}>
           <TypeLabelsColumn wrapperRef={wrapperRef} editor={editor} />
-          <div style={styles.editorPage}>
+          <div
+            style={{
+              ...styles.editorPage,
+            }}
+            className={seoExpanded ? seoRulesStyles.editorPageExpanded : undefined}
+            onMouseDown={focusEditorFromPage}
+          >
             <div ref={wrapperRef} style={{ ...styles.sectionEditorContent, position: 'relative' }}>
               <EditorContent editor={editor} />
               <TableInlineButtons editor={editor} wrapperRef={wrapperRef} />
               <TableRightClickMenu editor={editor} />
-              {activeSectionId && activeSectionAddTop !== null && (
-                <div style={{ ...styles.canvasAddSectionWrap, top: activeSectionAddTop }}>
+              {projectType === 'page' && canManageSections && activeSectionId && activeSectionAddTop !== null && (
+                <div style={{ ...styles.canvasAddSectionWrap, top: activeSectionAddTop }} data-editor-overlay="">
                   <button
                     style={styles.canvasAddSectionBtn}
                     onClick={() => onOpenAddSectionAfter?.(activeSectionId)}
@@ -3139,6 +4891,337 @@ function EditorPanel({
           />
         </div>
       </div>
+    </div>
+  )
+}
+
+function SeoMetadataPanel({ metadata, contentRules, expanded, onExpandedChange, onChange }) {
+  const titleState = getFieldRuleState(metadata?.titleTag || '', contentRules?.titleTagMinChars, contentRules?.titleTagMaxChars)
+  const metaState = getFieldRuleState(metadata?.metaDescription || '', contentRules?.metaDescriptionMinChars, contentRules?.metaDescriptionMaxChars)
+  const slugWords = getSlugWordCount(metadata?.urlSlug || '')
+  const slugOverLimit = Boolean(contentRules?.urlSlugMaxWords && slugWords > contentRules.urlSlugMaxWords)
+  const panelId = 'seo-metadata-panel'
+
+  return (
+    <div className={seoRulesStyles.seoPanel}>
+      <button
+        type="button"
+        className={seoRulesStyles.seoToggle}
+        onClick={() => onExpandedChange?.(!expanded)}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+      >
+        <Search size={15} />
+        <span>SEO metadata</span>
+        <span className={seoRulesStyles.seoToggleMeta}>
+          {metadata?.titleTag || metadata?.metaDescription || metadata?.urlSlug ? 'Completo' : 'Sin completar'}
+        </span>
+      </button>
+      {expanded && (
+        <div id={panelId} className={seoRulesStyles.seoFields}>
+          <label className={seoRulesStyles.seoField}>
+            <span className={seoRulesStyles.seoFieldMeta}>
+              <span className={seoRulesStyles.seoLabel}>Title tag</span>
+              <span className={cx(seoRulesStyles.seoCounter, (titleState.underMin || titleState.overMax) && seoRulesStyles.seoCounterAlert)}>
+                {titleState.current}
+                {titleState.max ? ` / ${titleState.max}` : ' caracteres'}
+              </span>
+            </span>
+            <input
+              className={cx(seoRulesStyles.seoInput, (titleState.underMin || titleState.overMax) && seoRulesStyles.seoInputAlert)}
+              value={metadata?.titleTag || ''}
+              onChange={(event) => onChange?.('titleTag', event.target.value)}
+              placeholder="Título descriptivo para buscadores"
+            />
+          </label>
+          <label className={seoRulesStyles.seoField}>
+            <span className={seoRulesStyles.seoFieldMeta}>
+              <span className={seoRulesStyles.seoLabel}>Meta description</span>
+              <span className={cx(seoRulesStyles.seoCounter, (metaState.underMin || metaState.overMax) && seoRulesStyles.seoCounterAlert)}>
+                {metaState.current}
+                {metaState.max ? ` / ${metaState.max}` : ' caracteres'}
+              </span>
+            </span>
+            <textarea
+              className={cx(seoRulesStyles.seoTextarea, (metaState.underMin || metaState.overMax) && seoRulesStyles.seoInputAlert)}
+              value={metadata?.metaDescription || ''}
+              onChange={(event) => onChange?.('metaDescription', event.target.value)}
+              placeholder="Resumen breve y específico de la página"
+              rows={2}
+            />
+          </label>
+          <label className={seoRulesStyles.seoField}>
+            <span className={seoRulesStyles.seoFieldMeta}>
+              <span className={seoRulesStyles.seoLabel}>URL slug</span>
+              <span className={cx(seoRulesStyles.seoCounter, slugOverLimit && seoRulesStyles.seoCounterAlert)}>
+                {slugWords}
+                {contentRules?.urlSlugMaxWords ? ` / ${contentRules.urlSlugMaxWords} palabras` : ' palabras'}
+              </span>
+            </span>
+            <input
+              className={cx(seoRulesStyles.seoInput, slugOverLimit && seoRulesStyles.seoInputAlert)}
+              value={metadata?.urlSlug || ''}
+              onChange={(event) => onChange?.('urlSlug', event.target.value)}
+              placeholder="mi-url-de-pagina"
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DocumentRulesCard({
+  rules,
+  canEdit = false,
+  onChange,
+}) {
+  const [editingRules, setEditingRules] = useState(false)
+  const isEditing = canEdit && editingRules
+
+  return (
+    <div className={seoRulesStyles.rulesDock}>
+      <aside className={seoRulesStyles.rulesCard} aria-labelledby="document-rules-title">
+        <div className={seoRulesStyles.rulesHeader}>
+          <span id="document-rules-title" className={seoRulesStyles.rulesTitle}>Reglas de contenido</span>
+          {canEdit && (
+            <button
+              type="button"
+              className={cx(seoRulesStyles.rulesEditButton, isEditing && seoRulesStyles.rulesEditButtonActive)}
+              onClick={() => setEditingRules((value) => !value)}
+              title={isEditing ? 'Dejar de editar reglas' : 'Editar reglas'}
+              aria-pressed={isEditing}
+            >
+              <Pencil size={13} />
+            </button>
+          )}
+        </div>
+
+        <div className={seoRulesStyles.rulesList}>
+          <DocumentRuleRow
+            label="Title tag"
+            unit="Caracteres"
+            minValue={rules.titleTagMinChars}
+            maxValue={rules.titleTagMaxChars}
+            canEdit={isEditing}
+            onMinChange={(value) => onChange?.('titleTagMinChars', value)}
+            onMaxChange={(value) => onChange?.('titleTagMaxChars', value)}
+          />
+          <DocumentRuleRow
+            label="Meta description"
+            unit="Caracteres"
+            minValue={rules.metaDescriptionMinChars}
+            maxValue={rules.metaDescriptionMaxChars}
+            canEdit={isEditing}
+            onMinChange={(value) => onChange?.('metaDescriptionMinChars', value)}
+            onMaxChange={(value) => onChange?.('metaDescriptionMaxChars', value)}
+          />
+          <DocumentRuleRow
+            label="URL slug"
+            unit="Palabras"
+            maxValue={rules.urlSlugMaxWords}
+            canEdit={isEditing}
+            onMaxChange={(value) => onChange?.('urlSlugMaxWords', value)}
+          />
+          <DocumentRuleRow
+            label="Contenido"
+            unit="Palabras"
+            maxValue={rules.documentMaxWords}
+            canEdit={isEditing}
+            onMaxChange={(value) => onChange?.('documentMaxWords', value)}
+          />
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+function DocumentRuleRow({
+  label,
+  unit,
+  minValue = '',
+  maxValue = '',
+  canEdit = false,
+  onMinChange,
+  onMaxChange,
+}) {
+  return (
+    <div className={seoRulesStyles.ruleRow}>
+      <div className={seoRulesStyles.ruleLabelBlock}>
+        <span className={seoRulesStyles.ruleLabel}>{label}</span>
+        <span className={seoRulesStyles.ruleUnit}>{unit}</span>
+      </div>
+      <div className={cx(seoRulesStyles.ruleControls, !onMinChange && seoRulesStyles.ruleControlsSingle)} data-layer="inputs-wrapper">
+        {onMinChange ? (
+          <RuleInlineValue
+            prefix="min"
+            value={minValue}
+            canEdit={canEdit}
+            onChange={onMinChange}
+          />
+        ) : null}
+        <RuleInlineValue
+          prefix="max"
+          value={maxValue}
+          canEdit={canEdit}
+          onChange={onMaxChange}
+        />
+      </div>
+    </div>
+  )
+}
+
+function RuleInlineValue({ prefix, value, canEdit, onChange }) {
+  if (!canEdit) {
+    return (
+      <span className={seoRulesStyles.ruleInputShell} data-layer="input">
+        <span className={seoRulesStyles.ruleProperty}>{prefix}</span>
+        <span className={cx(seoRulesStyles.ruleStaticNumber, seoRulesStyles.ruleStaticNumberReadOnly)}>{value || '---'}</span>
+      </span>
+    )
+  }
+
+  return (
+    <label className={seoRulesStyles.ruleInputShell} data-layer="input">
+      <span className={seoRulesStyles.ruleProperty}>{prefix}</span>
+      <input
+        type="number"
+        min="1"
+        inputMode="numeric"
+        value={value || ''}
+        onChange={(event) => onChange?.(event.target.value)}
+        placeholder="---"
+        className={seoRulesStyles.ruleInput}
+      />
+    </label>
+  )
+}
+
+function ContentRulesPanel({
+  rules,
+  canEdit = false,
+  onChange,
+  metadata,
+  wordStats,
+  warnings = [],
+  notice = '',
+}) {
+  const titleState = getFieldRuleState(metadata?.titleTag || '', rules?.titleTagMinChars, rules?.titleTagMaxChars)
+  const metaState = getFieldRuleState(metadata?.metaDescription || '', rules?.metaDescriptionMinChars, rules?.metaDescriptionMaxChars)
+  const slugWords = getSlugWordCount(metadata?.urlSlug || '')
+  const documentWords = Number(wordStats?.words || 0)
+  const hasRules = hasContentRules(rules)
+  const statusTone = warnings.length > 0 ? styles.rulesStatusAlert : styles.rulesStatusOk
+
+  return (
+    <div style={styles.rulesPanel}>
+      <div style={styles.rulesHeader}>
+        <div>
+          <span style={styles.rulesTitle}>Reglas de contenido</span>
+          <p style={styles.rulesSubtitle}>
+            {hasRules ? 'Se aplican en vivo sobre SEO y el documento.' : 'Sin límites configurados.'}
+          </p>
+        </div>
+        <span style={{ ...styles.rulesStatusBadge, ...statusTone }}>
+          {warnings.length > 0 ? `${warnings.length} alerta${warnings.length === 1 ? '' : 's'}` : 'En rango'}
+        </span>
+      </div>
+
+      <div style={styles.rulesGrid}>
+        <RuleInput
+          label="Title tag mínimo"
+          value={rules.titleTagMinChars}
+          suffix="car."
+          disabled={!canEdit}
+          onChange={(value) => onChange?.('titleTagMinChars', value)}
+        />
+        <RuleInput
+          label="Title tag máximo"
+          value={rules.titleTagMaxChars}
+          suffix="car."
+          disabled={!canEdit}
+          onChange={(value) => onChange?.('titleTagMaxChars', value)}
+        />
+        <RuleInput
+          label="Meta mínimo"
+          value={rules.metaDescriptionMinChars}
+          suffix="car."
+          disabled={!canEdit}
+          onChange={(value) => onChange?.('metaDescriptionMinChars', value)}
+        />
+        <RuleInput
+          label="Meta máximo"
+          value={rules.metaDescriptionMaxChars}
+          suffix="car."
+          disabled={!canEdit}
+          onChange={(value) => onChange?.('metaDescriptionMaxChars', value)}
+        />
+        <RuleInput
+          label="Slug máximo"
+          value={rules.urlSlugMaxWords}
+          suffix="pal."
+          disabled={!canEdit}
+          onChange={(value) => onChange?.('urlSlugMaxWords', value)}
+        />
+        <RuleInput
+          label="Documento máximo"
+          value={rules.documentMaxWords}
+          suffix="pal."
+          disabled={!canEdit}
+          onChange={(value) => onChange?.('documentMaxWords', value)}
+        />
+      </div>
+
+      <div style={styles.rulesMetrics}>
+        <RuleMetric label="Title tag" value={`${titleState.current}${titleState.max ? ` / ${titleState.max}` : ''}`} alert={titleState.underMin || titleState.overMax} />
+        <RuleMetric label="Meta description" value={`${metaState.current}${metaState.max ? ` / ${metaState.max}` : ''}`} alert={metaState.underMin || metaState.overMax} />
+        <RuleMetric label="URL slug" value={`${slugWords}${rules.urlSlugMaxWords ? ` / ${rules.urlSlugMaxWords}` : ''}`} alert={Boolean(rules.urlSlugMaxWords && slugWords > rules.urlSlugMaxWords)} />
+        <RuleMetric label="Documento" value={`${documentWords}${rules.documentMaxWords ? ` / ${rules.documentMaxWords}` : ''}`} alert={Boolean(rules.documentMaxWords && documentWords > rules.documentMaxWords)} />
+      </div>
+
+      {!canEdit && (
+        <p style={styles.rulesReadOnly}>
+          Visible en tiempo real para Content Writer. La edición de reglas queda para manager/editor.
+        </p>
+      )}
+      {notice && <p style={styles.rulesNotice}>{notice}</p>}
+      {warnings.length > 0 && (
+        <div style={styles.rulesWarnings}>
+          {warnings.map((warning) => (
+            <p key={warning} style={styles.rulesWarningItem}>{warning}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RuleInput({ label, value, suffix, disabled, onChange }) {
+  return (
+    <label style={styles.rulesField}>
+      <span style={styles.rulesFieldLabel}>{label}</span>
+      <div style={styles.rulesInputWrap}>
+        <input
+          type="number"
+          min="1"
+          inputMode="numeric"
+          style={{ ...styles.rulesInput, ...(disabled ? styles.rulesInputDisabled : {}) }}
+          value={value || ''}
+          onChange={(event) => onChange?.(event.target.value)}
+          placeholder="Libre"
+          disabled={disabled}
+        />
+        <span style={styles.rulesInputSuffix}>{suffix}</span>
+      </div>
+    </label>
+  )
+}
+
+function RuleMetric({ label, value, alert = false }) {
+  return (
+    <div style={{ ...styles.ruleMetric, ...(alert ? styles.ruleMetricAlert : {}) }}>
+      <span style={styles.ruleMetricLabel}>{label}</span>
+      <strong style={styles.ruleMetricValue}>{value}</strong>
     </div>
   )
 }
@@ -3222,11 +5305,81 @@ function extractLinks(element) {
   return links
 }
 
-function parseHandoffPage(page) {
+function createHandoffBlock(element, currentSection) {
+  const label = blockLabel(element)
+  const text = blockText(element)
+  if (!text && !['img', 'table'].includes(label)) return null
+
+  return {
+    id: `${currentSection.id}-${currentSection.blocks.length}`,
+    label,
+    text,
+    html: element.outerHTML,
+    markdown: blockMarkdown(element),
+    links: extractLinks(element),
+    json: {
+      type: label,
+      text,
+      links: extractLinks(element),
+    },
+  }
+}
+
+function parseHandoffPage(page, projectType = 'page') {
   if (!page) return []
   const doc = htmlToDocument(page.fullContent || buildDocumentHTML(page.sections))
   const root = doc?.getElementById('root')
   if (!root) return []
+
+  if (projectType === 'document') {
+    const currentSection = {
+      id: 'document',
+      name: page.name || 'Documento',
+      blocks: [],
+    }
+    Array.from(root.children).forEach((element) => {
+      if (element.matches?.('div[data-section-divider]')) return
+      const block = createHandoffBlock(element, currentSection)
+      if (block) currentSection.blocks.push(block)
+    })
+    return [currentSection]
+  }
+
+  if (projectType === 'faq') {
+    const sections = []
+    let currentSection = null
+    let titleBlock = null
+
+    Array.from(root.children).forEach((element) => {
+      if (element.matches?.('div[data-section-divider]')) return
+      const tag = element.tagName?.toLowerCase()
+      if (tag === 'h1' && !currentSection) {
+        titleBlock = element
+        return
+      }
+      if (tag === 'h2') {
+        if (currentSection) sections.push(currentSection)
+        currentSection = {
+          id: `faq-${sections.length + 1}`,
+          name: element.textContent?.replace(/\s+/g, ' ').trim() || `Pregunta Frecuente ${sections.length + 1}`,
+          blocks: [],
+        }
+        return
+      }
+      if (!currentSection) {
+        currentSection = {
+          id: 'faq-intro',
+          name: titleBlock?.textContent?.replace(/\s+/g, ' ').trim() || 'Preguntas frecuentes',
+          blocks: [],
+        }
+      }
+      const block = createHandoffBlock(element, currentSection)
+      if (block) currentSection.blocks.push(block)
+    })
+
+    if (currentSection) sections.push(currentSection)
+    return sections
+  }
 
   const sections = []
   let currentSection = null
@@ -3250,23 +5403,8 @@ function parseHandoffPage(page) {
       }
     }
 
-    const label = blockLabel(element)
-    const text = blockText(element)
-    if (!text && !['img', 'table'].includes(label)) return
-
-    currentSection.blocks.push({
-      id: `${currentSection.id}-${currentSection.blocks.length}`,
-      label,
-      text,
-      html: element.outerHTML,
-      markdown: blockMarkdown(element),
-      links: extractLinks(element),
-      json: {
-        type: label,
-        text,
-        links: extractLinks(element),
-      },
-    })
+    const block = createHandoffBlock(element, currentSection)
+    if (block) currentSection.blocks.push(block)
   })
 
   if (currentSection) sections.push(currentSection)
@@ -3287,9 +5425,11 @@ async function copyRich({ text, html }) {
   await navigator.clipboard.writeText(text)
 }
 
-function HandoffPanel({ page, audience }) {
+function HandoffPanel({ page, projectType = 'page', audience }) {
   const [copied, setCopied] = useState('')
-  const sections = useMemo(() => parseHandoffPage(page), [page])
+  const sections = useMemo(() => parseHandoffPage(page, projectType), [page, projectType])
+  const groupCopyLabel = projectType === 'faq' ? 'Pregunta frecuente copiada' : projectType === 'document' ? 'Documento copiado' : 'Sección copiada'
+  const groupButtonLabel = projectType === 'faq' ? 'Copiar FAQ' : projectType === 'document' ? 'Copiar documento' : 'Copiar sección'
 
   async function handleCopy(label, payload) {
     await copyRich(payload)
@@ -3336,9 +5476,9 @@ function HandoffPanel({ page, audience }) {
             <section key={section.id} style={styles.handoffSection}>
               <div style={styles.handoffSectionHeader}>
                 <h3 style={styles.handoffSectionTitle}>{section.name}</h3>
-                <button style={styles.handoffGhostBtn} onClick={() => handleCopy('Sección copiada', { text: sectionText, html: sectionHtml })}>
+                <button style={styles.handoffGhostBtn} onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}>
                   <Copy size={13} />
-                  Copiar sección
+                  {groupButtonLabel}
                 </button>
               </div>
 
@@ -3434,15 +5574,25 @@ function UpdatesPanel({
   notifications = [],
   deliverables = [],
   sections = [],
+  activePage = null,
   activePageId = '',
+  projectType = 'page',
+  contentRules = {},
+  canEditContentRules = false,
+  onContentRulesChange,
   selectedActivityId = null,
   error = '',
   notice = '',
+  canManageProjectMeta = true,
+  canReviewDesignerProposals = false,
+  isDesigner = false,
   onRefresh,
   shareUrl = '',
   onCreateShareLink,
   onCreateDeliverable,
   onUpdateDeliverableStatus,
+  onApproveDesignerProposal,
+  onRejectDesignerProposal,
   onActivityClick,
   onMarkActivityRead,
 }) {
@@ -3471,6 +5621,7 @@ function UpdatesPanel({
     activity.filter((item) => item.eventType !== 'section_edited')
   ), [activity])
   const hasActivity = sectionActivity.length > 0 || generalActivity.length > 0
+  const pendingProposal = activePage?.pendingProposal || null
 
   useEffect(() => {
     if (!selectedActivityId) return
@@ -3493,83 +5644,125 @@ function UpdatesPanel({
   }
 
   return (
-    <div style={styles.rightPanel}>
-      <div style={styles.updatesHeader}>
-        <span style={styles.panelTitle}>Actividad</span>
-        <button style={styles.updatesRefreshBtn} onClick={onRefresh}>Actualizar</button>
+    <div className={panelStyles.rightPanel}>
+      <div className={panelStyles.updatesHeader}>
+        <span className={panelStyles.panelTitle}>Actividad</span>
+        <button className={panelStyles.updatesRefreshBtn} onClick={onRefresh}>Actualizar</button>
       </div>
-      {error && <p style={styles.updatesError}>{error}</p>}
-      {!error && notice && <p style={styles.updatesNotice}>{notice}</p>}
+      {error && <p className={panelStyles.updatesError}>{error}</p>}
+      {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
       {pending.length > 0 && (
-        <div style={styles.pendingBox}>
-          <span style={styles.pendingTitle}>Pendientes</span>
+        <div className={panelStyles.pendingBox}>
+          <span className={panelStyles.pendingTitle}>Pendientes</span>
           {pending.slice(0, 4).map((item) => (
-            <p key={item.id} style={styles.pendingItem}>{item.title}</p>
+            <p key={item.id} className={panelStyles.pendingItem}>{item.title}</p>
           ))}
         </div>
       )}
-      <div style={styles.deliverablesBox}>
-        <span style={styles.pendingTitle}>Entregables</span>
-        <form style={styles.deliverableForm} onSubmit={submitDeliverable}>
-          <input
-            style={styles.deliverableInput}
-            value={deliverableTitle}
-            onChange={(event) => setDeliverableTitle(event.target.value)}
-            placeholder="Nuevo entregable"
-          />
-          <select
-            style={styles.deliverableSelect}
-            value={deliverableServiceType}
-            onChange={(event) => setDeliverableServiceType(event.target.value)}
-          >
-            {DELIVERABLE_SERVICE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-          <button style={styles.deliverableButton} type="submit" disabled={deliverableSubmitting || !deliverableTitle.trim()}>
-            {deliverableSubmitting ? 'Creando...' : 'Crear'}
-          </button>
-        </form>
+      {pendingProposal && (
+        <div className={panelStyles.proposalBox}>
+          <div className={panelStyles.proposalHeader}>
+            <span className={panelStyles.pendingTitle}>
+              {canReviewDesignerProposals ? 'Propuesta de diseño' : 'Tu propuesta'}
+            </span>
+            <span className={panelStyles.proposalBadge}>Pendiente</span>
+          </div>
+          <p className={panelStyles.proposalText}>
+            {canReviewDesignerProposals
+              ? 'Hay cambios de diseño listos para aprobar o pedir ajustes.'
+              : 'Tus cambios no afectan el contenido publicado hasta que editor o manager los aprueben.'}
+          </p>
+          {pendingProposal.reviewerNote && (
+            <p className={panelStyles.proposalText}>Nota: {pendingProposal.reviewerNote}</p>
+          )}
+          {canReviewDesignerProposals ? (
+            <div className={panelStyles.proposalActions}>
+              <button className={panelStyles.deliverableButton} onClick={onApproveDesignerProposal}>
+                Aprobar
+              </button>
+              <button className={panelStyles.proposalSecondaryButton} onClick={onRejectDesignerProposal}>
+                Pedir cambios
+              </button>
+            </div>
+          ) : isDesigner ? (
+            <p className={panelStyles.deliverablesEmpty}>Puedes seguir editando y guardando sobre esta propuesta.</p>
+          ) : null}
+        </div>
+      )}
+      <div className={panelStyles.deliverablesBox}>
+        <span className={panelStyles.pendingTitle}>Entregables</span>
+        {canManageProjectMeta ? (
+          <form className={panelStyles.deliverableForm} onSubmit={submitDeliverable}>
+            <input
+              className={panelStyles.deliverableInput}
+              value={deliverableTitle}
+              onChange={(event) => setDeliverableTitle(event.target.value)}
+              placeholder="Nuevo entregable"
+            />
+            <select
+              style={styles.deliverableSelect}
+              value={deliverableServiceType}
+              onChange={(event) => setDeliverableServiceType(event.target.value)}
+            >
+              {DELIVERABLE_SERVICE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <button className={panelStyles.deliverableButton} type="submit" disabled={deliverableSubmitting || !deliverableTitle.trim()}>
+              {deliverableSubmitting ? 'Creando...' : 'Crear'}
+            </button>
+          </form>
+        ) : (
+          <p className={panelStyles.deliverablesEmpty}>Solo lectura para este rol.</p>
+        )}
 
         {deliverables.length === 0 ? (
-          <p style={styles.deliverablesEmpty}>Sin entregables.</p>
+          <p className={panelStyles.deliverablesEmpty}>Sin entregables.</p>
         ) : (
-          <div style={styles.deliverablesList}>
+          <div className={panelStyles.deliverablesList}>
             {deliverables.slice(0, 6).map((item) => (
-              <div key={item.id} style={styles.deliverableRow}>
-                <div style={styles.deliverableText}>
-                  <span style={styles.deliverableTitle}>{item.title}</span>
-                  <span style={styles.deliverableMeta}>{item.serviceType} · {deliverableStatusLabel(item.status)}</span>
+              <div key={item.id} className={panelStyles.deliverableRow}>
+                <div className={panelStyles.deliverableText}>
+                  <span className={panelStyles.deliverableTitle}>{item.title}</span>
+                  <span className={panelStyles.deliverableMeta}>{item.serviceType} · {deliverableStatusLabel(item.status)}</span>
                 </div>
-                <select
-                  style={styles.deliverableStatusSelect}
-                  value={item.status}
-                  onChange={(event) => onUpdateDeliverableStatus?.(item.id, event.target.value)}
-                >
-                  {DELIVERABLE_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
+                {canManageProjectMeta ? (
+                  <select
+                    style={styles.deliverableStatusSelect}
+                    value={item.status}
+                    onChange={(event) => onUpdateDeliverableStatus?.(item.id, event.target.value)}
+                  >
+                    {DELIVERABLE_STATUS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className={panelStyles.deliverableMeta}>{deliverableStatusLabel(item.status)}</span>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
-      <div style={styles.shareBox}>
-        <span style={styles.pendingTitle}>Cliente</span>
-        <button style={styles.shareButton} onClick={onCreateShareLink}>
-          Crear link privado
-        </button>
+      <div className={panelStyles.shareBox}>
+        <span className={panelStyles.pendingTitle}>Cliente</span>
+        {canManageProjectMeta ? (
+          <button className={panelStyles.shareButton} onClick={onCreateShareLink}>
+            Crear link privado
+          </button>
+        ) : (
+          <p className={panelStyles.deliverablesEmpty}>El link privado lo gestiona manager/editor.</p>
+        )}
         {shareUrl && (
-          <p style={styles.shareUrl}>Link copiado: {shareUrl}</p>
+          <p className={panelStyles.shareUrl}>Link copiado: {shareUrl}</p>
         )}
       </div>
       {!hasActivity ? (
-        <p style={styles.updatesEmpty}>Sin actividad registrada aún.</p>
+        <p className={panelStyles.updatesEmpty}>Sin actividad registrada aún.</p>
       ) : (
         <>
           {sectionActivity.length > 0 && (
-            <ul style={styles.updatesList}>
+            <ul className={panelStyles.updatesList}>
               {sectionActivity.map((item) => (
                 <ActivityListItem
                   key={item.id}
@@ -3583,8 +5776,8 @@ function UpdatesPanel({
           )}
           {generalActivity.length > 0 && (
             <>
-              <span style={styles.activityGroupTitle}>Actividad general</span>
-              <ul style={styles.updatesListCompact}>
+              <span className={panelStyles.activityGroupTitle}>Actividad general</span>
+              <ul className={panelStyles.updatesListCompact}>
                 {generalActivity.map((item) => (
                   <ActivityListItem
                     key={item.id}
@@ -3599,6 +5792,13 @@ function UpdatesPanel({
           )}
         </>
       )}
+      {projectType === 'document' && (
+        <DocumentRulesCard
+          rules={contentRules}
+          canEdit={canEditContentRules}
+          onChange={onContentRulesChange}
+        />
+      )}
     </div>
   )
 }
@@ -3607,26 +5807,23 @@ function ActivityListItem({ item, selectedActivityId = null, onActivityClick, on
   return (
     <li
       id={`activity-${item.id}`}
-      style={{
-        ...styles.updatesItem,
-        ...(item.id === selectedActivityId ? styles.updatesItemActive : {}),
-      }}
+      className={cx(panelStyles.updatesItem, item.id === selectedActivityId && panelStyles.updatesItemActive)}
     >
       <button
         type="button"
-        style={styles.updatesItemButton}
+        className={panelStyles.updatesItemButton}
         onClick={() => onActivityClick?.(item)}
       >
-        <span style={styles.updatesField}>{item.title}</span>
+        <span className={panelStyles.updatesField}>{item.title}</span>
       </button>
-      {item.description && <span style={styles.updatesDescription}>{item.description}</span>}
-      <span style={styles.updatesDatetime}>
+      {item.description && <span className={panelStyles.updatesDescription}>{item.description}</span>}
+      <span className={panelStyles.updatesDatetime}>
         {item.actorLabel} · {formatPanelDate(item.createdAt)}
       </span>
       {isUnreadSectionActivity(item) && (
         <button
           type="button"
-          style={styles.markReadBtn}
+          className={panelStyles.markReadBtn}
           onClick={() => onMarkActivityRead?.(item.id)}
         >
           Marcar leída
@@ -3676,7 +5873,7 @@ const styles = {
   // ── Navbar ──
   navbar: {
     display: 'grid',
-    gridTemplateColumns: '260px minmax(0, 1fr) 96px',
+    gridTemplateColumns: 'minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr)',
     alignItems: 'center',
     height: 70,
     backgroundColor: '#f0f0f0',
@@ -3687,7 +5884,8 @@ const styles = {
   navLeft: {
     display: 'flex',
     alignItems: 'center',
-    gap: 38,
+    gap: 14,
+    minWidth: 0,
   },
   navLogo: {
     fontSize: 35,
@@ -3700,6 +5898,61 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 33,
+  },
+  navBackBtn: {
+    width: 32,
+    height: 32,
+    border: '1px solid #d9d9d9',
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    color: '#2a2a2a',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  projectNameBtn: {
+    minWidth: 0,
+    maxWidth: 260,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    border: '1px solid transparent',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    color: '#2a2a2a',
+    fontSize: 15,
+    fontWeight: 600,
+    padding: '7px 9px',
+    cursor: 'text',
+    fontFamily: 'inherit',
+    textAlign: 'left',
+  },
+  projectNameReadOnly: {
+    minWidth: 0,
+    maxWidth: 260,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    color: '#2a2a2a',
+    fontSize: 15,
+    fontWeight: 600,
+    padding: '7px 9px',
+  },
+  projectNameInput: {
+    minWidth: 180,
+    maxWidth: 280,
+    height: 34,
+    border: '1px solid #212222',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    color: '#2a2a2a',
+    fontSize: 15,
+    fontWeight: 600,
+    padding: '0 9px',
+    outline: 'none',
+    fontFamily: 'inherit',
   },
   navCenter: {
     display: 'flex',
@@ -3734,6 +5987,9 @@ const styles = {
     fontFamily: 'inherit',
     display: 'flex',
     alignItems: 'center',
+  },
+  navPillNoMenu: {
+    paddingRight: 14,
   },
   navPillActive: {
     height: 30,
@@ -3790,6 +6046,10 @@ const styles = {
     fontFamily: 'inherit',
     width: 90,
   },
+  navPillInputNoMenu: {
+    paddingRight: 14,
+    width: 110,
+  },
   navPillAdd: {
     width: 30,
     height: 30,
@@ -3805,7 +6065,8 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 14,
+    gap: 12,
+    minWidth: 0,
   },
   navIcons: {
     display: 'flex',
@@ -3820,17 +6081,39 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  navBadge: {
+    position: 'absolute',
+    top: -7,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    padding: '0 4px',
+    borderRadius: 999,
+    backgroundColor: '#ef4444',
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 700,
+    lineHeight: '16px',
+    textAlign: 'center',
   },
   navSaveBtn: {
-    padding: '10px 20px',
+    minWidth: 86,
+    height: 34,
+    padding: '0 14px',
     backgroundColor: '#0088ff',
     color: '#fff',
     border: 'none',
-    borderRadius: 8,
-    fontSize: 16,
-    fontWeight: 500,
+    borderRadius: 9,
+    fontSize: 13,
+    fontWeight: 700,
     cursor: 'pointer',
     fontFamily: 'inherit',
+  },
+  navSaveBtnDisabled: {
+    opacity: 0.55,
+    cursor: 'not-allowed',
   },
   navReviewBtn: {
     height: 32,
@@ -3859,6 +6142,13 @@ const styles = {
     textAlign: 'right',
     fontSize: 12,
     color: '#64748b',
+  },
+  navSaveStatus: {
+    minWidth: 74,
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: 'right',
   },
 
   floatingBar: {
@@ -3976,176 +6266,6 @@ const styles = {
     overflow: 'hidden',
   },
 
-  // ── Sidebar izquierdo ──
-  leftPanel: {
-    width: 290,
-    flexShrink: 0,
-    backgroundColor: '#fff',
-    borderRight: '1px solid #212222',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-  },
-  panelHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '24px 30px 16px',
-    flexShrink: 0,
-  },
-  panelTitle: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#2a2a2a',
-    letterSpacing: '0.01em',
-  },
-  panelAddBtn: {
-    padding: 0,
-    border: 'none',
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionList: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '0 30px 30px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  sectionItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    userSelect: 'none',
-    transition: 'opacity 0.15s',
-  },
-  dragHandle: {
-    cursor: 'grab',
-    display: 'flex',
-    alignItems: 'center',
-    padding: '2px 0',
-    opacity: 0.4,
-    marginRight: -2,
-  },
-  dropIndicator: {
-    height: 2,
-    backgroundColor: '#0088ff',
-    borderRadius: 1,
-    margin: '0 10px',
-  },
-  sectionNavBtn: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '5px 10px',
-    borderRadius: 6,
-    border: '1px solid transparent',
-    cursor: 'pointer',
-    backgroundColor: 'transparent',
-  },
-  sectionNavBtnActive: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '5px 10px',
-    borderRadius: 6,
-    border: '1px solid #212222',
-    cursor: 'pointer',
-    backgroundColor: 'transparent',
-  },
-  sectionNavLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    overflow: 'hidden',
-    flex: 1,
-  },
-  sectionName: {
-    fontSize: 15,
-    fontWeight: 500,
-    color: '#2a2a2a',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    flex: 1,
-  },
-  sectionNameInput: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: 500,
-    padding: '0 4px',
-    border: '1px solid #0088ff',
-    borderRadius: 3,
-    outline: 'none',
-    fontFamily: 'inherit',
-    color: '#2a2a2a',
-  },
-  menuBtn: {
-    padding: 0,
-    border: 'none',
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menu: {
-    position: 'absolute',
-    right: 0,
-    top: '100%',
-    marginTop: 4,
-    backgroundColor: '#fff',
-    border: '1px solid #d9d9d9',
-    borderRadius: 6,
-    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-    zIndex: 100,
-    minWidth: 140,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    padding: '10px 16px',
-    fontSize: 13,
-    cursor: 'pointer',
-    color: '#2a2a2a',
-  },
-  sectionContent: {
-    paddingLeft: 25,
-    paddingTop: 6,
-  },
-  sectionPreviewItem: {
-    borderLeft: '2px solid #d9d9d9',
-    paddingLeft: 10,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-  },
-  sectionPreviewItemActive: {
-    borderLeft: '2px solid #0088ff',
-    paddingLeft: 10,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-  },
-  sectionPreviewTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: '#2a2a2a',
-  },
-  sectionPreviewSubtitle: {
-    fontSize: 14,
-    fontWeight: 400,
-    color: '#888',
-  },
-  emptyMsg: {
-    fontSize: 13,
-    color: '#aaa',
-    margin: 0,
-    paddingTop: 8,
-  },
-
   // ── Panel central ──
   centerPanel: {
     flex: 1,
@@ -4154,27 +6274,6 @@ const styles = {
     overflow: 'hidden',
     backgroundColor: '#f2f2f2',
   },
-
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '8px 16px',
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #d9d9d9',
-    flexShrink: 0,
-  },
-  blockSelect: {
-    ...compactSelectChevron,
-    padding: '4px 34px 4px 10px',
-    border: '1px solid #d9d9d9',
-    borderRadius: 5,
-    fontSize: 13,
-    color: '#2a2a2a',
-    backgroundColor: '#fff',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
   toolbarSep: {
     width: 1,
     height: 20,
@@ -4182,22 +6281,142 @@ const styles = {
     margin: '0 4px',
     flexShrink: 0,
   },
-  toolBtn: {
-    padding: '4px 10px',
-    border: '1px solid transparent',
-    borderRadius: 5,
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-    fontSize: 14,
+  rulesPanel: {
+    padding: '14px 16px 16px',
+    borderBottom: '1px solid #e5e7eb',
+    backgroundColor: '#fcfcfd',
+  },
+  rulesHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  rulesTitle: {
+    display: 'block',
     color: '#2a2a2a',
-    fontFamily: 'inherit',
+    fontSize: 13,
+    fontWeight: 700,
+    marginBottom: 2,
+  },
+  rulesSubtitle: {
+    margin: 0,
+    color: '#64748b',
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  rulesStatusBadge: {
+    flexShrink: 0,
+    minHeight: 24,
+    padding: '0 10px',
+    borderRadius: 999,
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 2,
+    fontSize: 11,
+    fontWeight: 700,
   },
-  toolBtnActive: {
-    backgroundColor: '#f0f0f0',
+  rulesStatusOk: {
+    backgroundColor: '#ecfdf5',
+    color: '#047857',
+  },
+  rulesStatusAlert: {
+    backgroundColor: '#fef2f2',
+    color: '#b91c1c',
+  },
+  rulesGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 12,
+    marginBottom: 12,
+  },
+  rulesField: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  rulesFieldLabel: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  rulesInputWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rulesInput: {
+    width: '100%',
+    minHeight: 34,
     border: '1px solid #d9d9d9',
+    borderRadius: 8,
+    padding: '0 10px',
+    backgroundColor: '#fff',
+    color: '#2a2a2a',
+    fontSize: 13,
+    fontFamily: 'inherit',
+  },
+  rulesInputDisabled: {
+    backgroundColor: '#f8fafc',
+    color: '#94a3b8',
+  },
+  rulesInputSuffix: {
+    flexShrink: 0,
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  rulesMetrics: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    gap: 10,
+  },
+  ruleMetric: {
+    padding: '10px 12px',
+    border: '1px solid #e5e7eb',
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  ruleMetricAlert: {
+    borderColor: '#fecaca',
+    backgroundColor: '#fff5f5',
+  },
+  ruleMetricLabel: {
+    display: 'block',
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: 700,
+    marginBottom: 4,
+  },
+  ruleMetricValue: {
+    color: '#2a2a2a',
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  rulesReadOnly: {
+    margin: '12px 0 0',
+    color: '#64748b',
+    fontSize: 12,
+    lineHeight: 1.45,
+  },
+  rulesNotice: {
+    margin: '12px 0 0',
+    color: '#b45309',
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  rulesWarnings: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    marginTop: 12,
+  },
+  rulesWarningItem: {
+    margin: 0,
+    color: '#b91c1c',
+    fontSize: 12,
+    lineHeight: 1.45,
   },
 
   // ── Table grid picker ──
@@ -4287,6 +6506,75 @@ const styles = {
     overflowY: 'scroll',
     padding: 10,
     position: 'relative',
+  },
+  wordCountBox: {
+    position: 'sticky',
+    left: 16,
+    bottom: 16,
+    zIndex: 70,
+    width: 'fit-content',
+    marginTop: -54,
+  },
+  wordCountButton: {
+    minWidth: 150,
+    minHeight: 44,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    padding: '0 14px',
+    border: '1px solid #e5e7eb',
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    color: '#2a2a2a',
+    fontSize: 13,
+    fontWeight: 700,
+    fontFamily: 'inherit',
+    cursor: 'pointer',
+    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.14)',
+  },
+  wordCountButtonAlert: {
+    borderColor: '#fecaca',
+    color: '#b91c1c',
+  },
+  wordCountLimit: {
+    marginLeft: 'auto',
+    color: 'inherit',
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  wordCountMenu: {
+    position: 'absolute',
+    left: 0,
+    bottom: 'calc(100% + 8px)',
+    width: 260,
+    padding: 10,
+    border: '1px solid #e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    boxShadow: '0 14px 36px rgba(15, 23, 42, 0.16)',
+  },
+  wordCountMenuTitle: {
+    padding: '4px 4px 6px',
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+  },
+  wordCountRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    minHeight: 30,
+    padding: '0 4px',
+    color: '#2a2a2a',
+    fontSize: 13,
+  },
+  wordCountDivider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    margin: '7px 0',
   },
 
   editorPageRow: {
@@ -4655,87 +6943,6 @@ const styles = {
   },
 
   // ── Sidebar derecho ──
-  rightPanel: {
-    width: 280,
-    flexShrink: 0,
-    backgroundColor: '#fff',
-    borderLeft: '1px solid #212222',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    padding: 30,
-  },
-  updatesHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-  },
-  updatesRefreshBtn: {
-    border: '1px solid #d9d9d9',
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 500,
-    padding: '5px 9px',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  updatesError: {
-    margin: '12px 0 0',
-    color: '#dc2626',
-    fontSize: 13,
-    lineHeight: 1.4,
-  },
-  updatesNotice: {
-    margin: '12px 0 0',
-    color: '#64748b',
-    fontSize: 13,
-    lineHeight: 1.4,
-  },
-  pendingBox: {
-    marginTop: 16,
-    padding: 12,
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    backgroundColor: '#f8fafc',
-  },
-  pendingTitle: {
-    display: 'block',
-    marginBottom: 8,
-    color: '#2a2a2a',
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  pendingItem: {
-    margin: '6px 0 0',
-    color: '#64748b',
-    fontSize: 13,
-    lineHeight: 1.4,
-  },
-  deliverablesBox: {
-    marginTop: 16,
-    padding: 12,
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-  },
-  deliverableForm: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 82px',
-    gap: 8,
-  },
-  deliverableInput: {
-    minWidth: 0,
-    height: 34,
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    padding: '0 10px',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontFamily: 'inherit',
-  },
   deliverableSelect: {
     ...compactSelectChevron,
     height: 34,
@@ -4748,61 +6955,6 @@ const styles = {
     fontFamily: 'inherit',
     backgroundPosition: 'right 8px center',
     backgroundSize: '14px 14px',
-  },
-  deliverableButton: {
-    gridColumn: '1 / -1',
-    minHeight: 32,
-    border: 'none',
-    borderRadius: 8,
-    backgroundColor: '#212222',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  deliverablesEmpty: {
-    margin: '10px 0 0',
-    color: '#64748b',
-    fontSize: 13,
-    lineHeight: 1.4,
-  },
-  deliverablesList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    marginTop: 10,
-  },
-  deliverableRow: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) 92px',
-    alignItems: 'center',
-    gap: 8,
-    padding: 8,
-    border: '1px solid #eef2f7',
-    borderRadius: 8,
-    backgroundColor: '#f8fafc',
-  },
-  deliverableText: {
-    minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 3,
-  },
-  deliverableTitle: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontWeight: 600,
-  },
-  deliverableMeta: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: '#64748b',
-    fontSize: 11,
   },
   deliverableStatusSelect: {
     ...compactSelectChevron,
@@ -4818,126 +6970,6 @@ const styles = {
     backgroundPosition: 'right 8px center',
     backgroundSize: '14px 14px',
   },
-  shareBox: {
-    marginTop: 16,
-    padding: 12,
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-  },
-  shareButton: {
-    width: '100%',
-    minHeight: 34,
-    border: 'none',
-    borderRadius: 8,
-    backgroundColor: '#212222',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  shareUrl: {
-    margin: '8px 0 0',
-    color: '#64748b',
-    fontSize: 12,
-    lineHeight: 1.45,
-    wordBreak: 'break-all',
-  },
-
-  updatesEmpty: {
-    fontSize: 14,
-    color: '#999',
-    margin: 0,
-    marginTop: 16,
-  },
-
-  updatesList: {
-    listStyle: 'none',
-    margin: 0,
-    marginTop: 16,
-    padding: 0,
-  },
-
-  updatesListCompact: {
-    listStyle: 'none',
-    margin: 0,
-    marginTop: 8,
-    padding: 0,
-  },
-
-  activityGroupTitle: {
-    display: 'block',
-    marginTop: 18,
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 600,
-  },
-
-  updatesItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-    borderBottom: '1px solid #d9d9d9',
-    padding: '10px 0',
-  },
-
-  updatesItemActive: {
-    backgroundColor: '#fff7ed',
-    marginLeft: -10,
-    marginRight: -10,
-    paddingLeft: 10,
-    paddingRight: 10,
-    borderRadius: 8,
-  },
-
-  updatesItemButton: {
-    padding: 0,
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: 'inherit',
-    textAlign: 'left',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-
-  updatesField: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: '#2a2a2a',
-  },
-  updatesDescription: {
-    fontSize: 12,
-    color: '#64748b',
-    lineHeight: 1.4,
-  },
-
-  updatesDatetime: {
-    fontSize: 12,
-    color: '#999',
-  },
-
-  updatesLink: {
-    fontSize: 12,
-    color: '#0088ff',
-    textDecoration: 'none',
-    marginTop: 2,
-    alignSelf: 'flex-start',
-  },
-  markReadBtn: {
-    alignSelf: 'flex-start',
-    marginTop: 6,
-    border: '1px solid #d9d9d9',
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 500,
-    padding: '5px 9px',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-
   // ── Modal ──
   modalOverlay: {
     position: 'fixed',

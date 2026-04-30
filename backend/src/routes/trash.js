@@ -6,10 +6,17 @@ const router = Router()
 
 router.use(requireAuth)
 
-function getManageableCompanyIds(currentUser) {
+function getCompanyIdsForCompanyLifecycle(currentUser) {
   if (currentUser.platformRole === 'admin') return null
   return currentUser.memberships
     .filter((membership) => membership.role === 'manager')
+    .map((membership) => membership.companyId)
+}
+
+function getCompanyIdsForProjectLifecycle(currentUser) {
+  if (currentUser.platformRole === 'admin') return null
+  return currentUser.memberships
+    .filter((membership) => ['manager', 'editor'].includes(membership.role))
     .map((membership) => membership.companyId)
 }
 
@@ -52,6 +59,7 @@ function serializeProject(row) {
     name: row.name,
     client: row.client_name,
     businessType: row.business_type,
+    projectType: row.project_type || 'page',
     state: lifecycleState(row),
     archivedAt: row.archived_at,
     trashedAt: row.trashed_at,
@@ -63,30 +71,39 @@ function serializeProject(row) {
 router.get('/', async (req, res) => {
   try {
     const requestedState = normalizeLifecycleState(req.query.state)
-    const manageableCompanyIds = getManageableCompanyIds(req.currentUser)
-    const canSeeProjects = manageableCompanyIds === null || manageableCompanyIds.length > 0
+    const companyLifecycleIds = getCompanyIdsForCompanyLifecycle(req.currentUser)
+    const projectLifecycleIds = getCompanyIdsForProjectLifecycle(req.currentUser)
+    const canSeeCompanies = companyLifecycleIds === null || companyLifecycleIds.length > 0
+    const canSeeProjects = projectLifecycleIds === null || projectLifecycleIds.length > 0
 
-    const companiesPromise = req.currentUser.platformRole === 'admin'
-      ? applyLifecycleFilter(
-          supabaseAdmin
+    const companiesPromise = canSeeCompanies
+      ? (() => {
+          let query = supabaseAdmin
             .from('companies')
             .select('id, name, slug, archived_at, trashed_at, delete_after, updated_at')
-            .order('updated_at', { ascending: false }),
-          requestedState
-        )
+            .order('updated_at', { ascending: false })
+
+          query = applyLifecycleFilter(query, requestedState)
+
+          if (companyLifecycleIds) {
+            query = query.in('id', companyLifecycleIds)
+          }
+
+          return query
+        })()
       : Promise.resolve({ data: [], error: null })
 
     const projectsPromise = canSeeProjects
       ? (() => {
           let query = supabaseAdmin
             .from('projects')
-            .select('id, company_id, name, client_name, business_type, archived_at, trashed_at, delete_after, updated_at, company:companies(name)')
+            .select('*, company:companies(name)')
             .order('updated_at', { ascending: false })
 
           query = applyLifecycleFilter(query, requestedState)
 
-          if (manageableCompanyIds) {
-            query = query.in('company_id', manageableCompanyIds)
+          if (projectLifecycleIds) {
+            query = query.in('company_id', projectLifecycleIds)
           }
 
           return query

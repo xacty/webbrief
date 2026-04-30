@@ -217,6 +217,17 @@
 - deployed WeBrief to Namecheap VPS with Nginx, PM2, Certbot HTTPS, firewall, Supabase hosted, and GitHub deploy key
 - fixed frontend audit vulnerabilities by updating lockfile to Vite 6.4.2, PostCSS 8.5.12, and Picomatch 4.0.4; audit is 0 vulnerabilities locally and on VPS
 - documented basic operations/deploy flow in `docs/WEBRIEF_OPERATIONS_GUIDE.md`
+- added project types `page`/`document`/`faq`; visible labels are `Página Web`, `Artículo`, and `FAQs`
+- project type behavior differs by editor mode: `Página Web` keeps section dividers; `Artículo` is linear with heading outline; `FAQs` derives FAQ items from H2 question blocks and supports CSV export
+- editor paste supports SEO metadata extraction, H1/H2 section splitting for Página Web, FAQ question/answer creation, and rich-format preservation for common Google Docs/Word paste content
+- editor toolbar now includes alignment, indentation, color/highlight, spacing controls, table picker, and dropdown dismissal behavior
+- page-level SEO metadata and document content rules persist on `project_pages.seo_metadata` and `project_pages.content_rules`
+- content rules UI is a compact floating card; editors/managers/admin can edit limits, content writers can see status/limits
+- role preview exists for admin testing; auth applies a local role preview without mutating the real profile
+- role capability matrix is shared in frontend/backend helpers; manager/editor/content_writer/designer/developer actions are gated by capability rather than ad hoc checks
+- designer proposal flow exists via `project_page_change_proposals`; reviewers can accept/reject pending designer content proposals
+- company project cards display inferred project type for legacy projects whose `projects.project_type` is null
+- app shell private routes use a rooted layout with relative children; `UsersPage` memoizes invite role options to avoid render loops that can freeze navigation
 
 ## Pending
 

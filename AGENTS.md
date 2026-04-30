@@ -26,6 +26,23 @@
 
 - `La conversación ya está quedando larga y pronto podría empezar a resumirse. Conviene abrir un chat nuevo y actualizar CONTEXT.md y CONTEXT.min.md.`
 
+## Compact Mode
+
+- Default to compact mode in this repo.
+- Keep explanations short unless the user asks for deeper reasoning, alternatives, or a walkthrough.
+- Prefer implementation plus concise outcome over long plans or detailed narration.
+- Keep intermediary updates brief and only send them when they add useful progress, risk, or blocker context.
+- Final answers should usually mention only what changed, validation status, and any real blocker or follow-up.
+
+## Token Economy
+
+- Prefer targeted inspection over broad file reads. Use `rg` first, then read only the smallest relevant ranges with `sed`.
+- Do not paste full files or large unchanged code blocks in responses. Summarize changes and reference file paths instead.
+- When explaining code changes, describe only the modified behavior and key files. Avoid file-by-file changelogs unless requested.
+- Use incremental patches for edits. Do not rewrite functions or components unless the change requires it.
+- Before large implementation work, state the intended files or areas briefly. Do not wait for confirmation unless the request is ambiguous or risky.
+- For validation output, summarize pass/fail and only include relevant errors.
+
 ## Context Maintenance
 
 - When a task materially changes behavior, architecture, invariants, or workflow, suggest updating `CONTEXT.md` and `CONTEXT.min.md`.

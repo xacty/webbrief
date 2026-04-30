@@ -4,6 +4,23 @@ import { apiFetch } from '../lib/api'
 
 const AuthContext = createContext(null)
 const SESSION_TIMEOUT_MS = 1500
+const ROLE_PREVIEW_STORAGE_KEY = 'webrief:role-preview'
+
+function applyRolePreview(user, previewRole) {
+  if (!user || user.platformRole !== 'admin' || !previewRole || previewRole === 'admin') return user
+
+  const companyRole = previewRole === 'manager' ? 'manager' : previewRole
+  const memberships = (user.memberships?.length ? user.memberships : [{ companyId: '', role: companyRole }])
+    .map((membership) => ({ ...membership, role: companyRole }))
+
+  return {
+    ...user,
+    platformRole: 'user',
+    memberships,
+    rolePreview: previewRole,
+    realPlatformRole: user.platformRole,
+  }
+}
 
 function getSessionWithTimeout() {
   return Promise.race([
@@ -23,6 +40,13 @@ function getSessionWithTimeout() {
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
+  const [rolePreview, setRolePreviewState] = useState(() => {
+    try {
+      return window.localStorage.getItem(ROLE_PREVIEW_STORAGE_KEY) || 'admin'
+    } catch {
+      return 'admin'
+    }
+  })
   const [loading, setLoading] = useState(true)
   const hydratedTokenRef = useRef(null)
   const refreshPromiseRef = useRef(null)
@@ -167,11 +191,26 @@ export function AuthProvider({ children }) {
     }
   }
 
+  function setRolePreview(nextRole) {
+    const role = nextRole || 'admin'
+    setRolePreviewState(role)
+    try {
+      window.localStorage.setItem(ROLE_PREVIEW_STORAGE_KEY, role)
+    } catch {
+      // Ignore storage failures; preview still works for this session.
+    }
+  }
+
+  const effectiveUser = applyRolePreview(currentUser, rolePreview)
+
   return (
     <AuthContext.Provider
       value={{
         session,
-        currentUser,
+        currentUser: effectiveUser,
+        realCurrentUser: currentUser,
+        rolePreview,
+        setRolePreview,
         loading,
         isAuthenticated: Boolean(session),
         signIn,

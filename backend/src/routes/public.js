@@ -11,6 +11,7 @@ function serializePublicPage(page) {
     position: page.position,
     contentHtml: page.content_html,
     contentJson: page.content_json,
+    seoMetadata: page.seo_metadata || {},
     version: page.version || 1,
     updatedAt: page.updated_at,
   }
@@ -41,14 +42,14 @@ router.get('/share/:token', async (req, res) => {
     ] = await Promise.all([
       supabaseAdmin
         .from('projects')
-        .select('id, name, client_name, client_email, business_type, updated_at')
+        .select('*')
         .eq('id', shareLink.project_id)
         .is('archived_at', null)
         .is('trashed_at', null)
         .maybeSingle(),
       supabaseAdmin
         .from('project_pages')
-        .select('id, name, position, content_html, content_json, version, updated_at')
+        .select('*')
         .eq('project_id', shareLink.project_id)
         .order('position', { ascending: true }),
     ])
@@ -69,6 +70,7 @@ router.get('/share/:token', async (req, res) => {
         clientName: project.client_name,
         clientEmail: project.client_email,
         businessType: project.business_type,
+        projectType: project.project_type || 'page',
         updatedAt: project.updated_at,
       },
       pages: (pages || []).map(serializePublicPage),

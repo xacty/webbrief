@@ -1,20 +1,9 @@
 import { Router } from 'express'
 import { inviteUserToCompany } from '../lib/users.js'
+import { canInviteCompanyRole } from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
-
-function canInvite(currentUser, companyId, role) {
-  if (currentUser.platformRole === 'admin') {
-    return ['manager', 'editor', 'designer', 'developer'].includes(role)
-  }
-
-  return currentUser.memberships.some((membership) => (
-    membership.role === 'manager' &&
-    membership.companyId === companyId &&
-    ['editor', 'designer', 'developer'].includes(role)
-  ))
-}
 
 function getAllowedPlatformRole(currentUser, requestedRole) {
   if (currentUser.platformRole !== 'admin') return 'user'
@@ -38,7 +27,7 @@ router.post('/invite-user', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'No hay una empresa valida para la invitacion' })
   }
 
-  if (!canInvite(req.currentUser, targetCompanyId, role)) {
+  if (!canInviteCompanyRole(req.currentUser, targetCompanyId, role)) {
     return res.status(403).json({ error: 'No tienes permisos para invitar ese rol a esa empresa' })
   }
 

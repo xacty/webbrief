@@ -2,13 +2,19 @@ import { Router } from 'express'
 import multer from 'multer'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
-import { seedProjectPages } from '../data/projectTemplates.js'
+import { seedProjectPagesForType } from '../data/projectTemplates.js'
 import {
   canAccessCompany,
-  canEditBrief,
-  canManageProject,
+  canCreateProject,
+  canManageProjectLifecycle,
+  canManageProjectMeta,
+  canManageProjectStructure,
+  canSendProjectReview,
+  canWriteProjectContent,
+  createProjectNotifications,
   createShareToken,
   getAccessibleCompanyIds,
+  getCompanyRole,
   getProjectById,
   hashToken,
   isMissingTableError,
@@ -26,8 +32,11 @@ const ASSETS_BUCKET = process.env.PROJECT_ASSETS_BUCKET || 'project-assets'
 let archiveColumnsAvailable = true
 let projectPageVersionColumnAvailable = true
 let projectPageContentJsonColumnAvailable = true
+let projectPageSeoMetadataColumnAvailable = true
+let projectPageContentRulesColumnAvailable = true
 let projectPageReviewColumnsAvailable = true
 let projectPageVersionsTableAvailable = true
+let projectPageChangeProposalsTableAvailable = true
 let projectActivityTableAvailable = true
 let projectActivityRetryAt = 0
 let sharpModulePromise = null
@@ -65,6 +74,16 @@ function updateMissingProjectPageColumn(error) {
     return true
   }
 
+  if (message.includes('seo_metadata')) {
+    projectPageSeoMetadataColumnAvailable = false
+    return true
+  }
+
+  if (message.includes('content_rules')) {
+    projectPageContentRulesColumnAvailable = false
+    return true
+  }
+
   if (
     message.includes('review_status') ||
     message.includes('review_baseline_version_id') ||
@@ -78,6 +97,26 @@ function updateMissingProjectPageColumn(error) {
   return false
 }
 
+function hasSeoMetadataPayload(pages = []) {
+  return pages.some((page) => (
+    page?.seoMetadata &&
+    typeof page.seoMetadata === 'object' &&
+    Object.values(page.seoMetadata).some((value) => String(value || '').trim())
+  ))
+}
+
+function hasContentRulesPayload(pages = []) {
+  return pages.some((page) => (
+    page?.contentRules &&
+    typeof page.contentRules === 'object' &&
+    Object.values(page.contentRules).some((value) => {
+      if (value === null || value === undefined || value === '') return false
+      if (typeof value === 'object') return Object.values(value).some((nested) => nested !== null && nested !== undefined && nested !== '')
+      return true
+    })
+  ))
+}
+
 async function runWithoutArchiveColumns(buildQuery) {
   if (!archiveColumnsAvailable) return buildQuery(false)
   const result = await buildQuery(true)
@@ -87,10 +126,12 @@ async function runWithoutArchiveColumns(buildQuery) {
 }
 
 async function runWithProjectPageOptionalColumns(buildQuery) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     const result = await buildQuery({
       version: projectPageVersionColumnAvailable,
       contentJson: projectPageContentJsonColumnAvailable,
+      seoMetadata: projectPageSeoMetadataColumnAvailable,
+      contentRules: projectPageContentRulesColumnAvailable,
       review: projectPageReviewColumnsAvailable,
     })
 
@@ -100,8 +141,196 @@ async function runWithProjectPageOptionalColumns(buildQuery) {
   return buildQuery({
     version: projectPageVersionColumnAvailable,
     contentJson: projectPageContentJsonColumnAvailable,
+    seoMetadata: projectPageSeoMetadataColumnAvailable,
+    contentRules: projectPageContentRulesColumnAvailable,
     review: projectPageReviewColumnsAvailable,
   })
+}
+
+async function refreshProjectPageOptionalColumn(columnName) {
+  const { error } = await supabaseAdmin
+    .from('project_pages')
+    .select(`id, ${columnName}`)
+    .limit(1)
+
+  if (!error) {
+    if (columnName === 'seo_metadata') projectPageSeoMetadataColumnAvailable = true
+    if (columnName === 'content_rules') projectPageContentRulesColumnAvailable = true
+    return true
+  }
+
+  updateMissingProjectPageColumn(error)
+  return false
+}
+
+function normalizeProjectType(value) {
+  return ['page', 'document', 'faq'].includes(value) ? value : 'page'
+}
+
+function inferProjectType(project, pages = []) {
+  const explicitType = project?.project_type
+  if (explicitType === 'document' || explicitType === 'faq') return explicitType
+
+  const firstName = String(pages[0]?.name || '').trim().toLowerCase()
+  if (firstName === 'documento') return 'document'
+  if (firstName === 'faqs' || firstName === 'faq' || firstName === 'preguntas frecuentes') return 'faq'
+
+  return normalizeProjectType(explicitType)
+}
+
+function summarizeSavedPages(payload = []) {
+  if (!Array.isArray(payload) || payload.length === 0) return 'el contenido'
+  if (payload.length === 1) return payload[0].name || 'la página'
+  return `${payload.length} páginas`
+}
+
+function normalizeProposalStatus(value) {
+  return ['pending', 'accepted', 'rejected'].includes(value) ? value : 'pending'
+}
+
+async function loadPendingPageProposals(projectId, companyId, currentUser) {
+  if (!projectPageChangeProposalsTableAvailable) return []
+
+  const companyRole = getCompanyRole(currentUser, companyId)
+  const isAdmin = currentUser?.platformRole === 'admin'
+  const isReviewer = isAdmin || ['manager', 'editor'].includes(companyRole)
+  const isDesigner = companyRole === 'designer'
+
+  if (!isReviewer && !isDesigner) return []
+
+  let query = supabaseAdmin
+    .from('project_page_change_proposals')
+    .select('id, project_id, page_id, proposer_user_id, content_html, content_json, seo_metadata, status, reviewer_user_id, reviewer_note, reviewed_at, created_at, updated_at')
+    .eq('project_id', projectId)
+    .eq('status', 'pending')
+    .order('updated_at', { ascending: false })
+
+  if (isDesigner && !isReviewer) {
+    query = query.eq('proposer_user_id', currentUser.id)
+  }
+
+  const { data, error } = await query
+  if (error) {
+    if (isMissingTableError(error, 'project_page_change_proposals')) {
+      projectPageChangeProposalsTableAvailable = false
+      return []
+    }
+    throw error
+  }
+
+  const latestByPage = new Map()
+  for (const proposal of data || []) {
+    if (!latestByPage.has(proposal.page_id)) {
+      latestByPage.set(proposal.page_id, proposal)
+    }
+  }
+
+  return [...latestByPage.values()]
+}
+
+async function upsertDesignerProposals({ project, pages, currentUser, canEditProjectMeta }) {
+  if (!projectPageChangeProposalsTableAvailable) {
+    return { missingTable: true, proposals: [] }
+  }
+
+  const timestamp = new Date().toISOString()
+  const inserted = []
+
+  for (const page of pages) {
+    const { data: existingProposal, error: existingProposalError } = await supabaseAdmin
+      .from('project_page_change_proposals')
+      .select('id')
+      .eq('project_id', project.id)
+      .eq('page_id', page.id)
+      .eq('proposer_user_id', currentUser.id)
+      .eq('status', 'pending')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existingProposalError) {
+      if (isMissingTableError(existingProposalError, 'project_page_change_proposals')) {
+        projectPageChangeProposalsTableAvailable = false
+        return { missingTable: true, proposals: [] }
+      }
+      throw existingProposalError
+    }
+
+    const proposalPayload = {
+      project_id: project.id,
+      page_id: page.id,
+      proposer_user_id: currentUser.id,
+      content_html: page.contentHtml || '<p></p>',
+      content_json: page.contentJson || null,
+      seo_metadata: page.seoMetadata && typeof page.seoMetadata === 'object' ? page.seoMetadata : {},
+      updated_at: timestamp,
+    }
+
+    let data
+    let error
+
+    if (existingProposal?.id) {
+      ({ data, error } = await supabaseAdmin
+        .from('project_page_change_proposals')
+        .update(proposalPayload)
+        .eq('id', existingProposal.id)
+        .select('id, project_id, page_id, proposer_user_id, content_html, content_json, seo_metadata, status, reviewer_user_id, reviewer_note, reviewed_at, created_at, updated_at')
+        .single())
+    } else {
+      ({ data, error } = await supabaseAdmin
+        .from('project_page_change_proposals')
+        .insert({
+          ...proposalPayload,
+          created_at: timestamp,
+          status: 'pending',
+        })
+        .select('id, project_id, page_id, proposer_user_id, content_html, content_json, seo_metadata, status, reviewer_user_id, reviewer_note, reviewed_at, created_at, updated_at')
+        .single())
+    }
+
+    if (error) {
+      if (isMissingTableError(error, 'project_page_change_proposals')) {
+        projectPageChangeProposalsTableAvailable = false
+        return { missingTable: true, proposals: [] }
+      }
+      throw error
+    }
+
+    inserted.push(data)
+  }
+
+  await supabaseAdmin
+    .from('projects')
+    .update({ updated_at: timestamp })
+    .eq('id', project.id)
+
+  await logProjectActivity({
+    projectId: project.id,
+    currentUser,
+    eventType: 'designer_proposal_saved',
+    subjectType: 'proposal',
+    title: 'Propuesta de diseño guardada',
+    description: summarizeSavedPages(pages),
+    metadata: {
+      pageIds: pages.map((page) => page.id),
+      pageNames: pages.map((page) => page.name),
+      canEditProjectMeta,
+    },
+  })
+
+  await createProjectNotifications({
+    projectId: project.id,
+    currentUser,
+    eventType: 'designer_proposal_saved',
+    title: 'Nueva propuesta de diseño',
+    body: `${currentUser.fullName || currentUser.email || 'Usuario'} dejó cambios pendientes de aprobación.`,
+    metadata: {
+      pageIds: pages.map((page) => page.id),
+      pageNames: pages.map((page) => page.name),
+    },
+  })
+
+  return { missingTable: false, proposals: inserted }
 }
 
 function extractSectionsSnapshot(html = '') {
@@ -172,6 +401,7 @@ function normalizeProjectList(projects, companyMap) {
       || companyMap.get(project.company_id)
       || '',
     businessType: project.business_type,
+    projectType: normalizeProjectType(project.project_type),
     lastActivity: project.updated_at,
     hasChanges: false,
   }))
@@ -204,7 +434,7 @@ router.get('/', async (req, res) => {
     const { data: projects, error } = await runWithoutArchiveColumns((withArchiveColumns) => {
       let query = supabaseAdmin
         .from('projects')
-        .select('id, name, client_name, client_email, company_id, business_type, updated_at, company:companies(name)')
+        .select('*, company:companies(name)')
         .order('updated_at', { ascending: false })
 
       if (withArchiveColumns) {
@@ -237,9 +467,14 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const { name, clientName, clientEmail, businessType, companyId } = req.body
+  const projectType = normalizeProjectType(req.body.projectType)
+  const normalizedBusinessType = businessType || 'tabula_rasa'
+  const initialContentRules = req.body.contentRules && typeof req.body.contentRules === 'object'
+    ? req.body.contentRules
+    : {}
 
-  if (!name || !clientName || !businessType) {
-    return res.status(400).json({ error: 'name, clientName y businessType son requeridos' })
+  if (!name) {
+    return res.status(400).json({ error: 'name es requerido' })
   }
 
   const fallbackCompanyId = req.currentUser.memberships[0]?.companyId || null
@@ -252,30 +487,54 @@ router.post('/', async (req, res) => {
   if (!canAccessCompany(req.currentUser, targetCompanyId)) {
     return res.status(403).json({ error: 'No tienes acceso a esa empresa' })
   }
-  if (!canEditBrief(req.currentUser, targetCompanyId)) {
+  if (!canCreateProject(req.currentUser, targetCompanyId)) {
     return res.status(403).json({ error: 'Tu rol no puede crear proyectos en esta empresa' })
   }
 
   try {
     const projectId = crypto.randomUUID()
-    const pages = seedProjectPages(businessType)
+    const pages = seedProjectPagesForType(projectType, normalizedBusinessType)
     const timestamp = new Date().toISOString()
+    let fallbackClientName = 'Cliente'
+    if (!clientName?.trim()) {
+      const { data: company } = await supabaseAdmin
+        .from('companies')
+        .select('name')
+        .eq('id', targetCompanyId)
+        .maybeSingle()
+      fallbackClientName = company?.name || fallbackClientName
+    }
 
-    const { data: project, error: projectError } = await supabaseAdmin
+    const projectPayload = {
+      id: projectId,
+      company_id: targetCompanyId,
+      name: name.trim(),
+      client_name: clientName?.trim() || fallbackClientName,
+      client_email: clientEmail?.trim() || null,
+      business_type: normalizedBusinessType,
+      project_type: projectType,
+      created_by: req.currentUser.id,
+      created_at: timestamp,
+      updated_at: timestamp,
+    }
+
+    let { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
-      .insert({
-        id: projectId,
-        company_id: targetCompanyId,
-        name: name.trim(),
-        client_name: clientName.trim(),
-        client_email: clientEmail?.trim() || null,
-        business_type: businessType,
-        created_by: req.currentUser.id,
-        created_at: timestamp,
-        updated_at: timestamp,
-      })
+      .insert(projectPayload)
       .select('*')
       .single()
+
+    if (projectError && `${projectError.message || ''} ${projectError.details || ''}`.includes('project_type')) {
+      const fallbackProjectPayload = { ...projectPayload }
+      delete fallbackProjectPayload.project_type
+      const fallbackResult = await supabaseAdmin
+        .from('projects')
+        .insert(fallbackProjectPayload)
+        .select('*')
+        .single()
+      project = fallbackResult.data
+      projectError = fallbackResult.error
+    }
 
     if (projectError) {
       return res.status(500).json({ error: projectError.message })
@@ -285,12 +544,19 @@ router.post('/', async (req, res) => {
       const payloadPage = {
         ...page,
         project_id: projectId,
+        content_rules: initialContentRules,
         created_at: timestamp,
         updated_at: timestamp,
       }
 
       if (!projectPageContentJsonColumnAvailable) {
         delete payloadPage.content_json
+      }
+      if (!projectPageSeoMetadataColumnAvailable) {
+        delete payloadPage.seo_metadata
+      }
+      if (!projectPageContentRulesColumnAvailable) {
+        delete payloadPage.content_rules
       }
 
       return payloadPage
@@ -304,6 +570,8 @@ router.post('/', async (req, res) => {
       const fallbackPayload = pagePayload.map((page) => {
         const nextPage = { ...page }
         if (!projectPageContentJsonColumnAvailable) delete nextPage.content_json
+        if (!projectPageSeoMetadataColumnAvailable) delete nextPage.seo_metadata
+        if (!projectPageContentRulesColumnAvailable) delete nextPage.content_rules
         return nextPage
       })
       const fallbackResult = await supabaseAdmin
@@ -346,6 +614,8 @@ router.get('/:id', async (req, res) => {
         'position',
         'content_html',
         columns.contentJson ? 'content_json' : null,
+        columns.seoMetadata ? 'seo_metadata' : null,
+        columns.contentRules ? 'content_rules' : null,
         columns.version ? 'version' : null,
         columns.review ? 'review_status' : null,
         columns.review ? 'review_baseline_version_id' : null,
@@ -365,6 +635,13 @@ router.get('/:id', async (req, res) => {
       return res.status(500).json({ error: error.message })
     }
 
+    const persistedPages = pages || []
+    const pendingProposals = await loadPendingPageProposals(project.id, project.company_id, req.currentUser)
+    const pendingProposalMap = new Map(pendingProposals.map((proposal) => [proposal.page_id, proposal]))
+    const inferredProjectType = inferProjectType(project, persistedPages)
+    const currentRole = getCompanyRole(req.currentUser, project.company_id)
+    const shouldOverlayDesignerProposal = currentRole === 'designer' && req.currentUser.platformRole !== 'admin'
+
     return res.json({
       project: {
         id: project.id,
@@ -372,27 +649,91 @@ router.get('/:id', async (req, res) => {
         clientName: project.client_name,
         clientEmail: project.client_email,
         businessType: project.business_type,
+        projectType: inferredProjectType,
         companyId: project.company_id,
         archivedAt: project.archived_at,
         trashedAt: project.trashed_at,
         updatedAt: project.updated_at,
       },
-      pages: (pages || []).map((page) => ({
+      pages: persistedPages.map((page) => ({
         id: page.id,
         name: page.name,
         position: page.position,
-        contentHtml: page.content_html,
-        contentJson: page.content_json || null,
+        contentHtml: shouldOverlayDesignerProposal && pendingProposalMap.get(page.id)?.content_html
+          ? pendingProposalMap.get(page.id).content_html
+          : page.content_html,
+        contentJson: shouldOverlayDesignerProposal && pendingProposalMap.get(page.id)?.content_json
+          ? pendingProposalMap.get(page.id).content_json
+          : page.content_json || null,
+        seoMetadata: shouldOverlayDesignerProposal && pendingProposalMap.get(page.id)?.seo_metadata
+          ? pendingProposalMap.get(page.id).seo_metadata
+          : page.seo_metadata || {},
+        contentRules: page.content_rules || {},
         version: page.version || 1,
         reviewStatus: page.review_status || 'draft',
         reviewBaselineVersionId: page.review_baseline_version_id || null,
         reviewBaselineAt: page.review_baseline_at || null,
         reviewRequestedBy: page.review_requested_by || null,
+        pendingProposal: pendingProposalMap.get(page.id)
+          ? {
+              id: pendingProposalMap.get(page.id).id,
+              proposerUserId: pendingProposalMap.get(page.id).proposer_user_id,
+              contentHtml: pendingProposalMap.get(page.id).content_html,
+              contentJson: pendingProposalMap.get(page.id).content_json || null,
+              seoMetadata: pendingProposalMap.get(page.id).seo_metadata || {},
+              status: normalizeProposalStatus(pendingProposalMap.get(page.id).status),
+              reviewerUserId: pendingProposalMap.get(page.id).reviewer_user_id,
+              reviewerNote: pendingProposalMap.get(page.id).reviewer_note || '',
+              reviewedAt: pendingProposalMap.get(page.id).reviewed_at || null,
+              createdAt: pendingProposalMap.get(page.id).created_at,
+              updatedAt: pendingProposalMap.get(page.id).updated_at,
+            }
+          : null,
         updatedAt: page.updated_at,
       })),
     })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo cargar el proyecto' })
+  }
+})
+
+router.patch('/:id', async (req, res) => {
+  const name = req.body.name?.trim()
+  if (!name) return res.status(400).json({ error: 'name es requerido' })
+
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede editar este proyecto' })
+    }
+
+    const timestamp = new Date().toISOString()
+    const { data, error } = await supabaseAdmin
+      .from('projects')
+      .update({ name, updated_at: timestamp })
+      .eq('id', project.id)
+      .select('*')
+      .single()
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    return res.json({
+      project: {
+        id: data.id,
+        name: data.name,
+        clientName: data.client_name,
+        clientEmail: data.client_email,
+        businessType: data.business_type,
+        projectType: normalizeProjectType(data.project_type),
+        companyId: data.company_id,
+        archivedAt: data.archived_at,
+        trashedAt: data.trashed_at,
+        updatedAt: data.updated_at,
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo actualizar el proyecto' })
   }
 })
 
@@ -402,19 +743,50 @@ router.put('/:id/pages', async (req, res) => {
   if (!Array.isArray(pages) || pages.length === 0) {
     return res.status(400).json({ error: 'pages debe ser un array no vacio' })
   }
+  const wantsToPersistSeoMetadata = hasSeoMetadataPayload(pages)
+  const wantsToPersistContentRules = hasContentRulesPayload(pages)
+  if (!projectPageSeoMetadataColumnAvailable && wantsToPersistSeoMetadata) {
+    await refreshProjectPageOptionalColumn('seo_metadata')
+  }
+  if (!projectPageContentRulesColumnAvailable && wantsToPersistContentRules) {
+    await refreshProjectPageOptionalColumn('content_rules')
+  }
+
+  if (!projectPageSeoMetadataColumnAvailable && wantsToPersistSeoMetadata) {
+    return res.status(500).json({
+      error: 'Falta la columna project_pages.seo_metadata en Supabase. Ejecuta la migración antes de guardar SEO metadata.',
+      missingColumn: 'project_pages.seo_metadata',
+    })
+  }
+  if (!projectPageContentRulesColumnAvailable && wantsToPersistContentRules) {
+    return res.status(500).json({
+      error: 'Falta la columna project_pages.content_rules en Supabase. Ejecuta la migración antes de guardar reglas de contenido.',
+      missingColumn: 'project_pages.content_rules',
+    })
+  }
 
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) {
       return res.status(404).json({ error: 'Proyecto no encontrado' })
     }
-    if (!canEditBrief(req.currentUser, project.company_id)) {
+    const companyRole = getCompanyRole(req.currentUser, project.company_id)
+    const isDesignerProposalMode = req.currentUser.platformRole !== 'admin' && companyRole === 'designer'
+    const canEditProjectStructure = canManageProjectStructure(req.currentUser, project.company_id)
+    const canEditProjectMeta = canManageProjectMeta(req.currentUser, project.company_id)
+    if (!canWriteProjectContent(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede editar el brief' })
     }
 
     const timestamp = new Date().toISOString()
     const { data: existingPages, error: existingError } = await runWithProjectPageOptionalColumns((columns) => {
-      const pageColumns = columns.version ? 'id, version' : 'id'
+      const pageColumns = [
+        'id',
+        'name',
+        'position',
+        columns.version ? 'version' : null,
+        columns.contentRules ? 'content_rules' : null,
+      ].filter(Boolean).join(', ')
 
       return supabaseAdmin
         .from('project_pages')
@@ -426,8 +798,79 @@ router.put('/:id/pages', async (req, res) => {
       return res.status(500).json({ error: existingError.message })
     }
 
+    if (!canEditProjectStructure) {
+      const requestedIds = new Set(pages.map((page) => coerceUuid(page.id)))
+      const existingIds = new Set((existingPages || []).map((page) => page.id))
+      const structureChanged = requestedIds.size !== existingIds.size
+        || [...requestedIds].some((pageId) => !existingIds.has(pageId))
+        || (existingPages || []).some((existingPage) => {
+          const nextPage = pages.find((page) => coerceUuid(page.id) === existingPage.id)
+          return !nextPage
+            || String(nextPage.name || '').trim() !== existingPage.name
+            || Number(nextPage.position ?? existingPage.position) !== Number(existingPage.position)
+        })
+
+      if (structureChanged) {
+        return res.status(403).json({ error: 'Tu rol puede escribir contenido, pero no cambiar la estructura del proyecto' })
+      }
+    }
+
+    if (isDesignerProposalMode) {
+      const proposalResult = await upsertDesignerProposals({
+        project,
+        pages,
+        currentUser: req.currentUser,
+        canEditProjectMeta,
+      })
+
+      if (proposalResult.missingTable) {
+        return res.status(500).json({
+          error: 'Falta la tabla project_page_change_proposals en Supabase. Ejecuta la migración antes de guardar propuestas de diseño.',
+          missingTable: 'project_page_change_proposals',
+        })
+      }
+
+      const proposalMap = new Map(proposalResult.proposals.map((proposal) => [proposal.page_id, proposal]))
+      return res.json({
+        proposalSaved: true,
+        pages: pages.map((page, index) => ({
+          id: page.id,
+          name: page.name?.trim() || `Pagina ${index + 1}`,
+          position: index,
+          contentHtml: page.contentHtml || '<p></p>',
+          contentJson: page.contentJson || null,
+          seoMetadata: page.seoMetadata || {},
+          contentRules: page.contentRules && typeof page.contentRules === 'object' ? page.contentRules : {},
+          version: page.version || 1,
+          reviewStatus: page.reviewStatus || 'draft',
+          reviewBaselineVersionId: page.reviewBaselineVersionId || null,
+          reviewBaselineAt: page.reviewBaselineAt || null,
+          reviewRequestedBy: page.reviewRequestedBy || null,
+          pendingProposal: proposalMap.get(page.id)
+            ? {
+                id: proposalMap.get(page.id).id,
+                proposerUserId: proposalMap.get(page.id).proposer_user_id,
+                contentHtml: proposalMap.get(page.id).content_html,
+                contentJson: proposalMap.get(page.id).content_json || null,
+                seoMetadata: proposalMap.get(page.id).seo_metadata || {},
+                status: proposalMap.get(page.id).status,
+                reviewerUserId: proposalMap.get(page.id).reviewer_user_id,
+                reviewerNote: proposalMap.get(page.id).reviewer_note || '',
+                reviewedAt: proposalMap.get(page.id).reviewed_at || null,
+                createdAt: proposalMap.get(page.id).created_at,
+                updatedAt: proposalMap.get(page.id).updated_at,
+              }
+            : null,
+        })),
+        savedAt: timestamp,
+      })
+    }
+
     const existingVersionMap = projectPageVersionColumnAvailable
       ? new Map((existingPages || []).map((page) => [page.id, page.version || 1]))
+      : new Map()
+    const existingContentRulesMap = projectPageContentRulesColumnAvailable
+      ? new Map((existingPages || []).map((page) => [page.id, page.content_rules || {}]))
       : new Map()
     const stalePage = projectPageVersionColumnAvailable
       ? pages.find((page) => {
@@ -461,6 +904,18 @@ router.put('/:id/pages', async (req, res) => {
         payloadPage.content_json = page.contentJson || null
       }
 
+      if (projectPageSeoMetadataColumnAvailable) {
+        payloadPage.seo_metadata = page.seoMetadata && typeof page.seoMetadata === 'object'
+          ? page.seoMetadata
+          : {}
+      }
+
+      if (projectPageContentRulesColumnAvailable) {
+        payloadPage.content_rules = canEditProjectMeta && page.contentRules && typeof page.contentRules === 'object'
+          ? page.contentRules
+          : existingContentRulesMap.get(pageId) || {}
+      }
+
       if (projectPageVersionColumnAvailable) {
         payloadPage.version = currentVersion + 1
       }
@@ -485,9 +940,24 @@ router.put('/:id/pages', async (req, res) => {
       .upsert(payload, { onConflict: 'id' })
 
     if (upsertError && updateMissingProjectPageColumn(upsertError)) {
+      if (!projectPageSeoMetadataColumnAvailable && wantsToPersistSeoMetadata) {
+        return res.status(500).json({
+          error: 'Falta la columna project_pages.seo_metadata en Supabase. Ejecuta la migración antes de guardar SEO metadata.',
+          missingColumn: 'project_pages.seo_metadata',
+        })
+      }
+      if (!projectPageContentRulesColumnAvailable && wantsToPersistContentRules) {
+        return res.status(500).json({
+          error: 'Falta la columna project_pages.content_rules en Supabase. Ejecuta la migración antes de guardar reglas de contenido.',
+          missingColumn: 'project_pages.content_rules',
+        })
+      }
+
       const fallbackPayload = payload.map((page) => {
         const nextPage = { ...page }
         if (!projectPageContentJsonColumnAvailable) delete nextPage.content_json
+        if (!projectPageSeoMetadataColumnAvailable) delete nextPage.seo_metadata
+        if (!projectPageContentRulesColumnAvailable) delete nextPage.content_rules
         if (!projectPageVersionColumnAvailable) delete nextPage.version
         if (!projectPageReviewColumnsAvailable) {
           delete nextPage.review_status
@@ -542,6 +1012,21 @@ router.put('/:id/pages', async (req, res) => {
       })
     }
 
+    if (sectionEvents.length > 0 || source !== 'autosave') {
+      await createProjectNotifications({
+        projectId: project.id,
+        currentUser: req.currentUser,
+        eventType: 'project_content_updated',
+        title: 'Cambios en el proyecto',
+        body: `${req.currentUser.fullName || req.currentUser.email || 'Usuario'} actualizó ${summarizeSavedPages(payload)}`,
+        metadata: {
+          source,
+          pageIds: payload.map((page) => page.id),
+          pageNames: payload.map((page) => page.name),
+        },
+      })
+    }
+
     return res.json({
       pages: payload.map((page) => ({
         id: page.id,
@@ -549,6 +1034,8 @@ router.put('/:id/pages', async (req, res) => {
         position: page.position,
         contentHtml: page.content_html,
         contentJson: page.content_json || null,
+        seoMetadata: page.seo_metadata || {},
+        contentRules: page.content_rules || {},
         version: page.version || 1,
         reviewStatus: page.review_status || 'draft',
         reviewBaselineVersionId: page.review_baseline_version_id || null,
@@ -568,7 +1055,7 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
     if (!project) {
       return res.status(404).json({ error: 'Proyecto no encontrado' })
     }
-    if (!canEditBrief(req.currentUser, project.company_id)) {
+    if (!canSendProjectReview(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede enviar esta página a revisión' })
     }
 
@@ -579,6 +1066,7 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
       'position',
       'content_html',
       projectPageContentJsonColumnAvailable ? 'content_json' : null,
+      projectPageContentRulesColumnAvailable ? 'content_rules' : null,
       projectPageVersionColumnAvailable ? 'version' : null,
       projectPageReviewColumnsAvailable ? 'review_status' : null,
       projectPageReviewColumnsAvailable ? 'review_baseline_version_id' : null,
@@ -628,7 +1116,7 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
         review_requested_by: req.currentUser.id,
       })
       .eq('id', page.id)
-      .select('id, name, position, content_html, content_json, version, review_status, review_baseline_version_id, review_baseline_at, review_requested_by, updated_at')
+      .select('id, name, position, content_html, content_json, content_rules, version, review_status, review_baseline_version_id, review_baseline_at, review_requested_by, updated_at')
       .single()
 
     if (error) return res.status(500).json({ error: error.message })
@@ -648,6 +1136,19 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
       },
     })
 
+    await createProjectNotifications({
+      projectId: project.id,
+      currentUser: req.currentUser,
+      eventType: 'page_ready_for_review',
+      title: 'Página lista para revisión',
+      body: `${req.currentUser.fullName || req.currentUser.email || 'Usuario'} envió ${data.name} a revisión.`,
+      metadata: {
+        pageId: data.id,
+        pageName: data.name,
+        versionId: pageVersion.id,
+      },
+    })
+
     return res.json({
       page: {
         id: data.id,
@@ -655,6 +1156,7 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
         position: data.position,
         contentHtml: data.content_html,
         contentJson: data.content_json || null,
+        contentRules: data.content_rules || page.content_rules || {},
         version: data.version || 1,
         reviewStatus: data.review_status || 'draft',
         reviewBaselineVersionId: data.review_baseline_version_id || null,
@@ -666,6 +1168,144 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
     })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo enviar la página a revisión' })
+  }
+})
+
+router.post('/:id/pages/:pageId/proposals/:proposalId/decision', async (req, res) => {
+  const status = req.body?.status
+  const reviewerNote = String(req.body?.reviewerNote || '').trim() || null
+
+  if (!['accepted', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'status debe ser accepted o rejected' })
+  }
+
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede revisar propuestas de diseño' })
+    }
+    if (!projectPageChangeProposalsTableAvailable) {
+      return res.status(500).json({ error: 'Falta la tabla project_page_change_proposals. Ejecuta la migración de Supabase.' })
+    }
+
+    const { data: proposal, error: proposalError } = await supabaseAdmin
+      .from('project_page_change_proposals')
+      .select('id, project_id, page_id, proposer_user_id, content_html, content_json, seo_metadata, status, reviewer_user_id, reviewer_note, reviewed_at, created_at, updated_at')
+      .eq('id', req.params.proposalId)
+      .eq('project_id', project.id)
+      .eq('page_id', req.params.pageId)
+      .maybeSingle()
+
+    if (proposalError) {
+      if (isMissingTableError(proposalError, 'project_page_change_proposals')) {
+        projectPageChangeProposalsTableAvailable = false
+        return res.status(500).json({ error: 'Falta la tabla project_page_change_proposals. Ejecuta la migración de Supabase.' })
+      }
+      return res.status(500).json({ error: proposalError.message })
+    }
+
+    if (!proposal || proposal.status !== 'pending') {
+      return res.status(404).json({ error: 'Propuesta pendiente no encontrada' })
+    }
+
+    const timestamp = new Date().toISOString()
+
+    if (status === 'accepted') {
+      const pageUpdates = {
+        content_html: proposal.content_html || '<p></p>',
+        updated_at: timestamp,
+      }
+      if (projectPageContentJsonColumnAvailable) pageUpdates.content_json = proposal.content_json || null
+      if (projectPageSeoMetadataColumnAvailable) pageUpdates.seo_metadata = proposal.seo_metadata || {}
+      if (projectPageVersionColumnAvailable) {
+        const { data: pageVersionRow } = await supabaseAdmin
+          .from('project_pages')
+          .select('version')
+          .eq('id', req.params.pageId)
+          .maybeSingle()
+        pageUpdates.version = (pageVersionRow?.version || 1) + 1
+      }
+      if (projectPageReviewColumnsAvailable) {
+        pageUpdates.review_status = 'approved'
+      }
+
+      const { error: pageUpdateError } = await supabaseAdmin
+        .from('project_pages')
+        .update(pageUpdates)
+        .eq('id', req.params.pageId)
+        .eq('project_id', project.id)
+
+      if (pageUpdateError) return res.status(500).json({ error: pageUpdateError.message })
+    } else if (projectPageReviewColumnsAvailable) {
+      await supabaseAdmin
+        .from('project_pages')
+        .update({ review_status: 'changes_requested', updated_at: timestamp })
+        .eq('id', req.params.pageId)
+        .eq('project_id', project.id)
+    }
+
+    const { data: decidedProposal, error: proposalUpdateError } = await supabaseAdmin
+      .from('project_page_change_proposals')
+      .update({
+        status,
+        reviewer_user_id: req.currentUser.id,
+        reviewer_note: reviewerNote,
+        reviewed_at: timestamp,
+        updated_at: timestamp,
+      })
+      .eq('id', proposal.id)
+      .select('id, project_id, page_id, proposer_user_id, content_html, content_json, seo_metadata, status, reviewer_user_id, reviewer_note, reviewed_at, created_at, updated_at')
+      .single()
+
+    if (proposalUpdateError) return res.status(500).json({ error: proposalUpdateError.message })
+
+    await logProjectActivity({
+      projectId: project.id,
+      currentUser: req.currentUser,
+      eventType: status === 'accepted' ? 'designer_proposal_accepted' : 'designer_proposal_rejected',
+      subjectType: 'proposal',
+      subjectId: proposal.id,
+      title: status === 'accepted' ? 'Propuesta de diseño aprobada' : 'Propuesta de diseño rechazada',
+      description: reviewerNote || null,
+      metadata: {
+        pageId: req.params.pageId,
+        proposerUserId: proposal.proposer_user_id,
+      },
+    })
+
+    const notificationPayload = [{
+      user_id: proposal.proposer_user_id,
+      project_id: project.id,
+      event_type: status === 'accepted' ? 'designer_proposal_accepted' : 'designer_proposal_rejected',
+      title: status === 'accepted' ? 'Tu propuesta fue aprobada' : 'Tu propuesta necesita cambios',
+      body: reviewerNote || (status === 'accepted' ? 'Los cambios ya fueron aplicados al proyecto.' : 'Revisa el feedback y vuelve a guardar tu propuesta.'),
+      metadata: {
+        pageId: req.params.pageId,
+        proposalId: proposal.id,
+        status,
+      },
+    }]
+
+    if (proposal.proposer_user_id && proposal.proposer_user_id !== req.currentUser.id) {
+      await supabaseAdmin.from('notifications').insert(notificationPayload)
+    }
+
+    return res.json({
+      proposal: {
+        id: decidedProposal.id,
+        pageId: decidedProposal.page_id,
+        proposerUserId: decidedProposal.proposer_user_id,
+        status: decidedProposal.status,
+        reviewerUserId: decidedProposal.reviewer_user_id,
+        reviewerNote: decidedProposal.reviewer_note || '',
+        reviewedAt: decidedProposal.reviewed_at,
+        createdAt: decidedProposal.created_at,
+        updatedAt: decidedProposal.updated_at,
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo revisar la propuesta' })
   }
 })
 
@@ -803,6 +1443,9 @@ router.post('/:id/deliverables', async (req, res) => {
     if (!project) {
       return res.status(404).json({ error: 'Proyecto no encontrado' })
     }
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede crear entregables' })
+    }
 
     const { data, error } = await supabaseAdmin
       .from('project_deliverables')
@@ -871,6 +1514,9 @@ router.patch('/:id/deliverables/:deliverableId', async (req, res) => {
     if (!project) {
       return res.status(404).json({ error: 'Proyecto no encontrado' })
     }
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede editar entregables' })
+    }
 
     updates.updated_by = req.currentUser.id
 
@@ -923,7 +1569,7 @@ router.post('/:id/share-links', async (req, res) => {
     if (!project) {
       return res.status(404).json({ error: 'Proyecto no encontrado' })
     }
-    if (!canEditBrief(req.currentUser, project.company_id)) {
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede compartir este proyecto' })
     }
 
@@ -974,6 +1620,9 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) {
       return res.status(404).json({ error: 'Proyecto no encontrado' })
+    }
+    if (!canWriteProjectContent(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede subir archivos a este proyecto' })
     }
     if (!req.file) {
       return res.status(400).json({ error: 'file es requerido' })
@@ -1094,7 +1743,7 @@ router.post('/:id/archive', async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
-    if (!canManageProject(req.currentUser, project.company_id)) {
+    if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede archivar este proyecto' })
     }
 
@@ -1125,7 +1774,7 @@ router.post('/:id/trash', async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
-    if (!canManageProject(req.currentUser, project.company_id)) {
+    if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede enviar este proyecto a papelera' })
     }
 
@@ -1162,7 +1811,7 @@ router.post('/:id/restore', async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser, { includeTrashed: true })
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
-    if (!canManageProject(req.currentUser, project.company_id)) {
+    if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede restaurar este proyecto' })
     }
 
@@ -1188,8 +1837,8 @@ router.delete('/:id/permanent', async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser, { includeTrashed: true })
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
-    if (!canManageProject(req.currentUser, project.company_id)) {
-      return res.status(403).json({ error: 'Tu rol no puede borrar permanentemente este proyecto' })
+    if (req.currentUser.platformRole !== 'admin') {
+      return res.status(403).json({ error: 'Solo admin puede borrar permanentemente este proyecto' })
     }
 
     const { error } = await supabaseAdmin

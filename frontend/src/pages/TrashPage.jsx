@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import styles from './TrashPage.module.css'
 
@@ -86,6 +87,7 @@ function matchesDateFilter(item, mode, dateFilter) {
 }
 
 export default function TrashPage({ mode = 'trashed' }) {
+  const { currentUser } = useAuth()
   const pageCopy = PAGE_COPY[mode] || PAGE_COPY.trashed
   const [companies, setCompanies] = useState([])
   const [projects, setProjects] = useState([])
@@ -293,6 +295,7 @@ export default function TrashPage({ mode = 'trashed' }) {
                 busyKey={busyKey}
                 onRestore={restoreItem}
                 onDelete={deleteItem}
+                canDeletePermanently={currentUser?.platformRole === 'admin'}
               />
             )}
           </section>
@@ -302,7 +305,7 @@ export default function TrashPage({ mode = 'trashed' }) {
   )
 }
 
-function TrashGrid({ items, type, mode, busyKey, onRestore, onDelete }) {
+function TrashGrid({ items, type, mode, busyKey, onRestore, onDelete, canDeletePermanently = false }) {
   return (
     <div className={styles.cardsGrid}>
       {items.map((item) => {
@@ -351,7 +354,7 @@ function TrashGrid({ items, type, mode, busyKey, onRestore, onDelete }) {
               >
                 {restoreBusy ? 'Restaurando...' : 'Restaurar'}
               </button>
-              {mode === 'trashed' && (
+              {mode === 'trashed' && canDeletePermanently && (
                 <button
                   className={styles.dangerButton}
                   onClick={() => onDelete(type, item.id)}

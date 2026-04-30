@@ -53,22 +53,90 @@ export function getCompanyMembership(currentUser, companyId) {
   return currentUser.memberships.find((membership) => membership.companyId === companyId) || null
 }
 
+export function getCompanyRole(currentUser, companyId) {
+  return getCompanyMembership(currentUser, companyId)?.role || null
+}
+
 export function canAccessCompany(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
   return Boolean(getCompanyMembership(currentUser, companyId))
 }
 
-export function canEditBrief(currentUser, companyId) {
+export function canManageCompanyLifecycle(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  const membership = getCompanyMembership(currentUser, companyId)
-  return ['manager', 'editor'].includes(membership?.role)
+  return getCompanyRole(currentUser, companyId) === 'manager'
 }
 
-export function canManageProject(currentUser, companyId) {
+export function canManageCompanyUsers(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  const membership = getCompanyMembership(currentUser, companyId)
-  return membership?.role === 'manager'
+  return getCompanyRole(currentUser, companyId) === 'manager'
 }
+
+export function canCreateProject(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export function canManageProjectMeta(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export function canManageProjectLifecycle(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export function canManageProjectStructure(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'editor', 'content_writer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export function canWriteProjectContent(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'editor', 'content_writer', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export function canUseProjectHandoff(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export function canSendProjectReview(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export function canInviteCompanyRole(currentUser, companyId, role) {
+  const allowedRoles = ['manager', 'editor', 'content_writer', 'designer', 'developer']
+  if (!allowedRoles.includes(role)) return false
+
+  if (currentUser.platformRole === 'admin') return true
+
+  const membershipRole = getCompanyRole(currentUser, companyId)
+
+  if (membershipRole === 'manager') {
+    return ['editor', 'content_writer', 'designer', 'developer'].includes(role)
+  }
+
+  if (membershipRole === 'editor') {
+    return ['content_writer', 'designer', 'developer'].includes(role)
+  }
+
+  if (['designer', 'developer'].includes(membershipRole)) {
+    return ['editor', 'designer', 'developer'].includes(role)
+  }
+
+  return false
+}
+
+export function canRequestUserRemoval(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return false
+  return ['editor', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+}
+
+export const canEditBrief = canManageProjectMeta
+export const canManageProject = canManageProjectLifecycle
 
 export function actorLabel(currentUser) {
   return currentUser.fullName || currentUser.email || 'Usuario'

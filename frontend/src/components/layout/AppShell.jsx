@@ -1,15 +1,25 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
+import { canManageUsersNav, canUseTrashNav } from '../../lib/roleCapabilities'
 import styles from './AppShell.module.css'
 
+function roleLabel(currentUser, canManageUsers) {
+  const role = currentUser?.rolePreview || currentUser?.memberships?.[0]?.role
+  if (currentUser?.platformRole === 'admin') return 'Admin de plataforma'
+  if (role === 'content_writer') return 'Content Writer'
+  if (role === 'designer') return 'Diseño'
+  if (role === 'developer') return 'Dev'
+  if (role === 'editor') return 'Editor'
+  return canManageUsers ? 'Manager' : 'Usuario'
+}
+
 export default function AppShell() {
+  const location = useLocation()
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
-  const canManageUsers = currentUser?.platformRole === 'admin'
-    || currentUser?.memberships?.some((membership) => membership.role === 'manager')
-  const canUseTrash = currentUser?.platformRole === 'admin'
-    || currentUser?.memberships?.some((membership) => membership.role === 'manager')
+  const canManageUsers = canManageUsersNav(currentUser)
+  const canUseTrash = canUseTrashNav(currentUser)
 
   async function handleLogout() {
     await signOut()
@@ -29,7 +39,6 @@ export default function AppShell() {
           </div>
 
           <nav className={styles.nav}>
-            <p className={styles.navSection}>Operación</p>
             <NavLink
               to="/companies"
               className={({ isActive }) => (
@@ -77,7 +86,7 @@ export default function AppShell() {
               {currentUser?.fullName || currentUser?.email || 'Cargando usuario'}
             </p>
             <p className={styles.profileRole}>
-              {currentUser?.platformRole === 'admin' ? 'Admin de plataforma' : canManageUsers ? 'Manager' : 'Usuario'}
+              {roleLabel(currentUser, canManageUsers)}
             </p>
           </div>
 
@@ -98,7 +107,7 @@ export default function AppShell() {
       </aside>
 
       <main className={styles.main}>
-        <div className={styles.content}>
+        <div key={location.pathname} className={styles.content}>
           <Outlet />
         </div>
       </main>

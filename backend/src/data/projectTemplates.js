@@ -1,4 +1,10 @@
 const PROJECT_TEMPLATES = {
+  tabula_rasa: {
+    label: 'Tabula rasa',
+    pages: [
+      { name: 'Inicio', sections: [] },
+    ],
+  },
   clinica: {
     label: 'Clinica / Salud',
     pages: [
@@ -89,6 +95,26 @@ function createSectionSeed(name) {
 }
 
 function buildPageDocument(sections) {
+  if (sections.length === 0) {
+    const sectionId = crypto.randomUUID()
+    return {
+      html: `<div data-section-divider data-section-id="${sectionId}" data-section-name="Sección 1"></div><p></p>`,
+      json: {
+        type: 'doc',
+        content: [
+          {
+            type: 'sectionDivider',
+            attrs: {
+              sectionId,
+              sectionName: 'Sección 1',
+            },
+          },
+          { type: 'paragraph' },
+        ],
+      },
+    }
+  }
+
   return {
     html: sections.map((section) => (
       `<div data-section-divider data-section-id="${escapeHtml(section.id)}" data-section-name="${escapeHtml(section.name)}"></div>${section.contentHtml}`
@@ -114,6 +140,41 @@ export function getBusinessTemplate(businessType) {
 }
 
 export function seedProjectPages(businessType) {
+  return seedProjectPagesForType('page', businessType)
+}
+
+export function seedProjectPagesForType(projectType = 'page', businessType = 'otro') {
+  if (projectType === 'document') {
+    return [{
+      id: crypto.randomUUID(),
+      name: 'Documento',
+      position: 0,
+      content_html: '<p></p>',
+      content_json: { type: 'doc', content: [{ type: 'paragraph' }] },
+      seo_metadata: {},
+      review_status: 'draft',
+    }]
+  }
+
+  if (projectType === 'faq') {
+    return [{
+      id: crypto.randomUUID(),
+      name: 'FAQs',
+      position: 0,
+      content_html: '<h1>Preguntas frecuentes</h1><h2>Pregunta Frecuente 1</h2><p>Respuesta de ejemplo.</p>',
+      content_json: {
+        type: 'doc',
+        content: [
+          { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Preguntas frecuentes' }] },
+          { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Pregunta Frecuente 1' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'Respuesta de ejemplo.' }] },
+        ],
+      },
+      seo_metadata: {},
+      review_status: 'draft',
+    }]
+  }
+
   const template = getBusinessTemplate(businessType)
 
   return template.pages.map((page, index) => {
@@ -126,6 +187,7 @@ export function seedProjectPages(businessType) {
       position: index,
       content_html: document.html,
       content_json: document.json,
+      seo_metadata: {},
       review_status: 'draft',
     }
   })

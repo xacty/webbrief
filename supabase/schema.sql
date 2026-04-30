@@ -29,7 +29,7 @@ create table if not exists public.company_memberships (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
-  role text not null check (role in ('manager', 'editor', 'designer', 'developer')),
+  role text not null check (role in ('manager', 'editor', 'content_writer', 'designer', 'developer')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (company_id, user_id)
@@ -39,9 +39,10 @@ create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   name text not null,
-  client_name text not null,
+  client_name text,
   client_email text,
   business_type text not null,
+  project_type text not null default 'page' check (project_type in ('page', 'document', 'faq')),
   created_by uuid references public.profiles(id) on delete set null,
   archived_at timestamptz,
   archived_by uuid references public.profiles(id) on delete set null,
@@ -59,6 +60,8 @@ create table if not exists public.project_pages (
   position integer not null,
   content_html text not null default '<p></p>',
   content_json jsonb,
+  seo_metadata jsonb not null default '{}'::jsonb,
+  content_rules jsonb not null default '{}'::jsonb,
   version integer not null default 1,
   review_status text not null default 'draft' check (review_status in ('draft', 'ready_for_review', 'approved', 'changes_requested')),
   review_baseline_version_id uuid,
@@ -80,6 +83,22 @@ create table if not exists public.project_page_versions (
   sections_snapshot jsonb not null default '[]'::jsonb,
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
+);
+
+create table if not exists public.project_page_change_proposals (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  page_id uuid not null references public.project_pages(id) on delete cascade,
+  proposer_user_id uuid references public.profiles(id) on delete set null,
+  content_html text not null default '<p></p>',
+  content_json jsonb,
+  seo_metadata jsonb not null default '{}'::jsonb,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected')),
+  reviewer_user_id uuid references public.profiles(id) on delete set null,
+  reviewer_note text,
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists public.project_activity (
@@ -216,8 +235,13 @@ alter table public.projects add column if not exists archived_by uuid references
 alter table public.projects add column if not exists trashed_at timestamptz;
 alter table public.projects add column if not exists delete_after timestamptz;
 alter table public.projects add column if not exists deleted_by uuid references public.profiles(id) on delete set null;
+alter table public.projects add column if not exists project_type text not null default 'page';
+alter table public.projects alter column client_name drop not null;
+update public.projects set project_type = 'page' where project_type is null;
 
 alter table public.project_pages add column if not exists content_json jsonb;
+alter table public.project_pages add column if not exists seo_metadata jsonb not null default '{}'::jsonb;
+alter table public.project_pages add column if not exists content_rules jsonb not null default '{}'::jsonb;
 alter table public.project_pages add column if not exists version integer not null default 1;
 alter table public.project_pages add column if not exists review_status text not null default 'draft';
 alter table public.project_pages add column if not exists review_baseline_version_id uuid;
@@ -270,6 +294,11 @@ alter table public.profiles add column if not exists avatar_url text;
 alter table public.profiles
   add constraint profiles_platform_role_check
   check (platform_role in ('admin', 'user', 'qa'));
+
+alter table public.company_memberships drop constraint if exists company_memberships_role_check;
+alter table public.company_memberships
+  add constraint company_memberships_role_check
+  check (role in ('manager', 'editor', 'content_writer', 'designer', 'developer'));
 
 drop trigger if exists companies_set_updated_at on public.companies;
 create trigger companies_set_updated_at

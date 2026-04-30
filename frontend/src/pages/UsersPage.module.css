@@ -368,6 +368,12 @@
   border-top: 1px solid var(--wb-border);
 }
 
+.membershipActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .globalAccessNotice {
   display: flex;
   align-items: center;
