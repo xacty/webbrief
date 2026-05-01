@@ -7,6 +7,7 @@ import {
   buildImageKitUrl,
   parseImageKitPathFromUrl,
   sanitizeFileName,
+  slugifyFileBaseName,
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { requireAuth } from '../middleware/auth.js'
@@ -438,9 +439,11 @@ function normalizeExportOptions(query = {}) {
   }
 }
 
-function buildExportFileName(fileName, requestedFormat = null, fallbackMimeType = '') {
+function buildExportFileName(fileName, requestedFormat = null, fallbackMimeType = '', requestedBaseName = '') {
   const safeName = sanitizeFileName(fileName || 'image')
-  const baseName = safeName.replace(/\.[^.]+$/u, '') || 'image'
+  const baseName = requestedBaseName
+    ? slugifyFileBaseName(requestedBaseName)
+    : (safeName.replace(/\.[^.]+$/u, '') || 'image')
   const extension = requestedFormat || getExtensionFromMimeType(fallbackMimeType, safeName)
   return `${baseName}.${extension}`
 }
@@ -1834,7 +1837,12 @@ router.get('/:id/assets/export', async (req, res) => {
       return res.status(502).json({ error: 'No se pudo obtener la imagen exportada' })
     }
 
-    const fileName = buildExportFileName(asset.file_name, isSvg ? null : exportOptions.format, asset.mime_type)
+    const fileName = buildExportFileName(
+      asset.file_name,
+      isSvg ? null : exportOptions.format,
+      asset.mime_type,
+      req.query.fileName || ''
+    )
     const contentType = upstream.headers.get('content-type') || asset.mime_type || 'application/octet-stream'
     const buffer = Buffer.from(await upstream.arrayBuffer())
 

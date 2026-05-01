@@ -28,6 +28,18 @@ export function sanitizeFileName(fileName = 'file') {
   return baseName.replace(/[^a-zA-Z0-9._-]+/g, '_')
 }
 
+export function slugifyFileBaseName(fileName = 'file') {
+  const baseName = path.basename(String(fileName || 'file')).trim() || 'file'
+  const withoutExtension = baseName.replace(/\.[^.]+$/u, '') || 'file'
+  return withoutExtension
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'file'
+}
+
 export function buildImageKitPath(...segments) {
   return `/${segments
     .filter(Boolean)

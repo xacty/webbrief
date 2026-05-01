@@ -6,6 +6,7 @@ import {
   buildImageKitTransformations,
   buildImageKitUrl,
   sanitizeFileName,
+  slugifyFileBaseName,
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { supabaseAdmin } from '../lib/supabase.js'
@@ -101,9 +102,11 @@ function normalizeAvatarExportOptions(query = {}) {
   }
 }
 
-function getAvatarExportFileName(fileName, requestedFormat = null) {
+function getAvatarExportFileName(fileName, requestedFormat = null, requestedBaseName = '') {
   const safeName = sanitizeFileName(fileName || 'avatar.jpg')
-  const baseName = safeName.replace(/\.[^.]+$/u, '') || 'avatar'
+  const baseName = requestedBaseName
+    ? slugifyFileBaseName(requestedBaseName)
+    : (safeName.replace(/\.[^.]+$/u, '') || 'avatar')
   const extension = requestedFormat || (safeName.split('.').pop() || 'jpg')
   return `${baseName}.${extension}`
 }
@@ -605,7 +608,7 @@ router.get('/:id/avatar/export', async (req, res) => {
       return res.status(502).json({ error: 'No se pudo obtener el avatar exportado' })
     }
 
-    const fileName = getAvatarExportFileName(profile.avatar_file_name, exportOptions.format)
+    const fileName = getAvatarExportFileName(profile.avatar_file_name, exportOptions.format, req.query.fileName || '')
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
     const buffer = Buffer.from(await upstream.arrayBuffer())
 

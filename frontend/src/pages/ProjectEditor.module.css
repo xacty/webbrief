@@ -1010,6 +1010,146 @@
   cursor: pointer;
 }
 
+.exportModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.32);
+  backdrop-filter: blur(8px);
+}
+
+.exportModal {
+  width: min(560px, 100%);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+}
+
+.exportModalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.exportModalEyebrow {
+  margin: 0 0 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.exportModalTitle {
+  margin: 0;
+  color: #111827;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.exportModalClose {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.exportModalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 22px 22px;
+}
+
+.exportMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.exportFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.exportField {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.exportField span {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.exportInput {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 12px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+}
+
+.exportHint {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.exportRange {
+  width: 100%;
+}
+
+.exportActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.exportPrimaryBtn,
+.exportSecondaryBtn {
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.exportPrimaryBtn {
+  border: none;
+  background: #111827;
+  color: #fff;
+}
+
+.exportSecondaryBtn {
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  color: #111827;
+}
+
 .previewPage {
   width: 820px;
   max-width: calc(100% - 48px);

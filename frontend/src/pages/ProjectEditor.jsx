@@ -618,6 +618,63 @@ function buildProjectImageExportPath({ projectId, assetId = '', src = '', preset
   return `/api/projects/${projectId}/assets/export?${params.toString()}`
 }
 
+function buildAdvancedProjectImageExportPath({
+  projectId,
+  assetId = '',
+  src = '',
+  width = null,
+  height = null,
+  format = '',
+  quality = null,
+  fit = '',
+  fileName = '',
+}) {
+  const params = new URLSearchParams()
+  if (assetId) params.set('assetId', assetId)
+  else if (src) params.set('src', src)
+  if (width) params.set('width', String(width))
+  if (height) params.set('height', String(height))
+  if (format) params.set('format', format)
+  if (quality !== null && quality !== undefined) params.set('quality', String(quality))
+  if (fit) params.set('fit', fit)
+  if (fileName) params.set('fileName', fileName)
+  return `/api/projects/${projectId}/assets/export?${params.toString()}`
+}
+
+function slugifyExportFileName(value = 'image') {
+  return String(value || 'image')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'image'
+}
+
+function parseImageBlockMetadata(element) {
+  const image = element?.tagName?.toLowerCase() === 'img' ? element : element?.querySelector?.('img')
+  if (!image) return null
+
+  const src = image.getAttribute('src') || ''
+  const originalWidth = Number(image.getAttribute('data-original-width')) || Number(image.getAttribute('width')) || null
+  const originalHeight = Number(image.getAttribute('data-original-height')) || Number(image.getAttribute('height')) || null
+  const fileName = image.getAttribute('data-file-name') || ''
+  const assetId = image.getAttribute('data-asset-id') || ''
+  const storagePath = image.getAttribute('data-storage-path') || ''
+  const format = (fileName.split('.').pop() || src.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase()
+
+  return {
+    src,
+    assetId,
+    storagePath,
+    fileName,
+    baseName: slugifyExportFileName(fileName || 'image'),
+    format: format || 'jpg',
+    originalWidth,
+    originalHeight,
+  }
+}
+
 function removeImageBySrc(editor, src) {
   if (!editor || !src) return false
 
@@ -3109,6 +3166,7 @@ export default function ProjectEditor() {
 
         {editorMode === 'handoff' && (
           <HandoffPanel
+            projectId={projectId}
             page={activePageForRead}
             projectType={projectType}
             audience={handoffAudience}
@@ -5740,6 +5798,7 @@ function createHandoffBlock(element, currentSection) {
   const label = blockLabel(element)
   const text = blockText(element)
   if (!text && !['img', 'table'].includes(label)) return null
+  const image = label === 'img' ? parseImageBlockMetadata(element) : null
 
   return {
     id: `${currentSection.id}-${currentSection.blocks.length}`,
@@ -5753,6 +5812,7 @@ function createHandoffBlock(element, currentSection) {
       text,
       links: extractLinks(element),
     },
+    image,
   }
 }
 
@@ -5856,8 +5916,9 @@ async function copyRich({ text, html }) {
   await navigator.clipboard.writeText(text)
 }
 
-function HandoffPanel({ page, projectType = 'page', audience }) {
+function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
   const [copied, setCopied] = useState('')
+  const [exportModal, setExportModal] = useState(null)
   const sections = useMemo(() => parseHandoffPage(page, projectType), [page, projectType])
   const groupCopyLabel = projectType === 'faq' ? 'Pregunta frecuente copiada' : projectType === 'document' ? 'Documento copiado' : 'Sección copiada'
   const groupButtonLabel = projectType === 'faq' ? 'Copiar FAQ' : projectType === 'document' ? 'Copiar documento' : 'Copiar sección'
@@ -5875,6 +5936,71 @@ function HandoffPanel({ page, projectType = 'page', audience }) {
   const pageMarkdown = sections.map((section) => (
     [`## ${section.name}`, ...section.blocks.map((block) => block.markdown)].join('\n\n')
   )).join('\n\n')
+
+  function openImageExport(block) {
+    if (!block?.image) return
+
+    setExportModal({
+      blockId: block.id,
+      image: block.image,
+      fileName: block.image.baseName || 'image',
+      format: block.image.format === 'jpeg' ? 'jpg' : (block.image.format || 'webp'),
+      width: block.image.originalWidth || '',
+      height: block.image.originalHeight || '',
+      quality: 90,
+      fit: 'at_max',
+    })
+  }
+
+  function closeImageExport() {
+    setExportModal(null)
+  }
+
+  function updateExportField(key, value) {
+    setExportModal((current) => {
+      if (!current) return current
+      const next = { ...current, [key]: value }
+      const baseWidth = Number(current.image?.originalWidth) || 0
+      const baseHeight = Number(current.image?.originalHeight) || 0
+      const ratio = baseWidth > 0 && baseHeight > 0 ? baseWidth / baseHeight : 0
+
+      if (ratio > 0 && key === 'width') {
+        const width = Number(value)
+        next.height = Number.isFinite(width) && width > 0 ? Math.round(width / ratio) : ''
+      }
+
+      if (ratio > 0 && key === 'height') {
+        const height = Number(value)
+        next.width = Number.isFinite(height) && height > 0 ? Math.round(height * ratio) : ''
+      }
+
+      return next
+    })
+  }
+
+  async function handleImageExportSubmit(event) {
+    event.preventDefault()
+    if (!exportModal || !projectId) return
+
+    try {
+      await apiDownloadToFile(buildAdvancedProjectImageExportPath({
+        projectId,
+        assetId: exportModal.image.assetId || '',
+        src: exportModal.image.src || '',
+        width: Number(exportModal.width) || null,
+        height: Number(exportModal.height) || null,
+        format: exportModal.format || '',
+        quality: Number(exportModal.quality) || null,
+        fit: exportModal.fit || '',
+        fileName: slugifyExportFileName(exportModal.fileName || exportModal.image.baseName || 'image'),
+      }), {
+        suggestedFileName: `${slugifyExportFileName(exportModal.fileName || exportModal.image.baseName || 'image')}.${exportModal.format || exportModal.image.format || 'webp'}`,
+      })
+      closeImageExport()
+    } catch (error) {
+      window.alert(error.message || 'No se pudo exportar la imagen')
+    }
+  }
 
   return (
     <div className={styles.handoffPanel}>
@@ -5946,6 +6072,11 @@ function HandoffPanel({ page, projectType = 'page', audience }) {
                           </button>
                         </>
                       )}
+                      {block.label === 'img' && block.image && (
+                        <button className={styles.handoffIconBtn} title="Exportar imagen" onClick={() => openImageExport(block)}>
+                          <Download size={13} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -5954,6 +6085,99 @@ function HandoffPanel({ page, projectType = 'page', audience }) {
           )
         })}
       </div>
+
+      {exportModal && (
+        <div className={styles.exportModalOverlay} onClick={closeImageExport}>
+          <div className={styles.exportModal} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.exportModalHeader}>
+              <div>
+                <p className={styles.exportModalEyebrow}>Exportación de imagen</p>
+                <h3 className={styles.exportModalTitle}>Configurar export</h3>
+              </div>
+              <button type="button" className={styles.exportModalClose} onClick={closeImageExport} aria-label="Cerrar">
+                <X size={16} />
+              </button>
+            </div>
+
+            <form className={styles.exportModalForm} onSubmit={handleImageExportSubmit}>
+              <div className={styles.exportMetaRow}>
+                <span>Original: {exportModal.image.originalWidth || '—'}px × {exportModal.image.originalHeight || '—'}px</span>
+                <span>Formato: {(exportModal.image.format || 'desconocido').toUpperCase()}</span>
+              </div>
+
+              <label className={styles.exportField}>
+                <span>Nombre de archivo</span>
+                <input
+                  className={styles.exportInput}
+                  type="text"
+                  value={exportModal.fileName}
+                  onChange={(event) => updateExportField('fileName', event.target.value)}
+                  placeholder="nombre-de-foto"
+                />
+                <small className={styles.exportHint}>{slugifyExportFileName(exportModal.fileName || 'image')}.{exportModal.format}</small>
+              </label>
+
+              <div className={styles.exportFieldGrid}>
+                <label className={styles.exportField}>
+                  <span>Ancho</span>
+                  <input
+                    className={styles.exportInput}
+                    type="number"
+                    min="1"
+                    value={exportModal.width}
+                    onChange={(event) => updateExportField('width', event.target.value)}
+                  />
+                </label>
+                <label className={styles.exportField}>
+                  <span>Alto</span>
+                  <input
+                    className={styles.exportInput}
+                    type="number"
+                    min="1"
+                    value={exportModal.height}
+                    onChange={(event) => updateExportField('height', event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className={styles.exportFieldGrid}>
+                <label className={styles.exportField}>
+                  <span>Formato</span>
+                  <select className={styles.exportInput} value={exportModal.format} onChange={(event) => updateExportField('format', event.target.value)}>
+                    <option value="webp">WebP</option>
+                    <option value="jpg">JPG</option>
+                    <option value="png">PNG</option>
+                  </select>
+                </label>
+                <label className={styles.exportField}>
+                  <span>Ajuste</span>
+                  <select className={styles.exportInput} value={exportModal.fit} onChange={(event) => updateExportField('fit', event.target.value)}>
+                    <option value="at_max">Mantener dentro</option>
+                    <option value="fill">Recortar para encajar</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className={styles.exportField}>
+                <span>Compresión: {exportModal.quality}%</span>
+                <input
+                  className={styles.exportRange}
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={exportModal.quality}
+                  onChange={(event) => updateExportField('quality', event.target.value)}
+                />
+              </label>
+
+              <div className={styles.exportActions}>
+                <button type="button" className={styles.exportSecondaryBtn} onClick={closeImageExport}>Cancelar</button>
+                <button type="submit" className={styles.exportPrimaryBtn}>Exportar imagen</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
