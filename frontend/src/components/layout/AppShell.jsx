@@ -2,15 +2,17 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { canManageUsersNav, canUseTrashNav } from '../../lib/roleCapabilities'
+import {
+  getCompanyRoleLabel,
+  getPlatformRoleTitle,
+} from '../../../../shared/userRoles.js'
+import webriefLogo from '../../assets/brand/webrief--logo-v2.svg'
 import styles from './AppShell.module.css'
 
 function roleLabel(currentUser, canManageUsers) {
   const role = currentUser?.rolePreview || currentUser?.memberships?.[0]?.role
-  if (currentUser?.platformRole === 'admin') return 'Admin de plataforma'
-  if (role === 'content_writer') return 'Content Writer'
-  if (role === 'designer') return 'Diseño'
-  if (role === 'developer') return 'Dev'
-  if (role === 'editor') return 'Editor'
+  if (currentUser?.platformRole === 'admin') return getPlatformRoleTitle(currentUser.platformRole)
+  if (role) return getCompanyRoleLabel(role)
   return canManageUsers ? 'Manager' : 'Usuario'
 }
 
@@ -31,11 +33,7 @@ export default function AppShell() {
       <aside className={styles.sidebar}>
         <div>
           <div className={styles.brand}>
-            <span className={styles.logo}>WB</span>
-            <div>
-              <p className={styles.brandTitle}>WeBrief</p>
-              <p className={styles.brandMeta}>Admin workspace</p>
-            </div>
+            <img className={styles.logo} src={webriefLogo} alt="WeBrief" />
           </div>
 
           <nav className={styles.nav}>

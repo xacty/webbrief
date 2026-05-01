@@ -349,7 +349,7 @@
   - `watch`: add/delete/rename/scroll sync/HTML hydration
 - `editor.updates-panel`
   - `touch`: activity list, pending state, private share action
-  - `keep`: lightweight right-side operations panel with section activity click-through
+  - `keep`: lightweight right-side operations panel with section activity click-through, internal scroll, and bottom-docked content-rules card in document projects
   - `watch`: activity endpoint, unread section metadata, and notification unread state
 - `editor.review-markers`
   - `touch`: marker icon style, selected marker state, mark-read behavior
@@ -457,6 +457,10 @@
 - Expanded editor toolbar with text alignment, indentation, color, highlight, spacing, table picker behavior, and global dropdown dismissal fixes.
 - Added role preview for admins, shared frontend/backend capability helpers, scoped role behavior for manager/editor/content_writer/designer/developer, and route/action gating aligned with those capabilities.
 - Added designer proposal support through `project_page_change_proposals`; reviewer roles can accept/reject pending designer proposals.
+- Hid the generic editor review footer controls/status (`Draft`, `En revisión`, `Enviar a revisión`) because the broad internal review UX is not production-ready; kept the narrower designer proposal approval flow and public share approvals.
+- Right activity panel now scrolls internally, the document content-rules card is docked outside the activity flow at the bottom, and editor side-scrollbars were restyled to a slimmer dark variant.
+- Replaced backend image processing/storage flow from `sharp` + Supabase Storage to ImageKit. Backend uploads now use ImageKit SDK with `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, and `IMAGEKIT_URL_ENDPOINT`.
+- Supabase now persists ImageKit metadata for assets and avatars, including `imagekit_file_id`, original URL, and avatar file name/path fields.
 - Company project cards now display project type and infer legacy project types from first page names when `projects.project_type` is null.
 - App shell routing was normalized to a rooted layout with relative children. `UsersPage` now memoizes invite role options and avoids no-op invite form state writes to prevent render loops that freeze shell navigation.
 - Removed the visible `Operación` label from the app shell sidebar.
@@ -465,5 +469,4 @@
 
 - richer deliverables UI beyond compact editor panel
 - notification read/unread UI actions
-- CRITICAL deploy follow-up: Namecheap VPS CPU does not support current prebuilt `sharp` linux-x64 binary (`requires v2 microarchitecture`). Backend now lazy-loads `sharp` so API can boot, but raster project asset uploads and avatar processing may return 503 until image processing is fixed. Resolve before serious beta/production because image uploads are core to app value. Options to evaluate: build `sharp` from source/system libvips on VPS, use an image-processing service, temporarily store originals without conversion, or move to a VPS CPU/provider that supports the binary.
 - Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.

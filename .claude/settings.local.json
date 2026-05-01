@@ -10,7 +10,11 @@
       "Bash(/Users/adrian/GitHub/webbrief/CONTEXT.md:*)",
       "Bash(find /Users/adrian/GitHub/webbrief -not -path */node_modules* -not -path */.git* -not -path */dist/* -type f)",
       "WebSearch",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"const l = require\\(''lucide-react''\\); console.log\\(Object.keys\\(l\\).filter\\(k => k.toLowerCase\\(\\).includes\\(''table''\\)\\).join\\('', ''\\)\\)\")",
+      "Bash(node -e \"const l = require\\(''lucide-react''\\); console.log\\(Object.keys\\(l\\).filter\\(k => /^\\(Plus|Minus|Trash|Rows|Columns|Table|Grid|Between\\)/.test\\(k\\) && !k.includes\\(''Icon''\\)\\).join\\('', ''\\)\\)\")",
+      "Bash(node -e \"const l = require\\(''lucide-react''\\); console.log\\(Object.keys\\(l\\).filter\\(k => /^\\(Rows|Columns|Table|Between|Grid\\)/.test\\(k\\) && !k.includes\\(''Icon''\\)\\).join\\('', ''\\)\\)\")"
     ]
   }
 }

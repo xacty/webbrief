@@ -1,4 +1,6 @@
 .topTrayRow {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -21,6 +23,30 @@
   border-top-left-radius: 0;
   border-top-right-radius: 0;
   border-top: none;
+}
+
+.editorPageRow {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  max-width: 890px;
+  margin: 0 auto;
+}
+
+.editorCanvas {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  max-width: 800px;
+  min-height: calc(100vh - 120px);
+  background: #f8f8f8;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 60px 50px 1000px;
+}
+
+.editorCanvasContent {
+  position: relative;
 }
 
 .seoPanel {
@@ -161,7 +187,7 @@
   padding: 10px;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgb(255 255 255 / 20%);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
   backdrop-filter: blur(10px);
 }

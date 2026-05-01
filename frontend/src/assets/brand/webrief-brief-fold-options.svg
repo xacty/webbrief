@@ -1,0 +1,84 @@
+<svg width="1440" height="960" viewBox="0 0 1440 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1440" height="960" fill="#F8FAFC"/>
+  <text x="80" y="92" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="800">WeBrief Brief Fold options</text>
+  <text x="80" y="132" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="18">Variantes centradas en un brief/documento sobrio con monograma W. Las otras rutas quedan descartadas.</text>
+
+  <g transform="translate(80 190)">
+    <rect width="380" height="560" rx="28" fill="#FFFFFF" stroke="#DBE3F0"/>
+    <rect x="36" y="36" width="104" height="104" rx="28" fill="#0F172A"/>
+    <path d="M60 64L76 113H90L100 83L111 113H125L141 64H126L117 96L106 64H94L83 96L74 64H60Z" fill="#FFFFFF"/>
+    <path d="M69 56H126C133.732 56 140 62.268 140 70V118C140 125.732 133.732 132 126 132H69C61.268 132 55 125.732 55 118V70C55 62.268 61.268 56 69 56Z" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2"/>
+    <text x="36" y="196" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">A. Original compacta</text>
+    <text x="36" y="236" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">Caja de documento + W clara. Es la</text>
+    <text x="36" y="262" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">más directa para sidebar y favicon.</text>
+    <g transform="translate(36 328)">
+      <rect width="308" height="92" rx="22" fill="#0F172A"/>
+      <rect x="20" y="20" width="52" height="52" rx="14" fill="#FFFFFF"/>
+      <path d="M30 33L38 59H45L51 43L57 59H64L72 33H64L60 50L54 33H48L42 50L38 33H30Z" fill="#0F172A"/>
+      <text x="92" y="55" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">WeBrief</text>
+    </g>
+    <g transform="translate(36 464)">
+      <rect width="46" height="46" rx="12" fill="#0F172A"/>
+      <path d="M11 14L18 33H24L28 22L32 33H38L45 14H38L34 27L30 14H26L22 27L18 14H11Z" fill="#FFFFFF"/>
+      <text x="64" y="30" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="14">Funciona muy bien en 32-48px.</text>
+    </g>
+  </g>
+
+  <g transform="translate(530 190)">
+    <rect width="380" height="560" rx="28" fill="#FFFFFF" stroke="#DBE3F0"/>
+    <rect x="36" y="36" width="104" height="104" rx="28" fill="#0F172A"/>
+    <path d="M62 58H114L134 78V124C134 130.627 128.627 136 122 136H62C55.373 136 50 130.627 50 124V70C50 63.373 55.373 58 62 58Z" fill="#FFFFFF"/>
+    <path d="M114 58V76C114 77.1046 114.895 78 116 78H134L114 58Z" fill="#CBD5E1"/>
+    <path d="M64 82L76 118H86L93 96L101 118H111L123 82H112L106 105L98 82H89L81 105L75 82H64Z" fill="#0F172A"/>
+    <text x="36" y="196" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">B. Fold literal</text>
+    <text x="36" y="236" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">Más “brief/documento”: esquina doblada,</text>
+    <text x="36" y="262" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">W interna y lectura profesional.</text>
+    <g transform="translate(36 328)">
+      <rect width="308" height="92" rx="22" fill="#FFFFFF" stroke="#DBE3F0"/>
+      <rect x="20" y="20" width="52" height="52" rx="14" fill="#0F172A"/>
+      <path d="M34 27H54L64 37V61C64 64.3137 61.3137 67 58 67H34C30.6863 67 28 64.3137 28 61V33C28 29.6863 30.6863 27 34 27Z" fill="#FFFFFF"/>
+      <path d="M54 27V36C54 36.5523 54.4477 37 55 37H64L54 27Z" fill="#CBD5E1"/>
+      <path d="M34 41L40 59H45L49 48L53 59H58L64 41H58L55 52L51 41H47L43 52L40 41H34Z" fill="#0F172A"/>
+      <text x="92" y="55" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">WeBrief</text>
+    </g>
+    <g transform="translate(36 464)">
+      <rect width="46" height="46" rx="12" fill="#0F172A"/>
+      <path d="M16 10H29L37 18V35C37 38.3137 34.3137 41 31 41H16C12.6863 41 10 38.3137 10 35V16C10 12.6863 12.6863 10 16 10Z" fill="#FFFFFF"/>
+      <path d="M29 10V17C29 17.5523 29.4477 18 30 18H37L29 10Z" fill="#CBD5E1"/>
+      <path d="M14 22L18 34H22L24 27L27 34H31L35 22H30L28 29L25 22H23L20 29L18 22H14Z" fill="#0F172A"/>
+      <text x="64" y="30" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="14">Más expresiva, aún simple.</text>
+    </g>
+  </g>
+
+  <g transform="translate(980 190)">
+    <rect width="380" height="560" rx="28" fill="#FFFFFF" stroke="#DBE3F0"/>
+    <rect x="36" y="36" width="104" height="104" rx="28" fill="#0F172A"/>
+    <path d="M62 58H124C130.627 58 136 63.373 136 70V132H62C55.373 132 50 126.627 50 120V70C50 63.373 55.373 58 62 58Z" fill="#FFFFFF"/>
+    <path d="M62 58H124C130.627 58 136 63.373 136 70V75H50V70C50 63.373 55.373 58 62 58Z" fill="#E2E8F0"/>
+    <path d="M64 86L76 122H86L94 100L102 122H112L124 86H113L107 109L99 86H90L82 109L76 86H64Z" fill="#0F172A"/>
+    <path d="M50 75H136" stroke="#0F172A" stroke-opacity="0.12" stroke-width="2"/>
+    <text x="36" y="196" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">C. Brief panel</text>
+    <text x="36" y="236" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">Más cercano a interfaz: una hoja/panel</text>
+    <text x="36" y="262" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">con header. Se siente más SaaS.</text>
+    <g transform="translate(36 328)">
+      <rect width="308" height="92" rx="22" fill="#0F172A"/>
+      <rect x="20" y="20" width="52" height="52" rx="14" fill="#FFFFFF"/>
+      <path d="M31 27H61C64.3137 27 67 29.6863 67 33V66H31C27.6863 66 25 63.3137 25 60V33C25 29.6863 27.6863 27 31 27Z" fill="#0F172A"/>
+      <path d="M31 27H61C64.3137 27 67 29.6863 67 33V36H25V33C25 29.6863 27.6863 27 31 27Z" fill="#334155"/>
+      <path d="M31 42L37 59H42L46 49L50 59H55L61 42H55L52 53L48 42H44L40 53L37 42H31Z" fill="#FFFFFF"/>
+      <text x="92" y="55" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">WeBrief</text>
+    </g>
+    <g transform="translate(36 464)">
+      <rect width="46" height="46" rx="12" fill="#0F172A"/>
+      <path d="M14 11H32C35.3137 11 38 13.6863 38 17V36H14C10.6863 36 8 33.3137 8 30V17C8 13.6863 10.6863 11 14 11Z" fill="#FFFFFF"/>
+      <path d="M8 20H38" stroke="#CBD5E1" stroke-width="3"/>
+      <path d="M13 24L17 35H21L23 29L26 35H30L34 24H30L28 31L25 24H22L20 31L17 24H13Z" fill="#0F172A"/>
+      <text x="64" y="30" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="14">Más producto/admin, menos genérico.</text>
+    </g>
+  </g>
+
+  <g transform="translate(80 810)">
+    <text x="0" y="0" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800">Recomendación actual</text>
+    <text x="0" y="36" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">B si queremos que se lea como “brief/documento”; A si priorizamos máxima reducción; C si queremos una señal más SaaS/admin.</text>
+  </g>
+</svg>

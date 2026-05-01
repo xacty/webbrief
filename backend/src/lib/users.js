@@ -1,6 +1,5 @@
 import { supabaseAdmin } from './supabase.js'
-
-const PLATFORM_ROLES = new Set(['admin', 'user', 'qa'])
+import { normalizePlatformRole } from '../../../shared/userRoles.js'
 
 export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
@@ -19,10 +18,6 @@ async function findAuthUserByEmail(email) {
   if (error) throw error
 
   return (data?.users || []).find((user) => normalizeEmail(user.email) === email) || null
-}
-
-function normalizePlatformRole(platformRole) {
-  return PLATFORM_ROLES.has(platformRole) ? platformRole : 'user'
 }
 
 async function updateExistingProfile(profile, fullName, platformRole) {

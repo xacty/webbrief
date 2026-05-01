@@ -2,6 +2,12 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import AppShell from './components/layout/AppShell'
+import {
+  COMPANY_ROLE_ORDER,
+  PLATFORM_ROLE_ORDER,
+  getCompanyRoleLabel,
+  getPlatformRoleLabel,
+} from '../../shared/userRoles.js'
 
 const Login = lazy(() => import('./pages/Login'))
 const NewProject = lazy(() => import('./pages/NewProject'))
@@ -15,12 +21,10 @@ const TrashPage = lazy(() => import('./pages/TrashPage'))
 const AccountSettingsPage = lazy(() => import('./pages/AccountSettingsPage'))
 
 const ROLE_PREVIEW_OPTIONS = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'editor', label: 'Editor' },
-  { value: 'content_writer', label: 'Content Writer' },
-  { value: 'designer', label: 'Diseño' },
-  { value: 'developer', label: 'Dev' },
+  ...PLATFORM_ROLE_ORDER
+    .filter((role) => role !== 'user')
+    .map((role) => ({ value: role, label: getPlatformRoleLabel(role) })),
+  ...COMPANY_ROLE_ORDER.map((role) => ({ value: role, label: getCompanyRoleLabel(role) })),
 ]
 
 function PrivateRoute({ children }) {
@@ -121,7 +125,7 @@ const rolePreviewStyles = {
     borderRadius: 9,
     padding: '7px 30px 7px 9px',
     background: '#fff',
-    color: '#0f172a',
+    color: '#091223',
     fontSize: 13,
     fontWeight: 700,
   },

@@ -3,20 +3,18 @@ import { Bell, Camera, KeyRound, Save } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { supabase } from '../lib/supabase'
+import {
+  getCompanyRoleLabel,
+  getPlatformRoleTitle,
+} from '../../../shared/userRoles.js'
 import styles from './AccountSettingsPage.module.css'
 
 function roleLabel(role) {
-  if (role === 'manager') return 'Manager'
-  if (role === 'content_writer') return 'Content Writer'
-  if (role === 'designer') return 'Diseño'
-  if (role === 'developer') return 'Dev'
-  return 'Editor'
+  return getCompanyRoleLabel(role)
 }
 
 function platformRoleLabel(role) {
-  if (role === 'admin') return 'Admin de plataforma'
-  if (role === 'qa') return 'QA'
-  return 'Usuario'
+  return getPlatformRoleTitle(role)
 }
 
 function userInitials(user) {

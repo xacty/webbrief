@@ -24,6 +24,14 @@
   user-select: none;
 }
 
+.navLogoLight {
+  font-weight: 200;
+}
+
+.navLogoBold {
+  font-weight: 700;
+}
+
 .navBackBtn {
   width: 32px;
   height: 32px;
@@ -198,6 +206,10 @@
 
 .navPillInputInactive {
   color: #2a2a2a;
+}
+
+.navPillInputTransparent {
+  background: transparent;
 }
 
 .navPillAdd {

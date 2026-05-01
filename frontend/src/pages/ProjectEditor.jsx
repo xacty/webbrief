@@ -23,6 +23,7 @@ import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
 import panelStyles from './ProjectEditorPanels.module.css'
+import styles from './ProjectEditor.module.css'
 
 // ---------------------------------------------------------------------------
 // Mock data — E-commerce con contenido rico por sección
@@ -107,9 +108,9 @@ function SectionDividerView({ node }) {
       data-section-id={node.attrs.sectionId}
       data-section-name={node.attrs.sectionName}
     >
-      <div style={styles.sectionDivider}>
-        <span style={styles.sectionDividerLabel}>{node.attrs.sectionName}</span>
-        <hr style={styles.sectionDividerHr} />
+      <div className={styles.sectionDivider}>
+        <span className={styles.sectionDividerLabel}>{node.attrs.sectionName}</span>
+        <hr className={styles.sectionDividerHr} />
       </div>
     </NodeViewWrapper>
   )
@@ -172,15 +173,15 @@ function CtaButtonView({ node, updateAttributes }) {
       data-cta-text={text}
       data-cta-url={url}
     >
-      <div style={styles.ctaNode}>
+      <div className={styles.ctaNode}>
         <a
-          style={styles.ctaNodeButton}
+          className={styles.ctaNodeButton}
           href={url || '#'}
           onClick={(event) => event.preventDefault()}
         >
           {text}
         </a>
-        <button type="button" style={styles.ctaNodeEdit} onClick={editCta}>
+        <button type="button" className={styles.ctaNodeEdit} onClick={editCta}>
           Editar CTA
         </button>
       </div>
@@ -258,6 +259,17 @@ function cx(...classes) {
   return classes.filter(Boolean).join(' ')
 }
 
+function setCssVars(node, vars) {
+  if (!node) return
+  Object.entries(vars).forEach(([name, value]) => {
+    if (value === null || value === undefined || value === '') {
+      node.style.removeProperty(name)
+      return
+    }
+    node.style.setProperty(name, typeof value === 'number' ? `${value}px` : String(value))
+  })
+}
+
 function normalizeTextBlockLayout(layout) {
   const next = {
     blockSpacing: layout?.blockSpacing || null,
@@ -285,23 +297,23 @@ const TextBlockLayoutExtension = Extension.create({
               const layout = normalizeTextBlockLayout(attributes.textBlockLayout)
               if (!layout) return {}
 
-              const styles = []
+              const declarations = []
               if (layout.blockSpacing) {
                 const preset = BLOCK_SPACING_PRESETS[layout.blockSpacing]
                 if (preset) {
-                  styles.push(`line-height: ${preset.lineHeight}`)
-                  styles.push(`margin-bottom: ${preset.marginBottom}`)
+                  declarations.push(`line-height: ${preset.lineHeight}`)
+                  declarations.push(`margin-bottom: ${preset.marginBottom}`)
                 }
               }
 
               if (layout.indentLevel > 0) {
-                styles.push(`margin-left: ${layout.indentLevel * 1.5}em`)
+                declarations.push(`margin-left: ${layout.indentLevel * 1.5}em`)
               }
 
               return {
                 ...(layout.blockSpacing ? { 'data-block-spacing': layout.blockSpacing } : {}),
                 ...(layout.indentLevel > 0 ? { 'data-indent-level': String(layout.indentLevel) } : {}),
-                ...(styles.length > 0 ? { style: `${styles.join('; ')};` } : {}),
+                ...(declarations.length > 0 ? { style: `${declarations.join('; ')};` } : {}),
               }
             },
           },
@@ -2570,14 +2582,14 @@ export default function ProjectEditor() {
   }
 
   if (loadingProject) {
-    return <div style={styles.loadingState}>Cargando proyecto...</div>
+    return <div className={styles.loadingState}>Cargando proyecto...</div>
   }
 
   if (projectError) {
     return (
-      <div style={styles.loadingState}>
-        <p style={{ margin: '0 0 12px' }}>{projectError}</p>
-        <button style={styles.confirmCancelBtn} onClick={() => navigate('/dashboard')}>
+      <div className={styles.loadingState}>
+        <p className={styles.loadingErrorText}>{projectError}</p>
+        <button className={styles.confirmCancelBtn} onClick={() => navigate('/dashboard')}>
           Volver al dashboard
         </button>
       </div>
@@ -2585,7 +2597,7 @@ export default function ProjectEditor() {
   }
 
   return (
-    <div style={styles.root}>
+    <div className={styles.root}>
       {sectionModalState.isOpen && (
         <AddSectionModal
           onConfirm={(name) => {
@@ -2601,34 +2613,6 @@ export default function ProjectEditor() {
           onClose={closeSectionModal}
         />
       )}
-
-      {/* ── CSS global para el editor TipTap ── */}
-      <style>{`
-        .ProseMirror { outline: none; position: relative; min-height: 40px; }
-        .ProseMirror > * + * { margin-top: 0; }
-        .ProseMirror img { max-height: 300px; max-width: 100%; height: auto; display: block; border-radius: 4px; }
-        .ProseMirror p { margin: 0 0 0.9em; line-height: 1.65; }
-        .ProseMirror h1 { font-size: 2em; line-height: 1.15; font-weight: 700; margin: 1.05em 0 0.45em; }
-        .ProseMirror h2 { font-size: 1.5em; line-height: 1.22; font-weight: 700; margin: 1.15em 0 0.45em; }
-        .ProseMirror h3 { font-size: 1.25em; line-height: 1.28; font-weight: 600; margin: 1em 0 0.35em; }
-        .ProseMirror h4 { font-size: 1.1em; line-height: 1.35; font-weight: 600; margin: 0.9em 0 0.35em; }
-        .ProseMirror h5, .ProseMirror h6 { font-size: 1em; line-height: 1.4; font-weight: 600; margin: 0.8em 0 0.3em; }
-        .ProseMirror ul, .ProseMirror ol { padding-left: 1.45em; margin: 0.35em 0 1em; line-height: 1.65; }
-        .ProseMirror li { margin: 0.25em 0; }
-        .ProseMirror li p { margin: 0.15em 0; }
-        .ProseMirror h1:first-child, .ProseMirror h2:first-child, .ProseMirror h3:first-child { margin-top: 0; }
-        .ProseMirror a { color: #0088ff; text-decoration: underline; }
-        .ProseMirror [data-cta-button] a { color: #fff; text-decoration: none; }
-        .ProseMirror blockquote { border-left: 3px solid #d9d9d9; margin: 0.5em 0; padding-left: 1em; color: #555; }
-        .ProseMirror table { border-collapse: collapse; width: 100%; margin: 0.5em 0; table-layout: fixed; }
-        .ProseMirror th, .ProseMirror td { border: 1px solid #d9d9d9; padding: 6px 10px; min-width: 60px; vertical-align: top; }
-        .ProseMirror th { background-color: #f5f5f5; font-weight: 600; }
-        .ProseMirror .selectedCell { background-color: #e8f0fe; }
-        [data-preview-page] [data-section-divider] { display: none; }
-        [data-preview-page] [data-cta-button] { margin: 16px 0; }
-        [data-preview-page] [data-cta-button] a { display: inline-flex; align-items: center; min-height: 38px; padding: 0 16px; border-radius: 8px; background: #212222; color: #fff; text-decoration: none; font-weight: 500; }
-      `}</style>
-
       {/* ── NAVBAR ── */}
         <Navbar
         pages={pages}
@@ -2658,22 +2642,22 @@ export default function ProjectEditor() {
 
       {/* Modal de confirmación para borrar página */}
       {deletePageConfirm && (
-        <div style={styles.confirmOverlay} onClick={() => setDeletePageConfirm(null)}>
-          <div style={styles.confirmBox} onClick={(e) => e.stopPropagation()}>
-            <p style={styles.confirmText}>
+        <div className={styles.confirmOverlay} onClick={() => setDeletePageConfirm(null)}>
+          <div className={styles.confirmBox} onClick={(e) => e.stopPropagation()}>
+            <p className={styles.confirmText}>
               ¿Eliminar la página <strong>{pages.find((p) => p.id === deletePageConfirm)?.name}</strong>?
             </p>
-            <p style={styles.confirmSubtext}>Esta acción no se puede deshacer.</p>
-            <div style={styles.confirmActions}>
-              <button style={styles.confirmCancelBtn} onClick={() => setDeletePageConfirm(null)}>Cancelar</button>
-              <button style={styles.confirmDeleteBtn} onClick={() => deletePage(deletePageConfirm)}>Eliminar</button>
+            <p className={styles.confirmSubtext}>Esta acción no se puede deshacer.</p>
+            <div className={styles.confirmActions}>
+              <button className={styles.confirmCancelBtn} onClick={() => setDeletePageConfirm(null)}>Cancelar</button>
+              <button className={styles.confirmDeleteBtn} onClick={() => deletePage(deletePageConfirm)}>Eliminar</button>
             </div>
           </div>
         </div>
       )}
 
       {/* ── BODY: 3 columnas ── */}
-      <div style={styles.body}>
+      <div className={styles.body}>
         {/* Sidebar izquierdo: secciones */}
         {projectType === 'page' ? (
           <SectionsPanel
@@ -2842,8 +2826,8 @@ function Navbar({
 
       <div className={navStyles.navLeft}>
         <span className={navStyles.navLogo} onClick={onLogoClick}>
-          <span style={{ fontWeight: 200 }}>We</span>
-          <span style={{ fontWeight: 700 }}>Brief</span>
+          <span className={navStyles.navLogoLight}>We</span>
+          <span className={navStyles.navLogoBold}>Brief</span>
         </span>
         <button className={navStyles.navBackBtn} onClick={onBack} title={companyId ? 'Volver a la empresa' : 'Volver a empresas'}>
           <ArrowLeft size={18} />
@@ -2955,8 +2939,6 @@ function FloatingEditorBar({
   canSendToReview = true,
   disabled,
 }) {
-  const reviewReady = reviewStatus !== 'draft'
-  const statusLabel = reviewReady ? 'En revisión' : 'Draft'
   const modeOptions = [
     { id: 'brief', label: 'Brief', icon: FileText },
     { id: 'handoff', label: 'Handoff', icon: MousePointerClick },
@@ -2964,28 +2946,8 @@ function FloatingEditorBar({
   ].filter((mode) => availableModes.includes(mode.id))
 
   return (
-    <div style={styles.floatingBar} aria-label="Controles de editor">
-      <div style={styles.floatingGroup}>
-        <span style={reviewReady ? styles.floatingStatusReady : styles.floatingStatusDraft}>
-          {statusLabel}
-        </span>
-        <button
-          type="button"
-          style={{
-            ...styles.floatingReviewBtn,
-            ...((reviewReady || disabled) ? styles.floatingBtnDisabled : {}),
-          }}
-          onClick={onSendToReview}
-          disabled={reviewReady || disabled || !canSendToReview}
-          title={reviewReady ? 'La página ya está en revisión' : 'Crear baseline y activar alertas de revisión'}
-        >
-          Enviar a revisión
-        </button>
-      </div>
-
-      <div style={styles.floatingDivider} />
-
-      <div style={styles.floatingSegment} aria-label="Modo del editor">
+    <div className={styles.floatingBar} aria-label="Controles de editor">
+      <div className={styles.floatingSegment} aria-label="Modo del editor">
         {modeOptions.map((mode) => {
           const Icon = mode.icon
           const active = editorMode === mode.id
@@ -2993,7 +2955,7 @@ function FloatingEditorBar({
             <button
               key={mode.id}
               type="button"
-              style={{ ...styles.floatingModeBtn, ...(active ? styles.floatingModeBtnActive : {}) }}
+              className={cx(styles.floatingModeBtn, active && styles.floatingModeBtnActive)}
               onClick={() => onEditorModeChange(mode.id)}
             >
               <Icon size={14} />
@@ -3005,11 +2967,11 @@ function FloatingEditorBar({
 
       {editorMode === 'handoff' && (
         <>
-          <div style={styles.floatingDivider} />
-          <div style={styles.floatingSegment} aria-label="Audiencia de handoff">
+          <div className={styles.floatingDivider} />
+          <div className={styles.floatingSegment} aria-label="Audiencia de handoff">
             <button
               type="button"
-              style={{ ...styles.floatingModeBtn, ...(handoffAudience === 'designer' ? styles.floatingModeBtnActive : {}) }}
+              className={cx(styles.floatingModeBtn, handoffAudience === 'designer' && styles.floatingModeBtnActive)}
               onClick={() => onHandoffAudienceChange('designer')}
             >
               <Palette size={14} />
@@ -3017,7 +2979,7 @@ function FloatingEditorBar({
             </button>
             <button
               type="button"
-              style={{ ...styles.floatingModeBtn, ...(handoffAudience === 'dev' ? styles.floatingModeBtnActive : {}) }}
+              className={cx(styles.floatingModeBtn, handoffAudience === 'dev' && styles.floatingModeBtnActive)}
               onClick={() => onHandoffAudienceChange('dev')}
             >
               <Code2 size={14} />
@@ -3052,8 +3014,7 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
     <div className={wrapperClassName}>
       {editing ? (
         <input
-          className={inputClassName}
-          style={{ backgroundColor: 'transparent' }}
+          className={cx(inputClassName, navStyles.navPillInputTransparent)}
           value={draft}
           autoFocus
           onChange={(e) => setDraft(e.target.value)}
@@ -3113,11 +3074,11 @@ function AddSectionModal({ onConfirm, onSkip, onClose }) {
   }, [onClose])
 
   return (
-    <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <p style={styles.modalTitle}>Nombre de la sección</p>
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <p className={styles.modalTitle}>Nombre de la sección</p>
         <input
-          style={styles.modalInput}
+          className={styles.modalInput}
           type="text"
           placeholder="Ej: Hero, Servicios, Contacto…"
           value={value}
@@ -3125,14 +3086,14 @@ function AddSectionModal({ onConfirm, onSkip, onClose }) {
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value.trim()) }}
         />
-        <div style={styles.modalActions}>
+        <div className={styles.modalActions}>
           <button
-            style={styles.modalBtnPrimary}
+            className={styles.modalBtnPrimary}
             onClick={() => onConfirm(value.trim())}
           >
             Agregar
           </button>
-          <button style={styles.modalBtnSecondary} onClick={onSkip}>
+          <button className={styles.modalBtnSecondary} onClick={onSkip}>
             Saltar
           </button>
         </div>
@@ -3171,8 +3132,8 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
             <button
               key={item.id}
               type="button"
-              className={isActive ? panelStyles.outlineItemActive : panelStyles.outlineItem}
-              style={{ paddingLeft: 10 + ((item.level - 1) * 12) }}
+              className={cx(isActive ? panelStyles.outlineItemActive : panelStyles.outlineItem, styles.outlineItemIndent)}
+              ref={(node) => setCssVars(node, { '--outline-padding-left': 10 + ((item.level - 1) * 12) })}
               onClick={() => onHeadingClick?.(item.headingIndex)}
             >
               <span className={panelStyles.outlineTag}>H{item.level}</span>
@@ -3320,8 +3281,8 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
 
   return (
     <div
-      className={panelStyles.sectionItem}
-      style={{ opacity: isDragging ? 0.4 : 1 }}
+      className={cx(panelStyles.sectionItem, styles.sectionDragState)}
+      ref={(node) => setCssVars(node, { '--section-opacity': isDragging ? 0.4 : 1 })}
       onDragOver={onDragOver}
     >
       {showDropBefore && <div className={panelStyles.dropIndicator} />}
@@ -3556,11 +3517,15 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
   }
 
   return (
-    <div ref={columnRef} style={styles.typeLabelsCol}>
+    <div ref={columnRef} className={styles.typeLabelsCol}>
       {labels.map((item, idx) => (
-        <div key={idx} style={{ position: 'absolute', top: item.top, left: 4, zIndex: 20 }}>
+        <div
+          key={idx}
+          className={styles.typeLabelItem}
+          ref={(node) => setCssVars(node, { '--type-label-top': item.top })}
+        >
           <button
-            style={{ ...styles.typeLabelBtn, ...(['t', 'img', 'CTA'].includes(item.label) ? { cursor: 'default', opacity: 0.5 } : {}) }}
+            className={cx(styles.typeLabelBtn, ['t', 'img', 'CTA'].includes(item.label) && styles.typeLabelBtnDisabled)}
             onClick={(e) => { e.stopPropagation(); if (['t', 'img', 'CTA'].includes(item.label)) return; setOpenIdx(idx === openIdx ? -1 : idx) }}
             title={`Tipo actual: ${item.label}`}
           >
@@ -3568,14 +3533,14 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
           </button>
 
           {openIdx === idx && !['t', 'img', 'CTA'].includes(item.label) && (
-            <div style={styles.typeLabelDropdown} onMouseLeave={() => setOpenIdx(-1)}>
+            <div className={styles.typeLabelDropdown} onMouseLeave={() => setOpenIdx(-1)}>
               {getOptionsForLabel(item.label).filter((opt) => {
                 if (item.label === '¶') return opt !== 'Párrafo'
                 return opt !== item.label
               }).map((opt) => (
                 <div
                   key={opt}
-                  style={styles.typeLabelOption}
+                  className={styles.typeLabelOption}
                   onClick={() => applyType(opt === 'Párrafo' ? 'paragraph' : opt, item.blockEl, item.label)}
                 >
                   {opt}
@@ -3642,16 +3607,13 @@ function SectionActivityMarkers({ wrapperRef, editor, activities = [], selectedA
   }, [editor, activities])
 
   return (
-    <div ref={columnRef} style={styles.activityMarkersCol} aria-label="Alertas de revisión por sección">
+    <div ref={columnRef} className={styles.activityMarkersCol} aria-label="Alertas de revisión por sección">
       {markers.map((marker) => (
         <button
           key={marker.id}
           type="button"
-          style={{
-            ...styles.activityMarkerBtn,
-            ...(marker.id === selectedActivityId ? styles.activityMarkerBtnActive : {}),
-            top: marker.top,
-          }}
+          className={cx(styles.activityMarkerBtn, marker.id === selectedActivityId && styles.activityMarkerBtnActive)}
+          ref={(node) => setCssVars(node, { '--activity-marker-top': marker.top })}
           title={`${marker.title}${marker.description ? `: ${marker.description}` : ''}`}
           onClick={() => onMarkerClick?.(marker.id)}
         >
@@ -4209,30 +4171,30 @@ function TableContextBar({ editor }) {
   if (!editor || !editor.isActive('table')) return null
 
   return (
-    <div style={styles.tableContextBar}>
+    <div className={styles.tableContextBar}>
       <ToolBtn onClick={() => editor.chain().focus().addColumnBefore().run()} title="Columna antes">
-        <Columns3 size={14} /><span style={styles.tableCtxLabel}>+ Izq</span>
+        <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Izq</span>
       </ToolBtn>
       <ToolBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Columna después">
-        <Columns3 size={14} /><span style={styles.tableCtxLabel}>+ Der</span>
+        <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Der</span>
       </ToolBtn>
       <ToolBtn onClick={() => editor.chain().focus().deleteColumn().run()} title="Eliminar columna">
-        <Columns3 size={14} /><span style={{ ...styles.tableCtxLabel, color: '#ef4444' }}>−</span>
+        <Columns3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
       </ToolBtn>
 
-      <div style={styles.toolbarSep} />
+      <div className={styles.toolbarSep} />
 
       <ToolBtn onClick={() => editor.chain().focus().addRowBefore().run()} title="Fila antes">
-        <Rows3 size={14} /><span style={styles.tableCtxLabel}>+ Arriba</span>
+        <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Arriba</span>
       </ToolBtn>
       <ToolBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Fila después">
-        <Rows3 size={14} /><span style={styles.tableCtxLabel}>+ Abajo</span>
+        <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Abajo</span>
       </ToolBtn>
       <ToolBtn onClick={() => editor.chain().focus().deleteRow().run()} title="Eliminar fila">
-        <Rows3 size={14} /><span style={{ ...styles.tableCtxLabel, color: '#ef4444' }}>−</span>
+        <Rows3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
       </ToolBtn>
 
-      <div style={styles.toolbarSep} />
+      <div className={styles.toolbarSep} />
 
       <ToolBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Eliminar tabla">
         <Trash2 size={14} color="#ef4444" />
@@ -4291,13 +4253,17 @@ function TableRightClickMenu({ editor }) {
   ]
 
   return (
-    <div style={{ ...styles.tableCtxMenu, left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+    <div
+      className={styles.tableCtxMenu}
+      ref={(node) => setCssVars(node, { '--table-menu-left': menu.x, '--table-menu-top': menu.y })}
+      onClick={(e) => e.stopPropagation()}
+    >
       {items.map((item, i) =>
         item.divider
-          ? <div key={i} style={styles.tableCtxMenuDivider} />
+          ? <div key={i} className={styles.tableCtxMenuDivider} />
           : <div
               key={i}
-              style={{ ...styles.tableCtxMenuItem, ...(item.danger ? { color: '#ef4444' } : {}) }}
+              className={cx(styles.tableCtxMenuItem, item.danger && styles.tableCtxMenuItemDanger)}
               onClick={() => { item.action(); setMenu(null) }}
             >{item.label}</div>
       )}
@@ -4360,25 +4326,23 @@ function TableInlineButtons({ editor, wrapperRef }) {
     <>
       {/* + button at right edge (add column) */}
       <button
-        style={{
-          ...styles.tableInlineBtn,
-          top: pos.top,
-          left: pos.right + 4,
-          height: pos.height,
-          width: 22,
-        }}
+        className={cx(styles.tableInlineBtn, styles.tableInlineBtnColumn)}
+        ref={(node) => setCssVars(node, {
+          '--table-inline-top': pos.top,
+          '--table-inline-left': pos.right + 4,
+          '--table-inline-height': pos.height,
+        })}
         onClick={() => editor.chain().focus().addColumnAfter().run()}
         title="Agregar columna"
       >+</button>
       {/* + button at bottom edge (add row) */}
       <button
-        style={{
-          ...styles.tableInlineBtn,
-          top: pos.bottom + 4,
-          left: pos.left,
-          width: pos.width,
-          height: 22,
-        }}
+        className={cx(styles.tableInlineBtn, styles.tableInlineBtnRow)}
+        ref={(node) => setCssVars(node, {
+          '--table-inline-top': pos.bottom + 4,
+          '--table-inline-left': pos.left,
+          '--table-inline-width': pos.width,
+        })}
         onClick={() => editor.chain().focus().addRowAfter().run()}
         title="Agregar fila"
       >+</button>
@@ -4448,6 +4412,23 @@ function EditorPanel({
     onRuleNoticeChangeRef.current = onRuleNoticeChange
   }, [onRuleNoticeChange])
 
+  const uploadProjectImage = useCallback(async (file) => {
+    if (!file) return null
+    if (!projectId) throw new Error('Proyecto no disponible')
+    const formData = new FormData()
+    formData.append('file', file)
+    const data = await apiFetch(`/api/projects/${projectId}/assets`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!data.asset?.renderInline || !data.asset?.publicUrl) {
+      throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
+    }
+
+    return data.asset
+  }, [projectId])
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: false }),
@@ -4476,6 +4457,37 @@ function EditorPanel({
     content: initialContent,
     editable: canWriteContent,
     editorProps: {
+      handleDOMEvents: {
+        dragover(view, event) {
+          const files = Array.from(event.dataTransfer?.files || [])
+          if (!files.some((file) => file.type.startsWith('image/'))) return false
+          event.preventDefault()
+          return true
+        },
+      },
+      handleDrop(view, event) {
+        const files = Array.from(event.dataTransfer?.files || [])
+        const imageFile = files.find((file) => file.type.startsWith('image/'))
+        if (!imageFile || !canWriteContent) return false
+
+        event.preventDefault()
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
+
+        ;(async () => {
+          try {
+            const asset = await uploadProjectImage(imageFile)
+            if (!asset?.publicUrl) return
+            const chain = editor?.chain().focus()
+            if (!chain) return
+            if (coords?.pos) chain.setTextSelection(coords.pos)
+            chain.setImage({ src: asset.publicUrl, alt: asset.fileName }).run()
+          } catch (error) {
+            window.alert(error.message || 'No se pudo subir la imagen')
+          }
+        })()
+
+        return true
+      },
       handleTextInput(view, from, to, text) {
         const liveRules = rulesRef.current
         if (projectType !== 'document' || !liveRules.documentMaxWords) return false
@@ -4825,7 +4837,7 @@ function EditorPanel({
     }
   }, [activeSectionId, editor])
 
-  if (!editor) return <div style={styles.centerPanel} />
+  if (!editor) return <div className={styles.centerPanel} />
 
   function focusEditorFromPage(event) {
     if (!editor) return
@@ -4837,13 +4849,13 @@ function EditorPanel({
   }
 
   return (
-    <div style={styles.centerPanel}>
+    <div className={styles.centerPanel}>
       <Toolbar editor={editor} projectId={projectId} onUndo={onUndo} onRedo={onRedo} />
       <TableContextBar editor={editor} />
       {projectType === 'document' && (
         null
       )}
-      <div ref={scrollAreaRef} style={styles.editorScrollArea}>
+      <div ref={scrollAreaRef} className={styles.editorScrollArea}>
         <div className={seoRulesStyles.topTrayRow} data-seo-tray="">
           <div className={seoRulesStyles.topTraySpacer} />
           <div className={seoRulesStyles.topTraySurface}>
@@ -4856,23 +4868,27 @@ function EditorPanel({
             />
           </div>
         </div>
-        <div style={styles.editorPageRow}>
+        <div className={seoRulesStyles.editorPageRow}>
           <TypeLabelsColumn wrapperRef={wrapperRef} editor={editor} />
           <div
-            style={{
-              ...styles.editorPage,
-            }}
-            className={seoExpanded ? seoRulesStyles.editorPageExpanded : undefined}
+            className={[
+              seoRulesStyles.editorCanvas,
+              seoExpanded ? seoRulesStyles.editorPageExpanded : '',
+            ].filter(Boolean).join(' ')}
             onMouseDown={focusEditorFromPage}
           >
-            <div ref={wrapperRef} style={{ ...styles.sectionEditorContent, position: 'relative' }}>
+            <div ref={wrapperRef} className={seoRulesStyles.editorCanvasContent}>
               <EditorContent editor={editor} />
               <TableInlineButtons editor={editor} wrapperRef={wrapperRef} />
               <TableRightClickMenu editor={editor} />
               {projectType === 'page' && canManageSections && activeSectionId && activeSectionAddTop !== null && (
-                <div style={{ ...styles.canvasAddSectionWrap, top: activeSectionAddTop }} data-editor-overlay="">
+                <div
+                  className={styles.canvasAddSectionWrap}
+                  ref={(node) => setCssVars(node, { '--canvas-add-top': activeSectionAddTop })}
+                  data-editor-overlay=""
+                >
                   <button
-                    style={styles.canvasAddSectionBtn}
+                    className={styles.canvasAddSectionBtn}
                     onClick={() => onOpenAddSectionAfter?.(activeSectionId)}
                   >
                     <Plus size={14} color="#2a2a2a" />
@@ -5111,23 +5127,22 @@ function ContentRulesPanel({
   const slugWords = getSlugWordCount(metadata?.urlSlug || '')
   const documentWords = Number(wordStats?.words || 0)
   const hasRules = hasContentRules(rules)
-  const statusTone = warnings.length > 0 ? styles.rulesStatusAlert : styles.rulesStatusOk
 
   return (
-    <div style={styles.rulesPanel}>
-      <div style={styles.rulesHeader}>
+    <div className={styles.rulesPanel}>
+      <div className={styles.rulesHeader}>
         <div>
-          <span style={styles.rulesTitle}>Reglas de contenido</span>
-          <p style={styles.rulesSubtitle}>
+          <span className={styles.rulesTitle}>Reglas de contenido</span>
+          <p className={styles.rulesSubtitle}>
             {hasRules ? 'Se aplican en vivo sobre SEO y el documento.' : 'Sin límites configurados.'}
           </p>
         </div>
-        <span style={{ ...styles.rulesStatusBadge, ...statusTone }}>
+        <span className={cx(styles.rulesStatusBadge, warnings.length > 0 ? styles.rulesStatusAlert : styles.rulesStatusOk)}>
           {warnings.length > 0 ? `${warnings.length} alerta${warnings.length === 1 ? '' : 's'}` : 'En rango'}
         </span>
       </div>
 
-      <div style={styles.rulesGrid}>
+      <div className={styles.rulesGrid}>
         <RuleInput
           label="Title tag mínimo"
           value={rules.titleTagMinChars}
@@ -5172,7 +5187,7 @@ function ContentRulesPanel({
         />
       </div>
 
-      <div style={styles.rulesMetrics}>
+      <div className={styles.rulesMetrics}>
         <RuleMetric label="Title tag" value={`${titleState.current}${titleState.max ? ` / ${titleState.max}` : ''}`} alert={titleState.underMin || titleState.overMax} />
         <RuleMetric label="Meta description" value={`${metaState.current}${metaState.max ? ` / ${metaState.max}` : ''}`} alert={metaState.underMin || metaState.overMax} />
         <RuleMetric label="URL slug" value={`${slugWords}${rules.urlSlugMaxWords ? ` / ${rules.urlSlugMaxWords}` : ''}`} alert={Boolean(rules.urlSlugMaxWords && slugWords > rules.urlSlugMaxWords)} />
@@ -5180,15 +5195,15 @@ function ContentRulesPanel({
       </div>
 
       {!canEdit && (
-        <p style={styles.rulesReadOnly}>
+        <p className={styles.rulesReadOnly}>
           Visible en tiempo real para Content Writer. La edición de reglas queda para manager/editor.
         </p>
       )}
-      {notice && <p style={styles.rulesNotice}>{notice}</p>}
+      {notice && <p className={styles.rulesNotice}>{notice}</p>}
       {warnings.length > 0 && (
-        <div style={styles.rulesWarnings}>
+        <div className={styles.rulesWarnings}>
           {warnings.map((warning) => (
-            <p key={warning} style={styles.rulesWarningItem}>{warning}</p>
+            <p key={warning} className={styles.rulesWarningItem}>{warning}</p>
           ))}
         </div>
       )}
@@ -5198,20 +5213,20 @@ function ContentRulesPanel({
 
 function RuleInput({ label, value, suffix, disabled, onChange }) {
   return (
-    <label style={styles.rulesField}>
-      <span style={styles.rulesFieldLabel}>{label}</span>
-      <div style={styles.rulesInputWrap}>
+    <label className={styles.rulesField}>
+      <span className={styles.rulesFieldLabel}>{label}</span>
+      <div className={styles.rulesInputWrap}>
         <input
           type="number"
           min="1"
           inputMode="numeric"
-          style={{ ...styles.rulesInput, ...(disabled ? styles.rulesInputDisabled : {}) }}
+          className={cx(styles.rulesInput, disabled && styles.rulesInputDisabled)}
           value={value || ''}
           onChange={(event) => onChange?.(event.target.value)}
           placeholder="Libre"
           disabled={disabled}
         />
-        <span style={styles.rulesInputSuffix}>{suffix}</span>
+        <span className={styles.rulesInputSuffix}>{suffix}</span>
       </div>
     </label>
   )
@@ -5219,9 +5234,9 @@ function RuleInput({ label, value, suffix, disabled, onChange }) {
 
 function RuleMetric({ label, value, alert = false }) {
   return (
-    <div style={{ ...styles.ruleMetric, ...(alert ? styles.ruleMetricAlert : {}) }}>
-      <span style={styles.ruleMetricLabel}>{label}</span>
-      <strong style={styles.ruleMetricValue}>{value}</strong>
+    <div className={cx(styles.ruleMetric, alert && styles.ruleMetricAlert)}>
+      <span className={styles.ruleMetricLabel}>{label}</span>
+      <strong className={styles.ruleMetricValue}>{value}</strong>
     </div>
   )
 }
@@ -5446,19 +5461,19 @@ function HandoffPanel({ page, projectType = 'page', audience }) {
   )).join('\n\n')
 
   return (
-    <div style={styles.handoffPanel}>
-      <div style={styles.handoffHeader}>
+    <div className={styles.handoffPanel}>
+      <div className={styles.handoffHeader}>
         <div>
-          <p style={styles.handoffEyebrow}>{audience === 'designer' ? 'Designer handoff' : 'Developer handoff'}</p>
-          <h2 style={styles.handoffTitle}>{page?.name || 'Página'}</h2>
+          <p className={styles.handoffEyebrow}>{audience === 'designer' ? 'Designer handoff' : 'Developer handoff'}</p>
+          <h2 className={styles.handoffTitle}>{page?.name || 'Página'}</h2>
         </div>
-        <div style={styles.handoffHeaderActions}>
-          <button style={styles.handoffActionBtn} onClick={() => handleCopy('Página copiada', { text: pageText, html: pageHtml })}>
+        <div className={styles.handoffHeaderActions}>
+          <button className={styles.handoffActionBtn} onClick={() => handleCopy('Página copiada', { text: pageText, html: pageHtml })}>
             <Copy size={14} />
             Copiar página
           </button>
           {audience === 'dev' && (
-            <button style={styles.handoffActionBtn} onClick={() => handleCopy('Markdown copiado', { text: pageMarkdown })}>
+            <button className={styles.handoffActionBtn} onClick={() => handleCopy('Markdown copiado', { text: pageMarkdown })}>
               <Code2 size={14} />
               Markdown
             </button>
@@ -5466,51 +5481,51 @@ function HandoffPanel({ page, projectType = 'page', audience }) {
         </div>
       </div>
 
-      {copied && <p style={styles.copyFeedback}>{copied}</p>}
+      {copied && <p className={styles.copyFeedback}>{copied}</p>}
 
-      <div style={styles.handoffScroll}>
+      <div className={styles.handoffScroll}>
         {sections.map((section) => {
           const sectionText = section.blocks.map((block) => block.text).join('\n')
           const sectionHtml = section.blocks.map((block) => block.html).join('\n')
           return (
-            <section key={section.id} style={styles.handoffSection}>
-              <div style={styles.handoffSectionHeader}>
-                <h3 style={styles.handoffSectionTitle}>{section.name}</h3>
-                <button style={styles.handoffGhostBtn} onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}>
+            <section key={section.id} className={styles.handoffSection}>
+              <div className={styles.handoffSectionHeader}>
+                <h3 className={styles.handoffSectionTitle}>{section.name}</h3>
+                <button className={styles.handoffGhostBtn} onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}>
                   <Copy size={13} />
                   {groupButtonLabel}
                 </button>
               </div>
 
-              <div style={styles.handoffBlockList}>
+              <div className={styles.handoffBlockList}>
                 {section.blocks.map((block) => (
-                  <div key={block.id} style={styles.handoffBlockRow}>
-                    <span style={styles.handoffGutter} aria-hidden="true">{block.label}</span>
-                    <div style={styles.handoffCopySafe}>
+                  <div key={block.id} className={styles.handoffBlockRow}>
+                    <span className={styles.handoffGutter} aria-hidden="true">{block.label}</span>
+                    <div className={styles.handoffCopySafe}>
                       {block.label === 'CTA' ? (
-                        <span style={styles.handoffCtaText}>{block.text}</span>
+                        <span className={styles.handoffCtaText}>{block.text}</span>
                       ) : (
                         <div
-                          style={styles.handoffBlockContent}
+                          className={styles.handoffBlockContent}
                           dangerouslySetInnerHTML={{ __html: block.html }}
                         />
                       )}
                     </div>
-                    <div style={styles.handoffActions} aria-label="Acciones del bloque">
-                      <button style={styles.handoffIconBtn} title="Copiar texto" onClick={() => handleCopy('Texto copiado', { text: block.text, html: block.html })}>
+                    <div className={styles.handoffActions} aria-label="Acciones del bloque">
+                      <button className={styles.handoffIconBtn} title="Copiar texto" onClick={() => handleCopy('Texto copiado', { text: block.text, html: block.html })}>
                         <Copy size={13} />
                       </button>
                       {block.links.map((link, index) => (
-                        <button key={`${link.url}-${index}`} style={styles.handoffIconBtn} title={`Copiar URL: ${link.label}`} onClick={() => handleCopy('URL copiada', { text: link.url })}>
+                        <button key={`${link.url}-${index}`} className={styles.handoffIconBtn} title={`Copiar URL: ${link.label}`} onClick={() => handleCopy('URL copiada', { text: link.url })}>
                           <Link2 size={13} />
                         </button>
                       ))}
                       {audience === 'dev' && (
                         <>
-                          <button style={styles.handoffIconBtn} title="Copiar HTML" onClick={() => handleCopy('HTML copiado', { text: block.text, html: block.html })}>
+                          <button className={styles.handoffIconBtn} title="Copiar HTML" onClick={() => handleCopy('HTML copiado', { text: block.text, html: block.html })}>
                             <FileText size={13} />
                           </button>
-                          <button style={styles.handoffIconBtn} title="Copiar JSON" onClick={() => handleCopy('JSON copiado', { text: JSON.stringify(block.json, null, 2) })}>
+                          <button className={styles.handoffIconBtn} title="Copiar JSON" onClick={() => handleCopy('JSON copiado', { text: JSON.stringify(block.json, null, 2) })}>
                             <Code2 size={13} />
                           </button>
                         </>
@@ -5529,20 +5544,20 @@ function HandoffPanel({ page, projectType = 'page', audience }) {
 
 function PreviewPanel({ page }) {
   return (
-    <div style={styles.previewPanel}>
-      <div style={styles.previewToolbar}>
+    <div className={styles.previewPanel}>
+      <div className={styles.previewToolbar}>
         <div>
-          <p style={styles.handoffEyebrow}>Preview</p>
-          <h2 style={styles.handoffTitle}>{page?.name || 'Página'}</h2>
+          <p className={styles.handoffEyebrow}>Preview</p>
+          <h2 className={styles.handoffTitle}>{page?.name || 'Página'}</h2>
         </div>
-        <button style={styles.handoffActionBtn} onClick={() => window.print()}>
+        <button className={styles.handoffActionBtn} onClick={() => window.print()}>
           <FileText size={14} />
           Exportar PDF
         </button>
       </div>
       <article
         data-preview-page=""
-        style={styles.previewPage}
+        className={styles.previewPage}
         dangerouslySetInnerHTML={{ __html: page?.fullContent || buildDocumentHTML(page?.sections || []) }}
       />
     </div>
@@ -5649,136 +5664,122 @@ function UpdatesPanel({
         <span className={panelStyles.panelTitle}>Actividad</span>
         <button className={panelStyles.updatesRefreshBtn} onClick={onRefresh}>Actualizar</button>
       </div>
-      {error && <p className={panelStyles.updatesError}>{error}</p>}
-      {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
-      {pending.length > 0 && (
-        <div className={panelStyles.pendingBox}>
-          <span className={panelStyles.pendingTitle}>Pendientes</span>
-          {pending.slice(0, 4).map((item) => (
-            <p key={item.id} className={panelStyles.pendingItem}>{item.title}</p>
-          ))}
-        </div>
-      )}
-      {pendingProposal && (
-        <div className={panelStyles.proposalBox}>
-          <div className={panelStyles.proposalHeader}>
-            <span className={panelStyles.pendingTitle}>
-              {canReviewDesignerProposals ? 'Propuesta de diseño' : 'Tu propuesta'}
-            </span>
-            <span className={panelStyles.proposalBadge}>Pendiente</span>
-          </div>
-          <p className={panelStyles.proposalText}>
-            {canReviewDesignerProposals
-              ? 'Hay cambios de diseño listos para aprobar o pedir ajustes.'
-              : 'Tus cambios no afectan el contenido publicado hasta que editor o manager los aprueben.'}
-          </p>
-          {pendingProposal.reviewerNote && (
-            <p className={panelStyles.proposalText}>Nota: {pendingProposal.reviewerNote}</p>
-          )}
-          {canReviewDesignerProposals ? (
-            <div className={panelStyles.proposalActions}>
-              <button className={panelStyles.deliverableButton} onClick={onApproveDesignerProposal}>
-                Aprobar
-              </button>
-              <button className={panelStyles.proposalSecondaryButton} onClick={onRejectDesignerProposal}>
-                Pedir cambios
-              </button>
-            </div>
-          ) : isDesigner ? (
-            <p className={panelStyles.deliverablesEmpty}>Puedes seguir editando y guardando sobre esta propuesta.</p>
-          ) : null}
-        </div>
-      )}
-      <div className={panelStyles.deliverablesBox}>
-        <span className={panelStyles.pendingTitle}>Entregables</span>
-        {canManageProjectMeta ? (
-          <form className={panelStyles.deliverableForm} onSubmit={submitDeliverable}>
-            <input
-              className={panelStyles.deliverableInput}
-              value={deliverableTitle}
-              onChange={(event) => setDeliverableTitle(event.target.value)}
-              placeholder="Nuevo entregable"
-            />
-            <select
-              style={styles.deliverableSelect}
-              value={deliverableServiceType}
-              onChange={(event) => setDeliverableServiceType(event.target.value)}
-            >
-              {DELIVERABLE_SERVICE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-            <button className={panelStyles.deliverableButton} type="submit" disabled={deliverableSubmitting || !deliverableTitle.trim()}>
-              {deliverableSubmitting ? 'Creando...' : 'Crear'}
-            </button>
-          </form>
-        ) : (
-          <p className={panelStyles.deliverablesEmpty}>Solo lectura para este rol.</p>
-        )}
-
-        {deliverables.length === 0 ? (
-          <p className={panelStyles.deliverablesEmpty}>Sin entregables.</p>
-        ) : (
-          <div className={panelStyles.deliverablesList}>
-            {deliverables.slice(0, 6).map((item) => (
-              <div key={item.id} className={panelStyles.deliverableRow}>
-                <div className={panelStyles.deliverableText}>
-                  <span className={panelStyles.deliverableTitle}>{item.title}</span>
-                  <span className={panelStyles.deliverableMeta}>{item.serviceType} · {deliverableStatusLabel(item.status)}</span>
-                </div>
-                {canManageProjectMeta ? (
-                  <select
-                    style={styles.deliverableStatusSelect}
-                    value={item.status}
-                    onChange={(event) => onUpdateDeliverableStatus?.(item.id, event.target.value)}
-                  >
-                    {DELIVERABLE_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className={panelStyles.deliverableMeta}>{deliverableStatusLabel(item.status)}</span>
-                )}
-              </div>
+      <div className={cx(panelStyles.rightPanelScroll, projectType === 'document' && panelStyles.rightPanelScrollWithDock)}>
+        {error && <p className={panelStyles.updatesError}>{error}</p>}
+        {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
+        {pending.length > 0 && (
+          <div className={panelStyles.pendingBox}>
+            <span className={panelStyles.pendingTitle}>Pendientes</span>
+            {pending.slice(0, 4).map((item) => (
+              <p key={item.id} className={panelStyles.pendingItem}>{item.title}</p>
             ))}
           </div>
         )}
-      </div>
-      <div className={panelStyles.shareBox}>
-        <span className={panelStyles.pendingTitle}>Cliente</span>
-        {canManageProjectMeta ? (
-          <button className={panelStyles.shareButton} onClick={onCreateShareLink}>
-            Crear link privado
-          </button>
-        ) : (
-          <p className={panelStyles.deliverablesEmpty}>El link privado lo gestiona manager/editor.</p>
+        {pendingProposal && (
+          <div className={panelStyles.proposalBox}>
+            <div className={panelStyles.proposalHeader}>
+              <span className={panelStyles.pendingTitle}>
+                {canReviewDesignerProposals ? 'Propuesta de diseño' : 'Tu propuesta'}
+              </span>
+              <span className={panelStyles.proposalBadge}>Pendiente</span>
+            </div>
+            <p className={panelStyles.proposalText}>
+              {canReviewDesignerProposals
+                ? 'Hay cambios de diseño listos para aprobar o pedir ajustes.'
+                : 'Tus cambios no afectan el contenido publicado hasta que editor o manager los aprueben.'}
+            </p>
+            {pendingProposal.reviewerNote && (
+              <p className={panelStyles.proposalText}>Nota: {pendingProposal.reviewerNote}</p>
+            )}
+            {canReviewDesignerProposals ? (
+              <div className={panelStyles.proposalActions}>
+                <button className={panelStyles.deliverableButton} onClick={onApproveDesignerProposal}>
+                  Aprobar
+                </button>
+                <button className={panelStyles.proposalSecondaryButton} onClick={onRejectDesignerProposal}>
+                  Pedir cambios
+                </button>
+              </div>
+            ) : isDesigner ? (
+              <p className={panelStyles.deliverablesEmpty}>Puedes seguir editando y guardando sobre esta propuesta.</p>
+            ) : null}
+          </div>
         )}
-        {shareUrl && (
-          <p className={panelStyles.shareUrl}>Link copiado: {shareUrl}</p>
-        )}
-      </div>
-      {!hasActivity ? (
-        <p className={panelStyles.updatesEmpty}>Sin actividad registrada aún.</p>
-      ) : (
-        <>
-          {sectionActivity.length > 0 && (
-            <ul className={panelStyles.updatesList}>
-              {sectionActivity.map((item) => (
-                <ActivityListItem
-                  key={item.id}
-                  item={item}
-                  selectedActivityId={selectedActivityId}
-                  onActivityClick={onActivityClick}
-                  onMarkActivityRead={onMarkActivityRead}
-                />
-              ))}
-            </ul>
+        <div className={panelStyles.deliverablesBox}>
+          <span className={panelStyles.pendingTitle}>Entregables</span>
+          {canManageProjectMeta ? (
+            <form className={panelStyles.deliverableForm} onSubmit={submitDeliverable}>
+              <input
+                className={panelStyles.deliverableInput}
+                value={deliverableTitle}
+                onChange={(event) => setDeliverableTitle(event.target.value)}
+                placeholder="Nuevo entregable"
+              />
+              <select
+                className={styles.deliverableSelect}
+                value={deliverableServiceType}
+                onChange={(event) => setDeliverableServiceType(event.target.value)}
+              >
+                {DELIVERABLE_SERVICE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <button className={panelStyles.deliverableButton} type="submit" disabled={deliverableSubmitting || !deliverableTitle.trim()}>
+                {deliverableSubmitting ? 'Creando...' : 'Crear'}
+              </button>
+            </form>
+          ) : (
+            <p className={panelStyles.deliverablesEmpty}>Solo lectura para este rol.</p>
           )}
-          {generalActivity.length > 0 && (
-            <>
-              <span className={panelStyles.activityGroupTitle}>Actividad general</span>
-              <ul className={panelStyles.updatesListCompact}>
-                {generalActivity.map((item) => (
+
+          {deliverables.length === 0 ? (
+            <p className={panelStyles.deliverablesEmpty}>Sin entregables.</p>
+          ) : (
+            <div className={panelStyles.deliverablesList}>
+              {deliverables.slice(0, 6).map((item) => (
+                <div key={item.id} className={panelStyles.deliverableRow}>
+                  <div className={panelStyles.deliverableText}>
+                    <span className={panelStyles.deliverableTitle}>{item.title}</span>
+                    <span className={panelStyles.deliverableMeta}>{item.serviceType} · {deliverableStatusLabel(item.status)}</span>
+                  </div>
+                  {canManageProjectMeta ? (
+                    <select
+                      className={styles.deliverableStatusSelect}
+                      value={item.status}
+                      onChange={(event) => onUpdateDeliverableStatus?.(item.id, event.target.value)}
+                    >
+                      {DELIVERABLE_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className={panelStyles.deliverableMeta}>{deliverableStatusLabel(item.status)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className={panelStyles.shareBox}>
+          <span className={panelStyles.pendingTitle}>Cliente</span>
+          {canManageProjectMeta ? (
+            <button className={panelStyles.shareButton} onClick={onCreateShareLink}>
+              Crear link privado
+            </button>
+          ) : (
+            <p className={panelStyles.deliverablesEmpty}>El link privado lo gestiona manager/editor.</p>
+          )}
+          {shareUrl && (
+            <p className={panelStyles.shareUrl}>Link copiado: {shareUrl}</p>
+          )}
+        </div>
+        {!hasActivity ? (
+          <p className={panelStyles.updatesEmpty}>Sin actividad registrada aún.</p>
+        ) : (
+          <>
+            {sectionActivity.length > 0 && (
+              <ul className={panelStyles.updatesList}>
+                {sectionActivity.map((item) => (
                   <ActivityListItem
                     key={item.id}
                     item={item}
@@ -5788,16 +5789,36 @@ function UpdatesPanel({
                   />
                 ))}
               </ul>
-            </>
-          )}
-        </>
-      )}
+            )}
+            {generalActivity.length > 0 && (
+              <>
+                <span className={panelStyles.activityGroupTitle}>Actividad general</span>
+                <ul className={panelStyles.updatesListCompact}>
+                  {generalActivity.map((item) => (
+                    <ActivityListItem
+                      key={item.id}
+                      item={item}
+                      selectedActivityId={selectedActivityId}
+                      onActivityClick={onActivityClick}
+                      onMarkActivityRead={onMarkActivityRead}
+                    />
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        )}
+      </div>
       {projectType === 'document' && (
-        <DocumentRulesCard
-          rules={contentRules}
-          canEdit={canEditContentRules}
-          onChange={onContentRulesChange}
-        />
+        <div className={panelStyles.rightPanelDock}>
+          <div className={panelStyles.rightPanelDockCard}>
+            <DocumentRulesCard
+              rules={contentRules}
+              canEdit={canEditContentRules}
+              onChange={onContentRulesChange}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
@@ -5836,1263 +5857,3 @@ function ActivityListItem({ item, selectedActivityId = null, onActivityClick, on
 // ---------------------------------------------------------------------------
 // Estilos
 // ---------------------------------------------------------------------------
-const selectChevronBackground = "url(\"data:image/svg+xml,%3csvg width='16' height='16' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='m6 9 6 6 6-6' stroke='%2364758b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3e%3c/svg%3e\")"
-
-const compactSelectChevron = {
-  appearance: 'none',
-  backgroundImage: selectChevronBackground,
-  backgroundRepeat: 'no-repeat',
-  backgroundPosition: 'right 10px center',
-  backgroundSize: '16px 16px',
-}
-
-const styles = {
-
-  // ── Root ──
-  root: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100vh',
-    fontFamily: "'Inter', system-ui, sans-serif",
-    backgroundColor: '#f8f8f8',
-    overflow: 'hidden',
-    color: '#2a2a2a',
-  },
-  loadingState: {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    fontFamily: "'Inter', system-ui, sans-serif",
-    backgroundColor: '#f8f8f8',
-    color: '#2a2a2a',
-  },
-
-  // ── Navbar ──
-  navbar: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr)',
-    alignItems: 'center',
-    height: 70,
-    backgroundColor: '#f0f0f0',
-    borderBottom: '1px solid #212222',
-    flexShrink: 0,
-    padding: '0 24px',
-  },
-  navLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
-    minWidth: 0,
-  },
-  navLogo: {
-    fontSize: 35,
-    color: '#2a2a2a',
-    cursor: 'pointer',
-    lineHeight: 1,
-    userSelect: 'none',
-  },
-  navUndoRedo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 33,
-  },
-  navBackBtn: {
-    width: 32,
-    height: 32,
-    border: '1px solid #d9d9d9',
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  projectNameBtn: {
-    minWidth: 0,
-    maxWidth: 260,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    border: '1px solid transparent',
-    borderRadius: 8,
-    backgroundColor: 'transparent',
-    color: '#2a2a2a',
-    fontSize: 15,
-    fontWeight: 600,
-    padding: '7px 9px',
-    cursor: 'text',
-    fontFamily: 'inherit',
-    textAlign: 'left',
-  },
-  projectNameReadOnly: {
-    minWidth: 0,
-    maxWidth: 260,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: '#2a2a2a',
-    fontSize: 15,
-    fontWeight: 600,
-    padding: '7px 9px',
-  },
-  projectNameInput: {
-    minWidth: 180,
-    maxWidth: 280,
-    height: 34,
-    border: '1px solid #212222',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 15,
-    fontWeight: 600,
-    padding: '0 9px',
-    outline: 'none',
-    fontFamily: 'inherit',
-  },
-  navCenter: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-    minWidth: 0,
-    overflowX: 'auto',
-    padding: '0 8px',
-  },
-  navPillWrapper: {
-    display: 'flex',
-    alignItems: 'center',
-    height: 30,
-    borderRadius: 100,
-    backgroundColor: '#f8f8f8',
-    position: 'relative',
-  },
-  navPillWrapperActive: {
-    backgroundColor: '#212222',
-  },
-  navPill: {
-    height: 30,
-    padding: '0 4px 0 14px',
-    borderRadius: 0,
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontWeight: 400,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  navPillNoMenu: {
-    paddingRight: 14,
-  },
-  navPillActive: {
-    height: 30,
-    padding: '0 4px 0 14px',
-    borderRadius: 0,
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: '#f2f2f2',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  navPillMenuBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '0 8px 0 2px',
-    height: 30,
-    opacity: 0.5,
-    transition: 'opacity 0.15s',
-  },
-  navPillMenu: {
-    position: 'absolute',
-    top: '100%',
-    right: 0,
-    marginTop: 4,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
-    padding: '4px 0',
-    zIndex: 100,
-    minWidth: 130,
-  },
-  navPillMenuItem: {
-    padding: '8px 14px',
-    fontSize: 13,
-    color: '#2a2a2a',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  },
-  navPillInput: {
-    height: 30,
-    padding: '0 8px 0 14px',
-    border: 'none',
-    outline: 'none',
-    fontSize: 13,
-    fontWeight: 500,
-    fontFamily: 'inherit',
-    width: 90,
-  },
-  navPillInputNoMenu: {
-    paddingRight: 14,
-    width: 110,
-  },
-  navPillAdd: {
-    width: 30,
-    height: 30,
-    borderRadius: 100,
-    border: 'none',
-    backgroundColor: '#f8f8f8',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navRight: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 12,
-    minWidth: 0,
-  },
-  navIcons: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 20,
-  },
-  navIconBtn: {
-    padding: 0,
-    border: 'none',
-    backgroundColor: 'transparent',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  navBadge: {
-    position: 'absolute',
-    top: -7,
-    right: -8,
-    minWidth: 16,
-    height: 16,
-    padding: '0 4px',
-    borderRadius: 999,
-    backgroundColor: '#ef4444',
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 700,
-    lineHeight: '16px',
-    textAlign: 'center',
-  },
-  navSaveBtn: {
-    minWidth: 86,
-    height: 34,
-    padding: '0 14px',
-    backgroundColor: '#0088ff',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 9,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  navSaveBtnDisabled: {
-    opacity: 0.55,
-    cursor: 'not-allowed',
-  },
-  navReviewBtn: {
-    height: 32,
-    padding: '0 12px',
-    backgroundColor: '#212222',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  reviewStatusDraft: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  reviewStatusReady: {
-    color: '#0f766e',
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  saveStatus: {
-    minWidth: 84,
-    textAlign: 'right',
-    fontSize: 12,
-    color: '#64748b',
-  },
-  navSaveStatus: {
-    minWidth: 74,
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 600,
-    textAlign: 'right',
-  },
-
-  floatingBar: {
-    position: 'fixed',
-    left: '50%',
-    bottom: 22,
-    transform: 'translateX(-50%)',
-    zIndex: 120,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    maxWidth: 'calc(100vw - 48px)',
-    minHeight: 48,
-    flexWrap: 'wrap',
-    padding: '7px 8px',
-    border: '1px solid rgba(33, 34, 34, 0.12)',
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    boxShadow: '0 14px 36px rgba(15, 23, 42, 0.16)',
-    backdropFilter: 'blur(12px)',
-  },
-  floatingGroup: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 8,
-    whiteSpace: 'nowrap',
-  },
-  floatingDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: '#e5e7eb',
-  },
-  floatingSegment: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 2,
-    padding: 3,
-    borderRadius: 10,
-    backgroundColor: '#f4f4f5',
-  },
-  floatingModeBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 5,
-    height: 30,
-    padding: '0 10px',
-    border: 'none',
-    borderRadius: 8,
-    backgroundColor: 'transparent',
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  floatingModeBtnActive: {
-    backgroundColor: '#212222',
-    color: '#fff',
-  },
-  floatingStatusDraft: {
-    minWidth: 44,
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 700,
-    textAlign: 'center',
-  },
-  floatingStatusReady: {
-    minWidth: 70,
-    color: '#0f766e',
-    fontSize: 12,
-    fontWeight: 700,
-    textAlign: 'center',
-  },
-  floatingReviewBtn: {
-    height: 32,
-    padding: '0 12px',
-    border: 'none',
-    borderRadius: 9,
-    backgroundColor: '#212222',
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  floatingSaveStatus: {
-    minWidth: 72,
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 600,
-    textAlign: 'right',
-  },
-  floatingSaveBtn: {
-    height: 32,
-    padding: '0 14px',
-    border: 'none',
-    borderRadius: 9,
-    backgroundColor: '#0088ff',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  floatingBtnDisabled: {
-    opacity: 0.48,
-    cursor: 'not-allowed',
-  },
-
-  // ── Layout de 3 columnas ──
-  body: {
-    display: 'flex',
-    flex: 1,
-    overflow: 'hidden',
-  },
-
-  // ── Panel central ──
-  centerPanel: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    backgroundColor: '#f2f2f2',
-  },
-  toolbarSep: {
-    width: 1,
-    height: 20,
-    backgroundColor: '#d9d9d9',
-    margin: '0 4px',
-    flexShrink: 0,
-  },
-  rulesPanel: {
-    padding: '14px 16px 16px',
-    borderBottom: '1px solid #e5e7eb',
-    backgroundColor: '#fcfcfd',
-  },
-  rulesHeader: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 12,
-  },
-  rulesTitle: {
-    display: 'block',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontWeight: 700,
-    marginBottom: 2,
-  },
-  rulesSubtitle: {
-    margin: 0,
-    color: '#64748b',
-    fontSize: 12,
-    lineHeight: 1.45,
-  },
-  rulesStatusBadge: {
-    flexShrink: 0,
-    minHeight: 24,
-    padding: '0 10px',
-    borderRadius: 999,
-    display: 'inline-flex',
-    alignItems: 'center',
-    fontSize: 11,
-    fontWeight: 700,
-  },
-  rulesStatusOk: {
-    backgroundColor: '#ecfdf5',
-    color: '#047857',
-  },
-  rulesStatusAlert: {
-    backgroundColor: '#fef2f2',
-    color: '#b91c1c',
-  },
-  rulesGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 12,
-    marginBottom: 12,
-  },
-  rulesField: {
-    minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
-  rulesFieldLabel: {
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 700,
-  },
-  rulesInputWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rulesInput: {
-    width: '100%',
-    minHeight: 34,
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    padding: '0 10px',
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontFamily: 'inherit',
-  },
-  rulesInputDisabled: {
-    backgroundColor: '#f8fafc',
-    color: '#94a3b8',
-  },
-  rulesInputSuffix: {
-    flexShrink: 0,
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 700,
-  },
-  rulesMetrics: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-    gap: 10,
-  },
-  ruleMetric: {
-    padding: '10px 12px',
-    border: '1px solid #e5e7eb',
-    borderRadius: 10,
-    backgroundColor: '#fff',
-  },
-  ruleMetricAlert: {
-    borderColor: '#fecaca',
-    backgroundColor: '#fff5f5',
-  },
-  ruleMetricLabel: {
-    display: 'block',
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 700,
-    marginBottom: 4,
-  },
-  ruleMetricValue: {
-    color: '#2a2a2a',
-    fontSize: 16,
-    fontWeight: 700,
-  },
-  rulesReadOnly: {
-    margin: '12px 0 0',
-    color: '#64748b',
-    fontSize: 12,
-    lineHeight: 1.45,
-  },
-  rulesNotice: {
-    margin: '12px 0 0',
-    color: '#b45309',
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  rulesWarnings: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    marginTop: 12,
-  },
-  rulesWarningItem: {
-    margin: 0,
-    color: '#b91c1c',
-    fontSize: 12,
-    lineHeight: 1.45,
-  },
-
-  // ── Table grid picker ──
-  tablePickerDropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    marginTop: 4,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
-    padding: '10px 12px',
-    zIndex: 200,
-  },
-  tablePickerLabel: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 6,
-    fontWeight: 500,
-  },
-  tablePickerGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-  },
-
-  // ── Table context bar ──
-  tableContextBar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 2,
-    padding: '4px 16px',
-    backgroundColor: '#fafafa',
-    borderBottom: '1px solid #e8e8e8',
-    flexShrink: 0,
-  },
-  tableCtxLabel: {
-    fontSize: 11,
-    fontWeight: 500,
-    marginLeft: 2,
-  },
-
-  // ── Table right-click context menu ──
-  tableCtxMenu: {
-    position: 'absolute',
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    boxShadow: '0 4px 16px rgba(0,0,0,0.16)',
-    padding: '4px 0',
-    zIndex: 300,
-    minWidth: 180,
-  },
-  tableCtxMenuItem: {
-    padding: '7px 14px',
-    fontSize: 13,
-    color: '#2a2a2a',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  },
-  tableCtxMenuDivider: {
-    height: 1,
-    backgroundColor: '#e8e8e8',
-    margin: '4px 0',
-  },
-
-  // ── Table inline "+" buttons ──
-  tableInlineBtn: {
-    position: 'absolute',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f0f0f0',
-    border: '1px solid #d9d9d9',
-    borderRadius: 4,
-    color: '#888',
-    fontSize: 16,
-    fontWeight: 600,
-    cursor: 'pointer',
-    opacity: 0.6,
-    transition: 'opacity 0.15s, background-color 0.15s',
-    zIndex: 10,
-  },
-
-  editorScrollArea: {
-    flex: 1,
-    overflowY: 'scroll',
-    padding: 10,
-    position: 'relative',
-  },
-  wordCountBox: {
-    position: 'sticky',
-    left: 16,
-    bottom: 16,
-    zIndex: 70,
-    width: 'fit-content',
-    marginTop: -54,
-  },
-  wordCountButton: {
-    minWidth: 150,
-    minHeight: 44,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 14,
-    padding: '0 14px',
-    border: '1px solid #e5e7eb',
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontWeight: 700,
-    fontFamily: 'inherit',
-    cursor: 'pointer',
-    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.14)',
-  },
-  wordCountButtonAlert: {
-    borderColor: '#fecaca',
-    color: '#b91c1c',
-  },
-  wordCountLimit: {
-    marginLeft: 'auto',
-    color: 'inherit',
-    fontSize: 11,
-    fontWeight: 700,
-  },
-  wordCountMenu: {
-    position: 'absolute',
-    left: 0,
-    bottom: 'calc(100% + 8px)',
-    width: 260,
-    padding: 10,
-    border: '1px solid #e5e7eb',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    boxShadow: '0 14px 36px rgba(15, 23, 42, 0.16)',
-  },
-  wordCountMenuTitle: {
-    padding: '4px 4px 6px',
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 800,
-    textTransform: 'uppercase',
-  },
-  wordCountRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-    minHeight: 30,
-    padding: '0 4px',
-    color: '#2a2a2a',
-    fontSize: 13,
-  },
-  wordCountDivider: {
-    height: 1,
-    backgroundColor: '#e5e7eb',
-    margin: '7px 0',
-  },
-
-  editorPageRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    maxWidth: 890,
-    margin: '0 auto',
-  },
-
-  editorPage: {
-    flex: 1,
-    maxWidth: 800,
-    minHeight: 'calc(100vh - 120px)',
-    backgroundColor: '#f8f8f8',
-    border: '1px solid #d9d9d9',
-    borderRadius: 4,
-    padding: '60px 50px 1000px',
-  },
-
-  // ── Separador de sección (usado por el NodeView) ──
-  sectionDivider: {
-    margin: '20px 0 12px',
-  },
-  sectionDividerLabel: {
-    display: 'block',
-    fontSize: 12,
-    fontWeight: 600,
-    color: '#999',
-    marginBottom: 6,
-    userSelect: 'none',
-  },
-  sectionDividerHr: {
-    border: 'none',
-    borderTop: '1px solid #d9d9d9',
-    margin: 0,
-  },
-  ctaNode: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 10,
-    margin: '10px 0',
-  },
-  ctaNodeButton: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    minHeight: 38,
-    padding: '0 16px',
-    borderRadius: 8,
-    backgroundColor: '#212222',
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 500,
-    textDecoration: 'none',
-  },
-  ctaNodeEdit: {
-    border: '1px solid #d9d9d9',
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 500,
-    padding: '6px 10px',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-
-  typeLabelsCol: {
-    position: 'relative',
-    width: 48,
-    flexShrink: 0,
-  },
-
-  activityMarkersCol: {
-    position: 'relative',
-    width: 42,
-    flexShrink: 0,
-  },
-
-  activityMarkerBtn: {
-    position: 'absolute',
-    left: 10,
-    width: 26,
-    height: 26,
-    border: '1px solid #d9d9d9',
-    borderRadius: 999,
-    backgroundColor: '#fff7ed',
-    color: '#c2410c',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0,
-    cursor: 'pointer',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    zIndex: 20,
-  },
-
-  activityMarkerBtnActive: {
-    backgroundColor: '#212222',
-    borderColor: '#212222',
-    color: '#fff',
-  },
-
-  typeLabelBtn: {
-    width: 30,
-    height: 30,
-    backgroundColor: '#d0d0d0',
-    border: 'none',
-    borderRadius: 6,
-    fontSize: 11,
-    fontWeight: 600,
-    color: '#2a2a2a',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0,
-  },
-
-  typeLabelDropdown: {
-    position: 'absolute',
-    left: 34,
-    top: 0,
-    backgroundColor: '#fff',
-    border: '1px solid #d9d9d9',
-    borderRadius: 6,
-    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-    zIndex: 50,
-    minWidth: 110,
-    overflow: 'hidden',
-  },
-  typeLabelOption: {
-    padding: '8px 14px',
-    fontSize: 13,
-    cursor: 'pointer',
-    color: '#2a2a2a',
-    fontFamily: 'inherit',
-  },
-
-  sectionEditorContent: {
-    position: 'relative',
-  },
-
-  canvasAddSectionWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    display: 'flex',
-    justifyContent: 'center',
-    pointerEvents: 'none',
-    zIndex: 20,
-  },
-  canvasAddSectionBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '8px 12px',
-    border: '1px dashed #b8b8b8',
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-    pointerEvents: 'auto',
-  },
-
-  infoCol: {
-    width: 36,
-    flexShrink: 0,
-    display: 'flex',
-    justifyContent: 'center',
-    paddingTop: 4,
-  },
-
-  // ── Handoff / Preview ──
-  handoffPanel: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    backgroundColor: '#f2f2f2',
-  },
-  handoffHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 16,
-    padding: '18px 24px',
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #d9d9d9',
-  },
-  handoffEyebrow: {
-    margin: '0 0 4px',
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  handoffTitle: {
-    margin: 0,
-    color: '#2a2a2a',
-    fontSize: 22,
-    lineHeight: 1.2,
-    fontWeight: 600,
-  },
-  handoffHeaderActions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-  },
-  handoffActionBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    border: '1px solid #d9d9d9',
-    borderRadius: 999,
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontWeight: 500,
-    padding: '8px 12px',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  handoffGhostBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: '#64748b',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  copyFeedback: {
-    margin: '10px 24px 0',
-    color: '#0f766e',
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  handoffScroll: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '20px 24px 80px',
-  },
-  handoffSection: {
-    maxWidth: 920,
-    margin: '0 auto 18px',
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
-  },
-  handoffSectionHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    padding: '14px 16px',
-    borderBottom: '1px solid #e8e8e8',
-  },
-  handoffSectionTitle: {
-    margin: 0,
-    fontSize: 17,
-    lineHeight: 1.25,
-    fontWeight: 600,
-    color: '#2a2a2a',
-  },
-  handoffBlockList: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  handoffBlockRow: {
-    display: 'grid',
-    gridTemplateColumns: '54px minmax(0, 1fr) auto',
-    gap: 12,
-    alignItems: 'start',
-    padding: '12px 16px',
-    borderBottom: '1px solid #f0f0f0',
-  },
-  handoffGutter: {
-    userSelect: 'none',
-    alignSelf: 'start',
-    justifySelf: 'start',
-    minWidth: 34,
-    padding: '4px 7px',
-    borderRadius: 6,
-    backgroundColor: '#f1f5f9',
-    color: '#64748b',
-    fontSize: 11,
-    fontWeight: 600,
-    textAlign: 'center',
-  },
-  handoffCopySafe: {
-    minWidth: 0,
-    color: '#2a2a2a',
-    fontSize: 14,
-    lineHeight: 1.65,
-  },
-  handoffBlockContent: {
-    minWidth: 0,
-  },
-  handoffCtaText: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    minHeight: 34,
-    padding: '0 14px',
-    borderRadius: 8,
-    backgroundColor: '#212222',
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 500,
-  },
-  handoffActions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    userSelect: 'none',
-  },
-  handoffIconBtn: {
-    width: 28,
-    height: 28,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: '1px solid #d9d9d9',
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    color: '#64748b',
-    cursor: 'pointer',
-  },
-  previewPanel: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    backgroundColor: '#f2f2f2',
-  },
-  previewToolbar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 16,
-    padding: '18px 24px',
-    backgroundColor: '#fff',
-    borderBottom: '1px solid #d9d9d9',
-  },
-  previewPage: {
-    width: 820,
-    maxWidth: 'calc(100% - 48px)',
-    margin: '24px auto 80px',
-    padding: '56px 64px',
-    backgroundColor: '#fff',
-    border: '1px solid #d9d9d9',
-    borderRadius: 6,
-    color: '#2a2a2a',
-    lineHeight: 1.65,
-    overflowY: 'auto',
-  },
-
-  // ── Sidebar derecho ──
-  deliverableSelect: {
-    ...compactSelectChevron,
-    height: 34,
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    padding: '0 30px 0 10px',
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 12,
-    fontFamily: 'inherit',
-    backgroundPosition: 'right 8px center',
-    backgroundSize: '14px 14px',
-  },
-  deliverableStatusSelect: {
-    ...compactSelectChevron,
-    width: '100%',
-    height: 30,
-    border: '1px solid #d9d9d9',
-    borderRadius: 8,
-    padding: '0 30px 0 8px',
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 11,
-    fontFamily: 'inherit',
-    backgroundPosition: 'right 8px center',
-    backgroundSize: '14px 14px',
-  },
-  // ── Modal ──
-  modalOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 200,
-  },
-
-  modal: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.18)',
-    padding: '24px 28px',
-    width: 320,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-  },
-
-  modalTitle: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: '#2a2a2a',
-    margin: 0,
-  },
-
-  modalInput: {
-    padding: '9px 12px',
-    border: '1px solid #d9d9d9',
-    borderRadius: 6,
-    fontSize: 14,
-    color: '#2a2a2a',
-    outline: 'none',
-    fontFamily: 'inherit',
-  },
-
-  modalActions: {
-    display: 'flex',
-    gap: 10,
-  },
-
-  modalBtnPrimary: {
-    flex: 1,
-    padding: '8px 0',
-    backgroundColor: '#2a2a2a',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 6,
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-
-  modalBtnSecondary: {
-    flex: 1,
-    padding: '8px 0',
-    backgroundColor: 'transparent',
-    color: '#64748b',
-    border: '1px solid #d9d9d9',
-    borderRadius: 6,
-    fontSize: 14,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-
-  // ── Confirm delete modal ──
-  confirmOverlay: {
-    position: 'fixed',
-    inset: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 9999,
-  },
-  confirmBox: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: '28px 32px 24px',
-    minWidth: 340,
-    maxWidth: 400,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-  },
-  confirmText: {
-    fontSize: 15,
-    fontWeight: 500,
-    color: '#2a2a2a',
-    margin: '0 0 6px',
-  },
-  confirmSubtext: {
-    fontSize: 13,
-    color: '#888',
-    margin: '0 0 20px',
-  },
-  confirmActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  confirmCancelBtn: {
-    padding: '8px 18px',
-    borderRadius: 8,
-    border: '1px solid #d9d9d9',
-    backgroundColor: '#fff',
-    color: '#2a2a2a',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  confirmDeleteBtn: {
-    padding: '8px 18px',
-    borderRadius: 8,
-    border: 'none',
-    backgroundColor: '#ef4444',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 500,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-}

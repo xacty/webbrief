@@ -1,0 +1,66 @@
+<svg width="1440" height="960" viewBox="0 0 1440 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1440" height="960" fill="#F8FAFC"/>
+  <text x="80" y="92" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="800">WeBrief logo concepts</text>
+  <text x="80" y="132" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="18">Tres direcciones simples, vector-friendly y pensadas para sidebar, favicon y documentos compartidos.</text>
+
+  <g transform="translate(80 190)">
+    <rect width="380" height="560" rx="28" fill="#FFFFFF" stroke="#DBE3F0"/>
+    <rect x="36" y="36" width="96" height="96" rx="26" fill="#0F172A"/>
+    <path d="M58 62L73 107H86L96 79L106 107H119L134 62H120L112 91L102 62H91L81 91L73 62H58Z" fill="#FFFFFF"/>
+    <path d="M68 54H121C128.18 54 134 59.8203 134 67V112C134 119.18 128.18 125 121 125H68C60.8203 125 55 119.18 55 112V67C55 59.8203 60.8203 54 68 54Z" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2"/>
+    <text x="36" y="184" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">1. Brief Fold</text>
+    <text x="36" y="222" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">Marca compacta: una hoja/brief con</text>
+    <text x="36" y="248" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">monograma W integrado. Sobria,</text>
+    <text x="36" y="274" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">institucional y fácil de usar en UI.</text>
+    <g transform="translate(36 330)">
+      <rect width="308" height="92" rx="22" fill="#0F172A"/>
+      <rect x="20" y="20" width="52" height="52" rx="14" fill="#FFFFFF"/>
+      <path d="M30 33L38 59H45L51 43L57 59H64L72 33H64L60 50L54 33H48L42 50L38 33H30Z" fill="#0F172A"/>
+      <text x="92" y="55" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">WeBrief</text>
+    </g>
+    <text x="36" y="484" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="14">Mejor para: producto B2B, admin shell, favicon.</text>
+  </g>
+
+  <g transform="translate(530 190)">
+    <rect width="380" height="560" rx="28" fill="#FFFFFF" stroke="#DBE3F0"/>
+    <rect x="36" y="36" width="96" height="96" rx="26" fill="#E8F5FF"/>
+    <path d="M63 63H87C92.5228 63 97 67.4772 97 73V88C97 93.5228 92.5228 98 87 98H77L63 110V98H63C57.4772 98 53 93.5228 53 88V73C53 67.4772 57.4772 63 63 63Z" fill="#0F4C81"/>
+    <path d="M91 81H115C120.523 81 125 85.4772 125 91V106C125 111.523 120.523 116 115 116H115V128L101 116H91C85.4772 116 81 111.523 81 106V91C81 85.4772 85.4772 81 91 81Z" fill="#0F172A"/>
+    <text x="36" y="184" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">2. Dialogue Brief</text>
+    <text x="36" y="222" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">Dos globos/documentos cruzados:</text>
+    <text x="36" y="248" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">brief, feedback y colaboración entre</text>
+    <text x="36" y="274" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">cliente, diseño y desarrollo.</text>
+    <g transform="translate(36 330)">
+      <rect width="308" height="92" rx="22" fill="#FFFFFF" stroke="#DBE3F0"/>
+      <rect x="20" y="20" width="52" height="52" rx="14" fill="#E8F5FF"/>
+      <path d="M35 34H46C49.3137 34 52 36.6863 52 40V46C52 49.3137 49.3137 52 46 52H41L34 59V52C30.6863 52 28 49.3137 28 46V40C28 36.6863 30.6863 34 34 34H35Z" fill="#0F4C81"/>
+      <path d="M45 44H57C60.3137 44 63 46.6863 63 50V56C63 59.3137 60.3137 62 57 62H57V68L50 62H45C41.6863 62 39 59.3137 39 56V50C39 46.6863 41.6863 44 45 44Z" fill="#0F172A"/>
+      <text x="92" y="55" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">WeBrief</text>
+    </g>
+    <text x="36" y="484" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="14">Mejor para: colaboración, comentarios, revisiones.</text>
+  </g>
+
+  <g transform="translate(980 190)">
+    <rect width="380" height="560" rx="28" fill="#FFFFFF" stroke="#DBE3F0"/>
+    <rect x="36" y="36" width="96" height="96" rx="26" fill="#0F172A"/>
+    <path d="M56 68C56 62.4772 60.4772 58 66 58H111C116.523 58 121 62.4772 121 68V76H111V70C111 68.8954 110.105 68 109 68H68C66.8954 68 66 68.8954 66 70V108C66 109.105 66.8954 110 68 110H109C110.105 110 111 109.105 111 108V102H121V110C121 115.523 116.523 120 111 120H66C60.4772 120 56 115.523 56 110V68Z" fill="#FFFFFF"/>
+    <path d="M86 84H123L113 74L121 66L145 90L121 114L113 106L123 96H86V84Z" fill="#7DD3FC"/>
+    <text x="36" y="184" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">3. Handoff Path</text>
+    <text x="36" y="222" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">Un documento con flecha de salida:</text>
+    <text x="36" y="248" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">de brief a entrega. Más dinámico,</text>
+    <text x="36" y="274" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">orientado al flujo de handoff.</text>
+    <g transform="translate(36 330)">
+      <rect width="308" height="92" rx="22" fill="#0F172A"/>
+      <rect x="20" y="20" width="52" height="52" rx="14" fill="#FFFFFF"/>
+      <path d="M30 35C30 31.6863 32.6863 29 36 29H57C60.3137 29 63 31.6863 63 35V40H57V36H36V58H57V54H63V59C63 62.3137 60.3137 65 57 65H36C32.6863 65 30 62.3137 30 59V35Z" fill="#0F172A"/>
+      <path d="M45 42H66L60 36L65 31L78 45L65 59L60 54L66 48H45V42Z" fill="#0284C7"/>
+      <text x="92" y="55" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">WeBrief</text>
+    </g>
+    <text x="36" y="484" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="14">Mejor para: handoff, procesos, entrega final.</text>
+  </g>
+
+  <g transform="translate(80 810)">
+    <text x="0" y="0" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="800">Criterio recomendado</text>
+    <text x="0" y="36" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="16">Elegir una dirección por claridad a 32px, contraste, facilidad de SVG y coherencia con el admin shell sobrio de WeBrief.</text>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { supabaseAdmin } from '../lib/supabase.js'
+import { buildImageKitPath, buildImageKitUrl, sanitizeFileName, uploadToImageKit } from '../lib/imagekit.js'
 import { requireAuth } from '../middleware/auth.js'
 import { seedProjectPagesForType } from '../data/projectTemplates.js'
 import {
@@ -28,7 +29,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
 })
-const ASSETS_BUCKET = process.env.PROJECT_ASSETS_BUCKET || 'project-assets'
 let archiveColumnsAvailable = true
 let projectPageVersionColumnAvailable = true
 let projectPageContentJsonColumnAvailable = true
@@ -39,7 +39,6 @@ let projectPageVersionsTableAvailable = true
 let projectPageChangeProposalsTableAvailable = true
 let projectActivityTableAvailable = true
 let projectActivityRetryAt = 0
-let sharpModulePromise = null
 
 router.use(requireAuth)
 
@@ -383,9 +382,13 @@ function coerceUuid(value) {
     : crypto.randomUUID()
 }
 
-async function getSharp() {
-  sharpModulePromise ||= import('sharp').then((module) => module.default)
-  return sharpModulePromise
+function getExtensionFromMimeType(mimeType, fileName = '') {
+  const normalizedName = String(fileName || '').toLowerCase()
+  if (mimeType === 'image/jpeg' || normalizedName.endsWith('.jpg') || normalizedName.endsWith('.jpeg')) return 'jpg'
+  if (mimeType === 'image/png' || normalizedName.endsWith('.png')) return 'png'
+  if (mimeType === 'image/webp' || normalizedName.endsWith('.webp')) return 'webp'
+  if (mimeType === 'image/svg+xml' || normalizedName.endsWith('.svg')) return 'svg'
+  return 'bin'
 }
 
 function normalizeProjectList(projects, companyMap) {
@@ -1637,49 +1640,23 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Solo se aceptan JPEG, PNG, WebP o SVG' })
     }
 
-    let outputBuffer = req.file.buffer
-    let mimeType = originalMime
-    let extension = isSvg ? 'svg' : 'webp'
-    let width = null
-    let height = null
-
-    if (isRaster) {
-      let sharp
-      try {
-        sharp = await getSharp()
-      } catch (error) {
-        console.error('Sharp is unavailable for raster asset processing', error)
-        return res.status(503).json({ error: 'El procesamiento de imagenes raster no esta disponible en este servidor' })
-      }
-
-      const image = sharp(req.file.buffer).rotate()
-      const metadata = await image.metadata()
-      width = metadata.width || null
-      height = metadata.height || null
-      outputBuffer = await image
-        .resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 82 })
-        .toBuffer()
-      mimeType = 'image/webp'
-    }
-
     const assetId = crypto.randomUUID()
-    const storagePath = `${project.company_id}/${project.id}/${assetId}.${extension}`
+    const extension = getExtensionFromMimeType(originalMime, originalName)
+    const imageKitFolder = buildImageKitPath('companies', project.company_id, 'projects', project.id)
+    const uploadFileName = `${assetId}-${sanitizeFileName(originalName || `asset.${extension}`)}`
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(ASSETS_BUCKET)
-      .upload(storagePath, outputBuffer, {
-        contentType: mimeType,
-        upsert: false,
-      })
+    const uploadResponse = await uploadToImageKit({
+      buffer: req.file.buffer,
+      fileName: uploadFileName,
+      folder: imageKitFolder,
+      tags: ['project-asset'],
+    })
 
-    if (uploadError) {
-      return res.status(500).json({ error: uploadError.message })
-    }
-
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from(ASSETS_BUCKET)
-      .getPublicUrl(storagePath)
+    const originalUrl = uploadResponse.url || null
+    const imagePath = uploadResponse.filePath || buildImageKitPath(imageKitFolder, uploadFileName)
+    const transformedUrl = isSvg
+      ? originalUrl
+      : buildImageKitUrl(imagePath, ['w-2400', 'h-2400', 'c-at_max', 'f-auto'])
 
     const { data: asset, error: assetError } = await supabaseAdmin
       .from('project_assets')
@@ -1691,17 +1668,18 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
         section_id: req.body.sectionId || null,
         uploaded_by: req.currentUser.id,
         file_name: originalName,
-        storage_bucket: ASSETS_BUCKET,
-        storage_path: storagePath,
-        mime_type: mimeType,
+        storage_bucket: 'imagekit',
+        storage_path: imagePath,
+        imagekit_file_id: uploadResponse.fileId || null,
+        mime_type: uploadResponse.fileType || originalMime,
         asset_kind: isSvg ? 'svg' : 'image',
-        public_url: isSvg ? null : publicUrlData?.publicUrl || null,
-        file_size: outputBuffer.byteLength,
-        width,
-        height,
+        public_url: originalUrl,
+        file_size: uploadResponse.size || req.file.size || req.file.buffer.byteLength,
+        width: uploadResponse.width || null,
+        height: uploadResponse.height || null,
         render_inline: !isSvg,
       })
-      .select('id, project_id, file_name, storage_bucket, storage_path, mime_type, asset_kind, public_url, file_size, width, height, render_inline, created_at')
+      .select('id, project_id, file_name, storage_bucket, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, file_size, width, height, render_inline, created_at')
       .single()
 
     if (assetError) return res.status(500).json({ error: assetError.message })
@@ -1724,9 +1702,11 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
         fileName: asset.file_name,
         bucket: asset.storage_bucket,
         path: asset.storage_path,
+        fileId: asset.imagekit_file_id,
         mimeType: asset.mime_type,
         assetKind: asset.asset_kind,
-        publicUrl: asset.public_url,
+        originalUrl: asset.public_url,
+        publicUrl: transformedUrl,
         fileSize: asset.file_size,
         width: asset.width,
         height: asset.height,

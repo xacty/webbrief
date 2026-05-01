@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import multer from 'multer'
+import { buildImageKitPath, buildImageKitUrl, sanitizeFileName, uploadToImageKit } from '../lib/imagekit.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import {
   canInviteCompanyRole,
@@ -10,23 +11,19 @@ import {
 } from '../lib/projectAccess.js'
 import { ensureUserProfile, inviteUserToCompany, normalizeEmail } from '../lib/users.js'
 import { requireAuth } from '../middleware/auth.js'
+import {
+  COMPANY_ROLE_SET,
+  PLATFORM_ROLE_SET,
+  normalizePlatformRole as normalizeSharedPlatformRole,
+} from '../../../shared/userRoles.js'
 
 const router = Router()
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
 })
-const COMPANY_ROLES = new Set(['manager', 'editor', 'content_writer', 'designer', 'developer'])
-const PLATFORM_ROLES = new Set(['admin', 'user', 'qa'])
-const USER_AVATARS_BUCKET = process.env.USER_AVATARS_BUCKET || 'user-avatars'
-let sharpModulePromise = null
 
 router.use(requireAuth)
-
-async function getSharp() {
-  sharpModulePromise ||= import('sharp').then((module) => module.default)
-  return sharpModulePromise
-}
 
 function httpError(status, message) {
   const error = new Error(message)
@@ -49,7 +46,7 @@ function canUseUsersPage(currentUser) {
 }
 
 function canAssignRole(currentUser, companyId, role) {
-  if (!COMPANY_ROLES.has(role)) return false
+  if (!COMPANY_ROLE_SET.has(role)) return false
   return canInviteCompanyRole(currentUser, companyId, role)
 }
 
@@ -60,7 +57,7 @@ function canManageMembership(currentUser, companyId, targetRole) {
 
 function normalizePlatformRole(currentUser, requestedRole) {
   if (!isAdmin(currentUser)) return 'user'
-  return PLATFORM_ROLES.has(requestedRole) ? requestedRole : 'user'
+  return normalizeSharedPlatformRole(requestedRole)
 }
 
 async function getMembership(userId, companyId) {
@@ -433,7 +430,7 @@ router.patch('/:id', async (req, res) => {
     }
 
     if (platformRole !== undefined) {
-      if (!PLATFORM_ROLES.has(platformRole)) {
+      if (!PLATFORM_ROLE_SET.has(platformRole)) {
         return res.status(400).json({ error: 'Rol de plataforma invalido' })
       }
 
@@ -485,49 +482,47 @@ router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
       return res.status(400).json({ error: 'Solo se aceptan JPEG, PNG o WebP' })
     }
 
-    let sharp
-    try {
-      sharp = await getSharp()
-    } catch (error) {
-      console.error('Sharp is unavailable for avatar processing', error)
-      return res.status(503).json({ error: 'El procesamiento de avatares no esta disponible en este servidor' })
-    }
+    const extension = req.file.mimetype === 'image/png'
+      ? 'png'
+      : req.file.mimetype === 'image/webp'
+        ? 'webp'
+        : 'jpg'
+    const imageKitFolder = buildImageKitPath('avatars', userId)
+    const originalAvatarName = req.file.originalname || `avatar.${extension}`
+    const imageKitFileName = `${crypto.randomUUID()}-${sanitizeFileName(originalAvatarName)}`
 
-    const outputBuffer = await sharp(req.file.buffer)
-      .rotate()
-      .resize({ width: 256, height: 256, fit: 'cover' })
-      .webp({ quality: 84 })
-      .toBuffer()
+    const uploadResponse = await uploadToImageKit({
+      buffer: req.file.buffer,
+      fileName: imageKitFileName,
+      folder: imageKitFolder,
+      tags: ['avatar'],
+    })
 
-    const storagePath = `${userId}/${crypto.randomUUID()}.webp`
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(USER_AVATARS_BUCKET)
-      .upload(storagePath, outputBuffer, {
-        contentType: 'image/webp',
-        upsert: false,
-      })
-
-    if (uploadError) {
-      return res.status(500).json({ error: uploadError.message })
-    }
-
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from(USER_AVATARS_BUCKET)
-      .getPublicUrl(storagePath)
-
-    const avatarUrl = publicUrlData?.publicUrl || ''
+    const originalUrl = uploadResponse.url || ''
+    const imagePath = uploadResponse.filePath || buildImageKitPath(imageKitFolder, imageKitFileName)
+    const avatarUrl = buildImageKitUrl(imagePath, ['w-256', 'h-256', 'c-maintain_ratio', 'fo-face', 'r-max', 'f-auto'])
 
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({
         avatar_url: avatarUrl,
+        avatar_original_url: originalUrl,
+        avatar_file_id: uploadResponse.fileId || null,
+        avatar_file_name: originalAvatarName,
+        avatar_file_path: imagePath,
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId)
 
     if (profileError) throw profileError
 
-    return res.json({ avatarUrl })
+    return res.json({
+      avatarUrl,
+      originalUrl,
+      fileId: uploadResponse.fileId || null,
+      fileName: originalAvatarName,
+      filePath: imagePath,
+    })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo actualizar la imagen del usuario' })
   }

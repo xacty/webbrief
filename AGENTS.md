@@ -29,6 +29,7 @@
 ## Compact Mode
 
 - Default to compact mode in this repo.
+- Unless the user explicitly asks for explanation, reasoning, alternatives, or a walkthrough, answer with only the direct requested information or action.
 - Keep explanations short unless the user asks for deeper reasoning, alternatives, or a walkthrough.
 - Prefer implementation plus concise outcome over long plans or detailed narration.
 - Keep intermediary updates brief and only send them when they add useful progress, risk, or blocker context.

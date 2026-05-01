@@ -304,6 +304,26 @@ export default function CompaniesPage() {
               </p>
 
               <div className={styles.cardActions}>
+                {(currentUser?.platformRole === 'admin' || company.membershipRole === 'manager') && !company.isInternal && (
+                  <>
+                    <button
+                      className={styles.cardDangerButton}
+                      onClick={(event) => handleCompanyTrash(event, company.id)}
+                      aria-label={`Enviar ${company.name} a papelera`}
+                      title="Papelera"
+                    >
+                      <Trash2 aria-hidden="true" />
+                    </button>
+                    <button
+                      className={styles.cardIconButton}
+                      onClick={(event) => handleCompanyArchive(event, company.id)}
+                      aria-label={`Archivar ${company.name}`}
+                      title="Archivar"
+                    >
+                      <Archive aria-hidden="true" />
+                    </button>
+                  </>
+                )}
                 <button
                   className={styles.cardOpenButton}
                   onClick={() => openCompany(company.id)}
@@ -313,26 +333,6 @@ export default function CompaniesPage() {
                   <span>Abrir</span>
                   <ArrowRight aria-hidden="true" />
                 </button>
-                {(currentUser?.platformRole === 'admin' || company.membershipRole === 'manager') && !company.isInternal && (
-                  <>
-                    <button
-                      className={styles.cardIconButton}
-                      onClick={(event) => handleCompanyArchive(event, company.id)}
-                      aria-label={`Archivar ${company.name}`}
-                      title="Archivar"
-                    >
-                      <Archive aria-hidden="true" />
-                    </button>
-                    <button
-                      className={styles.cardDangerButton}
-                      onClick={(event) => handleCompanyTrash(event, company.id)}
-                      aria-label={`Enviar ${company.name} a papelera`}
-                      title="Papelera"
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </button>
-                  </>
-                )}
               </div>
             </article>
           ))}

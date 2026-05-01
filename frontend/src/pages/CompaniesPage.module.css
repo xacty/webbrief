@@ -221,9 +221,9 @@
 }
 
 .cardActions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: auto;
   padding-top: 12px;
@@ -246,7 +246,7 @@
 .cardOpenButton {
   justify-content: space-between;
   gap: 10px;
-  min-width: 0;
+  width: 132px;
   border: none;
   padding: 0 12px 0 14px;
   background: var(--wb-primary);

@@ -437,6 +437,20 @@
   align-items: flex-end;
 }
 
+.inviteFormActions {
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--wb-border) 78%, transparent);
+}
+
+.inviteFormNote {
+  grid-column: 1 / -1;
+  align-self: start;
+}
+
 .formNote {
   margin: 0;
   align-self: center;
@@ -611,6 +625,7 @@
 
 .primaryButton,
 .secondaryButton,
+.tertiaryButton,
 .dangerButton,
 .paginationButton {
   display: inline-flex;
@@ -645,6 +660,17 @@
 .paginationButton:hover {
   background: var(--wb-surface-muted);
   border-color: var(--wb-border-strong);
+}
+
+.tertiaryButton {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--wb-text-muted);
+}
+
+.tertiaryButton:hover {
+  background: color-mix(in srgb, var(--wb-surface-muted) 72%, transparent);
+  color: var(--wb-text);
 }
 
 .dangerButton {
@@ -693,6 +719,7 @@
 
 .primaryButton:disabled,
 .secondaryButton:disabled,
+.tertiaryButton:disabled,
 .dangerButton:disabled,
 .iconDangerButton:disabled,
 .rowActionButton:disabled,
@@ -791,7 +818,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .formActions {
+  .inviteFormActions {
     grid-column: 1 / -1;
   }
 }
@@ -807,6 +834,15 @@
   .toolbar,
   .inviteGrid {
     grid-template-columns: 1fr;
+  }
+
+  .inviteFormActions {
+    justify-content: stretch;
+  }
+
+  .inviteFormActions .tertiaryButton,
+  .inviteFormActions .primaryButton {
+    flex: 1 1 0;
   }
 
   .cardsGrid {

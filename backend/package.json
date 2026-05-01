@@ -7,11 +7,11 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
+    "@imagekit/nodejs": "^7.5.0",
     "@supabase/supabase-js": "^2.103.3",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^4.21.0",
-    "multer": "^2.1.1",
-    "sharp": "^0.34.5"
+    "multer": "^2.1.1"
   }
 }

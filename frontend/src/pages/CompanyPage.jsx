@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, Trash2 } from 'lucide-react'
+import { Archive, ArrowRight, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -9,6 +9,10 @@ import {
   canManageProjectLifecycle as canManageProjectLifecycleForRole,
   getInviteRoleOptions,
 } from '../lib/roleCapabilities'
+import {
+  getCompanyRoleLabel as getCompanyRoleLabelShared,
+  getPlatformRoleTitle,
+} from '../../../shared/userRoles.js'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -57,17 +61,12 @@ function formatDate(isoDate) {
 }
 
 function getCompanyRoleLabel(currentUser, membershipRole) {
-  if (currentUser?.platformRole === 'admin') return 'Admin de plataforma'
-  if (!membershipRole) return 'Sin rol asignado'
-  if (membershipRole === 'content_writer') return 'Content Writer'
-  return membershipRole.charAt(0).toUpperCase() + membershipRole.slice(1)
+  if (currentUser?.platformRole === 'admin') return getPlatformRoleTitle(currentUser.platformRole)
+  return getCompanyRoleLabelShared(membershipRole)
 }
 
 function roleLabel(role) {
-  if (role === 'content_writer') return 'Content Writer'
-  if (role === 'designer') return 'Diseño'
-  if (role === 'developer') return 'Dev'
-  return role.charAt(0).toUpperCase() + role.slice(1)
+  return getCompanyRoleLabelShared(role)
 }
 
 function projectTypeLabel(projectType) {
@@ -328,17 +327,6 @@ export default function CompanyPage() {
                         {canManageProjects && (
                           <>
                             <button
-                              className={styles.archiveActionButton}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectArchive(project.id)
-                              }}
-                              title="Archivar proyecto"
-                              aria-label={`Archivar ${project.name}`}
-                            >
-                              <Archive size={16} />
-                            </button>
-                            <button
                               className={styles.trashIconButton}
                               onClick={(event) => {
                                 event.stopPropagation()
@@ -349,6 +337,17 @@ export default function CompanyPage() {
                             >
                               <Trash2 size={16} />
                             </button>
+                            <button
+                              className={styles.archiveActionButton}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleProjectArchive(project.id)
+                              }}
+                              title="Archivar proyecto"
+                              aria-label={`Archivar ${project.name}`}
+                            >
+                              <Archive size={16} />
+                            </button>
                           </>
                         )}
                         <button
@@ -358,7 +357,8 @@ export default function CompanyPage() {
                             openProject(project.id)
                           }}
                         >
-                          Abrir
+                          <span>Abrir</span>
+                          <ArrowRight aria-hidden="true" />
                         </button>
                       </div>
                     </article>

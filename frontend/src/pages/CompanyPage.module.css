@@ -187,7 +187,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 25px;
+  min-height: 220px;
+  padding: 16px;
   border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-md);
   background: var(--wb-surface);
@@ -225,8 +226,7 @@
 .projectMetaList {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  margin-top: auto;
+  gap: 8px;
 }
 
 .projectMetaRow {
@@ -257,51 +257,66 @@
 
 .projectActions {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--wb-border);
 }
 
 .openProjectButton {
-  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 38px;
+  width: 132px;
   border: none;
-  border-radius: 12px;
-  padding: 0 16px;
+  border-radius: 10px;
+  padding: 0 12px 0 14px;
   background: var(--wb-primary);
   color: #fff;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .openProjectButton:hover {
   background: var(--wb-primary-hover);
 }
 
+.openProjectButton svg,
+.archiveActionButton svg,
+.trashIconButton svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
 .archiveActionButton {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border: 1px solid var(--wb-border);
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 0;
-  background: #fff;
-  color: #94a3b8;
-  font-weight: 600;
+  background: var(--wb-surface);
+  color: var(--wb-text-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .archiveActionButton:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
-  color: #64748b;
+  border-color: var(--wb-border-strong);
+  background: var(--wb-surface-muted);
+  color: var(--wb-text);
 }
 
 .trashIconButton {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border: 1px solid #fecaca;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   color: var(--wb-danger);
   display: inline-flex;
@@ -311,7 +326,6 @@
 
 .trashIconButton:hover {
   background: #fef2f2;
-  border-color: #fca5a5;
 }
 
 .inviteForm {

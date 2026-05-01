@@ -123,7 +123,7 @@
   - `keep`: all editor invariants
   - `watch`: add/delete/rename/hydration
 - `target=editor.updates-panel`
-  - `keep`: panel shows section review activity, pending notifications, compact deliverables, and share-link action; click activity scrolls to its section marker
+  - `keep`: panel shows section activity, compact deliverables, share-link action, internal scroll, and a bottom-docked content-rules card for document projects; click activity scrolls to its section marker
 - `target=editor.handoff`
   - `keep`: copy-safe central content; labels/actions outside selectable text
 - `target=share`
@@ -226,6 +226,10 @@
 - role preview exists for admin testing; auth applies a local role preview without mutating the real profile
 - role capability matrix is shared in frontend/backend helpers; manager/editor/content_writer/designer/developer actions are gated by capability rather than ad hoc checks
 - designer proposal flow exists via `project_page_change_proposals`; reviewers can accept/reject pending designer content proposals
+- hidden the generic editor review footer controls/status (`Draft`, `En revisión`, `Enviar a revisión`); keep only the designer proposal approval flow and public share approvals
+- right activity panel now has reliable internal scroll; document content rules are bottom-docked outside the activity list with translucent styling; editor/side panels use slimmer dark scrollbars
+- backend image pipeline now uses ImageKit instead of `sharp`; uploads for project assets and avatars use backend SDK + env vars `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`
+- Supabase now stores ImageKit metadata for assets and avatars (`imagekit_file_id`, original URL, file name/path fields)
 - company project cards display inferred project type for legacy projects whose `projects.project_type` is null
 - app shell private routes use a rooted layout with relative children; `UsersPage` memoizes invite role options to avoid render loops that can freeze navigation
 
@@ -233,5 +237,4 @@
 
 - richer deliverables UI beyond compact editor panel
 - notification read/unread UI actions
-- CRITICAL deploy follow-up: Namecheap VPS CPU does not support current prebuilt `sharp` linux-x64 binary (`requires v2 microarchitecture`). Backend now lazy-loads `sharp` so API can boot, but raster project asset uploads and avatar processing may return 503 until image processing is fixed. Resolve before serious beta/production because image uploads are core to app value.
 - Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.

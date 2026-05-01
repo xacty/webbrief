@@ -20,6 +20,10 @@ create table if not exists public.profiles (
   email text not null unique,
   full_name text,
   avatar_url text,
+  avatar_original_url text,
+  avatar_file_id text,
+  avatar_file_name text,
+  avatar_file_path text,
   platform_role text not null default 'user' check (platform_role in ('admin', 'user', 'qa')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -196,6 +200,7 @@ create table if not exists public.project_assets (
   file_name text not null,
   storage_bucket text not null,
   storage_path text not null,
+  imagekit_file_id text,
   mime_type text not null,
   asset_kind text not null check (asset_kind in ('image', 'svg', 'file')),
   public_url text,
@@ -248,6 +253,7 @@ alter table public.project_pages add column if not exists review_baseline_versio
 alter table public.project_pages add column if not exists review_baseline_at timestamptz;
 alter table public.project_pages add column if not exists review_requested_by uuid references public.profiles(id) on delete set null;
 alter table public.project_assets add column if not exists public_url text;
+alter table public.project_assets add column if not exists imagekit_file_id text;
 
 do $$
 begin
@@ -291,6 +297,10 @@ $$;
 
 alter table public.profiles drop constraint if exists profiles_platform_role_check;
 alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists avatar_original_url text;
+alter table public.profiles add column if not exists avatar_file_id text;
+alter table public.profiles add column if not exists avatar_file_name text;
+alter table public.profiles add column if not exists avatar_file_path text;
 alter table public.profiles
   add constraint profiles_platform_role_check
   check (platform_role in ('admin', 'user', 'qa'));

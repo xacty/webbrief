@@ -65,7 +65,9 @@ nano .env
 SUPABASE_URL=https://PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=SECRET_KEY
 FRONTEND_URL=http://localhost:5173
-PROJECT_ASSETS_BUCKET=project-assets
+IMAGEKIT_PUBLIC_KEY=public_xxx
+IMAGEKIT_PRIVATE_KEY=private_xxx
+IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your_imagekit_id
 PORT=3000
 ```
 

@@ -1,3 +1,8 @@
+import {
+  COMPANY_ROLE_ORDER,
+  getInviteRoleOptionsForMembership,
+} from '../../../shared/userRoles.js'
+
 export function getCompanyRole(currentUser, companyId = null) {
   if (!currentUser) return null
 
@@ -20,23 +25,7 @@ export function canUseTrashNav(currentUser) {
 }
 
 export function getInviteRoleOptions(currentUser, membershipRole) {
-  if (currentUser?.platformRole === 'admin') {
-    return ['manager', 'editor', 'content_writer', 'designer', 'developer']
-  }
-
-  if (membershipRole === 'manager') {
-    return ['editor', 'content_writer', 'designer', 'developer']
-  }
-
-  if (membershipRole === 'editor') {
-    return ['content_writer', 'designer', 'developer']
-  }
-
-  if (membershipRole === 'designer' || membershipRole === 'developer') {
-    return ['editor', 'designer', 'developer']
-  }
-
-  return []
+  return getInviteRoleOptionsForMembership(currentUser?.platformRole, membershipRole)
 }
 
 export function canInviteMembers(currentUser, membershipRole) {
@@ -61,7 +50,7 @@ export function getProjectEditorCapabilities(currentUser, companyId) {
 
   const canManageProjectMeta = isAdmin || ['manager', 'editor'].includes(companyRole)
   const canManageProjectStructure = isAdmin || ['manager', 'editor', 'content_writer', 'developer'].includes(companyRole)
-  const canWriteContent = isAdmin || ['manager', 'editor', 'content_writer', 'designer', 'developer'].includes(companyRole)
+  const canWriteContent = isAdmin || COMPANY_ROLE_ORDER.includes(companyRole)
   const canUseHandoff = isAdmin || ['manager', 'designer', 'developer'].includes(companyRole)
   const canSendToReview = isAdmin || ['manager', 'developer'].includes(companyRole)
   const canReviewDesignerProposals = isAdmin || ['manager', 'editor'].includes(companyRole)

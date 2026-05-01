@@ -3,6 +3,7 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   background: #fff;
   border-right: 1px solid #212222;
@@ -13,6 +14,8 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+  min-height: 0;
   overflow: hidden;
   padding: 30px;
   background: #fff;
@@ -67,6 +70,7 @@
 
 .sectionList {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -323,6 +327,35 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-shrink: 0;
+}
+
+.rightPanelScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  margin-right: -12px;
+  padding-right: 16px;
+  padding-bottom: 8px;
+}
+
+.rightPanelScrollWithDock {
+  padding-bottom: 280px;
+}
+
+.rightPanelDock {
+  position: absolute;
+  right: 30px;
+  bottom: 30px;
+  left: 30px;
+  pointer-events: none;
+}
+
+.rightPanelDockCard {
+  position: relative;
+  pointer-events: auto;
 }
 
 .updatesRefreshBtn,

@@ -3,12 +3,17 @@ import { Camera, ChevronDown, ChevronRight, Pencil, Plus, Trash2, X } from 'luci
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { getCompanyRole, getInviteRoleOptions } from '../lib/roleCapabilities'
+import {
+  COMPANY_ROLE_ORDER,
+  MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
+  PLATFORM_ROLE_ORDER,
+  getCompanyRoleLabel,
+  getPlatformRoleLabel,
+  isGlobalPlatformRole,
+} from '../../../shared/userRoles.js'
 import styles from './UsersPage.module.css'
 
 const PAGE_SIZE = 10
-const COMPANY_ROLE_OPTIONS = ['manager', 'editor', 'content_writer', 'designer', 'developer']
-const MANAGER_ROLE_OPTIONS = ['editor', 'content_writer', 'designer', 'developer']
-const PLATFORM_ROLE_OPTIONS = ['user', 'qa', 'admin']
 
 const EMPTY_INVITE_FORM = {
   fullName: '',
@@ -29,17 +34,11 @@ function formatDate(isoDate) {
 }
 
 function roleLabel(role) {
-  if (role === 'manager') return 'Manager'
-  if (role === 'content_writer') return 'Content Writer'
-  if (role === 'designer') return 'Diseño'
-  if (role === 'developer') return 'Dev'
-  return 'Editor'
+  return getCompanyRoleLabel(role)
 }
 
 function platformRoleLabel(role) {
-  if (role === 'admin') return 'Admin'
-  if (role === 'qa') return 'QA'
-  return 'Usuario'
+  return getPlatformRoleLabel(role)
 }
 
 function platformRoleClass(role) {
@@ -251,7 +250,7 @@ export default function UsersPage() {
   }
 
   function membershipRoleOptions(company) {
-    return isAdmin ? COMPANY_ROLE_OPTIONS : MANAGER_ROLE_OPTIONS.filter((role) => (
+    return isAdmin ? COMPANY_ROLE_ORDER : MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER.filter((role) => (
       role === company.role || role !== 'manager'
     ))
   }
@@ -504,7 +503,7 @@ export default function UsersPage() {
                   value={inviteForm.platformRole}
                   onChange={(event) => setInviteForm((current) => ({ ...current, platformRole: event.target.value }))}
                 >
-                  {PLATFORM_ROLE_OPTIONS.map((role) => (
+                  {PLATFORM_ROLE_ORDER.map((role) => (
                     <option key={role} value={role}>{platformRoleLabel(role)}</option>
                   ))}
                 </select>
@@ -543,11 +542,11 @@ export default function UsersPage() {
                 </label>
               </>
             ) : (
-              <p className={styles.formNote}>Admin y QA usan acceso global, sin rol por empresa.</p>
+              <p className={`${styles.formNote} ${styles.inviteFormNote}`}>Admin y QA usan acceso global, sin rol por empresa.</p>
             )}
 
-            <div className={styles.formActions}>
-              <button className={styles.secondaryButton} type="button" onClick={() => setInviteOpen(false)}>
+            <div className={`${styles.formActions} ${styles.inviteFormActions}`}>
+              <button className={styles.tertiaryButton} type="button" onClick={() => setInviteOpen(false)}>
                 Cancelar
               </button>
               <button className={styles.primaryButton} type="submit" disabled={busyKey === 'invite'}>
@@ -642,7 +641,7 @@ export default function UsersPage() {
                 const userCompanies = user.companies || []
                 const visibleCompanies = userCompanies.slice(0, 2)
                 const hiddenCompanyCount = Math.max(0, userCompanies.length - visibleCompanies.length)
-                const hasGlobalAccess = isAdmin && user.platformRole !== 'user'
+                const hasGlobalAccess = isAdmin && isGlobalPlatformRole(user.platformRole)
 
                 return (
                   <Fragment key={user.id}>
@@ -897,7 +896,7 @@ export default function UsersPage() {
                       value={editForm.platformRole}
                       onChange={(event) => setEditForm((current) => ({ ...current, platformRole: event.target.value }))}
                     >
-                      {PLATFORM_ROLE_OPTIONS.map((role) => (
+                      {PLATFORM_ROLE_ORDER.map((role) => (
                         <option key={role} value={role}>{platformRoleLabel(role)}</option>
                       ))}
                     </select>
@@ -910,7 +909,7 @@ export default function UsersPage() {
               )}
 
               <div className={styles.formActions}>
-                <button className={styles.secondaryButton} type="button" onClick={closeEditUser}>
+                <button className={styles.tertiaryButton} type="button" onClick={closeEditUser}>
                   Cancelar
                 </button>
                 <button className={styles.primaryButton} type="submit" disabled={busyKey === `edit:${editingUser.id}`}>

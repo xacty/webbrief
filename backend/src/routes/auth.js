@@ -2,13 +2,13 @@ import { Router } from 'express'
 import { inviteUserToCompany } from '../lib/users.js'
 import { canInviteCompanyRole } from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
+import { normalizePlatformRole } from '../../../shared/userRoles.js'
 
 const router = Router()
 
 function getAllowedPlatformRole(currentUser, requestedRole) {
   if (currentUser.platformRole !== 'admin') return 'user'
-  if (requestedRole === 'qa') return 'qa'
-  return 'user'
+  return normalizePlatformRole(requestedRole)
 }
 
 router.get('/me', requireAuth, async (req, res) => {

@@ -20,33 +20,13 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
   margin-bottom: 32px;
 }
 
 .logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--wb-primary);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.brandTitle {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.brandMeta {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--wb-text-muted);
+  display: block;
+  width: 150px;
+  height: auto;
 }
 
 .nav {
