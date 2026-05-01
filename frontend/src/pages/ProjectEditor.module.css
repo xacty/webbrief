@@ -97,6 +97,130 @@
   cursor: pointer;
 }
 
+.imageNode {
+  position: relative;
+  display: block;
+  margin: 12px 0;
+}
+
+.imageNodeFrame {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 160px;
+  line-height: 0;
+  cursor: grab;
+}
+
+.imageNodeFrameInTable {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.imageNodeFrame:active {
+  cursor: grabbing;
+}
+
+.imageNodeImage {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  user-select: none;
+}
+
+.imageSizeNotice {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.84);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+}
+
+.imageNodeSelected .imageNodeFrame {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.imageResizeHandle {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 48px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #2563eb;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.25);
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.imageResizeHandleLeft {
+  left: -7px;
+}
+
+.imageResizeHandleRight {
+  right: -7px;
+}
+
+.imageContextMenu {
+  position: fixed;
+  z-index: 500;
+  width: max-content;
+  min-width: 0;
+  max-width: 220px;
+  padding: 6px 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.imageContextMenuItem {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: #2a2a2a;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.imageContextMenuItem:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.imageContextMenuItem:hover {
+  background: #f8fafc;
+}
+
+.imageContextMenuItem:disabled:hover {
+  background: transparent;
+}
+
+.imageContextMenuItemDanger {
+  color: #b91c1c;
+}
+
 .confirmOverlay {
   position: fixed;
   inset: 0;
@@ -932,7 +1056,6 @@
 
 :global(.ProseMirror img) {
   max-width: 100%;
-  max-height: 300px;
   height: auto;
   display: block;
   border-radius: 4px;

@@ -230,6 +230,264 @@ const CtaButtonNode = Node.create({
   },
 })
 
+function EditableImageView({ node, editor, getPos, updateAttributes, deleteNode, selected }) {
+  const wrapperRef = useRef(null)
+  const imageRef = useRef(null)
+  const menuRef = useRef(null)
+  const noticeTimeoutRef = useRef(null)
+  const [menu, setMenu] = useState(null)
+  const [sizeNotice, setSizeNotice] = useState('')
+  const [measuredWidth, setMeasuredWidth] = useState(0)
+
+  const currentWidth = Number(node.attrs.width) || null
+
+  function showSizeNotice(message) {
+    setSizeNotice(message)
+    window.clearTimeout(noticeTimeoutRef.current)
+    noticeTimeoutRef.current = window.setTimeout(() => {
+      setSizeNotice('')
+      noticeTimeoutRef.current = null
+    }, 1800)
+  }
+
+  function getNodePos() {
+    return typeof getPos === 'function' ? getPos() : getPos
+  }
+
+  function selectImage() {
+    const pos = getNodePos()
+    if (typeof pos !== 'number') return
+    editor.chain().focus().setNodeSelection(pos).run()
+  }
+
+  function isControlTarget(target) {
+    if (!(target instanceof Element)) return false
+    return Boolean(target.closest('button, [role="menu"], [data-image-control]'))
+  }
+
+  useEffect(() => {
+    if (!menu) return undefined
+
+    function closeMenu(event) {
+      if (menuRef.current?.contains(event.target)) return
+      setMenu(null)
+    }
+
+    document.addEventListener('pointerdown', closeMenu)
+    return () => document.removeEventListener('pointerdown', closeMenu)
+  }, [menu])
+
+  useEffect(() => () => {
+    if (noticeTimeoutRef.current) window.clearTimeout(noticeTimeoutRef.current)
+  }, [])
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return undefined
+
+    function updateMeasuredWidth() {
+      setMeasuredWidth(wrapper.getBoundingClientRect().width || 0)
+    }
+
+    updateMeasuredWidth()
+    const resizeObserver = new ResizeObserver(updateMeasuredWidth)
+    resizeObserver.observe(wrapper)
+    return () => resizeObserver.disconnect()
+  }, [])
+
+  function getWidthBounds() {
+    if (!wrapperRef.current) return { minWidth: 160, maxWidth: 1600 }
+    const parentWidth = wrapperRef.current.parentElement?.getBoundingClientRect().width || 0
+    const insideTableCell = Boolean(wrapperRef.current.closest('td, th'))
+    const parentMaxWidth = insideTableCell
+      ? (parentWidth > 0 ? parentWidth : 1600)
+      : (parentWidth > 0 ? Math.max(160, parentWidth) : 1600)
+    const maxWidth = parentMaxWidth
+    const minWidth = insideTableCell ? 0 : Math.min(160, maxWidth)
+    return { minWidth, maxWidth }
+  }
+
+  function applyWidth(nextWidth) {
+    if (!wrapperRef.current) return
+    const { minWidth, maxWidth } = getWidthBounds()
+    const clampedWidth = Math.max(Math.round(minWidth), Math.min(Math.round(nextWidth), Math.round(maxWidth)))
+    if (Math.round(nextWidth) > Math.round(maxWidth)) {
+      showSizeNotice('La imagen llegó al ancho máximo disponible.')
+    } else if (Math.round(nextWidth) < Math.round(minWidth)) {
+      showSizeNotice('La imagen llegó al tamaño mínimo.')
+    }
+    updateAttributes({ width: clampedWidth })
+  }
+
+  function handleResizeStart(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    selectImage()
+
+    const startX = event.clientX
+    const startWidth = wrapperRef.current?.getBoundingClientRect().width || currentWidth || 320
+
+    function handlePointerMove(moveEvent) {
+      applyWidth(startWidth + (moveEvent.clientX - startX))
+    }
+
+    function handlePointerUp() {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+    }
+
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+  }
+
+  function adjustWidth(delta) {
+    const measuredWidth = wrapperRef.current?.getBoundingClientRect().width || currentWidth || 320
+    applyWidth(measuredWidth + delta)
+    setMenu(null)
+  }
+
+  function resetWidth() {
+    updateAttributes({ width: null })
+    setMenu(null)
+  }
+
+  function removeImage() {
+    deleteNode()
+    setMenu(null)
+  }
+
+  const { minWidth, maxWidth } = getWidthBounds()
+  const resolvedWidth = currentWidth || measuredWidth || maxWidth
+  const atMinWidth = resolvedWidth <= minWidth + 1
+  const atMaxWidth = resolvedWidth >= maxWidth - 1
+  const insideTableCell = Boolean(wrapperRef.current?.closest('td, th'))
+  const frameWidth = insideTableCell
+    ? (currentWidth ? Math.min(currentWidth, maxWidth) : maxWidth)
+    : currentWidth
+
+  return (
+    <NodeViewWrapper
+      className={cx(styles.imageNode, selected && styles.imageNodeSelected)}
+      contentEditable={false}
+      data-editor-overlay=""
+      draggable
+      onPointerDown={(event) => {
+        if (isControlTarget(event.target)) return
+        selectImage()
+      }}
+      onClick={(event) => {
+        event.stopPropagation()
+        if (isControlTarget(event.target)) return
+        selectImage()
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        selectImage()
+        setMenu({ x: event.clientX, y: event.clientY })
+      }}
+    >
+      <div
+        ref={wrapperRef}
+        data-drag-handle=""
+        className={cx(styles.imageNodeFrame, insideTableCell && styles.imageNodeFrameInTable)}
+        style={typeof frameWidth === 'number' ? { width: `${frameWidth}px` } : undefined}
+      >
+        <img
+          ref={imageRef}
+          className={styles.imageNodeImage}
+          src={node.attrs.src}
+          alt={node.attrs.alt || ''}
+          draggable={false}
+        />
+        {sizeNotice && <div className={styles.imageSizeNotice}>{sizeNotice}</div>}
+        {selected && (
+          <>
+            <button
+              type="button"
+              data-image-control=""
+              className={cx(styles.imageResizeHandle, styles.imageResizeHandleLeft)}
+              onPointerDown={handleResizeStart}
+              aria-label="Redimensionar imagen"
+            />
+            <button
+              type="button"
+              data-image-control=""
+              className={cx(styles.imageResizeHandle, styles.imageResizeHandleRight)}
+              onPointerDown={handleResizeStart}
+              aria-label="Redimensionar imagen"
+            />
+          </>
+        )}
+      </div>
+
+      {menu && (
+        <div
+          ref={menuRef}
+          role="menu"
+          className={styles.imageContextMenu}
+          style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={() => adjustWidth(-80)} disabled={atMinWidth}>
+            Hacer más pequeña
+          </button>
+          <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={() => adjustWidth(80)} disabled={atMaxWidth}>
+            Hacer más grande
+          </button>
+          <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={resetWidth}>
+            Restablecer tamaño
+          </button>
+          <button type="button" data-image-control="" className={cx(styles.imageContextMenuItem, styles.imageContextMenuItemDanger)} onClick={removeImage}>
+            Eliminar imagen
+          </button>
+        </div>
+      )}
+    </NodeViewWrapper>
+  )
+}
+
+const EditableImageNode = Image.extend({
+  draggable: true,
+
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) => {
+          const dataWidth = element.getAttribute('data-width')
+          if (dataWidth) return Number(dataWidth) || null
+          const inlineWidth = element.style?.width?.replace('px', '') || ''
+          return Number(inlineWidth) || null
+        },
+        renderHTML: (attributes) => {
+          if (!attributes.width) return {}
+          return {
+            'data-width': attributes.width,
+            style: `width:${attributes.width}px;max-width:100%;height:auto;display:block;`,
+          }
+        },
+      },
+      originalWidth: {
+        default: null,
+        parseHTML: (element) => Number(element.getAttribute('data-original-width')) || null,
+        renderHTML: (attributes) => (attributes.originalWidth ? { 'data-original-width': attributes.originalWidth } : {}),
+      },
+      originalHeight: {
+        default: null,
+        parseHTML: (element) => Number(element.getAttribute('data-original-height')) || null,
+        renderHTML: (attributes) => (attributes.originalHeight ? { 'data-original-height': attributes.originalHeight } : {}),
+      },
+    }
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(EditableImageView)
+  },
+})
+
 const GoogleDocsHeadingShortcuts = Extension.create({
   name: 'googleDocsHeadingShortcuts',
 
@@ -259,14 +517,14 @@ function cx(...classes) {
   return classes.filter(Boolean).join(' ')
 }
 
-function insertTemporaryImage(editor, src, alt = '', position = null) {
+function insertTemporaryImage(editor, src, alt = '', position = null, attrs = {}) {
   if (!editor || !src) return false
   const chain = editor.chain().focus()
   if (typeof position === 'number') chain.setTextSelection(position)
-  return chain.setImage({ src, alt }).run()
+  return chain.setImage({ src, alt, ...attrs }).run()
 }
 
-async function replaceImageSrc(editor, previousSrc, nextSrc) {
+async function replaceImageSrc(editor, previousSrc, nextSrc, nextAttrs = {}) {
   if (!editor || !previousSrc || !nextSrc) return false
 
   await new Promise((resolve) => {
@@ -282,7 +540,11 @@ async function replaceImageSrc(editor, previousSrc, nextSrc) {
   editor.state.doc.descendants((node, pos) => {
     if (replaced) return false
     if (node.type.name !== 'image' || node.attrs.src !== previousSrc) return undefined
-    tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: nextSrc })
+    const mergedAttrs = { ...node.attrs, ...nextAttrs, src: nextSrc }
+    if (mergedAttrs.originalWidth && mergedAttrs.width) {
+      mergedAttrs.width = Math.min(Number(mergedAttrs.width) || 0, Number(mergedAttrs.originalWidth) || 0) || null
+    }
+    tr.setNodeMarkup(pos, undefined, mergedAttrs)
     replaced = true
     return false
   })
@@ -3485,8 +3747,10 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
         return true
       })
 
-    // Only show labels for blocks that have actual content
-    const visibleBlocks = blocks.filter((block) => block.textContent?.trim())
+    const visibleBlocks = blocks.filter((block) => {
+      const label = getBlockLabel(block)
+      return Boolean(block.textContent?.trim()) || ['img', 't', 'CTA'].includes(label)
+    })
 
     setLabels(
       visibleBlocks.map((block) => ({
@@ -3722,7 +3986,10 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
         throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
       }
 
-      await replaceImageSrc(editor, tempUrl, data.asset.publicUrl)
+      await replaceImageSrc(editor, tempUrl, data.asset.publicUrl, {
+        originalWidth: data.asset.width || null,
+        originalHeight: data.asset.height || null,
+      })
     } catch (error) {
       removeImageBySrc(editor, tempUrl)
       window.alert(error.message || 'No se pudo subir la imagen')
@@ -4489,10 +4756,10 @@ function EditorPanel({
     extensions: [
       StarterKit.configure({ heading: false }),
       Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
-      Image.configure({
+      EditableImageNode.configure({
         inline: false,
         HTMLAttributes: {
-          style: 'max-height:300px; max-width:100%; height:auto; display:block;',
+          style: 'max-width:100%; height:auto; display:block;',
         },
       }),
       Link.configure({ openOnClick: false }),
@@ -4535,7 +4802,10 @@ function EditorPanel({
           try {
             const asset = await uploadProjectImage(imageFile)
             if (!asset?.publicUrl) return
-            await replaceImageSrc(editor, tempUrl, asset.publicUrl)
+            await replaceImageSrc(editor, tempUrl, asset.publicUrl, {
+              originalWidth: asset.width || null,
+              originalHeight: asset.height || null,
+            })
           } catch (error) {
             removeImageBySrc(editor, tempUrl)
             window.alert(error.message || 'No se pudo subir la imagen')
@@ -4903,7 +5173,24 @@ function EditorPanel({
     if (event.target.closest?.('button, input, select, textarea, a, [data-editor-overlay]')) return
 
     event.preventDefault()
-    editor.commands.focus('end')
+    const wrapper = wrapperRef.current?.querySelector('.ProseMirror')
+    if (!wrapper) {
+      editor.commands.focus('start')
+      return
+    }
+
+    const rect = wrapper.getBoundingClientRect()
+    const coords = editor.view.posAtCoords({
+      left: Math.min(Math.max(event.clientX, rect.left + 12), rect.right - 12),
+      top: Math.min(Math.max(event.clientY, rect.top + 12), rect.bottom - 12),
+    })
+
+    if (coords?.pos) {
+      editor.chain().focus().setTextSelection(coords.pos).run()
+      return
+    }
+
+    editor.commands.focus(event.clientY < rect.top ? 'start' : 'end')
   }
 
   return (
