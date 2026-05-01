@@ -266,8 +266,15 @@ function insertTemporaryImage(editor, src, alt = '', position = null) {
   return chain.setImage({ src, alt }).run()
 }
 
-function replaceImageSrc(editor, previousSrc, nextSrc) {
+async function replaceImageSrc(editor, previousSrc, nextSrc) {
   if (!editor || !previousSrc || !nextSrc) return false
+
+  await new Promise((resolve) => {
+    const image = new window.Image()
+    image.onload = () => resolve()
+    image.onerror = () => resolve()
+    image.src = nextSrc
+  })
 
   const tr = editor.state.tr
   let replaced = false
@@ -3715,7 +3722,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
         throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
       }
 
-      replaceImageSrc(editor, tempUrl, data.asset.publicUrl)
+      await replaceImageSrc(editor, tempUrl, data.asset.publicUrl)
     } catch (error) {
       removeImageBySrc(editor, tempUrl)
       window.alert(error.message || 'No se pudo subir la imagen')
@@ -4528,7 +4535,7 @@ function EditorPanel({
           try {
             const asset = await uploadProjectImage(imageFile)
             if (!asset?.publicUrl) return
-            replaceImageSrc(editor, tempUrl, asset.publicUrl)
+            await replaceImageSrc(editor, tempUrl, asset.publicUrl)
           } catch (error) {
             removeImageBySrc(editor, tempUrl)
             window.alert(error.message || 'No se pudo subir la imagen')
