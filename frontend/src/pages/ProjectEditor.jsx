@@ -17,7 +17,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { apiFetch } from '../lib/api'
+import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
@@ -230,7 +230,7 @@ const CtaButtonNode = Node.create({
   },
 })
 
-function EditableImageView({ node, editor, getPos, updateAttributes, deleteNode, selected }) {
+function EditableImageView({ node, editor, extension, getPos, updateAttributes, deleteNode, selected }) {
   const wrapperRef = useRef(null)
   const imageRef = useRef(null)
   const menuRef = useRef(null)
@@ -356,6 +356,26 @@ function EditableImageView({ node, editor, getPos, updateAttributes, deleteNode,
     setMenu(null)
   }
 
+  async function handleExport(preset) {
+    const projectId = extension?.options?.projectId
+    if (!projectId) return
+
+    try {
+      await apiDownloadToFile(buildProjectImageExportPath({
+        projectId,
+        assetId: node.attrs.assetId || '',
+        src: node.attrs.src || '',
+        preset,
+      }), {
+        suggestedFileName: node.attrs.fileName || 'image',
+      })
+    } catch (error) {
+      window.alert(error.message || 'No se pudo exportar la imagen')
+    } finally {
+      setMenu(null)
+    }
+  }
+
   const { minWidth, maxWidth } = getWidthBounds()
   const resolvedWidth = currentWidth || measuredWidth || maxWidth
   const atMinWidth = resolvedWidth <= minWidth + 1
@@ -439,6 +459,20 @@ function EditableImageView({ node, editor, getPos, updateAttributes, deleteNode,
           <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={resetWidth}>
             Restablecer tamaño
           </button>
+          <div className={styles.imageContextMenuDivider} />
+          <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={() => handleExport('original')}>
+            Descargar original
+          </button>
+          <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={() => handleExport('web')}>
+            Exportar WebP web
+          </button>
+          <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={() => handleExport('jpg')}>
+            Exportar JPG
+          </button>
+          <button type="button" data-image-control="" className={styles.imageContextMenuItem} onClick={() => handleExport('png')}>
+            Exportar PNG
+          </button>
+          <div className={styles.imageContextMenuDivider} />
           <button type="button" data-image-control="" className={cx(styles.imageContextMenuItem, styles.imageContextMenuItemDanger)} onClick={removeImage}>
             Eliminar imagen
           </button>
@@ -450,6 +484,13 @@ function EditableImageView({ node, editor, getPos, updateAttributes, deleteNode,
 
 const EditableImageNode = Image.extend({
   draggable: true,
+
+  addOptions() {
+    return {
+      ...this.parent?.(),
+      projectId: null,
+    }
+  },
 
   addAttributes() {
     return {
@@ -479,6 +520,21 @@ const EditableImageNode = Image.extend({
         default: null,
         parseHTML: (element) => Number(element.getAttribute('data-original-height')) || null,
         renderHTML: (attributes) => (attributes.originalHeight ? { 'data-original-height': attributes.originalHeight } : {}),
+      },
+      assetId: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-asset-id') || null,
+        renderHTML: (attributes) => (attributes.assetId ? { 'data-asset-id': attributes.assetId } : {}),
+      },
+      fileName: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-file-name') || null,
+        renderHTML: (attributes) => (attributes.fileName ? { 'data-file-name': attributes.fileName } : {}),
+      },
+      storagePath: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-storage-path') || null,
+        renderHTML: (attributes) => (attributes.storagePath ? { 'data-storage-path': attributes.storagePath } : {}),
       },
     }
   },
@@ -552,6 +608,14 @@ async function replaceImageSrc(editor, previousSrc, nextSrc, nextAttrs = {}) {
   if (!replaced) return false
   editor.view.dispatch(tr)
   return true
+}
+
+function buildProjectImageExportPath({ projectId, assetId = '', src = '', preset = 'original' }) {
+  const params = new URLSearchParams()
+  if (assetId) params.set('assetId', assetId)
+  else if (src) params.set('src', src)
+  params.set('preset', preset)
+  return `/api/projects/${projectId}/assets/export?${params.toString()}`
 }
 
 function removeImageBySrc(editor, src) {
@@ -3987,6 +4051,9 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
       }
 
       await replaceImageSrc(editor, tempUrl, data.asset.publicUrl, {
+        assetId: data.asset.id || null,
+        fileName: data.asset.fileName || file.name,
+        storagePath: data.asset.path || null,
         originalWidth: data.asset.width || null,
         originalHeight: data.asset.height || null,
       })
@@ -4757,6 +4824,7 @@ function EditorPanel({
       StarterKit.configure({ heading: false }),
       Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
       EditableImageNode.configure({
+        projectId,
         inline: false,
         HTMLAttributes: {
           style: 'max-width:100%; height:auto; display:block;',
@@ -4803,6 +4871,9 @@ function EditorPanel({
             const asset = await uploadProjectImage(imageFile)
             if (!asset?.publicUrl) return
             await replaceImageSrc(editor, tempUrl, asset.publicUrl, {
+              assetId: asset.id || null,
+              fileName: asset.fileName || imageFile.name,
+              storagePath: asset.path || null,
               originalWidth: asset.width || null,
               originalHeight: asset.height || null,
             })

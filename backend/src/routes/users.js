@@ -1,7 +1,13 @@
 import { Router } from 'express'
 import crypto from 'node:crypto'
 import multer from 'multer'
-import { buildImageKitPath, buildImageKitUrl, sanitizeFileName, uploadToImageKit } from '../lib/imagekit.js'
+import {
+  buildImageKitPath,
+  buildImageKitTransformations,
+  buildImageKitUrl,
+  sanitizeFileName,
+  uploadToImageKit,
+} from '../lib/imagekit.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import {
   canInviteCompanyRole,
@@ -58,6 +64,48 @@ function canManageMembership(currentUser, companyId, targetRole) {
 function normalizePlatformRole(currentUser, requestedRole) {
   if (!isAdmin(currentUser)) return 'user'
   return normalizeSharedPlatformRole(requestedRole)
+}
+
+function getAvatarExportPreset(preset = '') {
+  const normalizedPreset = String(preset || 'original').trim().toLowerCase()
+
+  switch (normalizedPreset) {
+    case 'web':
+    case 'webp':
+      return { width: 512, height: 512, fit: 'maintain_ratio', format: 'webp', quality: 85 }
+    case 'jpg':
+    case 'jpeg':
+      return { width: 1024, height: 1024, fit: 'maintain_ratio', format: 'jpg', quality: 90 }
+    case 'png':
+      return { width: 1024, height: 1024, fit: 'maintain_ratio', format: 'png' }
+    case 'original':
+    default:
+      return {}
+  }
+}
+
+function normalizeAvatarExportOptions(query = {}) {
+  const presetOptions = getAvatarExportPreset(query.preset)
+  const width = Number(query.width)
+  const height = Number(query.height)
+  const quality = Number(query.quality)
+  const fit = query.fit ? String(query.fit).trim() : presetOptions.fit
+  const format = query.format ? String(query.format).trim().toLowerCase() : presetOptions.format
+
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : presetOptions.width || null,
+    height: Number.isFinite(height) && height > 0 ? height : presetOptions.height || null,
+    quality: Number.isFinite(quality) && quality > 0 ? quality : presetOptions.quality || null,
+    fit: fit || null,
+    format: format || null,
+  }
+}
+
+function getAvatarExportFileName(fileName, requestedFormat = null) {
+  const safeName = sanitizeFileName(fileName || 'avatar.jpg')
+  const baseName = safeName.replace(/\.[^.]+$/u, '') || 'avatar'
+  const extension = requestedFormat || (safeName.split('.').pop() || 'jpg')
+  return `${baseName}.${extension}`
 }
 
 async function getMembership(userId, companyId) {
@@ -525,6 +573,49 @@ router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
     })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo actualizar la imagen del usuario' })
+  }
+})
+
+router.get('/:id/avatar/export', async (req, res) => {
+  const userId = req.params.id
+
+  try {
+    if (!await canEditUserProfile(req.currentUser, userId)) {
+      return res.status(404).json({ error: 'Usuario no encontrado' })
+    }
+
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('avatar_original_url, avatar_file_name, avatar_file_path')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!profile?.avatar_file_path || !profile?.avatar_original_url) {
+      return res.status(404).json({ error: 'El usuario no tiene avatar exportable' })
+    }
+
+    const exportOptions = normalizeAvatarExportOptions(req.query)
+    const exportUrl = Object.keys(exportOptions).some((key) => exportOptions[key] !== null)
+      ? buildImageKitUrl(profile.avatar_file_path, buildImageKitTransformations(exportOptions))
+      : profile.avatar_original_url
+
+    const upstream = await fetch(exportUrl)
+    if (!upstream.ok) {
+      return res.status(502).json({ error: 'No se pudo obtener el avatar exportado' })
+    }
+
+    const fileName = getAvatarExportFileName(profile.avatar_file_name, exportOptions.format)
+    const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
+    const buffer = Buffer.from(await upstream.arrayBuffer())
+
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Length', String(buffer.byteLength))
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+    return res.status(200).send(buffer)
+  } catch (error) {
+    return res.status(error.status || 500).json({ error: error.message || 'No se pudo exportar el avatar' })
   }
 })
 

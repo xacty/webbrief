@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Camera, KeyRound, Save } from 'lucide-react'
+import { Bell, Camera, Download, KeyRound, Save } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { apiFetch } from '../lib/api'
+import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import {
   getCompanyRoleLabel,
@@ -26,6 +26,11 @@ function userInitials(user) {
     .map((part) => part[0])
     .join('')
     .toUpperCase()
+}
+
+async function downloadAvatarExport(userId, preset) {
+  const path = `/api/users/${userId}/avatar/export?preset=${encodeURIComponent(preset)}`
+  await apiDownloadToFile(path, { suggestedFileName: 'avatar' })
 }
 
 export default function AccountSettingsPage() {
@@ -193,15 +198,29 @@ export default function AccountSettingsPage() {
                     <span className={styles.avatarInitials}>{userInitials(currentUser)}</span>
                   )}
                 </span>
-                <label className={styles.secondaryButton}>
-                  <Camera className={styles.buttonIcon} aria-hidden="true" />
-                  Cambiar foto
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={handleAvatarFileChange}
-                  />
-                </label>
+                <div className={styles.avatarActionGroup}>
+                  <label className={styles.secondaryButton}>
+                    <Camera className={styles.buttonIcon} aria-hidden="true" />
+                    Cambiar foto
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleAvatarFileChange}
+                    />
+                  </label>
+                  {currentUser?.avatarUrl && (
+                    <>
+                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(currentUser.id, 'original')}>
+                        <Download className={styles.buttonIcon} aria-hidden="true" />
+                        Original
+                      </button>
+                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(currentUser.id, 'web')}>
+                        <Download className={styles.buttonIcon} aria-hidden="true" />
+                        WebP
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className={styles.fieldGrid}>

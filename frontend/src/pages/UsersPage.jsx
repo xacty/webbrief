@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Camera, ChevronDown, ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, Download, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { apiFetch } from '../lib/api'
+import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { getCompanyRole, getInviteRoleOptions } from '../lib/roleCapabilities'
 import {
   COMPANY_ROLE_ORDER,
@@ -31,6 +31,11 @@ function formatDate(isoDate) {
     month: 'short',
     year: 'numeric',
   })
+}
+
+async function downloadAvatarExport(userId, preset) {
+  const path = `/api/users/${userId}/avatar/export?preset=${encodeURIComponent(preset)}`
+  await apiDownloadToFile(path, { suggestedFileName: 'avatar' })
 }
 
 function roleLabel(role) {
@@ -855,15 +860,29 @@ export default function UsersPage() {
                     <span className={styles.avatarInitials}>{userInitials(editingUser)}</span>
                   )}
                 </span>
-                <label className={styles.avatarUploadButton}>
-                  <Camera className={styles.buttonIcon} aria-hidden="true" />
-                  Cambiar imagen
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleAvatarFileChange}
-                  />
-                </label>
+                <div className={styles.avatarActionGroup}>
+                  <label className={styles.avatarUploadButton}>
+                    <Camera className={styles.buttonIcon} aria-hidden="true" />
+                    Cambiar imagen
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleAvatarFileChange}
+                    />
+                  </label>
+                  {editingUser?.avatarUrl && (
+                    <>
+                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(editingUser.id, 'original')}>
+                        <Download className={styles.buttonIcon} aria-hidden="true" />
+                        Original
+                      </button>
+                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(editingUser.id, 'web')}>
+                        <Download className={styles.buttonIcon} aria-hidden="true" />
+                        WebP
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <label className={styles.fieldWrap}>

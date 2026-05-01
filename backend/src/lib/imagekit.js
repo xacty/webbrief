@@ -35,6 +35,48 @@ export function buildImageKitPath(...segments) {
     .join('/')}`
 }
 
+export function parseImageKitPathFromUrl(urlString = '') {
+  if (!urlString) return null
+
+  try {
+    const candidateUrl = new URL(String(urlString))
+    const endpointUrl = IMAGEKIT_URL_ENDPOINT ? new URL(IMAGEKIT_URL_ENDPOINT) : null
+    let pathname = candidateUrl.pathname || ''
+
+    if (endpointUrl && candidateUrl.origin === endpointUrl.origin) {
+      const endpointBasePath = endpointUrl.pathname.replace(/\/+$/g, '')
+      if (endpointBasePath && pathname.startsWith(endpointBasePath)) {
+        pathname = pathname.slice(endpointBasePath.length)
+      }
+    }
+
+    return pathname ? buildImageKitPath(pathname) : null
+  } catch {
+    return null
+  }
+}
+
+export function buildImageKitTransformations({
+  width = null,
+  height = null,
+  format = null,
+  quality = null,
+  fit = null,
+} = {}) {
+  const transformations = []
+  const normalizedWidth = Number(width)
+  const normalizedHeight = Number(height)
+  const normalizedQuality = Number(quality)
+
+  if (Number.isFinite(normalizedWidth) && normalizedWidth > 0) transformations.push(`w-${Math.round(normalizedWidth)}`)
+  if (Number.isFinite(normalizedHeight) && normalizedHeight > 0) transformations.push(`h-${Math.round(normalizedHeight)}`)
+  if (fit) transformations.push(`c-${String(fit).trim()}`)
+  if (format) transformations.push(`f-${String(format).trim()}`)
+  if (Number.isFinite(normalizedQuality) && normalizedQuality > 0) transformations.push(`q-${Math.round(normalizedQuality)}`)
+
+  return transformations
+}
+
 export function buildImageKitUrl(filePath, transformations = []) {
   const normalizedPath = buildImageKitPath(filePath)
   const transformation = transformations.length > 0

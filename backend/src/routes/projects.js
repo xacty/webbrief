@@ -1,7 +1,14 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { supabaseAdmin } from '../lib/supabase.js'
-import { buildImageKitPath, buildImageKitUrl, sanitizeFileName, uploadToImageKit } from '../lib/imagekit.js'
+import {
+  buildImageKitPath,
+  buildImageKitTransformations,
+  buildImageKitUrl,
+  parseImageKitPathFromUrl,
+  sanitizeFileName,
+  uploadToImageKit,
+} from '../lib/imagekit.js'
 import { requireAuth } from '../middleware/auth.js'
 import { seedProjectPagesForType } from '../data/projectTemplates.js'
 import {
@@ -389,6 +396,80 @@ function getExtensionFromMimeType(mimeType, fileName = '') {
   if (mimeType === 'image/webp' || normalizedName.endsWith('.webp')) return 'webp'
   if (mimeType === 'image/svg+xml' || normalizedName.endsWith('.svg')) return 'svg'
   return 'bin'
+}
+
+function canExportProjectAsset(currentUser, companyId) {
+  if (currentUser.platformRole === 'admin') return true
+  return ['manager', 'editor', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+}
+
+function normalizeExportPreset(preset = '') {
+  const normalizedPreset = String(preset || 'original').trim().toLowerCase()
+
+  switch (normalizedPreset) {
+    case 'web':
+    case 'webp':
+      return { width: 1600, height: 1600, fit: 'at_max', format: 'webp', quality: 85 }
+    case 'jpg':
+    case 'jpeg':
+      return { width: 2400, height: 2400, fit: 'at_max', format: 'jpg', quality: 90 }
+    case 'png':
+      return { width: 2400, height: 2400, fit: 'at_max', format: 'png' }
+    case 'original':
+    default:
+      return {}
+  }
+}
+
+function normalizeExportOptions(query = {}) {
+  const presetOptions = normalizeExportPreset(query.preset)
+  const width = Number(query.width)
+  const height = Number(query.height)
+  const quality = Number(query.quality)
+  const fit = query.fit ? String(query.fit).trim() : presetOptions.fit
+  const format = query.format ? String(query.format).trim().toLowerCase() : presetOptions.format
+
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : presetOptions.width || null,
+    height: Number.isFinite(height) && height > 0 ? height : presetOptions.height || null,
+    quality: Number.isFinite(quality) && quality > 0 ? quality : presetOptions.quality || null,
+    fit: fit || null,
+    format: format || null,
+  }
+}
+
+function buildExportFileName(fileName, requestedFormat = null, fallbackMimeType = '') {
+  const safeName = sanitizeFileName(fileName || 'image')
+  const baseName = safeName.replace(/\.[^.]+$/u, '') || 'image'
+  const extension = requestedFormat || getExtensionFromMimeType(fallbackMimeType, safeName)
+  return `${baseName}.${extension}`
+}
+
+async function resolveProjectAssetForExport(projectId, { assetId = null, src = '' } = {}) {
+  if (assetId) {
+    const { data, error } = await supabaseAdmin
+      .from('project_assets')
+      .select('id, project_id, file_name, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, width, height, render_inline')
+      .eq('project_id', projectId)
+      .eq('id', assetId)
+      .maybeSingle()
+
+    if (error) throw error
+    return data
+  }
+
+  const parsedPath = parseImageKitPathFromUrl(src)
+  if (!parsedPath) return null
+
+  const { data, error } = await supabaseAdmin
+    .from('project_assets')
+    .select('id, project_id, file_name, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, width, height, render_inline')
+    .eq('project_id', projectId)
+    .eq('storage_path', parsedPath)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
 }
 
 function normalizeProjectList(projects, companyMap) {
@@ -1716,6 +1797,54 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
     })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo subir el archivo' })
+  }
+})
+
+router.get('/:id/assets/export', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' })
+    }
+    if (!canExportProjectAsset(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede exportar imagenes de este proyecto' })
+    }
+
+    const asset = await resolveProjectAssetForExport(project.id, {
+      assetId: req.query.assetId || null,
+      src: req.query.src || '',
+    })
+
+    if (!asset) {
+      return res.status(404).json({ error: 'Asset no encontrado' })
+    }
+
+    const exportOptions = normalizeExportOptions(req.query)
+    const isSvg = asset.asset_kind === 'svg' || asset.mime_type === 'image/svg+xml'
+    const exportUrl = isSvg
+      ? asset.public_url
+      : buildImageKitUrl(asset.storage_path, buildImageKitTransformations(exportOptions))
+
+    if (!exportUrl) {
+      return res.status(400).json({ error: 'No se pudo construir la exportacion' })
+    }
+
+    const upstream = await fetch(exportUrl)
+    if (!upstream.ok) {
+      return res.status(502).json({ error: 'No se pudo obtener la imagen exportada' })
+    }
+
+    const fileName = buildExportFileName(asset.file_name, isSvg ? null : exportOptions.format, asset.mime_type)
+    const contentType = upstream.headers.get('content-type') || asset.mime_type || 'application/octet-stream'
+    const buffer = Buffer.from(await upstream.arrayBuffer())
+
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Length', String(buffer.byteLength))
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+    return res.status(200).send(buffer)
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo exportar la imagen' })
   }
 })
 

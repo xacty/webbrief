@@ -466,6 +466,13 @@
   padding: 4px 0 8px;
 }
 
+.avatarActionGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .avatarPreview {
   display: inline-flex;
   align-items: center;
@@ -504,6 +511,27 @@
 
 .avatarUploadButton input {
   display: none;
+}
+
+.avatarSecondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: fit-content;
+  border: 1px solid var(--wb-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.avatarSecondaryAction:hover {
+  background: var(--wb-surface-muted);
+  border-color: var(--wb-border-strong);
 }
 
 .buttonIcon {
