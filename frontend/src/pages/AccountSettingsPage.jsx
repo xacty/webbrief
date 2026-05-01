@@ -92,6 +92,7 @@ export default function AccountSettingsPage() {
       })
 
       if (avatarFile) {
+        setProfileMessage('Subiendo avatar...')
         const formData = new FormData()
         formData.append('avatar', avatarFile)
 

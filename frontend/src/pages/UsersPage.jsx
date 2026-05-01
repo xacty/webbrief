@@ -340,6 +340,7 @@ export default function UsersPage() {
       })
 
       if (avatarFile) {
+        setActionMessage('Subiendo avatar...')
         const formData = new FormData()
         formData.append('avatar', avatarFile)
 

@@ -259,6 +259,52 @@ function cx(...classes) {
   return classes.filter(Boolean).join(' ')
 }
 
+function insertTemporaryImage(editor, src, alt = '', position = null) {
+  if (!editor || !src) return false
+  const chain = editor.chain().focus()
+  if (typeof position === 'number') chain.setTextSelection(position)
+  return chain.setImage({ src, alt }).run()
+}
+
+function replaceImageSrc(editor, previousSrc, nextSrc) {
+  if (!editor || !previousSrc || !nextSrc) return false
+
+  const tr = editor.state.tr
+  let replaced = false
+
+  editor.state.doc.descendants((node, pos) => {
+    if (replaced) return false
+    if (node.type.name !== 'image' || node.attrs.src !== previousSrc) return undefined
+    tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: nextSrc })
+    replaced = true
+    return false
+  })
+
+  if (!replaced) return false
+  editor.view.dispatch(tr)
+  return true
+}
+
+function removeImageBySrc(editor, src) {
+  if (!editor || !src) return false
+
+  let targetPos = null
+  let targetSize = null
+
+  editor.state.doc.descendants((node, pos) => {
+    if (targetPos !== null) return false
+    if (node.type.name !== 'image' || node.attrs.src !== src) return undefined
+    targetPos = pos
+    targetSize = node.nodeSize
+    return false
+  })
+
+  if (targetPos === null || targetSize === null) return false
+
+  editor.view.dispatch(editor.state.tr.delete(targetPos, targetPos + targetSize))
+  return true
+}
+
 function setCssVars(node, vars) {
   if (!node) return
   Object.entries(vars).forEach(([name, value]) => {
@@ -3654,8 +3700,10 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
     if (!file || !editor) return
+    const tempUrl = URL.createObjectURL(file)
     try {
       if (!projectId) throw new Error('Proyecto no disponible')
+      insertTemporaryImage(editor, tempUrl, file.name)
       const formData = new FormData()
       formData.append('file', file)
       const data = await apiFetch(`/api/projects/${projectId}/assets`, {
@@ -3664,14 +3712,15 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
       })
 
       if (!data.asset?.renderInline || !data.asset?.publicUrl) {
-        window.alert('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
-        return
+        throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
       }
 
-      editor.chain().focus().setImage({ src: data.asset.publicUrl, alt: data.asset.fileName }).run()
+      replaceImageSrc(editor, tempUrl, data.asset.publicUrl)
     } catch (error) {
+      removeImageBySrc(editor, tempUrl)
       window.alert(error.message || 'No se pudo subir la imagen')
     } finally {
+      URL.revokeObjectURL(tempUrl)
       e.target.value = ''
     }
   }
@@ -4472,17 +4521,19 @@ function EditorPanel({
 
         event.preventDefault()
         const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
+        const tempUrl = URL.createObjectURL(imageFile)
+        insertTemporaryImage(editor, tempUrl, imageFile.name, coords?.pos || null)
 
         ;(async () => {
           try {
             const asset = await uploadProjectImage(imageFile)
             if (!asset?.publicUrl) return
-            const chain = editor?.chain().focus()
-            if (!chain) return
-            if (coords?.pos) chain.setTextSelection(coords.pos)
-            chain.setImage({ src: asset.publicUrl, alt: asset.fileName }).run()
+            replaceImageSrc(editor, tempUrl, asset.publicUrl)
           } catch (error) {
+            removeImageBySrc(editor, tempUrl)
             window.alert(error.message || 'No se pudo subir la imagen')
+          } finally {
+            URL.revokeObjectURL(tempUrl)
           }
         })()
 
