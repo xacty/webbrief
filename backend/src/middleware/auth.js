@@ -39,11 +39,16 @@ async function loadCurrentUser(user) {
 
 export async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const queryToken = typeof req.query?.access_token === 'string' ? req.query.access_token : ''
+  const bodyToken = typeof req.body?.access_token === 'string' ? req.body.access_token : ''
+  const bearerToken = authHeader && authHeader.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length)
+    : ''
+  const token = bearerToken || queryToken || bodyToken
+
+  if (!token) {
     return res.status(401).json({ error: 'Token no proporcionado' })
   }
-
-  const token = authHeader.slice('Bearer '.length)
 
   try {
     const { data, error } = await supabaseAdmin.auth.getUser(token)

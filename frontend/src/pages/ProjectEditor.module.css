@@ -521,6 +521,29 @@
   cursor: pointer;
 }
 
+.typeLabelOption:hover {
+  background: #f8fafc;
+}
+
+.floatingTooltip {
+  position: fixed;
+  left: var(--tooltip-x, 0px);
+  top: var(--tooltip-y, 0px);
+  z-index: 1400;
+  max-width: 240px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+  white-space: nowrap;
+}
+
 .activityMarkersCol {
   position: relative;
   width: 42px;
@@ -907,10 +930,21 @@
   font-weight: 500;
 }
 
+.handoffHint {
+  margin: 10px 24px 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .handoffScroll {
   flex: 1;
   overflow-y: auto;
   padding: 20px 24px 80px;
+}
+
+.handoffContent {
+  margin-bottom: 1000px;
 }
 
 .handoffSection {
@@ -945,18 +979,23 @@
 }
 
 .handoffBlockRow {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-items: start;
   padding: 12px 16px;
   border-bottom: 1px solid #f0f0f0;
 }
 
+.handoffBlockMeta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .handoffGutter {
   min-width: 34px;
-  align-self: start;
-  justify-self: start;
+  align-self: flex-start;
   padding: 4px 7px;
   border-radius: 6px;
   background: #f1f5f9;
@@ -972,10 +1011,15 @@
   color: #2a2a2a;
   font-size: 14px;
   line-height: 1.65;
+  padding-left: 0;
 }
 
 .handoffBlockContent {
   min-width: 0;
+}
+
+.handoffBlockContentSelected {
+  border-radius: 10px;
 }
 
 .handoffCtaText {
@@ -993,6 +1037,8 @@
 .handoffActions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 4px;
   user-select: none;
 }
@@ -1008,6 +1054,17 @@
   background: #fff;
   color: #64748b;
   cursor: pointer;
+}
+
+.handoffSelectableImage {
+  cursor: pointer;
+  transition: box-shadow 120ms ease, outline-color 120ms ease;
+}
+
+.handoffSelectableImageSelected {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.2);
 }
 
 .exportModalOverlay {
@@ -1073,6 +1130,43 @@
   padding: 18px 22px 22px;
 }
 
+.exportPreviewWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(241, 245, 249, 0.9), rgba(255, 255, 255, 0.95));
+}
+
+.exportPreviewImage {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  height: auto;
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+
+.exportPreviewGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.exportPreviewThumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+}
+
 .exportMetaRow {
   display: flex;
   flex-wrap: wrap;
@@ -1111,13 +1205,21 @@
   font: inherit;
 }
 
-.exportHint {
-  color: #94a3b8;
-  font-size: 12px;
-}
-
 .exportRange {
   width: 100%;
+}
+
+.exportStaticValue {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .exportActions {
@@ -1151,16 +1253,21 @@
 }
 
 .previewPage {
-  width: 820px;
-  max-width: calc(100% - 48px);
-  margin: 24px auto 80px;
-  padding: 56px 64px;
+  width: min(800px, 100%);
+  max-width: 800px;
+  margin: 0 auto 1000px;
+  padding: 60px 50px;
   border: 1px solid #d9d9d9;
-  border-radius: 6px;
+  border-radius: 4px;
   background: #fff;
   color: #2a2a2a;
   line-height: 1.65;
+}
+
+.previewScroll {
+  flex: 1;
   overflow-y: auto;
+  padding: 20px 24px 80px;
 }
 
 .deliverableSelect,

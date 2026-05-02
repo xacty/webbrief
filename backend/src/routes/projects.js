@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import archiver from 'archiver'
 import multer from 'multer'
 import { supabaseAdmin } from '../lib/supabase.js'
 import {
@@ -473,6 +474,20 @@ async function resolveProjectAssetForExport(projectId, { assetId = null, src = '
 
   if (error) throw error
   return data
+}
+
+async function resolveProjectAssetsForBulkExport(projectId, items = []) {
+  const results = []
+
+  for (const item of items) {
+    const asset = await resolveProjectAssetForExport(projectId, {
+      assetId: item?.assetId || null,
+      src: item?.src || '',
+    })
+    if (asset) results.push(asset)
+  }
+
+  return results
 }
 
 function normalizeProjectList(projects, companyMap) {
@@ -1846,13 +1861,98 @@ router.get('/:id/assets/export', async (req, res) => {
     const contentType = upstream.headers.get('content-type') || asset.mime_type || 'application/octet-stream'
     const buffer = Buffer.from(await upstream.arrayBuffer())
 
-    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Type', 'application/octet-stream')
+    res.setHeader('X-Original-Content-Type', contentType)
     res.setHeader('Content-Length', String(buffer.byteLength))
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+    res.setHeader('Content-Transfer-Encoding', 'binary')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Cache-Control', 'private, max-age=3600')
     return res.status(200).send(buffer)
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo exportar la imagen' })
+  }
+})
+
+router.post('/:id/assets/export-bulk', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canExportProjectAsset(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede exportar imagenes de este proyecto' })
+    }
+
+    const parsedItems = Array.isArray(req.body?.items)
+      ? req.body.items
+      : (() => {
+        if (typeof req.body?.items !== 'string') return []
+        try {
+          const decoded = JSON.parse(req.body.items)
+          return Array.isArray(decoded) ? decoded : []
+        } catch {
+          return []
+        }
+      })()
+    const items = parsedItems
+    if (items.length === 0) {
+      return res.status(400).json({ error: 'No hay imagenes seleccionadas para exportar' })
+    }
+
+    const assets = await resolveProjectAssetsForBulkExport(project.id, items)
+    if (assets.length === 0) {
+      return res.status(404).json({ error: 'No se encontraron assets exportables' })
+    }
+
+    const format = req.body?.format ? String(req.body.format).trim().toLowerCase() : ''
+    const quality = Number(req.body?.quality)
+    const maxWidth = Number(req.body?.maxWidth)
+    const baseName = slugifyFileBaseName(req.body?.fileName || 'image')
+    const exportOptions = {
+      width: Number.isFinite(maxWidth) && maxWidth > 0 ? maxWidth : null,
+      height: null,
+      format: format || null,
+      quality: Number.isFinite(quality) && quality >= 0 ? quality : null,
+      fit: 'at_max',
+    }
+
+    const zipFileName = `${baseName}.zip`
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"; filename*=UTF-8''${encodeURIComponent(zipFileName)}`)
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+
+    const archive = archiver('zip', { zlib: { level: 9 } })
+    archive.on('error', (error) => {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || 'No se pudo crear el zip' })
+        return
+      }
+      res.destroy(error)
+    })
+    archive.pipe(res)
+
+    for (let index = 0; index < assets.length; index += 1) {
+      const asset = assets[index]
+      const isSvg = asset.asset_kind === 'svg' || asset.mime_type === 'image/svg+xml'
+      const exportUrl = isSvg
+        ? asset.public_url
+        : buildImageKitUrl(asset.storage_path, buildImageKitTransformations(exportOptions))
+
+      const upstream = await fetch(exportUrl)
+      if (!upstream.ok) continue
+
+      const entryFileName = buildExportFileName(
+        asset.file_name,
+        isSvg ? null : exportOptions.format,
+        asset.mime_type,
+        `${baseName}-${index + 1}`
+      )
+      const buffer = Buffer.from(await upstream.arrayBuffer())
+      archive.append(buffer, { name: entryFileName })
+    }
+
+    await archive.finalize()
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo exportar el lote de imagenes' })
   }
 })
 

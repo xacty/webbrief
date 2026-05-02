@@ -86,13 +86,58 @@ export async function apiDownload(path, options = {}) {
 }
 
 export async function apiDownloadToFile(path, options = {}) {
-  const { blob, fileName } = await apiDownload(path, options)
-  const url = window.URL.createObjectURL(blob)
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) {
+    throw new ApiError('Sesion no disponible para descargar', 401, null)
+  }
+
+  const url = new URL(path, window.location.origin)
+  url.searchParams.set('access_token', session.access_token)
   const link = document.createElement('a')
-  link.href = url
-  link.download = fileName
+  link.href = url.toString()
+  if (options.suggestedFileName) link.download = options.suggestedFileName
+  link.rel = 'noopener'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  window.URL.revokeObjectURL(url)
+}
+
+export async function apiSubmitDownload(path, fields = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) {
+    throw new ApiError('Sesion no disponible para descargar', 401, null)
+  }
+
+  const iframeName = `download-frame-${Math.random().toString(36).slice(2)}`
+  const iframe = document.createElement('iframe')
+  iframe.name = iframeName
+  iframe.style.display = 'none'
+
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = path
+  form.target = iframeName
+  form.style.display = 'none'
+
+  const payload = {
+    ...fields,
+    access_token: session.access_token,
+  }
+
+  Object.entries(payload).forEach(([key, value]) => {
+    const input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = key
+    input.value = typeof value === 'string' ? value : JSON.stringify(value)
+    form.appendChild(input)
+  })
+
+  document.body.appendChild(iframe)
+  document.body.appendChild(form)
+  form.submit()
+
+  window.setTimeout(() => {
+    form.remove()
+    iframe.remove()
+  }, 2000)
 }

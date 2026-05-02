@@ -17,7 +17,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { apiDownloadToFile, apiFetch } from '../lib/api'
+import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
@@ -661,7 +661,8 @@ function parseImageBlockMetadata(element) {
   const fileName = image.getAttribute('data-file-name') || ''
   const assetId = image.getAttribute('data-asset-id') || ''
   const storagePath = image.getAttribute('data-storage-path') || ''
-  const format = (fileName.split('.').pop() || src.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const rawFormat = (fileName.split('.').pop() || storagePath.split('.').pop() || 'jpg')
+  const format = rawFormat.replace(/[^a-z0-9]/gi, '').toLowerCase()
 
   return {
     src,
@@ -834,6 +835,26 @@ function stripSectionDividersFromHtml(html) {
 
 function createLocalId(prefix = 's') {
   return `${prefix}_${crypto.randomUUID?.() || Date.now()}`
+}
+
+function getProjectEditorViewStorageKey(projectId) {
+  return `webrief:project-editor-view:${projectId || 'unknown'}`
+}
+
+function readPersistedProjectEditorView(projectId) {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(getProjectEditorViewStorageKey(projectId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      editorMode: typeof parsed.editorMode === 'string' ? parsed.editorMode : null,
+      handoffAudience: typeof parsed.handoffAudience === 'string' ? parsed.handoffAudience : null,
+    }
+  } catch {
+    return null
+  }
 }
 
 function serializeNodes(nodes, doc) {
@@ -1370,6 +1391,77 @@ function parseFaqItemsFromHtml(html) {
       answer: item.answerNodes.map((node) => node.textContent?.replace(/\s+/g, ' ').trim() || '').filter(Boolean).join('\n'),
     }))
     .filter((item) => item.question)
+}
+
+function deriveDocumentOutlineFromHtml(html) {
+  if (!html || typeof DOMParser === 'undefined') return []
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return []
+
+  const items = []
+  Array.from(root.children).forEach((node) => {
+    if (node.matches?.('div[data-section-divider]')) return
+    const tag = node.tagName?.toLowerCase()
+    if (!['h1', 'h2', 'h3'].includes(tag)) return
+    const text = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+    if (!text) return
+    items.push({
+      id: `heading-${items.length}`,
+      headingIndex: items.length,
+      level: Number(tag.slice(1)),
+      text,
+    })
+  })
+  return items
+}
+
+function deriveFaqPanelItemsFromHtml(html) {
+  return parseFaqItemsFromHtml(html).map((item, index) => ({
+    id: `faq-${index}`,
+    headingIndex: index,
+    question: item.question || `Pregunta Frecuente ${index + 1}`,
+    answer: item.answer || '',
+  }))
+}
+
+function deriveSectionsFromHtmlForSidebar(html) {
+  return parseSectionsFromHtml(html).map((section) => {
+    let headings = []
+    let isEmpty = true
+
+    if (typeof DOMParser !== 'undefined') {
+      const doc = new DOMParser().parseFromString(`<div id="root">${section.content || ''}</div>`, 'text/html')
+      const root = doc.getElementById('root')
+      if (root) {
+        headings = Array.from(root.querySelectorAll('h1, h2, h3'))
+          .map((node) => {
+            const text = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+            if (!text) return null
+            return {
+              tag: node.tagName.toLowerCase(),
+              text,
+            }
+          })
+          .filter(Boolean)
+        isEmpty = !Array.from(root.childNodes).some((node) => {
+          if (node.nodeType === 3) return Boolean(node.textContent?.trim())
+          if (node.nodeType !== 1) return false
+          const tag = node.tagName?.toLowerCase()
+          if (['img', 'table'].includes(tag)) return true
+          if (node.matches?.('[data-cta-button]')) return true
+          return Boolean(node.textContent?.trim())
+        })
+      }
+    }
+
+    return {
+      id: section.id,
+      name: section.name,
+      headings,
+      isEmpty,
+    }
+  })
 }
 
 function csvCell(value) {
@@ -1967,6 +2059,11 @@ export default function ProjectEditor() {
   const navigate = useNavigate()
   const { id: projectId } = useParams()
   const { currentUser } = useAuth()
+  const initialPersistedEditorViewRef = useRef(readPersistedProjectEditorView(projectId))
+  const rootRef = useRef(null)
+  const tooltipTimerRef = useRef(null)
+  const tooltipTargetRef = useRef(null)
+  const tooltipVisibleRef = useRef(false)
 
   const [projectMeta, setProjectMeta] = useState(null)
   const [pages, setPages] = useState([])
@@ -1984,8 +2081,8 @@ export default function ProjectEditor() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
-  const [editorMode, setEditorMode] = useState('brief')
-  const [handoffAudience, setHandoffAudience] = useState('designer')
+  const [editorMode, setEditorMode] = useState(() => initialPersistedEditorViewRef.current?.editorMode || 'brief')
+  const [handoffAudience, setHandoffAudience] = useState(() => initialPersistedEditorViewRef.current?.handoffAudience || 'designer')
   const [activity, setActivity] = useState([])
   const [notifications, setNotifications] = useState([])
   const [deliverables, setDeliverables] = useState([])
@@ -1993,6 +2090,7 @@ export default function ProjectEditor() {
   const [panelError, setPanelError] = useState('')
   const [panelNotice, setPanelNotice] = useState('')
   const [shareUrl, setShareUrl] = useState('')
+  const [tooltipState, setTooltipState] = useState(null)
   const [sectionModalState, setSectionModalState] = useState({
     isOpen: false,
     insertAfterSectionId: null,
@@ -2010,6 +2108,9 @@ export default function ProjectEditor() {
   // Ref al editor único
   const editorRef = useRef(null)
   const saveInFlightRef = useRef(false)
+  const autosaveBlockedRef = useRef(false)
+  const autosaveRunnerRef = useRef(null)
+  const hasResolvedPersistedViewRef = useRef(false)
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
 
@@ -2061,10 +2162,107 @@ export default function ProjectEditor() {
   }, [activePageId])
 
   useEffect(() => {
-    if (!availableEditorModes.includes(editorMode)) {
+    initialPersistedEditorViewRef.current = readPersistedProjectEditorView(projectId)
+    hasResolvedPersistedViewRef.current = false
+  }, [projectId])
+
+  useEffect(() => {
+    if (!loadingProject && !availableEditorModes.includes(editorMode)) {
       setEditorMode('brief')
     }
-  }, [availableEditorModes, editorMode])
+  }, [availableEditorModes, editorMode, loadingProject])
+
+  useEffect(() => {
+    if (loadingProject || hasResolvedPersistedViewRef.current) return
+    const persistedEditorView = initialPersistedEditorViewRef.current
+    const preferredMode = persistedEditorView?.editorMode
+    const nextMode = preferredMode && availableEditorModes.includes(preferredMode)
+      ? preferredMode
+      : 'brief'
+    const nextAudience = persistedEditorView?.handoffAudience === 'dev' ? 'dev' : 'designer'
+    setEditorMode(nextMode)
+    setHandoffAudience(nextAudience)
+    hasResolvedPersistedViewRef.current = true
+  }, [availableEditorModes, loadingProject])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || loadingProject || !hasResolvedPersistedViewRef.current) return
+    window.sessionStorage.setItem(
+      getProjectEditorViewStorageKey(projectId),
+      JSON.stringify({
+        editorMode,
+        handoffAudience,
+      }),
+    )
+  }, [editorMode, handoffAudience, loadingProject, projectId])
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return undefined
+
+    function clearTooltipTarget() {
+      if (tooltipTimerRef.current) {
+        window.clearTimeout(tooltipTimerRef.current)
+        tooltipTimerRef.current = null
+      }
+      const target = tooltipTargetRef.current
+      if (target?.dataset?.wbTooltipTitle) {
+        target.setAttribute('title', target.dataset.wbTooltipTitle)
+      }
+      tooltipTargetRef.current = null
+      tooltipVisibleRef.current = false
+      setTooltipState(null)
+    }
+
+    function handlePointerOver(event) {
+      const target = event.target instanceof Element ? event.target.closest('[title]') : null
+      if (!target || !root.contains(target)) return
+      if (tooltipTargetRef.current === target) return
+
+      clearTooltipTarget()
+      const title = target.getAttribute('title')
+      if (!title) return
+
+      target.dataset.wbTooltipTitle = title
+      target.removeAttribute('title')
+      tooltipTargetRef.current = target
+
+      tooltipTimerRef.current = window.setTimeout(() => {
+        const rect = target.getBoundingClientRect()
+        tooltipVisibleRef.current = true
+        setTooltipState({
+          text: title,
+          x: rect.left + (rect.width / 2),
+          y: rect.top - 10,
+        })
+        tooltipTimerRef.current = null
+      }, 1400)
+    }
+
+    function handlePointerMove(event) {
+      if (!tooltipTargetRef.current || !tooltipVisibleRef.current) return
+      setTooltipState((current) => current ? { ...current, x: event.clientX, y: event.clientY - 14 } : current)
+    }
+
+    function handlePointerOut(event) {
+      const currentTarget = tooltipTargetRef.current
+      if (!currentTarget) return
+      if (event.relatedTarget instanceof Node && currentTarget.contains(event.relatedTarget)) return
+      if (event.target !== currentTarget && !(event.target instanceof Node && currentTarget.contains(event.target))) return
+      clearTooltipTarget()
+    }
+
+    root.addEventListener('pointerover', handlePointerOver)
+    root.addEventListener('pointermove', handlePointerMove)
+    root.addEventListener('pointerout', handlePointerOut)
+
+    return () => {
+      root.removeEventListener('pointerover', handlePointerOver)
+      root.removeEventListener('pointermove', handlePointerMove)
+      root.removeEventListener('pointerout', handlePointerOut)
+      clearTooltipTarget()
+    }
+  }, [])
 
   // ── Contenido inicial para el editor ──
   const initialContentRef = useRef('<p></p>')
@@ -2122,6 +2320,35 @@ export default function ProjectEditor() {
       active = false
     }
   }, [projectId])
+
+  useEffect(() => {
+    if (!activePage) return
+    if (editorMode === 'brief' && editorRef.current) return
+
+    const html = activePage.fullContent || buildDocumentHTML(activePage.sections || [])
+
+    if (projectType === 'document') {
+      setDocumentOutline(deriveDocumentOutlineFromHtml(html))
+      setFaqItems([])
+      setDerivedSections([])
+      setActiveSectionId(null)
+      return
+    }
+
+    if (projectType === 'faq') {
+      setFaqItems(deriveFaqPanelItemsFromHtml(html))
+      setDocumentOutline([])
+      setDerivedSections([])
+      setActiveSectionId(null)
+      return
+    }
+
+    const nextSections = deriveSectionsFromHtmlForSidebar(html)
+    setDerivedSections(nextSections)
+    setDocumentOutline([])
+    setFaqItems([])
+    setActiveSectionId((current) => current || nextSections[0]?.id || null)
+  }, [activePage, editorMode, projectType])
 
   const loadSidePanelData = useCallback(async () => {
     if (!projectId) return
@@ -2199,6 +2426,7 @@ export default function ProjectEditor() {
   const handleDocUpdate = useCallback((editor) => {
     if (isAutoRemoving.current || isRenumberingSections.current) return
 
+    autosaveBlockedRef.current = false
     setIsDirty(true)
     setSaveMessage('')
 
@@ -2442,6 +2670,9 @@ export default function ProjectEditor() {
       }
       return true
     } catch (error) {
+      if (source === 'autosave' && String(error.message || '').includes('otra sesión')) {
+        autosaveBlockedRef.current = true
+      }
       setSaveMessage(error.message || 'No se pudo guardar')
       return false
     } finally {
@@ -2449,6 +2680,10 @@ export default function ProjectEditor() {
       setIsSaving(false)
     }
   }, [activePage, activePageId, canWriteContent, loadSidePanelData, pages, projectId, snapshotActivePage])
+
+  useEffect(() => {
+    autosaveRunnerRef.current = saveProjectPages
+  }, [saveProjectPages])
 
   async function handleSave() {
     await saveProjectPages('manual')
@@ -2566,14 +2801,14 @@ export default function ProjectEditor() {
   }
 
   useEffect(() => {
-    if (!isDirty || loadingProject || !projectId) return undefined
+    if (!isDirty || loadingProject || !projectId || autosaveBlockedRef.current) return undefined
 
     const timeoutId = window.setTimeout(() => {
-      saveProjectPages('autosave')
-    }, 2500)
+      autosaveRunnerRef.current?.('autosave')
+    }, 8000)
 
     return () => window.clearTimeout(timeoutId)
-  }, [isDirty, loadingProject, projectId, saveProjectPages])
+  }, [isDirty, loadingProject, projectId, activePageId, editorMode])
 
   useEffect(() => {
     function handleBeforeUnload(event) {
@@ -3033,7 +3268,7 @@ export default function ProjectEditor() {
   }
 
   return (
-    <div className={styles.root}>
+    <div ref={rootRef} className={styles.root}>
       {sectionModalState.isOpen && (
         <AddSectionModal
           onConfirm={(name) => {
@@ -3089,6 +3324,15 @@ export default function ProjectEditor() {
               <button className={styles.confirmDeleteBtn} onClick={() => deletePage(deletePageConfirm)}>Eliminar</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {tooltipState?.text && (
+        <div
+          className={styles.floatingTooltip}
+          ref={(node) => setCssVars(node, { '--tooltip-x': tooltipState.x, '--tooltip-y': tooltipState.y })}
+        >
+          {tooltipState.text}
         </div>
       )}
 
@@ -3170,6 +3414,9 @@ export default function ProjectEditor() {
             page={activePageForRead}
             projectType={projectType}
             audience={handoffAudience}
+            scrollRequest={scrollRequest}
+            onScrollHeadingChange={handleScrollHeadingChange}
+            selectedActivityId={selectedActivityId}
           />
         )}
 
@@ -3851,6 +4098,7 @@ function getBlockLabel(el) {
 // ---------------------------------------------------------------------------
 function TypeLabelsColumn({ wrapperRef, editor }) {
   const columnRef = useRef(null)
+  const dropdownRef = useRef(null)
   const [labels, setLabels]   = useState([])
   const [openIdx, setOpenIdx] = useState(-1)
 
@@ -3904,6 +4152,22 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
       resObs.disconnect()
     }
   }, [editor])
+
+  useEffect(() => {
+    if (openIdx === -1) return undefined
+
+    function handlePointerDown(event) {
+      if (dropdownRef.current?.contains(event.target)) return
+      if (columnRef.current?.contains(event.target)) {
+        const trigger = event.target.closest?.(`.${styles.typeLabelBtn}`)
+        if (trigger) return
+      }
+      setOpenIdx(-1)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [openIdx])
 
   function applyType(opt, blockEl, currentLabel) {
     if (!editor) return
@@ -3972,7 +4236,7 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
           </button>
 
           {openIdx === idx && !['t', 'img', 'CTA'].includes(item.label) && (
-            <div className={styles.typeLabelDropdown} onMouseLeave={() => setOpenIdx(-1)}>
+            <div ref={dropdownRef} className={styles.typeLabelDropdown}>
               {getOptionsForLabel(item.label).filter((opt) => {
                 if (item.label === '¶') return opt !== 'Párrafo'
                 return opt !== item.label
@@ -5916,12 +6180,76 @@ async function copyRich({ text, html }) {
   await navigator.clipboard.writeText(text)
 }
 
-function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
+function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollRequest, onScrollHeadingChange, selectedActivityId = null }) {
   const [copied, setCopied] = useState('')
   const [exportModal, setExportModal] = useState(null)
+  const [selectedImageKeys, setSelectedImageKeys] = useState([])
+  const [selectionAnchorKey, setSelectionAnchorKey] = useState(null)
+  const [imageContextMenu, setImageContextMenu] = useState(null)
+  const scrollRef = useRef(null)
+  const contentRef = useRef(null)
+  const selectionAnchorRef = useRef(null)
+  const programmaticScrollRef = useRef(null)
+  const programmaticScrollRafRef = useRef(null)
   const sections = useMemo(() => parseHandoffPage(page, projectType), [page, projectType])
+  const handoffData = useMemo(() => {
+    let imageIndex = 0
+    const images = []
+    const decoratedSections = sections.map((section) => ({
+      ...section,
+      blocks: section.blocks.map((block) => {
+        if (!block.html?.includes('<img')) return { ...block, renderedHtml: block.html }
+        const doc = htmlToDocument(block.html)
+        const root = doc?.getElementById('root')
+        const element = root?.firstElementChild
+        if (!element) return { ...block, renderedHtml: block.html }
+
+        const imageElements = [
+          ...(element.tagName?.toLowerCase() === 'img' ? [element] : []),
+          ...Array.from(element.querySelectorAll('img')),
+        ]
+        imageElements.forEach((imageElement) => {
+          const image = parseImageBlockMetadata(imageElement)
+          if (!image) return
+          const key = `img-${imageIndex}`
+          imageElement.setAttribute('data-handoff-image-key', key)
+          images.push({
+            key,
+            order: imageIndex,
+            blockId: block.id,
+            image,
+          })
+          imageIndex += 1
+        })
+
+        return {
+          ...block,
+          renderedHtml: element.outerHTML,
+        }
+      }),
+    }))
+
+    return { sections: decoratedSections, images }
+  }, [sections])
   const groupCopyLabel = projectType === 'faq' ? 'Pregunta frecuente copiada' : projectType === 'document' ? 'Documento copiado' : 'Sección copiada'
   const groupButtonLabel = projectType === 'faq' ? 'Copiar FAQ' : projectType === 'document' ? 'Copiar documento' : 'Copiar sección'
+  const selectedImages = useMemo(() => {
+    const selectedSet = new Set(selectedImageKeys)
+    return handoffData.images.filter((item) => selectedSet.has(item.key))
+  }, [handoffData.images, selectedImageKeys])
+  const selectedImageCount = selectedImages.length
+
+  function getContentHeadingNodes(root = contentRef.current, { sectionId = null } = {}) {
+    if (!root) return []
+    const selector = sectionId
+      ? `[data-handoff-section-id="${sectionId}"] [data-handoff-block-content] h1, [data-handoff-section-id="${sectionId}"] [data-handoff-block-content] h2, [data-handoff-section-id="${sectionId}"] [data-handoff-block-content] h3`
+      : '[data-handoff-block-content] h1, [data-handoff-block-content] h2, [data-handoff-block-content] h3'
+    return Array.from(root.querySelectorAll(selector))
+  }
+
+  useEffect(() => {
+    selectionAnchorRef.current = selectionAnchorKey
+  }, [selectionAnchorKey])
 
   async function handleCopy(label, payload) {
     await copyRich(payload)
@@ -5937,28 +6265,76 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
     [`## ${section.name}`, ...section.blocks.map((block) => block.markdown)].join('\n\n')
   )).join('\n\n')
 
-  function openImageExport(block) {
-    if (!block?.image) return
+  function openSingleImageExport(imageEntry) {
+    if (!imageEntry?.image) return
 
     setExportModal({
-      blockId: block.id,
-      image: block.image,
-      fileName: block.image.baseName || 'image',
-      format: block.image.format === 'jpeg' ? 'jpg' : (block.image.format || 'webp'),
-      width: block.image.originalWidth || '',
-      height: block.image.originalHeight || '',
+      mode: 'single',
+      imageEntry,
+      image: imageEntry.image,
+      fileName: imageEntry.image.baseName || 'image',
+      format: imageEntry.image.format === 'jpeg' ? 'jpg' : (imageEntry.image.format || 'webp'),
+      width: imageEntry.image.originalWidth || '',
+      height: imageEntry.image.originalHeight || '',
       quality: 90,
-      fit: 'at_max',
+    })
+  }
+
+  function openBulkImageExport(images) {
+    if (!images?.length) return
+
+    setExportModal({
+      mode: 'bulk',
+      images,
+      fileName: 'image',
+      format: 'webp',
+      maxWidth: 1600,
+      quality: 90,
     })
   }
 
   function closeImageExport() {
     setExportModal(null)
+    setImageContextMenu(null)
   }
+
+  useEffect(() => {
+    if (!exportModal?.image?.src) return undefined
+    if (exportModal.image.originalWidth && exportModal.image.originalHeight) return undefined
+
+    let cancelled = false
+    const image = new window.Image()
+    image.onload = () => {
+      if (cancelled) return
+      const naturalWidth = image.naturalWidth || null
+      const naturalHeight = image.naturalHeight || null
+      setExportModal((current) => {
+        if (!current) return current
+        return {
+          ...current,
+          image: {
+            ...current.image,
+            originalWidth: current.image.originalWidth || naturalWidth,
+            originalHeight: current.image.originalHeight || naturalHeight,
+          },
+          width: current.width || naturalWidth || '',
+          height: current.height || naturalHeight || '',
+        }
+      })
+    }
+    image.src = exportModal.image.src
+
+    return () => {
+      cancelled = true
+    }
+  }, [exportModal?.image?.src, exportModal?.image?.originalWidth, exportModal?.image?.originalHeight])
 
   function updateExportField(key, value) {
     setExportModal((current) => {
       if (!current) return current
+      if (current.mode === 'bulk') {
+        return { ...current, [key]: value }
+      }
       const next = { ...current, [key]: value }
       const baseWidth = Number(current.image?.originalWidth) || 0
       const baseHeight = Number(current.image?.originalHeight) || 0
@@ -5978,20 +6354,260 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
     })
   }
 
+  useEffect(() => {
+    function closeContextMenu() {
+      setImageContextMenu(null)
+    }
+
+    if (!imageContextMenu) return undefined
+    document.addEventListener('pointerdown', closeContextMenu)
+    return () => document.removeEventListener('pointerdown', closeContextMenu)
+  }, [imageContextMenu])
+
+  useEffect(() => {
+    function clearSelectionOnOutsideClick(event) {
+      if (event.button !== 0) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (target.closest('img[data-handoff-image-key]')) return
+      if (target.closest(`.${styles.imageContextMenu}`)) return
+      if (target.closest(`.${styles.exportModal}`)) return
+      setSelectedImageKeys([])
+      setSelectionAnchorKey(null)
+    }
+
+    document.addEventListener('pointerdown', clearSelectionOnOutsideClick)
+    return () => document.removeEventListener('pointerdown', clearSelectionOnOutsideClick)
+  }, [])
+
+  useEffect(() => {
+    const selectedSet = new Set(selectedImageKeys)
+    const imageNodes = Array.from(contentRef.current?.querySelectorAll('img[data-handoff-image-key]') || [])
+    imageNodes.forEach((node) => {
+      const key = node.getAttribute('data-handoff-image-key') || ''
+      node.classList.toggle(styles.handoffSelectableImage, true)
+      node.classList.toggle(styles.handoffSelectableImageSelected, selectedSet.has(key))
+    })
+  }, [selectedImageKeys])
+
+  useEffect(() => {
+    if (!scrollRequest || !scrollRef.current || !contentRef.current) return
+
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    const OFFSET = 70
+    let targetEl = null
+    let targetHeadingIndex = 0
+
+    if (programmaticScrollRafRef.current) {
+      cancelAnimationFrame(programmaticScrollRafRef.current)
+      programmaticScrollRafRef.current = null
+    }
+
+    if (scrollRequest.type === 'section') {
+      targetEl = content.querySelector(`[data-handoff-section-id="${scrollRequest.sectionId}"]`)
+    } else if (scrollRequest.type === 'heading') {
+      const inSection = getContentHeadingNodes(content, { sectionId: scrollRequest.sectionId })
+      targetEl = inSection[scrollRequest.headingIndex] || null
+      targetHeadingIndex = scrollRequest.headingIndex
+    } else if (scrollRequest.type === 'documentHeading') {
+      targetEl = getContentHeadingNodes(content)[scrollRequest.headingIndex] || null
+      targetHeadingIndex = scrollRequest.headingIndex
+    }
+
+    if (!targetEl) return
+
+    const rawOffset = targetEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - OFFSET
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    const targetTop = Math.max(0, Math.min(maxScrollTop, rawOffset))
+
+    programmaticScrollRef.current = {
+      sectionId: scrollRequest.sectionId || '__document__',
+      headingIndex: targetHeadingIndex,
+      targetTop,
+    }
+
+    scroller.scrollTo({ top: targetTop, behavior: 'smooth' })
+
+    let started = false
+    let stableFrames = 0
+    let frames = 0
+    let lastTop = scroller.scrollTop
+
+    const monitorScroll = () => {
+      frames += 1
+      const currentTop = scroller.scrollTop
+      const delta = Math.abs(currentTop - lastTop)
+      const nearTarget = Math.abs(currentTop - targetTop) <= 2
+
+      if (!started && (delta > 1 || nearTarget)) started = true
+
+      if (started && (nearTarget || delta <= 1)) {
+        stableFrames += 1
+      } else {
+        stableFrames = 0
+      }
+
+      lastTop = currentTop
+
+      if ((started && stableFrames >= 4) || frames >= 120) {
+        programmaticScrollRef.current = null
+        programmaticScrollRafRef.current = null
+        onScrollHeadingChange?.({
+          sectionId: scrollRequest.sectionId || '__document__',
+          headingIndex: targetHeadingIndex,
+        })
+        return
+      }
+
+      programmaticScrollRafRef.current = requestAnimationFrame(monitorScroll)
+    }
+
+    programmaticScrollRafRef.current = requestAnimationFrame(monitorScroll)
+
+    return () => {
+      if (programmaticScrollRafRef.current) {
+        cancelAnimationFrame(programmaticScrollRafRef.current)
+        programmaticScrollRafRef.current = null
+      }
+      programmaticScrollRef.current = null
+    }
+  }, [scrollRequest])
+
+  useEffect(() => {
+    if (!scrollRef.current || !contentRef.current) return undefined
+
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    const OFFSET = 70
+
+    function handleScroll() {
+      if (programmaticScrollRef.current) return
+      const sectionNodes = Array.from(content.querySelectorAll('[data-handoff-section-id]'))
+      const triggerY = scroller.getBoundingClientRect().top + OFFSET
+
+      if (projectType !== 'page') {
+        const headings = getContentHeadingNodes(content)
+        let headingIndex = 0
+        headings.forEach((heading, index) => {
+          if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
+        })
+        if (headings.length > 0) {
+          onScrollHeadingChange?.({ sectionId: '__document__', headingIndex })
+        }
+        return
+      }
+
+      if (sectionNodes.length === 0) return
+      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      const isAtBottom = scroller.scrollTop >= maxScrollTop - 2
+      let activeSectionId = sectionNodes[0].getAttribute('data-handoff-section-id') || '__document__'
+
+      if (isAtBottom) {
+        activeSectionId = sectionNodes[sectionNodes.length - 1].getAttribute('data-handoff-section-id') || activeSectionId
+      } else {
+        for (const sectionNode of sectionNodes) {
+          const rect = sectionNode.getBoundingClientRect()
+          if (rect.top <= triggerY) {
+            activeSectionId = sectionNode.getAttribute('data-handoff-section-id') || activeSectionId
+          }
+        }
+      }
+
+      if (!activeSectionId && sectionNodes.length > 0) {
+        activeSectionId = sectionNodes[0].getAttribute('data-handoff-section-id') || '__document__'
+      }
+
+      const headings = getContentHeadingNodes(content, { sectionId: activeSectionId })
+
+      let headingIndex = 0
+      headings.forEach((heading, index) => {
+        if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
+      })
+
+      onScrollHeadingChange?.({ sectionId: activeSectionId, headingIndex })
+    }
+
+    scroller.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => scroller.removeEventListener('scroll', handleScroll)
+  }, [onScrollHeadingChange, handoffData.sections])
+
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollRafRef.current) {
+        cancelAnimationFrame(programmaticScrollRafRef.current)
+      }
+    }
+  }, [])
+
+  function getImageRangeKeys(startKey, endKey) {
+    const keysInOrder = handoffData.images.map((item) => item.key)
+    const startIndex = keysInOrder.indexOf(startKey)
+    const endIndex = keysInOrder.indexOf(endKey)
+    if (startIndex === -1 || endIndex === -1) return [endKey]
+    const [from, to] = startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex]
+    return keysInOrder.slice(from, to + 1)
+  }
+
+  function selectImageKey(key, { additive = false, range = false } = {}) {
+    if (!range) setSelectionAnchorKey(key)
+    setSelectedImageKeys((current) => {
+      if (range) {
+        const anchorKey = selectionAnchorRef.current && handoffData.images.some((item) => item.key === selectionAnchorRef.current)
+          ? selectionAnchorRef.current
+          : (current[0] || key)
+        const rangeKeys = getImageRangeKeys(anchorKey, key)
+        if (!additive) return rangeKeys
+        return Array.from(new Set([...current, ...rangeKeys]))
+      }
+
+      if (!additive) return [key]
+      return current.includes(key)
+        ? current.filter((item) => item !== key)
+        : [...current, key]
+    })
+  }
+
+  function handleImageSelectionEvent(event) {
+    const imageElement = event.target.closest?.('img[data-handoff-image-key]')
+    if (!imageElement) return null
+    const key = imageElement.getAttribute('data-handoff-image-key') || ''
+    if (!key) return null
+    const additive = Boolean(event.metaKey || event.ctrlKey)
+    const range = Boolean(event.shiftKey)
+    return { key, additive, range }
+  }
+
   async function handleImageExportSubmit(event) {
     event.preventDefault()
     if (!exportModal || !projectId) return
 
     try {
+      if (exportModal.mode === 'bulk') {
+        await apiSubmitDownload(`/api/projects/${projectId}/assets/export-bulk`, {
+          items: exportModal.images.map((item) => ({
+            assetId: item.image.assetId || '',
+            src: item.image.src || '',
+          })),
+          fileName: slugifyExportFileName(exportModal.fileName || 'image'),
+          format: exportModal.format || 'webp',
+          maxWidth: Number(exportModal.maxWidth) || null,
+          quality: Number(exportModal.quality) || null,
+        })
+        closeImageExport()
+        return
+      }
+
       await apiDownloadToFile(buildAdvancedProjectImageExportPath({
         projectId,
-        assetId: exportModal.image.assetId || '',
-        src: exportModal.image.src || '',
+        assetId: exportModal.imageEntry?.image?.assetId || exportModal.image.assetId || '',
+        src: exportModal.imageEntry?.image?.src || exportModal.image.src || '',
         width: Number(exportModal.width) || null,
         height: Number(exportModal.height) || null,
         format: exportModal.format || '',
         quality: Number(exportModal.quality) || null,
-        fit: exportModal.fit || '',
+        fit: 'at_max',
         fileName: slugifyExportFileName(exportModal.fileName || exportModal.image.baseName || 'image'),
       }), {
         suggestedFileName: `${slugifyExportFileName(exportModal.fileName || exportModal.image.baseName || 'image')}.${exportModal.format || exportModal.image.format || 'webp'}`,
@@ -6014,6 +6630,12 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
             <Copy size={14} />
             Copiar página
           </button>
+          {selectedImageCount > 0 && (
+            <button className={styles.handoffActionBtn} onClick={() => openBulkImageExport(selectedImages)}>
+              <Download size={14} />
+              Exportar {selectedImageCount} imagen{selectedImageCount === 1 ? '' : 'es'}
+            </button>
+          )}
           {audience === 'dev' && (
             <button className={styles.handoffActionBtn} onClick={() => handleCopy('Markdown copiado', { text: pageMarkdown })}>
               <Code2 size={14} />
@@ -6025,12 +6647,22 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
 
       {copied && <p className={styles.copyFeedback}>{copied}</p>}
 
-      <div className={styles.handoffScroll}>
-        {sections.map((section) => {
+      <div
+        ref={scrollRef}
+        className={styles.handoffScroll}
+        onContextMenu={(event) => {
+          if (selectedImageCount === 0) return
+          if (event.target.closest?.('img[data-handoff-image-key]')) return
+          event.preventDefault()
+          setImageContextMenu({ x: event.clientX, y: event.clientY, keys: selectedImageKeys })
+        }}
+      >
+        <div ref={contentRef} className={styles.handoffContent}>
+        {handoffData.sections.map((section) => {
           const sectionText = section.blocks.map((block) => block.text).join('\n')
-          const sectionHtml = section.blocks.map((block) => block.html).join('\n')
+          const sectionHtml = section.blocks.map((block) => block.renderedHtml || block.html).join('\n')
           return (
-            <section key={section.id} className={styles.handoffSection}>
+            <section key={section.id} className={styles.handoffSection} data-handoff-section-id={section.id}>
               <div className={styles.handoffSectionHeader}>
                 <h3 className={styles.handoffSectionTitle}>{section.name}</h3>
                 <button className={styles.handoffGhostBtn} onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}>
@@ -6042,40 +6674,87 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
               <div className={styles.handoffBlockList}>
                 {section.blocks.map((block) => (
                   <div key={block.id} className={styles.handoffBlockRow}>
-                    <span className={styles.handoffGutter} aria-hidden="true">{block.label}</span>
+                    <div className={styles.handoffBlockMeta}>
+                      <span className={styles.handoffGutter} aria-hidden="true">{block.label}</span>
+                      <div className={styles.handoffActions} aria-label="Acciones del bloque">
+                        <button className={styles.handoffIconBtn} title="Copiar texto" onClick={() => handleCopy('Texto copiado', { text: block.text, html: block.html })}>
+                          <Copy size={13} />
+                        </button>
+                        {block.links.map((link, index) => (
+                          <button key={`${link.url}-${index}`} className={styles.handoffIconBtn} title={`Copiar URL: ${link.label}`} onClick={() => handleCopy('URL copiada', { text: link.url })}>
+                            <Link2 size={13} />
+                          </button>
+                        ))}
+                        {audience === 'dev' && (
+                          <>
+                            <button className={styles.handoffIconBtn} title="Copiar HTML" onClick={() => handleCopy('HTML copiado', { text: block.text, html: block.html })}>
+                              <FileText size={13} />
+                            </button>
+                            <button className={styles.handoffIconBtn} title="Copiar JSON" onClick={() => handleCopy('JSON copiado', { text: JSON.stringify(block.json, null, 2) })}>
+                              <Code2 size={13} />
+                            </button>
+                          </>
+                        )}
+                        {block.label === 'img' && block.image && (
+                          <button className={styles.handoffIconBtn} title="Exportar imagen" onClick={() => openSingleImageExport(handoffData.images.find((item) => item.blockId === block.id) || null)}>
+                            <Download size={13} />
+                          </button>
+                        )}
+                        {block.label === 'table' && handoffData.images.some((item) => item.blockId === block.id) && (
+                          <button
+                            className={styles.handoffIconBtn}
+                            title="Exportar imágenes de la tabla"
+                            onClick={() => openBulkImageExport(handoffData.images.filter((item) => item.blockId === block.id))}
+                          >
+                            <Download size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     <div className={styles.handoffCopySafe}>
                       {block.label === 'CTA' ? (
                         <span className={styles.handoffCtaText}>{block.text}</span>
                       ) : (
                         <div
-                          className={styles.handoffBlockContent}
-                          dangerouslySetInnerHTML={{ __html: block.html }}
+                          className={cx(
+                            styles.handoffBlockContent,
+                            block.label === 'img' && selectedImages.some((item) => item.blockId === block.id) && styles.handoffBlockContentSelected,
+                          )}
+                          data-handoff-block-content=""
+                          onClick={(event) => {
+                            const selectionEvent = handleImageSelectionEvent(event)
+                            if (!selectionEvent) return
+                            event.preventDefault()
+                            event.stopPropagation()
+                            selectImageKey(selectionEvent.key, { additive: selectionEvent.additive, range: selectionEvent.range })
+                          }}
+                          onContextMenu={(event) => {
+                            const selectionEvent = handleImageSelectionEvent(event)
+                            if (!selectionEvent) return
+                            event.preventDefault()
+                            event.stopPropagation()
+                            const nextKeys = (() => {
+                              if (selectionEvent.range) {
+                                const anchorKey = selectionAnchorRef.current && handoffData.images.some((item) => item.key === selectionAnchorRef.current)
+                                  ? selectionAnchorRef.current
+                                  : (selectedImageKeys[0] || selectionEvent.key)
+                                const rangeKeys = getImageRangeKeys(anchorKey, selectionEvent.key)
+                                return selectionEvent.additive
+                                  ? Array.from(new Set([...selectedImageKeys, ...rangeKeys]))
+                                  : rangeKeys
+                              }
+                              return selectionEvent.additive
+                                ? (selectedImageKeys.includes(selectionEvent.key)
+                                  ? selectedImageKeys
+                                  : [...selectedImageKeys, selectionEvent.key])
+                                : (selectedImageKeys.includes(selectionEvent.key) ? selectedImageKeys : [selectionEvent.key])
+                            })()
+                            setSelectionAnchorKey(selectionEvent.key)
+                            setSelectedImageKeys(nextKeys)
+                            setImageContextMenu({ x: event.clientX, y: event.clientY, keys: nextKeys })
+                          }}
+                          dangerouslySetInnerHTML={{ __html: block.renderedHtml || block.html }}
                         />
-                      )}
-                    </div>
-                    <div className={styles.handoffActions} aria-label="Acciones del bloque">
-                      <button className={styles.handoffIconBtn} title="Copiar texto" onClick={() => handleCopy('Texto copiado', { text: block.text, html: block.html })}>
-                        <Copy size={13} />
-                      </button>
-                      {block.links.map((link, index) => (
-                        <button key={`${link.url}-${index}`} className={styles.handoffIconBtn} title={`Copiar URL: ${link.label}`} onClick={() => handleCopy('URL copiada', { text: link.url })}>
-                          <Link2 size={13} />
-                        </button>
-                      ))}
-                      {audience === 'dev' && (
-                        <>
-                          <button className={styles.handoffIconBtn} title="Copiar HTML" onClick={() => handleCopy('HTML copiado', { text: block.text, html: block.html })}>
-                            <FileText size={13} />
-                          </button>
-                          <button className={styles.handoffIconBtn} title="Copiar JSON" onClick={() => handleCopy('JSON copiado', { text: JSON.stringify(block.json, null, 2) })}>
-                            <Code2 size={13} />
-                          </button>
-                        </>
-                      )}
-                      {block.label === 'img' && block.image && (
-                        <button className={styles.handoffIconBtn} title="Exportar imagen" onClick={() => openImageExport(block)}>
-                          <Download size={13} />
-                        </button>
                       )}
                     </div>
                   </div>
@@ -6084,7 +6763,44 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
             </section>
           )
         })}
+        </div>
       </div>
+
+      {imageContextMenu && (
+        <div
+          className={styles.imageContextMenu}
+          style={{ left: `${imageContextMenu.x}px`, top: `${imageContextMenu.y}px` }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className={styles.imageContextMenuItem}
+            onClick={() => {
+              const items = handoffData.images.filter((item) => imageContextMenu.keys.includes(item.key))
+              if (items.length <= 1) {
+                openSingleImageExport(items[0] || null)
+              } else {
+                openBulkImageExport(items)
+              }
+              setImageContextMenu(null)
+            }}
+          >
+            {imageContextMenu.keys.length > 1 ? `Exportar ${imageContextMenu.keys.length} imágenes` : 'Exportar imagen'}
+          </button>
+          <button
+            type="button"
+            className={styles.imageContextMenuItem}
+            onClick={() => {
+              setSelectedImageKeys([])
+              setSelectionAnchorKey(null)
+              setImageContextMenu(null)
+            }}
+          >
+            Limpiar selección
+          </button>
+        </div>
+      )}
 
       {exportModal && (
         <div className={styles.exportModalOverlay} onClick={closeImageExport}>
@@ -6100,13 +6816,32 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
             </div>
 
             <form className={styles.exportModalForm} onSubmit={handleImageExportSubmit}>
-              <div className={styles.exportMetaRow}>
-                <span>Original: {exportModal.image.originalWidth || '—'}px × {exportModal.image.originalHeight || '—'}px</span>
-                <span>Formato: {(exportModal.image.format || 'desconocido').toUpperCase()}</span>
-              </div>
+              {exportModal.mode === 'bulk' ? (
+                <>
+                  <div className={styles.exportPreviewGrid}>
+                    {exportModal.images.slice(0, 6).map((item) => (
+                      <img key={item.key} className={styles.exportPreviewThumb} src={item.image.src} alt="" />
+                    ))}
+                  </div>
+                  <div className={styles.exportMetaRow}>
+                    <span>{exportModal.images.length} imágenes seleccionadas</span>
+                    <span>Formato: {(exportModal.format || 'webp').toUpperCase()}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={styles.exportPreviewWrap}>
+                    <img className={styles.exportPreviewImage} src={exportModal.image.src} alt="" />
+                  </div>
+                  <div className={styles.exportMetaRow}>
+                    <span>Original: {exportModal.image.originalWidth || '—'}px × {exportModal.image.originalHeight || '—'}px</span>
+                    <span>Formato: {(exportModal.image.format || 'desconocido').toUpperCase()}</span>
+                  </div>
+                </>
+              )}
 
               <label className={styles.exportField}>
-                <span>Nombre de archivo</span>
+                <span>{exportModal.mode === 'bulk' ? 'Base del nombre' : 'Nombre de archivo'}</span>
                 <input
                   className={styles.exportInput}
                   type="text"
@@ -6114,30 +6849,36 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
                   onChange={(event) => updateExportField('fileName', event.target.value)}
                   placeholder="nombre-de-foto"
                 />
-                <small className={styles.exportHint}>{slugifyExportFileName(exportModal.fileName || 'image')}.{exportModal.format}</small>
               </label>
 
               <div className={styles.exportFieldGrid}>
                 <label className={styles.exportField}>
-                  <span>Ancho</span>
+                  <span>{exportModal.mode === 'bulk' ? 'Máx. ancho' : 'Ancho'}</span>
                   <input
                     className={styles.exportInput}
                     type="number"
                     min="1"
-                    value={exportModal.width}
-                    onChange={(event) => updateExportField('width', event.target.value)}
+                    value={exportModal.mode === 'bulk' ? exportModal.maxWidth : exportModal.width}
+                    onChange={(event) => updateExportField(exportModal.mode === 'bulk' ? 'maxWidth' : 'width', event.target.value)}
                   />
                 </label>
-                <label className={styles.exportField}>
-                  <span>Alto</span>
-                  <input
-                    className={styles.exportInput}
-                    type="number"
-                    min="1"
-                    value={exportModal.height}
-                    onChange={(event) => updateExportField('height', event.target.value)}
-                  />
-                </label>
+                {exportModal.mode === 'bulk' ? (
+                  <div className={styles.exportField}>
+                    <span>Salida</span>
+                    <div className={styles.exportStaticValue}>{slugifyExportFileName(exportModal.fileName || 'image')}.zip</div>
+                  </div>
+                ) : (
+                  <label className={styles.exportField}>
+                    <span>Alto</span>
+                    <input
+                      className={styles.exportInput}
+                      type="number"
+                      min="1"
+                      value={exportModal.height}
+                      onChange={(event) => updateExportField('height', event.target.value)}
+                    />
+                  </label>
+                )}
               </div>
 
               <div className={styles.exportFieldGrid}>
@@ -6149,13 +6890,17 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience }) {
                     <option value="png">PNG</option>
                   </select>
                 </label>
-                <label className={styles.exportField}>
-                  <span>Ajuste</span>
-                  <select className={styles.exportInput} value={exportModal.fit} onChange={(event) => updateExportField('fit', event.target.value)}>
-                    <option value="at_max">Mantener dentro</option>
-                    <option value="fill">Recortar para encajar</option>
-                  </select>
-                </label>
+                {exportModal.mode === 'bulk' ? (
+                  <div className={styles.exportField}>
+                    <span>Numeración</span>
+                    <div className={styles.exportStaticValue}>{slugifyExportFileName(exportModal.fileName || 'image')}-1</div>
+                  </div>
+                ) : (
+                  <div className={styles.exportField}>
+                    <span>Tamaño exportado</span>
+                    <div className={styles.exportStaticValue}>{Number(exportModal.width) || '—'}px × {Number(exportModal.height) || '—'}px</div>
+                  </div>
+                )}
               </div>
 
               <label className={styles.exportField}>
@@ -6195,11 +6940,13 @@ function PreviewPanel({ page }) {
           Exportar PDF
         </button>
       </div>
-      <article
-        data-preview-page=""
-        className={styles.previewPage}
-        dangerouslySetInnerHTML={{ __html: page?.fullContent || buildDocumentHTML(page?.sections || []) }}
-      />
+      <div className={styles.previewScroll}>
+        <article
+          data-preview-page=""
+          className={styles.previewPage}
+          dangerouslySetInnerHTML={{ __html: page?.fullContent || buildDocumentHTML(page?.sections || []) }}
+        />
+      </div>
     </div>
   )
 }

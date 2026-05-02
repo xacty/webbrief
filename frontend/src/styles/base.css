@@ -105,25 +105,25 @@ a {
   text-decoration: underline;
 }
 
-:where([class*="editorScrollArea"], [class*="sectionList"], [class*="rightPanelScroll"]) {
+* {
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.72) transparent;
 }
 
-:where([class*="editorScrollArea"], [class*="sectionList"], [class*="rightPanelScroll"])::-webkit-scrollbar {
+*::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-:where([class*="editorScrollArea"], [class*="sectionList"], [class*="rightPanelScroll"])::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:where([class*="editorScrollArea"], [class*="sectionList"], [class*="rightPanelScroll"])::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.78);
   border-radius: 999px;
 }
 
-:where([class*="editorScrollArea"], [class*="sectionList"], [class*="rightPanelScroll"])::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.9);
 }

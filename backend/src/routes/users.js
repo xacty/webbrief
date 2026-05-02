@@ -612,9 +612,12 @@ router.get('/:id/avatar/export', async (req, res) => {
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
     const buffer = Buffer.from(await upstream.arrayBuffer())
 
-    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Type', 'application/octet-stream')
+    res.setHeader('X-Original-Content-Type', contentType)
     res.setHeader('Content-Length', String(buffer.byteLength))
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+    res.setHeader('Content-Transfer-Encoding', 'binary')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Cache-Control', 'private, max-age=3600')
     return res.status(200).send(buffer)
   } catch (error) {
