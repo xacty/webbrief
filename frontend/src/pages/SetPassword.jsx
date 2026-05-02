@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { supabase } from '../lib/supabase'
 import styles from './AuthPage.module.css'
@@ -12,6 +13,7 @@ export default function SetPassword() {
   // 'loading' → waiting for invite token | 'ready' → session active | 'expired' → no session after timeout
   const [status, setStatus] = useState('loading')
   const [submitting, setSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -122,28 +124,40 @@ export default function SetPassword() {
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="new-password">Nueva contraseña</label>
-            <input
-              id="new-password"
-              className={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
+            <div className={styles.passwordWrap}>
+              <input
+                id="new-password"
+                className={styles.input}
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                className={styles.eyeBtn}
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className={styles.field}>
             <label className={styles.label} htmlFor="confirm-password">Confirmar contraseña</label>
-            <input
-              id="confirm-password"
-              className={styles.input}
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
+            <div className={styles.passwordWrap}>
+              <input
+                id="confirm-password"
+                className={styles.input}
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </div>
           </div>
 
           {error && <p className={styles.error}>{error}</p>}

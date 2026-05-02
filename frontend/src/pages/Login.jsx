@@ -1,5 +1,6 @@
 // Pantalla de inicio de sesión del diseñador
 import { useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -12,6 +13,7 @@ export default function Login() {
   const [feedback, setFeedback] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [resetMode, setResetMode] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const navigate = useNavigate()
   const { signIn } = useAuth()
 
@@ -87,14 +89,24 @@ export default function Login() {
           {!resetMode && (
             <div className={styles.field}>
               <label className={styles.label} htmlFor="login-password">Contraseña</label>
-              <input
-                id="login-password"
-                className={styles.input}
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className={styles.passwordWrap}>
+                <input
+                  id="login-password"
+                  className={styles.input}
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className={styles.eyeBtn}
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
           )}
 

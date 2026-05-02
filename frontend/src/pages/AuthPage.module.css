@@ -54,6 +54,33 @@
   font-weight: 600;
 }
 
+.passwordWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordWrap .input {
+  padding-right: 42px;
+}
+
+.eyeBtn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  padding: 4px;
+  color: var(--wb-text-muted, #64748b);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.eyeBtn:hover {
+  color: var(--wb-text);
+}
+
 .input {
   width: 100%;
   border: 1px solid var(--wb-border);
