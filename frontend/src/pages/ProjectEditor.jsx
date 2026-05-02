@@ -6274,7 +6274,7 @@ function HandoffSeoSection({ seoMetadata = {} }) {
   if (!hasAny) return null
 
   return (
-    <div className={styles.handoffSeoSection}>
+    <div className={styles.handoffSeoSection} data-seo-tray>
       <div className={styles.handoffSeoHeader}>
         <span className={styles.handoffSeoTitle}>SEO metadata</span>
         {copied && <span className={styles.handoffSeoCopied}>{copied} copiado</span>}
@@ -6534,7 +6534,9 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
       programmaticScrollRafRef.current = null
     }
 
-    if (scrollRequest.type === 'section') {
+    if (scrollRequest.type === 'seo') {
+      targetEl = content.querySelector('[data-seo-tray]')
+    } else if (scrollRequest.type === 'section') {
       targetEl = content.querySelector(`[data-handoff-section-id="${scrollRequest.sectionId}"]`)
     } else if (scrollRequest.type === 'heading') {
       const inSection = getContentHeadingNodes(content, { sectionId: scrollRequest.sectionId })
