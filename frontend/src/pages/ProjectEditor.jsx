@@ -7786,14 +7786,16 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
             </button>
           )}
         </div>
-        <button
-          type="button"
-          className={cx(panelStyles.activityGroupChevron, expanded && panelStyles.activityGroupChevronOpen)}
-          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
-          aria-label={expanded ? 'Colapsar historial' : 'Ver historial'}
-        >
-          <ChevronDown size={12} />
-        </button>
+        {detailEntries.length > 1 && (
+          <button
+            type="button"
+            className={cx(panelStyles.activityGroupChevron, expanded && panelStyles.activityGroupChevronOpen)}
+            onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
+            aria-label={expanded ? 'Colapsar historial' : 'Ver historial'}
+          >
+            <ChevronDown size={12} />
+          </button>
+        )}
       </div>
       {expanded && detailEntries.length > 0 && (
         <ul className={panelStyles.activityGroupHistory}>
