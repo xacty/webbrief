@@ -291,3 +291,124 @@
   line-height: 16px;
   text-align: center;
 }
+
+.notifWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.notifDropdown {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: -8px;
+  width: 360px;
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-surface, #fff);
+  border: 1px solid var(--wb-border, #e2e8f0);
+  border-radius: var(--wb-radius-lg, 12px);
+  box-shadow: var(--wb-shadow-lg, 0 12px 32px rgba(15, 23, 42, 0.12));
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.notifHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--wb-border, #e2e8f0);
+}
+
+.notifHeaderTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wb-text, #0f172a);
+}
+
+.notifMarkAll {
+  border: none;
+  background: transparent;
+  color: var(--wb-text-muted, #64748b);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.notifMarkAll:hover {
+  color: var(--wb-text, #0f172a);
+  background: var(--wb-bg, #f8fafc);
+}
+
+.notifEmpty {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--wb-text-muted, #64748b);
+  font-size: 13px;
+}
+
+.notifList {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.notifItem {
+  margin: 0;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.notifItem + .notifItem {
+  margin-top: 2px;
+}
+
+.notifItemBtn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.notifItemBtn:hover {
+  background: var(--wb-bg, #f8fafc);
+}
+
+.notifItemUnread .notifItemBtn {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.notifItemUnread .notifItemBtn:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.notifTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wb-text, #0f172a);
+  line-height: 1.35;
+}
+
+.notifBody {
+  font-size: 12px;
+  color: var(--wb-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.notifMeta {
+  font-size: 11px;
+  color: var(--wb-text-muted, #94a3b8);
+  margin-top: 2px;
+}

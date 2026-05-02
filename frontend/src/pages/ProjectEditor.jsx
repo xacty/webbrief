@@ -2963,6 +2963,32 @@ export default function ProjectEditor() {
     }
   }
 
+  // Notifications dropdown reads from project_activity (same table) but filtered to non-content events.
+  const notificationActivity = useMemo(() => (
+    activity.filter((item) => (
+      item.eventType !== 'section_edited' && item.eventType !== 'asset_uploaded'
+    ))
+  ), [activity])
+
+  const markAllNotificationsRead = useCallback(async () => {
+    const unread = notificationActivity.filter((item) => !item.metadata?.readAt)
+    if (unread.length === 0) return
+    await Promise.allSettled(
+      unread.map(async (item) => {
+        try {
+          const data = await apiFetch(`/api/projects/${projectId}/activity/${item.id}/read`, {
+            method: 'PATCH',
+          })
+          setActivity((current) => current.map((row) => (
+            row.id === item.id ? data.activity : row
+          )))
+        } catch (error) {
+          console.error('No se pudo marcar la notificación', error)
+        }
+      })
+    )
+  }, [notificationActivity, projectId])
+
   // ── Scroll manual detectó un nuevo heading en el trigger point ──
   const handleScrollHeadingChange = useCallback(({ sectionId, headingIndex }) => {
     setActiveSectionId(sectionId)
@@ -3345,7 +3371,7 @@ export default function ProjectEditor() {
         saveMessage={saveMessage}
         isDirty={isDirty}
         isSaving={isSaving}
-        pendingCount={notifications.filter((item) => !item.readAt).length}
+        notifications={notificationActivity}
         canManagePages={canEditProjectStructure}
         canRenameProject={canManageProjectMeta}
         canSave={canWriteContent}
@@ -3358,6 +3384,8 @@ export default function ProjectEditor() {
         onBack={() => navigate(projectMeta?.companyId ? `/companies/${projectMeta.companyId}` : '/companies')}
         onSave={handleSave}
         onRefreshNotifications={loadSidePanelData}
+        onMarkNotificationRead={markActivityRead}
+        onMarkAllNotificationsRead={markAllNotificationsRead}
         onSettings={() => navigate('/settings')}
         openMenuId={openMenuId}
         onSetOpenMenuId={setOpenMenuId}
@@ -3487,7 +3515,6 @@ export default function ProjectEditor() {
         {/* Sidebar derecho: actualizaciones del documento */}
         <UpdatesPanel
           activity={activity}
-          notifications={notifications}
           deliverables={deliverables}
           sections={derivedSections}
           activePage={activePage}
@@ -3540,6 +3567,96 @@ export default function ProjectEditor() {
 // ---------------------------------------------------------------------------
 // Navbar — 3 columnas: [logo + undo/redo] | [pills] | [iconos + save]
 // ---------------------------------------------------------------------------
+function NotificationsBell({ notifications = [], onMarkRead, onMarkAllRead, onRefresh }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    function handleDocClick(event) {
+      if (!wrapRef.current?.contains(event.target)) setOpen(false)
+    }
+    function handleEsc(event) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', handleDocClick)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleDocClick)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [open])
+
+  const isUnread = (item) => !item.metadata?.readAt && !item.readAt
+  const unread = notifications.filter(isUnread)
+  const unreadCount = unread.length
+
+  function handleToggle() {
+    setOpen((current) => {
+      const next = !current
+      if (next) onRefresh?.()
+      return next
+    })
+  }
+
+  function handleItemClick(item) {
+    if (isUnread(item) && onMarkRead) onMarkRead(item.id)
+  }
+
+  return (
+    <div ref={wrapRef} className={navStyles.notifWrap}>
+      <button
+        type="button"
+        className={navStyles.navIconBtn}
+        onClick={handleToggle}
+        title={unreadCount > 0 ? `${unreadCount} notificaciones sin leer` : 'Notificaciones'}
+      >
+        <Bell size={20} color="#2a2a2a" />
+        {unreadCount > 0 && <span className={navStyles.navBadge}>{unreadCount}</span>}
+      </button>
+
+      {open && (
+        <div className={navStyles.notifDropdown} role="menu">
+          <div className={navStyles.notifHeader}>
+            <span className={navStyles.notifHeaderTitle}>Notificaciones</span>
+            {unreadCount > 0 && (
+              <button type="button" className={navStyles.notifMarkAll} onClick={onMarkAllRead}>
+                Marcar todas
+              </button>
+            )}
+          </div>
+          {notifications.length === 0 ? (
+            <p className={navStyles.notifEmpty}>Sin notificaciones por ahora.</p>
+          ) : (
+            <ul className={navStyles.notifList}>
+              {notifications.slice(0, 20).map((item) => (
+                <li
+                  key={item.id}
+                  className={cx(navStyles.notifItem, isUnread(item) && navStyles.notifItemUnread)}
+                >
+                  <button
+                    type="button"
+                    className={navStyles.notifItemBtn}
+                    onClick={() => handleItemClick(item)}
+                  >
+                    <span className={navStyles.notifTitle}>{item.title}</span>
+                    {(item.body || item.description) && (
+                      <span className={navStyles.notifBody}>{item.body || item.description}</span>
+                    )}
+                    <span className={navStyles.notifMeta}>
+                      {item.actorLabel ? `${item.actorLabel} · ` : ''}{formatPanelDate(item.createdAt)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Navbar({
   pages,
   activePageId,
@@ -3548,7 +3665,7 @@ function Navbar({
   saveMessage,
   isDirty,
   isSaving,
-  pendingCount = 0,
+  notifications = [],
   canManagePages = true,
   canRenameProject = true,
   canSave = true,
@@ -3561,6 +3678,8 @@ function Navbar({
   onBack,
   onSave,
   onRefreshNotifications,
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
   onSettings,
   openMenuId,
   onSetOpenMenuId,
@@ -3619,10 +3738,12 @@ function Navbar({
           <button className={navStyles.navIconBtn} title="Ajustes de cuenta" onClick={onSettings}>
             <User size={20} color="#2a2a2a" />
           </button>
-          <button className={navStyles.navIconBtn} title={pendingCount > 0 ? `${pendingCount} notificaciones pendientes` : 'Actualizar notificaciones'} onClick={onRefreshNotifications}>
-            <Bell size={20} color="#2a2a2a" />
-            {pendingCount > 0 && <span className={navStyles.navBadge}>{pendingCount}</span>}
-          </button>
+          <NotificationsBell
+            notifications={notifications}
+            onMarkRead={onMarkNotificationRead}
+            onMarkAllRead={onMarkAllNotificationsRead}
+            onRefresh={onRefreshNotifications}
+          />
         </div>
       </div>
 
@@ -7282,7 +7403,6 @@ function deliverableStatusLabel(status) {
 
 function UpdatesPanel({
   activity = [],
-  notifications = [],
   deliverables = [],
   sections = [],
   activePage = null,
@@ -7311,7 +7431,6 @@ function UpdatesPanel({
   const [deliverableTitle, setDeliverableTitle] = useState('')
   const [deliverableServiceType, setDeliverableServiceType] = useState('otro')
   const [deliverableSubmitting, setDeliverableSubmitting] = useState(false)
-  const pending = notifications.filter((item) => !item.readAt)
   const sectionOrder = useMemo(() => (
     new Map(sections.map((section, index) => [section.id, index]))
   ), [sections])
@@ -7342,8 +7461,10 @@ function UpdatesPanel({
     })
     return Array.from(groups.values())
   }, [sectionActivity, sections])
+  // Only document-content events stay in the activity panel.
+  // Everything else lives in the notifications dropdown (navbar bell).
   const generalActivity = useMemo(() => (
-    activity.filter((item) => item.eventType !== 'section_edited')
+    activity.filter((item) => item.eventType === 'asset_uploaded')
   ), [activity])
   const hasActivity = groupedSectionActivity.length > 0 || generalActivity.length > 0
   const pendingProposal = activePage?.pendingProposal || null
@@ -7377,14 +7498,6 @@ function UpdatesPanel({
       <div className={cx(panelStyles.rightPanelScroll, projectType === 'document' && panelStyles.rightPanelScrollWithDock)}>
         {error && <p className={panelStyles.updatesError}>{error}</p>}
         {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
-        {pending.length > 0 && (
-          <div className={panelStyles.pendingBox}>
-            <span className={panelStyles.pendingTitle}>Pendientes</span>
-            {pending.slice(0, 4).map((item) => (
-              <p key={item.id} className={panelStyles.pendingItem}>{item.title}</p>
-            ))}
-          </div>
-        )}
         {pendingProposal && (
           <div className={panelStyles.proposalBox}>
             <div className={panelStyles.proposalHeader}>
