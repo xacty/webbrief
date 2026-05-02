@@ -70,7 +70,9 @@ export default function SetPassword() {
       const { error: updateError } = await supabase.auth.updateUser({ password })
       if (updateError) throw updateError
 
-      await refreshUser()
+      // Get the fresh session explicitly — don't rely on context which may lag behind USER_UPDATED event
+      const { data: sessionData } = await supabase.auth.getSession()
+      await refreshUser(sessionData.session, { force: true })
       navigate('/companies')
     } catch (err) {
       setError(err.message || 'No se pudo guardar la contraseña')
