@@ -1101,16 +1101,11 @@ router.put('/:id/pages', async (req, res) => {
       return res.status(500).json({ error: projectUpdateError.message })
     }
 
-    const reviewReadyPageIds = new Set(payload
-      .filter((page) => ['ready_for_review', 'approved', 'changes_requested'].includes(page.review_status))
-      .map((page) => page.id))
-    const reviewSectionEvents = sectionEvents.filter((event) => reviewReadyPageIds.has(event.pageId))
-
-    if (reviewSectionEvents.length > 0) {
+    if (sectionEvents.length > 0) {
       await recordSectionEditActivities({
         projectId: project.id,
         currentUser: req.currentUser,
-        sectionEvents: reviewSectionEvents,
+        sectionEvents,
       })
     }
 
@@ -1791,7 +1786,7 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
       subjectId: asset.id,
       title: isSvg ? 'SVG adjuntado' : 'Imagen subida',
       description: asset.file_name,
-      metadata: { mimeType: asset.mime_type, renderInline: asset.render_inline },
+      metadata: { mimeType: asset.mime_type, renderInline: asset.render_inline, sectionId: req.body.sectionId || null },
     })
 
     return res.status(201).json({

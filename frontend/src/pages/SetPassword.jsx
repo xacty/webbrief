@@ -9,23 +9,44 @@ export default function SetPassword() {
   const { refreshUser } = useAuth()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [ready, setReady] = useState(false)
+  // 'loading' → waiting for invite token | 'ready' → session active | 'expired' → no session after timeout
+  const [status, setStatus] = useState('loading')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     let active = true
+    let expiredTimer = null
 
-    async function checkSession() {
-      const { data } = await supabase.auth.getSession()
+    // Listen for the SIGNED_IN event fired when Supabase processes the invite/reset
+    // token from the URL hash (#access_token=…&type=invite)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return
-      setReady(Boolean(data.session))
-    }
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session) {
+        clearTimeout(expiredTimer)
+        setStatus('ready')
+      }
+    })
 
-    checkSession()
+    // Also check for an already-active session (page refresh after partial flow)
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return
+      if (data.session) {
+        clearTimeout(expiredTimer)
+        setStatus('ready')
+      }
+    })
+
+    // If no session arrives in 5 s, show the expired/invalid message
+    expiredTimer = window.setTimeout(() => {
+      if (!active) return
+      setStatus((current) => (current === 'loading' ? 'expired' : current))
+    }, 5000)
 
     return () => {
       active = false
+      clearTimeout(expiredTimer)
+      subscription.unsubscribe()
     }
   }, [])
 
@@ -50,7 +71,7 @@ export default function SetPassword() {
       if (updateError) throw updateError
 
       await refreshUser()
-      navigate('/dashboard')
+      navigate('/companies')
     } catch (err) {
       setError(err.message || 'No se pudo guardar la contraseña')
     } finally {
@@ -58,13 +79,42 @@ export default function SetPassword() {
     }
   }
 
+  if (status === 'loading') {
+    return (
+      <div className={styles.page}>
+        <div className={styles.card}>
+          <h1 className={styles.title}>WeBrief</h1>
+          <p className={styles.help}>Verificando enlace de invitación…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'expired') {
+    return (
+      <div className={styles.page}>
+        <div className={styles.card}>
+          <h1 className={styles.title}>WeBrief</h1>
+          <h2 className={styles.subtitle}>Enlace no válido</h2>
+          <p className={styles.help}>
+            El enlace de invitación expiró o ya fue usado. Contacta a tu administrador para
+            recibir una nueva invitación.
+          </p>
+          <a href="/login" className={styles.button} style={{ display: 'block', textAlign: 'center' }}>
+            Ir al inicio de sesión
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.card}>
         <h1 className={styles.title}>WeBrief</h1>
-        <h2 className={styles.subtitle}>Configura tu contraseña</h2>
+        <h2 className={styles.subtitle}>Crea tu contraseña</h2>
         <p className={styles.help}>
-          Abre esta página desde el enlace de invitación o recuperación. Cuando Supabase cree una sesión temporal podrás fijar aquí tu contraseña final.
+          Elige una contraseña segura para acceder a WeBrief.
         </p>
 
         <form className={styles.form} onSubmit={handleSubmit}>
@@ -76,6 +126,7 @@ export default function SetPassword() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
               required
             />
           </div>
@@ -88,14 +139,15 @@ export default function SetPassword() {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
               required
             />
           </div>
 
           {error && <p className={styles.error}>{error}</p>}
 
-          <button className={styles.button} type="submit" disabled={!ready || submitting}>
-            {submitting ? 'Guardando...' : 'Guardar contraseña'}
+          <button className={styles.button} type="submit" disabled={submitting}>
+            {submitting ? 'Guardando…' : 'Guardar contraseña'}
           </button>
         </form>
       </div>
