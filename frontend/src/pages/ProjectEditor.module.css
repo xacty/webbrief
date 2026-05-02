@@ -947,6 +947,83 @@
   margin-bottom: 1000px;
 }
 
+.handoffSeoSection {
+  max-width: 920px;
+  margin: 18px auto 0;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.handoffSeoHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.handoffSeoTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2a2a2a;
+  flex: 1;
+}
+
+.handoffSeoCopied {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.handoffSeoRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.handoffSeoRow:last-child {
+  border-bottom: none;
+}
+
+.handoffSeoLabel {
+  flex-shrink: 0;
+  width: 130px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.handoffSeoValue {
+  flex: 1;
+  font-size: 13px;
+  color: #1a1a1a;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.handoffSeoBtn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.handoffSeoBtn:hover {
+  color: #475569;
+  background: #f1f5f9;
+}
+
 .handoffSection {
   max-width: 920px;
   margin: 0 auto 18px;

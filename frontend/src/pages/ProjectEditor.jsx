@@ -6259,6 +6259,57 @@ async function copyRich({ text, html }) {
   await navigator.clipboard.writeText(text)
 }
 
+function HandoffSeoSection({ seoMetadata = {} }) {
+  const [copied, setCopied] = useState('')
+  const { titleTag = '', metaDescription = '', urlSlug = '' } = seoMetadata
+
+  async function copyField(label, value) {
+    if (!value) return
+    await navigator.clipboard.writeText(value)
+    setCopied(label)
+    window.setTimeout(() => setCopied(''), 1500)
+  }
+
+  const hasAny = titleTag || metaDescription || urlSlug
+  if (!hasAny) return null
+
+  return (
+    <div className={styles.handoffSeoSection}>
+      <div className={styles.handoffSeoHeader}>
+        <span className={styles.handoffSeoTitle}>SEO metadata</span>
+        {copied && <span className={styles.handoffSeoCopied}>{copied} copiado</span>}
+      </div>
+      {titleTag && (
+        <div className={styles.handoffSeoRow}>
+          <span className={styles.handoffSeoLabel}>Title tag</span>
+          <span className={styles.handoffSeoValue}>{titleTag}</span>
+          <button type="button" className={styles.handoffSeoBtn} onClick={() => copyField('Title tag', titleTag)}>
+            <Copy size={12} />
+          </button>
+        </div>
+      )}
+      {metaDescription && (
+        <div className={styles.handoffSeoRow}>
+          <span className={styles.handoffSeoLabel}>Meta description</span>
+          <span className={styles.handoffSeoValue}>{metaDescription}</span>
+          <button type="button" className={styles.handoffSeoBtn} onClick={() => copyField('Meta description', metaDescription)}>
+            <Copy size={12} />
+          </button>
+        </div>
+      )}
+      {urlSlug && (
+        <div className={styles.handoffSeoRow}>
+          <span className={styles.handoffSeoLabel}>URL slug</span>
+          <span className={styles.handoffSeoValue}>{urlSlug}</span>
+          <button type="button" className={styles.handoffSeoBtn} onClick={() => copyField('URL slug', urlSlug)}>
+            <Copy size={12} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollRequest, flashRequest, onScrollHeadingChange, selectedActivityId = null }) {
   const [copied, setCopied] = useState('')
   const [exportModal, setExportModal] = useState(null)
@@ -6854,6 +6905,10 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
           )
         })}
         </div>
+
+        {audience === 'dev' && (
+          <HandoffSeoSection seoMetadata={page?.seoMetadata} />
+        )}
       </div>
 
       {imageContextMenu && (
