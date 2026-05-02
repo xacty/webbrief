@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-02
+- Updated: 2026-05-02 (session 2)
 
 ## Targets
 
@@ -43,8 +43,10 @@
 - Editor is TipTap with 3 columns: sections panel | canvas | updates panel
 - Editor modes: `Brief`, `Handoff`, `Preview`
 - Handoff is copy-safe: semantic labels/actions live in gutters, not inside selectable text
-- Editor activity uses section-level events: autosave records `section_edited` for ALL page states (draft, review, approved); canvas markers and right activity items are linked; `asset_uploaded` stores `sectionId` in metadata so click-to-scroll works
-- Right activity panel shows a grouped view: one collapsed row per section ordered by document position, expandable history dropdown per section; click navigates + yellow flash (#fef9c3) after scroll settles; lifecycle events (project_created, page_ready_for_review, share_link_created, etc.) are filtered out
+- Editor activity uses section-level events: autosave records `section_edited` for ALL page states; `asset_uploaded` stores `sectionId`; click-to-scroll works across all modes
+- Granular section change events: `title_changed` (h1-h6), `text_changed` (body), `image_added/changed/removed`, `section_added/removed/renamed/moved`, `cta_*`, `table_changed`; backend accumulates `metadata.history[]` (cap 50) per row so each row has full per-save audit trail
+- Right activity panel shows only document-content events (`section_edited` + `asset_uploaded`); one collapsed row per section ordered by document position; click navigates + yellow flash; "Ver detalle (N)" button expands `metadata.history` with per-entry timestamp + actor; same row updates in-place until marked read
+- Navbar bell icon opens a notifications dropdown sourced from the same `project_activity` table, filtered to non-content events (project lifecycle, deliverables, share links, designer proposals, client actions); per-item and bulk mark-as-read via existing `/activity/:id/read` endpoint
 - Page review flow: pages start `draft`; `Enviar a revisión` creates `project_page_versions` baseline and switches page to `ready_for_review`
 - Editor top navbar is reserved for logo/undo/page pills/profile; mode, handoff audience, review status/action, save status/action live in a bottom floating editor bar
 - Backend: Express + Supabase Postgres/Auth
@@ -123,7 +125,10 @@
   - `keep`: all editor invariants
   - `watch`: add/delete/rename/hydration
 - `target=editor.updates-panel`
-  - `keep`: grouped section activity (one row per section, expandable history), compact deliverables, share-link action, internal scroll, bottom-docked content-rules card for document projects; click activity scrolls to section with yellow flash; lifecycle events excluded
+  - `keep`: grouped section activity (one row per section, expandable "Ver detalle" history), compact deliverables, share-link action, internal scroll, bottom-docked content-rules card for document projects; click activity scrolls to section with yellow flash; only section_edited + asset_uploaded events here
+- `target=editor.navbar`
+  - `keep`: logo, back, page pills, save status/button, user icon, bell notifications dropdown
+  - `watch`: bell dropdown reads non-content events from project_activity; mark-as-read uses metadata.readAt
 - `target=editor.handoff`
   - `keep`: copy-safe central content; labels/actions outside selectable text
 - `target=share`
@@ -250,9 +255,17 @@
 - lifecycle events (project_created, page_ready_for_review, share_link_created, deliverable_created, designer_proposal_*) excluded from content activity panel
 - Handoff and Preview panels now support scroll-to-section and yellow flash via `scrollRequest`/`flashRequest` props
 - invite flow fixed: `SetPassword.jsx` now uses `onAuthStateChange` to detect invite token from URL hash; added loading/expired states; backend warns if `FRONTEND_URL` is localhost in production
+- auth bootstrap now uses `INITIAL_SESSION` event (from localStorage, no network) instead of `getSession()`; eliminates 1-3 s reload delay; 800 ms safety-net timer as fallback
+- password visibility toggle (Eye/EyeOff from lucide-react) added to both Login and SetPassword pages
+- Resend SMTP configured for custom email from `noreply@webrief.app`; invite email is Spanish-language, WeBrief-branded single-CTA; SPF updated to include `include:amazonses.com`
+- SEO metadata section added to dev handoff panel (read-only, copy buttons per field); rendered at top of handoff content when `audience === 'dev'`; clicking "SEO metadata" in sections panel scrolls to `[data-seo-tray]` element
+- activity panel refactored: only `section_edited` + `asset_uploaded` shown; all lifecycle events moved to navbar bell notifications dropdown; pendingBox removed from updates panel
+- granular section events: `title_changed` (headings, separate from body), `text_changed` (body text), `image_changed` (same count, different src); backend `metadata.history[]` accumulates per-save entries (cap 50) for "Ver detalle" expansion
 
 ## Pending
 
 - richer deliverables UI beyond compact editor panel
-- notification read/unread UI actions
+- SEO changes (`seo_changed` event) as granular activity for page + article projects
+- document-type activity (article has no sections — needs global change tracking or single-section treatment)
+- FAQ activity: verify each Q+A section tracked correctly
 - Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.
