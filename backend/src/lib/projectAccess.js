@@ -145,13 +145,15 @@ export function actorLabel(currentUser) {
 function sectionChangeLabel(changeType) {
   const labels = {
     text_changed: 'Cambió texto',
+    title_changed: 'Cambió título',
     cta_added: 'Agregó CTA',
     cta_removed: 'Eliminó CTA',
     cta_changed: 'Cambió CTA',
     image_added: 'Agregó imagen',
+    image_changed: 'Cambió imagen',
     image_removed: 'Eliminó imagen',
     table_changed: 'Cambió tabla',
-    section_moved: 'Se movió de posición',
+    section_moved: 'Movió la sección',
     section_added: 'Agregó sección',
     section_removed: 'Eliminó sección',
     section_renamed: 'Renombró sección',
@@ -306,6 +308,18 @@ export async function recordSectionEditActivities({ projectId, currentUser, sect
           && metadata.sectionId === event.sectionId
           && !metadata.readAt
       })
+
+      // Append the current edit to a per-row history so "Ver detalle" can show every change with timestamp + actor.
+      const previousHistory = Array.isArray(match?.metadata?.history) ? match.metadata.history : []
+      const historyEntry = {
+        changeTypes: event.changeTypes,
+        actorId: currentUser?.id || null,
+        actorLabel: actor,
+        at: timestamp,
+      }
+      // Cap history to the most recent 50 entries.
+      const nextHistory = [historyEntry, ...previousHistory].slice(0, 50)
+
       const metadata = {
         ...(match?.metadata || {}),
         pageId: event.pageId,
@@ -316,6 +330,7 @@ export async function recordSectionEditActivities({ projectId, currentUser, sect
         previousIndex: event.previousIndex,
         nextIndex: event.nextIndex,
         source: 'autosave',
+        history: nextHistory,
       }
       delete metadata.readAt
       delete metadata.readBy

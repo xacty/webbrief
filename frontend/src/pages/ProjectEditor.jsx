@@ -1686,16 +1686,20 @@ function normalizeHtmlForCompare(html) {
   return root.innerHTML.replace(/\s+/g, ' ').trim()
 }
 
+const EMPTY_SECTION_STATS = {
+  text: '',
+  textBody: '',
+  headingSignature: '',
+  ctaCount: 0,
+  ctaSignature: '',
+  imageCount: 0,
+  imageSignature: '',
+  tableSignature: '',
+}
+
 function getSectionStats(html) {
   if (!html || typeof DOMParser === 'undefined') {
-    return {
-      text: '',
-      ctaCount: 0,
-      ctaSignature: '',
-      imageCount: 0,
-      imageSignature: '',
-      tableSignature: '',
-    }
+    return { ...EMPTY_SECTION_STATS }
   }
 
   const parser = new DOMParser()
@@ -1703,23 +1707,28 @@ function getSectionStats(html) {
   const root = doc.getElementById('root')
   if (!root) {
     return {
+      ...EMPTY_SECTION_STATS,
       text: String(html).replace(/\s+/g, ' ').trim(),
-      ctaCount: 0,
-      ctaSignature: '',
-      imageCount: 0,
-      imageSignature: '',
-      tableSignature: '',
     }
   }
 
+  const fullText = root.textContent?.replace(/\s+/g, ' ').trim() || ''
+  const headings = Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+    .map((node) => `${node.tagName.toLowerCase()}|${node.textContent?.replace(/\s+/g, ' ').trim() || ''}`)
   const ctas = Array.from(root.querySelectorAll('[data-cta-button]')).map((node) => (
     `${node.getAttribute('data-cta-text') || ''}|${node.getAttribute('data-cta-url') || ''}`
   ))
   const images = Array.from(root.querySelectorAll('img')).map((node) => node.getAttribute('src') || '')
   const tables = Array.from(root.querySelectorAll('table')).map((node) => node.textContent?.replace(/\s+/g, ' ').trim() || '')
 
+  // Body text excludes heading text so heading edits and body edits are distinguished.
+  root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((node) => node.remove())
+  const bodyText = root.textContent?.replace(/\s+/g, ' ').trim() || ''
+
   return {
-    text: root.textContent?.replace(/\s+/g, ' ').trim() || '',
+    text: fullText,
+    textBody: bodyText,
+    headingSignature: headings.join('||'),
     ctaCount: ctas.length,
     ctaSignature: ctas.join('||'),
     imageCount: images.length,
@@ -1758,7 +1767,13 @@ function summarizeSectionChanges(previousSection, nextSection, previousIndex, ne
   const previousStats = getSectionStats(previousSection.content)
   const nextStats = getSectionStats(nextSection.content)
 
-  if (previousStats.text !== nextStats.text) changes.add('text_changed')
+  // Heading edits emit their own event so the activity feed can distinguish them from body text.
+  if (previousStats.headingSignature !== nextStats.headingSignature) {
+    changes.add('title_changed')
+  }
+  if (previousStats.textBody !== nextStats.textBody) {
+    changes.add('text_changed')
+  }
 
   if (nextStats.ctaCount > previousStats.ctaCount) changes.add('cta_added')
   if (nextStats.ctaCount < previousStats.ctaCount) changes.add('cta_removed')
@@ -1775,7 +1790,7 @@ function summarizeSectionChanges(previousSection, nextSection, previousIndex, ne
     nextStats.imageCount === previousStats.imageCount &&
     nextStats.imageSignature !== previousStats.imageSignature
   ) {
-    changes.add('image_added')
+    changes.add('image_changed')
   }
 
   if (nextStats.tableSignature !== previousStats.tableSignature) changes.add('table_changed')
@@ -1839,13 +1854,15 @@ function isUnreadSectionActivity(item) {
 function formatActivityChangeTypes(changeTypes = []) {
   const labels = {
     text_changed: 'Cambió texto',
+    title_changed: 'Cambió título',
     cta_added: 'Agregó CTA',
     cta_removed: 'Eliminó CTA',
     cta_changed: 'Cambió CTA',
     image_added: 'Agregó imagen',
+    image_changed: 'Cambió imagen',
     image_removed: 'Eliminó imagen',
     table_changed: 'Cambió tabla',
-    section_moved: 'Se movió de posición',
+    section_moved: 'Movió la sección',
     section_added: 'Agregó sección',
     section_removed: 'Eliminó sección',
     section_renamed: 'Renombró sección',
@@ -7684,12 +7701,43 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
   const isSelected = group.items.some((item) => item.id === selectedActivityId)
   const pageId = latestItem?.metadata?.pageId
 
+  // Flatten metadata.history (collected per row) plus a top-level entry for rows without history
+  // so "Ver detalle" lists every change with its own timestamp + actor.
+  const detailEntries = useMemo(() => {
+    const flat = []
+    group.items.forEach((item) => {
+      const history = Array.isArray(item.metadata?.history) ? item.metadata.history : null
+      if (history && history.length > 0) {
+        history.forEach((entry, index) => {
+          flat.push({
+            key: `${item.id}-${index}`,
+            itemId: item.id,
+            changeTypes: entry.changeTypes || [],
+            actorLabel: entry.actorLabel || item.actorLabel,
+            at: entry.at || item.createdAt,
+          })
+        })
+      } else {
+        flat.push({
+          key: item.id,
+          itemId: item.id,
+          changeTypes: item.metadata?.changeTypes || [],
+          actorLabel: item.actorLabel,
+          at: item.createdAt,
+        })
+      }
+    })
+    return flat.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+  }, [group.items])
+
+  const latestChangesLabel = formatActivityChangeTypes(latestItem?.metadata?.changeTypes || [])
+
   function handleRowClick() {
     onNavigate?.(group.sectionId, { itemId: latestItem?.id, pageId })
   }
 
-  function handleHistoryItemClick(item) {
-    onNavigate?.(group.sectionId, { itemId: item.id, pageId: item.metadata?.pageId })
+  function handleDetailItemClick(entry) {
+    onNavigate?.(group.sectionId, { itemId: entry.itemId, pageId })
   }
 
   return (
@@ -7708,10 +7756,34 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
             </span>
             {hasUnread && <span className={panelStyles.unreadDot} />}
           </div>
+          {latestChangesLabel && (
+            <span className={panelStyles.activityGroupChanges}>{latestChangesLabel}</span>
+          )}
           {latestItem && (
             <span className={panelStyles.activityGroupSub}>
               {latestItem.actorLabel} · {formatPanelDate(latestItem.createdAt)}
             </span>
+          )}
+          {detailEntries.length > 1 && (
+            <button
+              type="button"
+              className={panelStyles.activityGroupDetailBtn}
+              onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
+            >
+              {expanded ? 'Ocultar detalle' : `Ver detalle (${detailEntries.length})`}
+            </button>
+          )}
+          {hasUnread && (
+            <button
+              type="button"
+              className={panelStyles.markReadBtn}
+              onClick={(e) => {
+                e.stopPropagation()
+                group.items.filter(isUnreadSectionActivity).forEach((item) => onMarkRead?.(item.id))
+              }}
+            >
+              Marcar leída
+            </button>
           )}
         </div>
         <button
@@ -7723,35 +7795,23 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
           <ChevronDown size={12} />
         </button>
       </div>
-      {expanded && (
+      {expanded && detailEntries.length > 0 && (
         <ul className={panelStyles.activityGroupHistory}>
-          {group.items.map((item) => (
+          {detailEntries.map((entry) => (
             <li
-              key={item.id}
-              className={cx(
-                panelStyles.activityHistoryItem,
-                item.id === selectedActivityId && panelStyles.activityHistoryItemActive,
-              )}
-              onClick={() => handleHistoryItemClick(item)}
+              key={entry.key}
+              className={panelStyles.activityHistoryItem}
+              onClick={() => handleDetailItemClick(entry)}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && handleHistoryItemClick(item)}
+              onKeyDown={(e) => e.key === 'Enter' && handleDetailItemClick(entry)}
             >
               <span className={panelStyles.activityHistoryDesc}>
-                {formatActivityChangeTypes(item.metadata?.changeTypes || []) || item.title}
+                {formatActivityChangeTypes(entry.changeTypes) || 'Editó contenido'}
               </span>
               <span className={panelStyles.activityHistoryMeta}>
-                {item.actorLabel} · {formatPanelDate(item.createdAt)}
+                {entry.actorLabel} · {formatPanelDate(entry.at)}
               </span>
-              {isUnreadSectionActivity(item) && (
-                <button
-                  type="button"
-                  className={panelStyles.markReadBtn}
-                  onClick={(e) => { e.stopPropagation(); onMarkRead?.(item.id) }}
-                >
-                  Marcar leída
-                </button>
-              )}
             </li>
           ))}
         </ul>
