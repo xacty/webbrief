@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-04-27
+- Updated: 2026-05-02
 
 ## Targets
 
@@ -43,9 +43,9 @@
 - Editor is TipTap with 3 columns: sections panel | canvas | updates panel
 - Editor modes: `Brief`, `Handoff`, `Preview`
 - Handoff is copy-safe: semantic labels/actions live in gutters, not inside selectable text
-- Editor activity uses section-level review events: autosave can create/update unread `section_edited` records by page/section/user; canvas markers and right activity items are linked
-- Right activity panel orders current-page section review events by `derivedSections` order, not chronology; general activity is separated below; compact deliverables UI is connected there
-- Page review flow: pages start `draft`; `Enviar a revisión` creates `project_page_versions` baseline and switches page to `ready_for_review`; section alerts only emit for pages in review/approved/changes_requested
+- Editor activity uses section-level events: autosave records `section_edited` for ALL page states (draft, review, approved); canvas markers and right activity items are linked; `asset_uploaded` stores `sectionId` in metadata so click-to-scroll works
+- Right activity panel shows a grouped view: one collapsed row per section ordered by document position, expandable history dropdown per section; click navigates + yellow flash (#fef9c3) after scroll settles; lifecycle events (project_created, page_ready_for_review, share_link_created, etc.) are filtered out
+- Page review flow: pages start `draft`; `Enviar a revisión` creates `project_page_versions` baseline and switches page to `ready_for_review`
 - Editor top navbar is reserved for logo/undo/page pills/profile; mode, handoff audience, review status/action, save status/action live in a bottom floating editor bar
 - Backend: Express + Supabase Postgres/Auth
 - Production deploy is live at `https://webrief.app` on Namecheap VPS `199.192.22.74` as user `deploy`
@@ -123,7 +123,7 @@
   - `keep`: all editor invariants
   - `watch`: add/delete/rename/hydration
 - `target=editor.updates-panel`
-  - `keep`: panel shows section activity, compact deliverables, share-link action, internal scroll, and a bottom-docked content-rules card for document projects; click activity scrolls to its section marker
+  - `keep`: grouped section activity (one row per section, expandable history), compact deliverables, share-link action, internal scroll, bottom-docked content-rules card for document projects; click activity scrolls to section with yellow flash; lifecycle events excluded
 - `target=editor.handoff`
   - `keep`: copy-safe central content; labels/actions outside selectable text
 - `target=share`
@@ -140,7 +140,9 @@
 - backend uses service-role Supabase client
 - login uses Supabase password auth
 - login supports Supabase password-reset email flow (`resetPasswordForEmail`) redirecting to `/auth/set-password`
-- Supabase Auth redirect allowlist must include `http://localhost:5173/auth/set-password` for local invite/reset links
+- Supabase Auth redirect allowlist must include `http://localhost:5173/auth/set-password` (local) AND `https://webrief.app/auth/set-password` (production)
+- **VPS backend `.env` must have `FRONTEND_URL=https://webrief.app`** — without it, invite emails redirect to localhost and users land on the login page instead of set-password
+- `SetPassword.jsx` uses `onAuthStateChange` to detect the invite/reset token from the URL hash; falls back to `getSession()` for page-refresh case; shows loading → ready → expired states
 - auth bootstrap uses a timeout fallback so the UI can recover even if Supabase session init hangs
 - onboarding route exists at `auth/set-password`
 - backend routes: `GET /api/auth/me`, `POST /api/auth/invite-user`, `GET /api/companies`, `GET /api/companies/:id`, `POST /api/companies`, `GET /api/trash?state=archived|trashed`, `GET/POST /api/projects`, `GET /api/projects/:id`, `PUT /api/projects/:id/pages`
@@ -242,6 +244,12 @@
 - PreviewPanel wrapped in `.previewScroll` for independent internal scroll
 - scrollbar styles globalized to `*` (was scoped to specific class patterns)
 - export download headers fixed: `Content-Type: application/octet-stream`, RFC 5987 `filename*` encoding, `X-Content-Type-Options: nosniff`
+- activity panel redesigned: grouped by section (one collapsed row + expandable history), click-to-scroll fires yellow flash in all 3 editor modes (Brief/Handoff/Preview); page-switch race condition fixed with 480ms delay
+- `section_edited` now records on every save regardless of page review state (removed draft gate)
+- `asset_uploaded` metadata now includes `sectionId`; image uploads send active sectionId to backend; click-to-scroll works for image uploads
+- lifecycle events (project_created, page_ready_for_review, share_link_created, deliverable_created, designer_proposal_*) excluded from content activity panel
+- Handoff and Preview panels now support scroll-to-section and yellow flash via `scrollRequest`/`flashRequest` props
+- invite flow fixed: `SetPassword.jsx` now uses `onAuthStateChange` to detect invite token from URL hash; added loading/expired states; backend warns if `FRONTEND_URL` is localhost in production
 
 ## Pending
 
