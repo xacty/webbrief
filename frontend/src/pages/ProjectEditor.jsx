@@ -3421,7 +3421,12 @@ export default function ProjectEditor() {
         )}
 
         {editorMode === 'preview' && (
-          <PreviewPanel page={activePageForRead} />
+          <PreviewPanel
+            page={activePageForRead}
+            projectType={projectType}
+            scrollRequest={scrollRequest}
+            onScrollHeadingChange={handleScrollHeadingChange}
+          />
         )}
 
         {/* Sidebar derecho: actualizaciones del documento */}
@@ -6927,7 +6932,150 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
   )
 }
 
-function PreviewPanel({ page }) {
+function PreviewPanel({ page, projectType = 'page', scrollRequest, onScrollHeadingChange }) {
+  const scrollRef = useRef(null)
+  const contentRef = useRef(null)
+  const programmaticScrollRef = useRef(null)
+  const programmaticScrollRafRef = useRef(null)
+
+  function getPreviewHeadingNodes({ sectionId = null } = {}) {
+    const content = contentRef.current
+    if (!content) return []
+    if (!sectionId) return Array.from(content.querySelectorAll('h1, h2, h3'))
+    const divider = content.querySelector(`[data-section-divider][data-section-id="${sectionId}"]`)
+    if (!divider) return []
+    const headings = []
+    let node = divider.nextElementSibling
+    while (node && !node.matches('[data-section-divider]')) {
+      if (node.matches('h1, h2, h3')) headings.push(node)
+      node = node.nextElementSibling
+    }
+    return headings
+  }
+
+  useEffect(() => {
+    if (!scrollRequest || !scrollRef.current || !contentRef.current) return undefined
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    const OFFSET = 70
+
+    if (programmaticScrollRafRef.current) {
+      cancelAnimationFrame(programmaticScrollRafRef.current)
+      programmaticScrollRafRef.current = null
+    }
+
+    let targetEl = null
+    let targetHeadingIndex = 0
+
+    if (scrollRequest.type === 'section') {
+      targetEl = content.querySelector(`[data-section-divider][data-section-id="${scrollRequest.sectionId}"]`)
+    } else if (scrollRequest.type === 'heading') {
+      const headings = getPreviewHeadingNodes({ sectionId: scrollRequest.sectionId })
+      targetEl = headings[scrollRequest.headingIndex] || null
+      targetHeadingIndex = scrollRequest.headingIndex
+    } else if (scrollRequest.type === 'documentHeading') {
+      targetEl = getPreviewHeadingNodes()[scrollRequest.headingIndex] || null
+      targetHeadingIndex = scrollRequest.headingIndex
+    }
+
+    if (!targetEl) return undefined
+
+    const rawOffset = targetEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - OFFSET
+    const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    const targetTop = Math.max(0, Math.min(maxScrollTop, rawOffset))
+
+    programmaticScrollRef.current = { sectionId: scrollRequest.sectionId || '__document__', headingIndex: targetHeadingIndex, targetTop }
+    scroller.scrollTo({ top: targetTop, behavior: 'smooth' })
+
+    let started = false
+    let stableFrames = 0
+    let frames = 0
+    let lastTop = scroller.scrollTop
+
+    const monitorScroll = () => {
+      frames += 1
+      const currentTop = scroller.scrollTop
+      const delta = Math.abs(currentTop - lastTop)
+      const nearTarget = Math.abs(currentTop - targetTop) <= 2
+      if (!started && (delta > 1 || nearTarget)) started = true
+      if (started && (nearTarget || delta <= 1)) stableFrames += 1
+      else stableFrames = 0
+      lastTop = currentTop
+      if ((started && stableFrames >= 4) || frames >= 120) {
+        programmaticScrollRef.current = null
+        programmaticScrollRafRef.current = null
+        onScrollHeadingChange?.({ sectionId: scrollRequest.sectionId || '__document__', headingIndex: targetHeadingIndex })
+        return
+      }
+      programmaticScrollRafRef.current = requestAnimationFrame(monitorScroll)
+    }
+    programmaticScrollRafRef.current = requestAnimationFrame(monitorScroll)
+
+    return () => {
+      if (programmaticScrollRafRef.current) {
+        cancelAnimationFrame(programmaticScrollRafRef.current)
+        programmaticScrollRafRef.current = null
+      }
+      programmaticScrollRef.current = null
+    }
+  }, [scrollRequest])
+
+  useEffect(() => {
+    if (!scrollRef.current || !contentRef.current) return undefined
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    const OFFSET = 70
+
+    function handleScroll() {
+      if (programmaticScrollRef.current) return
+      const triggerY = scroller.getBoundingClientRect().top + OFFSET
+
+      if (projectType !== 'page') {
+        const headings = getPreviewHeadingNodes()
+        let headingIndex = 0
+        headings.forEach((heading, index) => {
+          if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
+        })
+        if (headings.length > 0) onScrollHeadingChange?.({ sectionId: '__document__', headingIndex })
+        return
+      }
+
+      const dividers = Array.from(content.querySelectorAll('[data-section-divider]'))
+      if (dividers.length === 0) return
+
+      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+      const isAtBottom = scroller.scrollTop >= maxScrollTop - 2
+      let activeSectionId = dividers[0].getAttribute('data-section-id') || '__document__'
+
+      if (isAtBottom) {
+        activeSectionId = dividers[dividers.length - 1].getAttribute('data-section-id') || activeSectionId
+      } else {
+        for (const divider of dividers) {
+          if (divider.getBoundingClientRect().top <= triggerY) {
+            activeSectionId = divider.getAttribute('data-section-id') || activeSectionId
+          }
+        }
+      }
+
+      const headings = getPreviewHeadingNodes({ sectionId: activeSectionId })
+      let headingIndex = 0
+      headings.forEach((heading, index) => {
+        if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
+      })
+      onScrollHeadingChange?.({ sectionId: activeSectionId, headingIndex })
+    }
+
+    scroller.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => scroller.removeEventListener('scroll', handleScroll)
+  }, [onScrollHeadingChange, projectType, page])
+
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollRafRef.current) cancelAnimationFrame(programmaticScrollRafRef.current)
+    }
+  }, [])
+
   return (
     <div className={styles.previewPanel}>
       <div className={styles.previewToolbar}>
@@ -6940,8 +7088,9 @@ function PreviewPanel({ page }) {
           Exportar PDF
         </button>
       </div>
-      <div className={styles.previewScroll}>
+      <div ref={scrollRef} className={styles.previewScroll}>
         <article
+          ref={contentRef}
           data-preview-page=""
           className={styles.previewPage}
           dangerouslySetInnerHTML={{ __html: page?.fullContent || buildDocumentHTML(page?.sections || []) }}
