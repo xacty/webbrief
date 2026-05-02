@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase'
 import { apiFetch } from '../lib/api'
 
 const AuthContext = createContext(null)
-const SESSION_TIMEOUT_MS = 1500
 const ROLE_PREVIEW_STORAGE_KEY = 'webrief:role-preview'
 
 function applyRolePreview(user, previewRole) {
@@ -20,21 +19,6 @@ function applyRolePreview(user, previewRole) {
     rolePreview: previewRole,
     realPlatformRole: user.platformRole,
   }
-}
-
-function getSessionWithTimeout() {
-  return Promise.race([
-    supabase.auth.getSession(),
-    new Promise((resolve) => {
-      window.setTimeout(() => {
-        resolve({
-          data: { session: null },
-          error: null,
-          timedOut: true,
-        })
-      }, SESSION_TIMEOUT_MS)
-    }),
-  ])
 }
 
 export function AuthProvider({ children }) {
@@ -73,10 +57,11 @@ export function AuthProvider({ children }) {
         hydratedTokenRef.current = token
         return data.user
       })
-      .catch(async (error) => {
+      .catch((error) => {
         if (error.status === 401) {
-          await supabase.auth.signOut()
-          setSession(null)
+          // Token expired or invalid — clear local user state but do NOT force signOut().
+          // Supabase will fire TOKEN_REFRESHED if it can refresh, or SIGNED_OUT if it can't.
+          // Forcing signOut() here cancels the refresh cycle and logs the user out unnecessarily.
           setCurrentUser(null)
           hydratedTokenRef.current = null
         } else {
@@ -101,6 +86,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let active = true
+    let initialSessionReceived = false
+
+    // Safety-net: if INITIAL_SESSION never fires (shouldn't happen), unblock after 800ms
+    const safetyTimer = window.setTimeout(() => {
+      if (!active || initialSessionReceived) return
+      console.warn('AuthContext: INITIAL_SESSION not received; unblocking UI')
+      setLoading(false)
+    }, 800)
 
     function hydrateCurrentUser(nextSession) {
       return refreshUser(nextSession).catch((error) => {
@@ -110,43 +103,36 @@ export function AuthProvider({ children }) {
       })
     }
 
-    async function bootstrap() {
-      try {
-        const { data, error, timedOut } = await getSessionWithTimeout()
-        if (error) throw error
-        if (!active) return
-
-        if (timedOut) {
-          console.warn('Supabase session bootstrap timed out; continuing without blocking the UI')
-        }
-
-        setSession(data.session)
-        setLoading(false)
-
-        if (data.session) {
-          hydrateCurrentUser(data.session)
-        }
-      } catch (error) {
-        if (!active) return
-        console.error('Failed to initialize auth session', error)
-        setSession(null)
-        setCurrentUser(null)
-        setLoading(false)
-      }
-    }
-
-    bootstrap()
-
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return
-      if (event === 'INITIAL_SESSION') return
 
+      if (event === 'INITIAL_SESSION') {
+        // Fires immediately from localStorage — no network call needed.
+        // This is the fast path: unblock the UI right away.
+        initialSessionReceived = true
+        clearTimeout(safetyTimer)
+        setSession(nextSession)
+        setLoading(false)
+        if (nextSession) {
+          hydrateCurrentUser(nextSession)
+        }
+        return
+      }
+
+      if (event === 'SIGNED_OUT') {
+        setSession(null)
+        setCurrentUser(null)
+        hydratedTokenRef.current = null
+        setLoading(false)
+        return
+      }
+
+      // TOKEN_REFRESHED, SIGNED_IN, USER_UPDATED, etc.
       setSession(nextSession)
 
       if (!nextSession) {
         setCurrentUser(null)
         hydratedTokenRef.current = null
-        setLoading(false)
         return
       }
 
@@ -158,6 +144,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       active = false
+      clearTimeout(safetyTimer)
       listener.subscription.unsubscribe()
     }
   }, [])
