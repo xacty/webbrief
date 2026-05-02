@@ -6799,6 +6799,9 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
         }}
       >
         <div ref={contentRef} className={styles.handoffContent}>
+        {audience === 'dev' && (
+          <HandoffSeoSection seoMetadata={page?.seoMetadata} />
+        )}
         {handoffData.sections.map((section) => {
           const sectionText = section.blocks.map((block) => block.text).join('\n')
           const sectionHtml = section.blocks.map((block) => block.renderedHtml || block.html).join('\n')
@@ -6906,9 +6909,6 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
         })}
         </div>
 
-        {audience === 'dev' && (
-          <HandoffSeoSection seoMetadata={page?.seoMetadata} />
-        )}
       </div>
 
       {imageContextMenu && (
