@@ -232,6 +232,16 @@
 - Supabase now stores ImageKit metadata for assets and avatars (`imagekit_file_id`, original URL, file name/path fields)
 - company project cards display inferred project type for legacy projects whose `projects.project_type` is null
 - app shell private routes use a rooted layout with relative children; `UsersPage` memoizes invite role options to avoid render loops that can freeze navigation
+- handoff panel supports multi-image selection (click, Shift+click, Ctrl+click range); right-click context menu on images; bulk export as ZIP via `POST /:id/assets/export-bulk` (backend uses `archiver`); single-image export modal shows preview; bulk modal shows thumbnail grid
+- backend auth middleware accepts token from query param (`access_token`) and POST body in addition to Bearer header; `express.urlencoded` middleware added; needed for form-POST bulk ZIP downloads
+- `apiDownloadToFile` uses anchor+query-token approach; new `apiSubmitDownload` uses hidden form POST for ZIP downloads
+- handoff panel scroll is synced with sidebar via `scrollRequest` prop; scroll listener fires `onScrollHeadingChange` for section/heading tracking
+- editor mode and handoff audience persist across page reloads via `sessionStorage` per project
+- floating tooltip system in ProjectEditor: 1.4s delay, follows pointer, replaces native `title` attribute
+- autosave delay raised to 8s; blocked automatically after version-conflict error; runner stored in ref to avoid stale-closure issues
+- PreviewPanel wrapped in `.previewScroll` for independent internal scroll
+- scrollbar styles globalized to `*` (was scoped to specific class patterns)
+- export download headers fixed: `Content-Type: application/octet-stream`, RFC 5987 `filename*` encoding, `X-Content-Type-Options: nosniff`
 
 ## Pending
 
