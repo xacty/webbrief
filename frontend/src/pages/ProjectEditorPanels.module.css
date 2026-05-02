@@ -624,3 +624,140 @@
   align-self: flex-start;
   margin-top: 6px;
 }
+
+/* ── Grouped section activity ── */
+
+.activityGroupsList {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+
+.activityGroup {
+  border-bottom: 1px solid #d9d9d9;
+}
+
+.activityGroupRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 0 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.activityGroupRow:hover .activityGroupName {
+  color: #1d4ed8;
+}
+
+.activityGroupMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activityGroupTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.activityGroupName {
+  color: #2a2a2a;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 120ms;
+}
+
+.activityGroupNameUnread {
+  font-weight: 700;
+}
+
+.unreadDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2563eb;
+}
+
+.activityGroupSub {
+  color: #999;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activityGroupChevron {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 100ms, color 100ms, transform 150ms;
+}
+
+.activityGroupChevron:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.activityGroupChevronOpen {
+  transform: rotate(180deg);
+}
+
+.activityGroupHistory {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px 12px;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 4px;
+  margin-bottom: 4px;
+}
+
+.activityHistoryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.activityHistoryItem:hover {
+  background: #f8fafc;
+}
+
+.activityHistoryItemActive {
+  background: #fff7ed;
+}
+
+.activityHistoryItemActive:hover {
+  background: #fff7ed;
+}
+
+.activityHistoryDesc {
+  color: #2a2a2a;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.activityHistoryMeta {
+  color: #94a3b8;
+  font-size: 11px;
+}

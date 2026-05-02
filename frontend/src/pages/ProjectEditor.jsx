@@ -761,6 +761,42 @@ const TextBlockLayoutExtension = Extension.create({
 })
 
 // ---------------------------------------------------------------------------
+// Flash overlay: crea un div animado sobre el área de una sección
+// ---------------------------------------------------------------------------
+function createFlashOverlay(scrollEl, top, height) {
+  if (!scrollEl || height <= 0) return
+  const overlay = document.createElement('div')
+  Object.assign(overlay.style, {
+    position: 'absolute',
+    top: `${top}px`,
+    left: '6px',
+    right: '6px',
+    height: `${Math.max(height, 60)}px`,
+    borderRadius: '10px',
+    pointerEvents: 'none',
+    zIndex: '6',
+    animation: 'sectionFlash 1200ms ease-out forwards',
+  })
+  const prev = getComputedStyle(scrollEl).position
+  if (prev === 'static') scrollEl.style.position = 'relative'
+  scrollEl.appendChild(overlay)
+  overlay.addEventListener('animationend', () => {
+    overlay.remove()
+    if (prev === 'static') scrollEl.style.position = ''
+  }, { once: true })
+}
+
+function flashSectionInScrollEl(scrollEl, anchorEl, nextAnchorEl) {
+  if (!scrollEl || !anchorEl) return
+  const scrollRect = scrollEl.getBoundingClientRect()
+  const top = anchorEl.getBoundingClientRect().top - scrollRect.top + scrollEl.scrollTop
+  const bottom = nextAnchorEl
+    ? nextAnchorEl.getBoundingClientRect().top - scrollRect.top + scrollEl.scrollTop
+    : top + Math.max(anchorEl.getBoundingClientRect().height, 200)
+  createFlashOverlay(scrollEl, top, bottom - top)
+}
+
+// ---------------------------------------------------------------------------
 // Helper: buildDocumentHTML — convierte sections[] en HTML para el editor
 // ---------------------------------------------------------------------------
 function buildDocumentHTML(sections) {
@@ -2104,6 +2140,8 @@ export default function ProjectEditor() {
 
   // scrollRequest: navegación programática desde el sidebar.
   const [scrollRequest, setScrollRequest] = useState(null)
+  // flashRequest: activa el highlight amarillo sobre una sección tras navegar.
+  const [flashRequest, setFlashRequest] = useState(null)
 
   // Ref al editor único
   const editorRef = useRef(null)
@@ -2869,25 +2907,39 @@ export default function ProjectEditor() {
     setScrollRequest({ type: 'seo', requestId: Date.now() })
   }
 
-  function navigateToActivity(item) {
-    const metadata = item?.metadata || {}
-    if (!metadata.sectionId) return
+  function navigateToSection(sectionId, { itemId = null, pageId = null, removed = false } = {}) {
+    if (!sectionId) return
 
-    if (metadata.pageId && metadata.pageId !== activePageId) {
-      const targetPage = pages.find((page) => page.id === metadata.pageId)
+    const isPageSwitch = pageId && pageId !== activePageId
+    if (isPageSwitch) {
+      const targetPage = pages.find((page) => page.id === pageId)
       if (!targetPage) return
-
       snapshotActivePage()
       setActivePageId(targetPage.id)
       loadPageIntoEditor(targetPage, false)
     }
 
-    setSelectedActivityId(item.id)
-    if (metadata.changeTypes?.includes('section_removed')) return
+    if (itemId) setSelectedActivityId(itemId)
+    if (removed) return
 
-    setActiveSectionId(metadata.sectionId)
-    setActiveHeading({ sectionId: metadata.sectionId, headingIndex: 0 })
-    setScrollRequest({ type: 'section', sectionId: metadata.sectionId, requestId: Date.now() })
+    setActiveSectionId(sectionId)
+    setActiveHeading({ sectionId, headingIndex: 0 })
+
+    const fireScroll = () => {
+      setScrollRequest({ type: 'section', sectionId, requestId: Date.now() })
+      window.setTimeout(() => setFlashRequest({ sectionId, requestId: Date.now() }), 380)
+    }
+    if (isPageSwitch) window.setTimeout(fireScroll, 480)
+    else fireScroll()
+  }
+
+  function navigateToActivity(item) {
+    const metadata = item?.metadata || {}
+    navigateToSection(metadata.sectionId, {
+      itemId: item.id,
+      pageId: metadata.pageId,
+      removed: metadata.changeTypes?.includes('section_removed'),
+    })
   }
 
   function handleActivityMarkerClick(activityId) {
@@ -3395,6 +3447,7 @@ export default function ProjectEditor() {
             onUndo={() => editorRef.current?.chain().focus().undo().run()}
             onRedo={() => editorRef.current?.chain().focus().redo().run()}
             scrollRequest={scrollRequest}
+            flashRequest={flashRequest}
             onDocUpdate={handleDocUpdate}
             onEditorReady={handleEditorReady}
             onScrollHeadingChange={handleScrollHeadingChange}
@@ -3415,6 +3468,7 @@ export default function ProjectEditor() {
             projectType={projectType}
             audience={handoffAudience}
             scrollRequest={scrollRequest}
+            flashRequest={flashRequest}
             onScrollHeadingChange={handleScrollHeadingChange}
             selectedActivityId={selectedActivityId}
           />
@@ -3425,6 +3479,7 @@ export default function ProjectEditor() {
             page={activePageForRead}
             projectType={projectType}
             scrollRequest={scrollRequest}
+            flashRequest={flashRequest}
             onScrollHeadingChange={handleScrollHeadingChange}
           />
         )}
@@ -3456,6 +3511,7 @@ export default function ProjectEditor() {
           onRejectDesignerProposal={() => handleDesignerProposalDecision('rejected')}
           onActivityClick={navigateToActivity}
           onMarkActivityRead={markActivityRead}
+          onNavigateToSection={navigateToSection}
         />
       </div>
 
@@ -5088,6 +5144,7 @@ function EditorPanel({
   onUndo,
   onRedo,
   scrollRequest,
+  flashRequest,
   onDocUpdate,
   onEditorReady,
   onScrollHeadingChange,
@@ -5420,6 +5477,23 @@ function EditorPanel({
       programmaticScrollRef.current = null
     }
   }, [firstSectionId, onScrollHeadingChange, scrollRequest])
+
+  // ── Flash highlight amarillo sobre sección tras navegar ──
+  useEffect(() => {
+    if (!flashRequest?.sectionId) return
+    const scrollEl = scrollAreaRef.current
+    const pm = scrollEl?.querySelector('.ProseMirror')
+    if (!pm) return
+    const divider = pm.querySelector(`[data-section-id="${flashRequest.sectionId}"]`)
+    if (!divider) return
+    let nextDivider = null
+    let node = divider.nextElementSibling
+    while (node) {
+      if (node.matches('[data-section-id]')) { nextDivider = node; break }
+      node = node.nextElementSibling
+    }
+    flashSectionInScrollEl(scrollEl, divider, nextDivider)
+  }, [flashRequest])
 
   // ── Scroll listener: detects heading at trigger point ──
   useEffect(() => {
@@ -6185,7 +6259,7 @@ async function copyRich({ text, html }) {
   await navigator.clipboard.writeText(text)
 }
 
-function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollRequest, onScrollHeadingChange, selectedActivityId = null }) {
+function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollRequest, flashRequest, onScrollHeadingChange, selectedActivityId = null }) {
   const [copied, setCopied] = useState('')
   const [exportModal, setExportModal] = useState(null)
   const [selectedImageKeys, setSelectedImageKeys] = useState([])
@@ -6545,6 +6619,17 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
       }
     }
   }, [])
+
+  // ── Flash highlight amarillo sobre sección en Handoff ──
+  useEffect(() => {
+    if (!flashRequest?.sectionId) return
+    const scrollEl = scrollRef.current
+    const sectionEl = contentRef.current?.querySelector(`[data-handoff-section-id="${flashRequest.sectionId}"]`)
+    if (!scrollEl || !sectionEl) return
+    const scrollRect = scrollEl.getBoundingClientRect()
+    const top = sectionEl.getBoundingClientRect().top - scrollRect.top + scrollEl.scrollTop
+    createFlashOverlay(scrollEl, top, sectionEl.getBoundingClientRect().height)
+  }, [flashRequest])
 
   function getImageRangeKeys(startKey, endKey) {
     const keysInOrder = handoffData.images.map((item) => item.key)
@@ -6932,7 +7017,7 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
   )
 }
 
-function PreviewPanel({ page, projectType = 'page', scrollRequest, onScrollHeadingChange }) {
+function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest, onScrollHeadingChange }) {
   const scrollRef = useRef(null)
   const contentRef = useRef(null)
   const programmaticScrollRef = useRef(null)
@@ -7076,6 +7161,24 @@ function PreviewPanel({ page, projectType = 'page', scrollRequest, onScrollHeadi
     }
   }, [])
 
+  // ── Flash highlight amarillo sobre sección en Preview ──
+  useEffect(() => {
+    if (!flashRequest?.sectionId) return
+    const scrollEl = scrollRef.current
+    const content = contentRef.current
+    if (!scrollEl || !content) return
+    const divider = content.querySelector(`[data-section-divider][data-section-id="${flashRequest.sectionId}"]`)
+    if (!divider) return
+    let nextDivider = null
+    let node = divider.nextElementSibling
+    while (node) {
+      if (node.matches('[data-section-divider]')) { nextDivider = node; break }
+      node = node.nextElementSibling
+    }
+    flashSectionInScrollEl(scrollEl, divider, nextDivider)
+  }, [flashRequest])
+
+
   return (
     <div className={styles.previewPanel}>
       <div className={styles.previewToolbar}>
@@ -7146,6 +7249,7 @@ function UpdatesPanel({
   onRejectDesignerProposal,
   onActivityClick,
   onMarkActivityRead,
+  onNavigateToSection,
 }) {
   const [deliverableTitle, setDeliverableTitle] = useState('')
   const [deliverableServiceType, setDeliverableServiceType] = useState('otro')
@@ -7157,7 +7261,8 @@ function UpdatesPanel({
   const sectionActivity = useMemo(() => (
     activity
       .filter((item) => (
-        isUnreadSectionActivity(item)
+        item.eventType === 'section_edited'
+        && item.metadata?.sectionId
         && item.metadata?.pageId === activePageId
         && sectionOrder.has(item.metadata?.sectionId)
       ))
@@ -7168,10 +7273,22 @@ function UpdatesPanel({
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       })
   ), [activity, activePageId, sectionOrder])
+  const groupedSectionActivity = useMemo(() => {
+    const groups = new Map()
+    sectionActivity.forEach((item) => {
+      const sectionId = item.metadata.sectionId
+      if (!groups.has(sectionId)) {
+        const section = sections.find((s) => s.id === sectionId)
+        groups.set(sectionId, { sectionId, sectionName: section?.name || 'Sección', items: [] })
+      }
+      groups.get(sectionId).items.push(item)
+    })
+    return Array.from(groups.values())
+  }, [sectionActivity, sections])
   const generalActivity = useMemo(() => (
     activity.filter((item) => item.eventType !== 'section_edited')
   ), [activity])
-  const hasActivity = sectionActivity.length > 0 || generalActivity.length > 0
+  const hasActivity = groupedSectionActivity.length > 0 || generalActivity.length > 0
   const pendingProposal = activePage?.pendingProposal || null
 
   useEffect(() => {
@@ -7313,15 +7430,15 @@ function UpdatesPanel({
           <p className={panelStyles.updatesEmpty}>Sin actividad registrada aún.</p>
         ) : (
           <>
-            {sectionActivity.length > 0 && (
-              <ul className={panelStyles.updatesList}>
-                {sectionActivity.map((item) => (
-                  <ActivityListItem
-                    key={item.id}
-                    item={item}
+            {groupedSectionActivity.length > 0 && (
+              <ul className={panelStyles.activityGroupsList}>
+                {groupedSectionActivity.map((group) => (
+                  <SectionActivityGroup
+                    key={group.sectionId}
+                    group={group}
                     selectedActivityId={selectedActivityId}
-                    onActivityClick={onActivityClick}
-                    onMarkActivityRead={onMarkActivityRead}
+                    onNavigate={onNavigateToSection}
+                    onMarkRead={onMarkActivityRead}
                   />
                 ))}
               </ul>
@@ -7385,6 +7502,89 @@ function ActivityListItem({ item, selectedActivityId = null, onActivityClick, on
         >
           Marcar leída
         </button>
+      )}
+    </li>
+  )
+}
+
+function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRead }) {
+  const [expanded, setExpanded] = useState(false)
+  const latestItem = group.items[0]
+  const hasUnread = group.items.some(isUnreadSectionActivity)
+  const isSelected = group.items.some((item) => item.id === selectedActivityId)
+  const pageId = latestItem?.metadata?.pageId
+
+  function handleRowClick() {
+    onNavigate?.(group.sectionId, { itemId: latestItem?.id, pageId })
+  }
+
+  function handleHistoryItemClick(item) {
+    onNavigate?.(group.sectionId, { itemId: item.id, pageId: item.metadata?.pageId })
+  }
+
+  return (
+    <li className={panelStyles.activityGroup}>
+      <div
+        className={cx(panelStyles.activityGroupRow, isSelected && panelStyles.activityHistoryItemActive)}
+        onClick={handleRowClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && handleRowClick()}
+      >
+        <div className={panelStyles.activityGroupMain}>
+          <div className={panelStyles.activityGroupTop}>
+            <span className={cx(panelStyles.activityGroupName, hasUnread && panelStyles.activityGroupNameUnread)}>
+              {group.sectionName}
+            </span>
+            {hasUnread && <span className={panelStyles.unreadDot} />}
+          </div>
+          {latestItem && (
+            <span className={panelStyles.activityGroupSub}>
+              {latestItem.actorLabel} · {formatPanelDate(latestItem.createdAt)}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          className={cx(panelStyles.activityGroupChevron, expanded && panelStyles.activityGroupChevronOpen)}
+          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
+          aria-label={expanded ? 'Colapsar historial' : 'Ver historial'}
+        >
+          <ChevronDown size={12} />
+        </button>
+      </div>
+      {expanded && (
+        <ul className={panelStyles.activityGroupHistory}>
+          {group.items.map((item) => (
+            <li
+              key={item.id}
+              className={cx(
+                panelStyles.activityHistoryItem,
+                item.id === selectedActivityId && panelStyles.activityHistoryItemActive,
+              )}
+              onClick={() => handleHistoryItemClick(item)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && handleHistoryItemClick(item)}
+            >
+              <span className={panelStyles.activityHistoryDesc}>
+                {formatActivityChangeTypes(item.metadata?.changeTypes || []) || item.title}
+              </span>
+              <span className={panelStyles.activityHistoryMeta}>
+                {item.actorLabel} · {formatPanelDate(item.createdAt)}
+              </span>
+              {isUnreadSectionActivity(item) && (
+                <button
+                  type="button"
+                  className={panelStyles.markReadBtn}
+                  onClick={(e) => { e.stopPropagation(); onMarkRead?.(item.id) }}
+                >
+                  Marcar leída
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </li>
   )
