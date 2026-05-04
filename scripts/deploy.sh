@@ -30,10 +30,4 @@ npm ci
 echo "Building frontend..."
 npm run build
 
-echo "Reloading nginx..."
-if command -v nginx >/dev/null 2>&1; then
-  sudo nginx -t
-  sudo systemctl reload nginx
-fi
-
 echo "Deploy complete."
