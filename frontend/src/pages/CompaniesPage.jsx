@@ -3,6 +3,7 @@ import { Archive, ArrowRight, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
+import { isAdmin } from '../lib/roleCapabilities'
 import styles from './CompaniesPage.module.css'
 
 const PAGE_SIZE = 8
@@ -66,7 +67,7 @@ export default function CompaniesPage() {
   const [testMode, setTestMode] = useState(false)
   const [companyFeedback, setCompanyFeedback] = useState('')
   const [creatingCompany, setCreatingCompany] = useState(false)
-  const canCreateCompanies = currentUser?.platformRole === 'admin'
+  const canCreateCompanies = isAdmin(currentUser)
 
   useEffect(() => {
     let active = true
@@ -304,7 +305,7 @@ export default function CompaniesPage() {
               </p>
 
               <div className={styles.cardActions}>
-                {(currentUser?.platformRole === 'admin' || company.membershipRole === 'manager') && !company.isInternal && (
+                {(isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal && (
                   <>
                     <button
                       className={styles.cardDangerButton}

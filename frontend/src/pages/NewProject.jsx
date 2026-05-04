@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
+import { isAdmin } from '../lib/roleCapabilities'
 import styles from './NewProject.module.css'
 
 const ESTRUCTURAS = {
@@ -165,7 +166,7 @@ export default function NewProject() {
 
   const selectedCompany = companies.find((company) => company.id === companyId) || null
   const selectedCompanyRole = currentUser?.memberships?.find((membership) => membership.companyId === companyId)?.role || null
-  const canCreateProject = currentUser?.platformRole === 'admin' || ['manager', 'editor'].includes(selectedCompanyRole)
+  const canCreateProject = isAdmin(currentUser) || ['manager', 'editor'].includes(selectedCompanyRole)
 
   function updateContentRule(field, value) {
     setContentRules((current) => ({

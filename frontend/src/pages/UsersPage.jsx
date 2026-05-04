@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Camera, ChevronDown, ChevronRight, Download, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
-import { getCompanyRole, getInviteRoleOptions } from '../lib/roleCapabilities'
+import { getCompanyRole, getInviteRoleOptions, isAdmin } from '../lib/roleCapabilities'
 import {
   COMPANY_ROLE_ORDER,
   MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
@@ -95,22 +95,22 @@ export default function UsersPage() {
   const [avatarPreview, setAvatarPreview] = useState('')
   const [expandedUserId, setExpandedUserId] = useState('')
 
-  const isAdmin = currentUser?.platformRole === 'admin'
+  const isAdminUser = isAdmin(currentUser)
   const primaryCompanyRole = getCompanyRole(currentUser)
   const managedCompanyIds = useMemo(() => (
     currentUser?.memberships
       ?.filter((membership) => membership.role === 'manager')
       .map((membership) => membership.companyId) || []
   ), [currentUser])
-  const canManageUsers = isAdmin || currentUser?.memberships?.length > 0
-  const canManageRoles = isAdmin || managedCompanyIds.length > 0
+  const canManageUsers = isAdminUser || currentUser?.memberships?.length > 0
+  const canManageRoles = isAdminUser || managedCompanyIds.length > 0
   const inviteCompanyRole = getCompanyRole(currentUser, inviteForm.companyId) || primaryCompanyRole
   const inviteRoleOptions = useMemo(
     () => getInviteRoleOptions(currentUser, inviteCompanyRole),
     [currentUser, inviteCompanyRole]
   )
-  const canInviteUsers = inviteRoleOptions.length > 0 || isAdmin
-  const inviteNeedsCompany = !isAdmin || inviteForm.platformRole === 'user'
+  const canInviteUsers = inviteRoleOptions.length > 0 || isAdminUser
+  const inviteNeedsCompany = !isAdminUser || inviteForm.platformRole === 'user'
 
   async function loadUsers() {
     try {
@@ -233,18 +233,18 @@ export default function UsersPage() {
   }
 
   function canManageMembership(company) {
-    if (isAdmin) return true
+    if (isAdminUser) return true
     return managedCompanyIds.includes(company.companyId) && company.role !== 'manager'
   }
 
   function canEditUser(user) {
-    if (isAdmin) return true
+    if (isAdminUser) return true
     if (user.id === currentUser?.id) return true
     return (user.companies || []).some((company) => managedCompanyIds.includes(company.companyId))
   }
 
   function getRequestableCompany(user) {
-    if (isAdmin) return null
+    if (isAdminUser) return null
 
     const sharedMembership = (user.companies || []).find((company) => {
       const myRole = getCompanyRole(currentUser, company.companyId)
@@ -255,7 +255,7 @@ export default function UsersPage() {
   }
 
   function membershipRoleOptions(company) {
-    return isAdmin ? COMPANY_ROLE_ORDER : MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER.filter((role) => (
+    return isAdminUser ? COMPANY_ROLE_ORDER : MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER.filter((role) => (
       role === company.role || role !== 'manager'
     ))
   }
@@ -330,7 +330,7 @@ export default function UsersPage() {
     event.preventDefault()
     if (!editingUser) return
 
-    const body = isAdmin
+    const body = isAdminUser
       ? editForm
       : { fullName: editForm.fullName }
 
@@ -446,10 +446,10 @@ export default function UsersPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>{isAdmin ? 'Admin' : 'Manager'}</p>
+          <p className={styles.eyebrow}>{isAdminUser ? 'Admin' : 'Manager'}</p>
           <h1 className={styles.title}>Usuarios</h1>
           <p className={styles.subtitle}>
-            {isAdmin
+            {isAdminUser
               ? 'Gestiona cuentas, roles de plataforma y accesos por empresa.'
               : canManageRoles
                 ? 'Gestiona invitaciones y accesos de las empresas donde tienes rol manager.'
@@ -457,7 +457,7 @@ export default function UsersPage() {
           </p>
         </div>
 
-        {canInviteUsers && canManageUsers && (companies.length > 0 || isAdmin) && (
+        {canInviteUsers && canManageUsers && (companies.length > 0 || isAdminUser) && (
           <button className={styles.primaryButton} onClick={() => setInviteOpen(true)}>
             <Plus className={styles.buttonIcon} aria-hidden="true" />
             Agregar usuario
@@ -501,7 +501,7 @@ export default function UsersPage() {
               />
             </label>
 
-            {isAdmin && (
+            {isAdminUser && (
               <label className={styles.fieldWrap}>
                 <span className={styles.fieldLabel}>Rol plataforma</span>
                 <select
@@ -635,7 +635,7 @@ export default function UsersPage() {
             <thead>
               <tr>
                 <th>Usuario</th>
-                {isAdmin && <th>Plataforma</th>}
+                {isAdminUser && <th>Plataforma</th>}
                 <th>Accesos</th>
                 <th>Actualizado</th>
                 <th aria-label="Acciones" />
@@ -647,7 +647,7 @@ export default function UsersPage() {
                 const userCompanies = user.companies || []
                 const visibleCompanies = userCompanies.slice(0, 2)
                 const hiddenCompanyCount = Math.max(0, userCompanies.length - visibleCompanies.length)
-                const hasGlobalAccess = isAdmin && isGlobalPlatformRole(user.platformRole)
+                const hasGlobalAccess = isAdminUser && isGlobalPlatformRole(user.platformRole)
 
                 return (
                   <Fragment key={user.id}>
@@ -671,7 +671,7 @@ export default function UsersPage() {
                         </div>
                       </td>
 
-                      {isAdmin && (
+                      {isAdminUser && (
                         <td>
                           <span className={platformRoleClass(user.platformRole)}>
                             {platformRoleLabel(user.platformRole)}
@@ -708,7 +708,7 @@ export default function UsersPage() {
                               <Pencil aria-hidden="true" />
                             </button>
                           )}
-                          {isAdmin && user.id !== currentUser?.id && (
+                          {isAdminUser && user.id !== currentUser?.id && (
                             <button
                               className={styles.rowDangerButton}
                               onClick={() => handleDeleteUser(user)}
@@ -725,7 +725,7 @@ export default function UsersPage() {
 
                     {expanded && (
                       <tr className={styles.assignmentDetailRow}>
-                        <td colSpan={isAdmin ? 5 : 4}>
+                        <td colSpan={isAdminUser ? 5 : 4}>
                           <div id={`user-access-${user.id}`} className={styles.assignmentPanel}>
                             {hasGlobalAccess ? (
                               <div className={styles.globalAccessNotice}>
@@ -843,7 +843,7 @@ export default function UsersPage() {
               <div>
                 <h2 id="edit-user-title" className={styles.panelTitle}>Editar usuario</h2>
                 <p className={styles.panelText}>
-                  {isAdmin ? 'Actualiza identidad, email y rol de plataforma.' : 'Actualiza el nombre visible del usuario.'}
+                  {isAdminUser ? 'Actualiza identidad, email y rol de plataforma.' : 'Actualiza el nombre visible del usuario.'}
                 </p>
               </div>
               <button className={styles.iconButton} onClick={closeEditUser} aria-label="Cerrar">
@@ -896,7 +896,7 @@ export default function UsersPage() {
                 />
               </label>
 
-              {isAdmin && (
+              {isAdminUser && (
                 <>
                   <label className={styles.fieldWrap}>
                     <span className={styles.fieldLabel}>Email</span>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
+import { isAdmin } from '../lib/roleCapabilities'
 import styles from './TrashPage.module.css'
 
 const DATE_FILTERS = [
@@ -295,7 +296,7 @@ export default function TrashPage({ mode = 'trashed' }) {
                 busyKey={busyKey}
                 onRestore={restoreItem}
                 onDelete={deleteItem}
-                canDeletePermanently={currentUser?.platformRole === 'admin'}
+                canDeletePermanently={isAdmin(currentUser)}
               />
             )}
           </section>
