@@ -198,4 +198,104 @@ router.post('/share/:token/approvals', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Brief public routes — no authentication required
+// ---------------------------------------------------------------------------
+
+router.get('/brief/:token', async (req, res) => {
+  try {
+    const { data: project, error } = await supabaseAdmin
+      .from('projects')
+      .select('id, name, project_type, brief_share_token, archived_at, trashed_at')
+      .eq('brief_share_token', req.params.token)
+      .is('archived_at', null)
+      .is('trashed_at', null)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!project || project.project_type !== 'brief') {
+      return res.status(404).json({ error: 'Brief no encontrado o expirado' })
+    }
+
+    const { data: pages, error: pagesError } = await supabaseAdmin
+      .from('project_pages')
+      .select('id, name, content_json')
+      .eq('project_id', project.id)
+      .order('position', { ascending: true })
+      .limit(1)
+
+    if (pagesError) throw pagesError
+
+    const page = pages?.[0]
+    const briefData = page?.content_json || {}
+
+    return res.json({
+      brief: {
+        projectId: project.id,
+        formTitle: briefData.formTitle || project.name,
+        formDescription: briefData.formDescription || '',
+        questions: Array.isArray(briefData.questions) ? briefData.questions : [],
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo cargar el brief' })
+  }
+})
+
+router.post('/brief/:token/submit', async (req, res) => {
+  const { respondentName, respondentEmail, answers } = req.body
+  if (!respondentName?.trim() || !respondentEmail?.trim()) {
+    return res.status(400).json({ error: 'respondentName y respondentEmail son requeridos' })
+  }
+  if (!answers || typeof answers !== 'object') {
+    return res.status(400).json({ error: 'answers debe ser un objeto' })
+  }
+
+  try {
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .select('id, name, project_type, archived_at, trashed_at')
+      .eq('brief_share_token', req.params.token)
+      .is('archived_at', null)
+      .is('trashed_at', null)
+      .maybeSingle()
+
+    if (projectError) throw projectError
+    if (!project || project.project_type !== 'brief') {
+      return res.status(404).json({ error: 'Brief no encontrado' })
+    }
+
+    const { data: response, error: insertError } = await supabaseAdmin
+      .from('brief_responses')
+      .insert({
+        project_id: project.id,
+        share_token: req.params.token,
+        respondent_name: respondentName.trim(),
+        respondent_email: respondentEmail.trim().toLowerCase(),
+        answers,
+      })
+      .select('id, submitted_at')
+      .single()
+
+    if (insertError) return res.status(500).json({ error: insertError.message })
+
+    await logProjectActivity({
+      projectId: project.id,
+      eventType: 'brief_response_received',
+      subjectType: 'brief_response',
+      subjectId: response.id,
+      title: 'Brief completado',
+      description: `${respondentName.trim()} (${respondentEmail.trim().toLowerCase()})`,
+      metadata: {
+        respondentName: respondentName.trim(),
+        respondentEmail: respondentEmail.trim().toLowerCase(),
+      },
+    })
+
+    return res.status(201).json({ ok: true, submittedAt: response.submitted_at })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo enviar el brief' })
+  }
+})
+
 export default router

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Trash2 } from 'lucide-react'
+import { Archive, ArrowRight, Copy, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -72,6 +72,7 @@ function roleLabel(role) {
 function projectTypeLabel(projectType) {
   if (projectType === 'document') return 'Artículo'
   if (projectType === 'faq') return 'FAQs'
+  if (projectType === 'brief') return 'Brief'
   return 'Página Web'
 }
 
@@ -183,6 +184,21 @@ export default function CompanyPage() {
 
   function openProject(projectId) {
     navigate(`/project/${projectId}/editor`)
+  }
+
+  async function handleProjectDuplicate(projectId) {
+    try {
+      const data = await apiFetch(`/api/projects/${projectId}/duplicate`, { method: 'POST' })
+      const newProject = data.project
+      const nextProjects = [...projects, newProject]
+      const nextCompany = company ? { ...company, projectCount: nextProjects.length } : company
+      setProjects(nextProjects)
+      setCompany(nextCompany)
+      clearCompaniesCache()
+      if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects: nextProjects, members })
+    } catch (err) {
+      setError(err.message || 'No se pudo duplicar el proyecto')
+    }
   }
 
   async function handleProjectArchive(projectId) {
@@ -347,6 +363,17 @@ export default function CompanyPage() {
                               aria-label={`Archivar ${project.name}`}
                             >
                               <Archive size={16} />
+                            </button>
+                            <button
+                              className={styles.archiveActionButton}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleProjectDuplicate(project.id)
+                              }}
+                              title="Duplicar proyecto"
+                              aria-label={`Duplicar ${project.name}`}
+                            >
+                              <Copy size={16} />
                             </button>
                           </>
                         )}

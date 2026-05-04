@@ -527,4 +527,74 @@ router.delete('/:id/permanent', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Project templates per company
+// ---------------------------------------------------------------------------
+router.get('/:id/templates', async (req, res) => {
+  try {
+    if (!canAccessCompany(req.currentUser, req.params.id)) {
+      return res.status(403).json({ error: 'Sin acceso a esta empresa' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('project_templates')
+      .select('id, name, project_type, structure_json, created_at')
+      .eq('company_id', req.params.id)
+      .order('created_at', { ascending: false })
+
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json({ templates: data || [] })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron cargar las plantillas' })
+  }
+})
+
+router.post('/:id/templates', async (req, res) => {
+  const { name, projectType, structureJson } = req.body
+  if (!name?.trim()) return res.status(400).json({ error: 'name es requerido' })
+  if (!Array.isArray(structureJson)) return res.status(400).json({ error: 'structureJson debe ser un array' })
+
+  try {
+    if (!canAccessCompany(req.currentUser, req.params.id)) {
+      return res.status(403).json({ error: 'Sin acceso a esta empresa' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('project_templates')
+      .insert({
+        company_id: req.params.id,
+        name: name.trim(),
+        project_type: projectType || 'page',
+        structure_json: structureJson,
+        created_by: req.currentUser.id,
+      })
+      .select('id, name, project_type, structure_json, created_at')
+      .single()
+
+    if (error) return res.status(500).json({ error: error.message })
+    return res.status(201).json({ template: data })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo guardar la plantilla' })
+  }
+})
+
+router.delete('/:id/templates/:templateId', async (req, res) => {
+  try {
+    if (!canAccessCompany(req.currentUser, req.params.id)) {
+      return res.status(403).json({ error: 'Sin acceso a esta empresa' })
+    }
+
+    const { error } = await supabaseAdmin
+      .from('project_templates')
+      .delete()
+      .eq('id', req.params.templateId)
+      .eq('company_id', req.params.id)
+
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json({ ok: true })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo eliminar la plantilla' })
+  }
+})
+
 export default router

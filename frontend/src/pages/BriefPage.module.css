@@ -1,0 +1,307 @@
+/* ──────────────────────────────────────────────
+   BriefPage — public client-facing brief form
+   ────────────────────────────────────────────── */
+
+.page {
+  min-height: 100vh;
+  background: #f4f7fb;
+  padding: 40px 16px 80px;
+}
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ── Header ── */
+.formHeader {
+  margin-bottom: 28px;
+}
+
+.formTitle {
+  margin: 0 0 10px;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #091223;
+}
+
+.formDescription {
+  margin: 0 0 12px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #475569;
+}
+
+.requiredNote {
+  margin: 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* ── Form ── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Identity card ── */
+.identityCard {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.identityTitle {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #091223;
+}
+
+.identityGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 560px) {
+  .identityGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Questions list ── */
+.questionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Section header ── */
+.sectionHeader {
+  padding: 10px 0 4px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-top: 8px;
+}
+
+.sectionHeaderTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* ── Field group ── */
+.fieldGroup {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.questionLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+.required {
+  color: #ef4444;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* ── Inputs ── */
+.input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  border-color: #6366f1;
+  background: #fff;
+}
+
+.textarea {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+
+.textarea:focus {
+  border-color: #6366f1;
+  background: #fff;
+}
+
+/* ── Fieldset (choice groups) ── */
+.fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.optionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.optionLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+.optionInput {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: #6366f1;
+  cursor: pointer;
+}
+
+/* ── Submit row ── */
+.submitRow {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.submitButton {
+  padding: 11px 28px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #fff;
+  background: #6366f1;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.submitButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.submitError {
+  margin: 0;
+  font-size: 14px;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+/* ── Loading ── */
+.loadingText {
+  text-align: center;
+  padding: 60px 0;
+  color: #64748b;
+  font-size: 15px;
+}
+
+/* ── Error state ── */
+.errorState {
+  text-align: center;
+  padding: 60px 20px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+}
+
+.errorTitle {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.errorText {
+  margin: 0;
+  font-size: 15px;
+  color: #64748b;
+}
+
+/* ── Success state ── */
+.successState {
+  text-align: center;
+  padding: 64px 24px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+}
+
+.successIcon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 26px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.successTitle {
+  margin: 0 0 12px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.successText {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #475569;
+  max-width: 480px;
+  margin: 0 auto;
+}

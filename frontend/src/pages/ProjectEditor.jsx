@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+
+const BriefProjectEditor = lazy(() => import('./BriefProjectEditor'))
 import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
 import { Extension, Node, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -1629,7 +1631,7 @@ function buildDocumentLimitNotice(label, limit) {
 
 function inferProjectType(project, pages = []) {
   const explicitType = project?.projectType
-  if (explicitType === 'document' || explicitType === 'faq') return explicitType
+  if (explicitType === 'document' || explicitType === 'faq' || explicitType === 'brief') return explicitType
 
   const firstPage = pages[0]
   const firstName = (firstPage?.name || '').trim().toLowerCase()
@@ -3410,6 +3412,19 @@ export default function ProjectEditor() {
           Volver al dashboard
         </button>
       </div>
+    )
+  }
+
+  // ── Brief type — delegate to its own editor ──────────────────────────────
+  if (projectType === 'brief') {
+    return (
+      <Suspense fallback={<div className={styles.loadingState}>Cargando...</div>}>
+        <BriefProjectEditor
+          projectId={projectId}
+          projectMeta={projectMeta}
+          pages={pages}
+        />
+      </Suspense>
     )
   }
 

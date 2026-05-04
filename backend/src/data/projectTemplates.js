@@ -143,7 +143,133 @@ export function seedProjectPages(businessType) {
   return seedProjectPagesForType('page', businessType)
 }
 
+// ---------------------------------------------------------------------------
+// Brief templates — question seeds for brief project type
+// ---------------------------------------------------------------------------
+
+function briefQuestion(type, label, opts = {}) {
+  return {
+    id: crypto.randomUUID(),
+    type,
+    label,
+    hint: opts.hint || '',
+    required: opts.required !== false,
+    options: opts.options || [],
+  }
+}
+
+function briefSection(title) {
+  return { id: crypto.randomUUID(), type: 'section_header', label: title, hint: '', required: false, options: [] }
+}
+
+const BRIEF_TEMPLATES = {
+  tabula_rasa: {
+    label: 'Tabula rasa',
+    formTitle: 'Brief',
+    formDescription: '',
+    questions: [],
+  },
+  general: {
+    label: 'General (Brief de inicio)',
+    formTitle: 'Brief de Inicio de Proyecto',
+    formDescription: 'Este brief nos ayudará a reunir la información esencial para comenzar el desarrollo de su proyecto web. Las preguntas son simples y rápidas de completar.',
+    questions: [
+      briefSection('SECCIÓN 1 — Información general del negocio'),
+      briefQuestion('short_text', 'Nombre comercial del negocio'),
+      briefQuestion('short_text', 'Nombre de la persona de contacto'),
+      briefQuestion('short_text', 'Cargo o rol dentro del negocio'),
+      briefQuestion('short_text', 'Teléfono de contacto'),
+      briefQuestion('short_text', 'Correo electrónico de contacto'),
+      briefQuestion('short_text', '¿Tienen slogan o frase corporativa?', { required: false }),
+      briefQuestion('long_text', 'Describan su negocio en 2–3 oraciones'),
+      briefQuestion('long_text', '¿Qué diferencia a su negocio de la competencia?', { required: false }),
+      briefSection('SECCIÓN 2 — Objetivos del sitio web'),
+      briefQuestion('multiple_choice', '¿Cuáles son los principales objetivos del nuevo sitio web?', {
+        options: [
+          'Ofrecer servicios (reservas, consultas, presupuestos, sesiones, citas)',
+          'Vender productos online (eCommerce)',
+          'Vender cursos online (eLearning)',
+          'Captar clientes potenciales (formularios, WhatsApp, llamadas)',
+          'Mostrar información institucional o corporativa',
+          'Portafolio / catálogo de trabajos',
+          'Automatizar procesos (confirmaciones, agendas, pagos)',
+        ],
+      }),
+      briefQuestion('long_text', '¿Qué esperan lograr en los primeros meses después del lanzamiento?'),
+      briefSection('SECCIÓN 3 — Identidad visual'),
+      briefQuestion('single_choice', '¿Desean que trabajemos una propuesta de identidad visual adicional?', {
+        options: ['Sí (se cotiza aparte)', 'No'],
+      }),
+      briefQuestion('long_text', 'Material gráfico disponible', {
+        hint: 'Comparte enlaces a carpetas de Google Drive con íconos, ilustraciones, fotos, mockups u otros recursos visuales.',
+        required: false,
+      }),
+      briefQuestion('multiple_choice', 'Selecciona el estilo visual y la percepción deseada de la marca', {
+        options: ['Minimalista', 'Moderno', 'Elegante / Premium', 'Colorido / Creativo', 'Divertido / Juguetón', 'Corporativo', 'Profesional', 'Cercano / Amigable', 'Femenino', 'Neutral'],
+      }),
+      briefQuestion('long_text', 'Comparte 2–4 sitios web que te GUSTEN como referencia visual'),
+      briefQuestion('long_text', 'Comparte 2–4 sitios que NO te gusten o no representen tu estilo', { required: false }),
+      briefSection('SECCIÓN 4 — Estado actual del sitio'),
+      briefQuestion('single_choice', '¿Existe un sitio web actualmente?', { options: ['Sí', 'No'] }),
+      briefQuestion('short_text', 'Enlace del sitio actual', { required: false }),
+      briefQuestion('long_text', 'Elementos que deseas mantener del sitio actual', { required: false }),
+      briefQuestion('long_text', 'Elementos que deseas mejorar o eliminar', { required: false }),
+      briefQuestion('long_text', 'Problemas actuales relevantes (errores, caídas, lentitud, seguridad)', { required: false }),
+      briefSection('SECCIÓN 5 — Competencia y posicionamiento'),
+      briefQuestion('long_text', 'Principales competidores del negocio'),
+      briefQuestion('long_text', 'Enlace a sitios web de la competencia'),
+      briefSection('SECCIÓN 6 — Contenidos del sitio'),
+      briefQuestion('long_text', '¿El contenido de las páginas será entregado por el cliente o debe redactarse?', {
+        hint: 'Indica para cada página si el contenido lo entregas tú o si debe redactarse por el equipo.',
+        required: false,
+      }),
+      briefQuestion('short_text', 'Si incluye servicios, ¿cuántos servicios ofrecerá?', { required: false }),
+      briefQuestion('short_text', 'Si incluye tienda online, ¿cuántos productos tendrá el catálogo?', { required: false }),
+      briefSection('SECCIÓN 7 — Accesos necesarios'),
+      briefQuestion('multiple_choice', 'Accesos que pueden proporcionar', {
+        required: false,
+        options: ['Dominio', 'Hosting', 'Redes sociales', 'Google Analytics', 'Google Search Console', 'Vimeo / Drive (para cursos)'],
+      }),
+      briefQuestion('long_text', '¿Cómo desean enviar los accesos?', { required: false }),
+      briefSection('SECCIÓN 8 — Cronograma'),
+      briefQuestion('short_text', 'Fecha ideal de lanzamiento del proyecto'),
+      briefQuestion('long_text', 'Fechas importantes (eventos, campañas, temporadas altas)', { required: false }),
+      briefSection('SECCIÓN 9 — Observaciones y aprobación'),
+      briefQuestion('long_text', 'Observaciones adicionales', { required: false }),
+      briefQuestion('single_choice', 'Confirmo que la información enviada es correcta para iniciar el proyecto', {
+        options: ['Sí', 'No'],
+      }),
+    ],
+  },
+}
+
+export function getBriefTemplate(templateKey) {
+  return BRIEF_TEMPLATES[templateKey] || BRIEF_TEMPLATES.tabula_rasa
+}
+
+function seedBriefPage(templateKey = 'tabula_rasa') {
+  const template = getBriefTemplate(templateKey)
+  const briefData = {
+    formTitle: template.formTitle,
+    formDescription: template.formDescription,
+    questions: template.questions,
+  }
+  return [{
+    id: crypto.randomUUID(),
+    name: template.formTitle || 'Brief',
+    position: 0,
+    content_html: '',
+    content_json: briefData,
+    seo_metadata: {},
+    review_status: 'draft',
+  }]
+}
+
 export function seedProjectPagesForType(projectType = 'page', businessType = 'otro') {
+  if (projectType === 'brief') {
+    return seedBriefPage(businessType)
+  }
+
   if (projectType === 'document') {
     return [{
       id: crypto.randomUUID(),

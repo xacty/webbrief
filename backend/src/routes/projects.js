@@ -172,12 +172,12 @@ async function refreshProjectPageOptionalColumn(columnName) {
 }
 
 function normalizeProjectType(value) {
-  return ['page', 'document', 'faq'].includes(value) ? value : 'page'
+  return ['page', 'document', 'faq', 'brief'].includes(value) ? value : 'page'
 }
 
 function inferProjectType(project, pages = []) {
   const explicitType = project?.project_type
-  if (explicitType === 'document' || explicitType === 'faq') return explicitType
+  if (explicitType === 'document' || explicitType === 'faq' || explicitType === 'brief') return explicitType
 
   const firstName = String(pages[0]?.name || '').trim().toLowerCase()
   if (firstName === 'documento') return 'document'
@@ -756,6 +756,7 @@ router.get('/:id', async (req, res) => {
         archivedAt: project.archived_at,
         trashedAt: project.trashed_at,
         updatedAt: project.updated_at,
+        briefShareToken: project.brief_share_token || null,
       },
       pages: persistedPages.map((page) => ({
         id: page.id,
@@ -1948,6 +1949,175 @@ router.post('/:id/assets/export-bulk', async (req, res) => {
     await archive.finalize()
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo exportar el lote de imagenes' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Duplicate project
+// ---------------------------------------------------------------------------
+router.post('/:id/duplicate', async (req, res) => {
+  try {
+    const source = await getProjectById(req.params.id, req.currentUser)
+    if (!source) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canCreateProject(req.currentUser, source.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede crear proyectos en esta empresa' })
+    }
+
+    const timestamp = new Date().toISOString()
+    const newProjectId = crypto.randomUUID()
+
+    const { data: newProject, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .insert({
+        id: newProjectId,
+        company_id: source.company_id,
+        name: `Copia de ${source.name}`,
+        client_name: source.client_name,
+        client_email: source.client_email,
+        business_type: source.business_type,
+        project_type: source.project_type,
+        created_by: req.currentUser.id,
+        created_at: timestamp,
+        updated_at: timestamp,
+      })
+      .select('*')
+      .single()
+
+    if (projectError) return res.status(500).json({ error: projectError.message })
+
+    // Copy all pages from source project
+    const { data: sourcePages, error: pagesReadError } = await supabaseAdmin
+      .from('project_pages')
+      .select('*')
+      .eq('project_id', source.id)
+      .order('position', { ascending: true })
+
+    if (pagesReadError) return res.status(500).json({ error: pagesReadError.message })
+
+    if (sourcePages && sourcePages.length > 0) {
+      const newPages = sourcePages.map((page) => ({
+        id: crypto.randomUUID(),
+        project_id: newProjectId,
+        name: page.name,
+        position: page.position,
+        content_html: page.content_html,
+        content_json: page.content_json,
+        seo_metadata: page.seo_metadata,
+        content_rules: page.content_rules,
+        version: 1,
+        review_status: 'draft',
+        created_at: timestamp,
+        updated_at: timestamp,
+      }))
+
+      const { error: pagesInsertError } = await supabaseAdmin
+        .from('project_pages')
+        .insert(newPages)
+
+      if (pagesInsertError) return res.status(500).json({ error: pagesInsertError.message })
+    }
+
+    await logProjectActivity({
+      projectId: newProjectId,
+      currentUser: req.currentUser,
+      eventType: 'project_created',
+      subjectType: 'project',
+      subjectId: newProjectId,
+      title: 'Proyecto duplicado',
+      description: newProject.name,
+    })
+
+    return res.status(201).json({
+      project: {
+        id: newProject.id,
+        name: newProject.name,
+        client: newProject.client_name,
+        companyId: newProject.company_id,
+        projectType: normalizeProjectType(newProject.project_type),
+        lastActivity: newProject.updated_at,
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo duplicar el proyecto' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Brief — share token management + responses
+// ---------------------------------------------------------------------------
+router.post('/:id/brief/share', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (project.projectType !== 'brief') return res.status(400).json({ error: 'Este proyecto no es un brief' })
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede gestionar el link del brief' })
+    }
+
+    // Return existing token if already set
+    const { data: existing } = await supabaseAdmin
+      .from('projects')
+      .select('brief_share_token')
+      .eq('id', project.id)
+      .single()
+
+    if (existing?.brief_share_token) {
+      return res.json({ token: existing.brief_share_token })
+    }
+
+    const token = createShareToken()
+    const { error } = await supabaseAdmin
+      .from('projects')
+      .update({ brief_share_token: token })
+      .eq('id', project.id)
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    return res.json({ token })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo generar el link' })
+  }
+})
+
+router.delete('/:id/brief/share', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede gestionar el link del brief' })
+    }
+
+    const { error } = await supabaseAdmin
+      .from('projects')
+      .update({ brief_share_token: null })
+      .eq('id', project.id)
+
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json({ ok: true })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo revocar el link' })
+  }
+})
+
+router.get('/:id/brief/responses', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede ver las respuestas' })
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('brief_responses')
+      .select('id, respondent_name, respondent_email, answers, submitted_at')
+      .eq('project_id', project.id)
+      .order('submitted_at', { ascending: false })
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    return res.json({ responses: data || [] })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron cargar las respuestas' })
   }
 })
 

@@ -84,11 +84,19 @@ const PROJECT_TYPES = {
     label: 'Página Web',
     description: 'Brief seccionado para páginas web, landing pages y sitios.',
     previewTitle: 'Estructura sugerida',
+    hasTemplate: true,
+  },
+  brief: {
+    label: 'Brief',
+    description: 'Formulario de preguntas para enviar a clientes y recopilar información de proyecto.',
+    previewTitle: 'Plantilla de preguntas',
+    hasTemplate: true,
   },
   document: {
     label: 'Artículo',
     description: 'Editor lineal para blog posts, artículos y contenido largo.',
     previewTitle: 'Artículo inicial',
+    hasTemplate: false,
     pages: [
       { name: 'Documento', sections: ['Índice por H1/H2/H3', 'SEO metadata por página', 'Contenido lineal sin divisores'] },
     ],
@@ -97,10 +105,16 @@ const PROJECT_TYPES = {
     label: 'FAQ',
     description: 'Preguntas y respuestas con exportación CSV universal.',
     previewTitle: 'Estructura FAQ',
+    hasTemplate: false,
     pages: [
       { name: 'FAQs', sections: ['Título general opcional en H1', 'Pregunta Frecuente en H2', 'Respuesta debajo de cada pregunta', 'Export CSV: question, answer'] },
     ],
   },
+}
+
+const BRIEF_TEMPLATES = {
+  tabula_rasa: { label: 'Tabula rasa', description: 'Formulario vacío, arma tus propias preguntas.' },
+  general: { label: 'General (Brief de inicio)', description: '40 preguntas en 9 secciones. Ideal para proyectos web.' },
 }
 
 function getDefaultCompanyId(companies) {
@@ -159,10 +173,13 @@ export default function NewProject() {
   const estructura = useMemo(
     () => {
       if (projectType === 'page') return businessType ? ESTRUCTURAS[businessType] : null
+      if (projectType === 'brief') return null // brief preview shown separately
       return PROJECT_TYPES[projectType]
     },
     [businessType, projectType]
   )
+
+  const showTemplateSelector = PROJECT_TYPES[projectType]?.hasTemplate ?? false
 
   const selectedCompany = companies.find((company) => company.id === companyId) || null
   const selectedCompanyRole = currentUser?.memberships?.find((membership) => membership.companyId === companyId)?.role || null
@@ -253,27 +270,38 @@ export default function NewProject() {
             <span className={styles.fieldHint}>{PROJECT_TYPES[projectType].description}</span>
           </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="business-type">
-              {projectType === 'page' ? 'Tipo de negocio' : 'Contexto del negocio'}
-            </label>
-            <select
-              id="business-type"
-              className={styles.select}
-              value={businessType}
-              onChange={(e) => setBusinessType(e.target.value)}
-              required
-            >
-              {Object.entries(ESTRUCTURAS).map(([key, value]) => (
-                <option key={key} value={key}>{value.label}</option>
-              ))}
-            </select>
-            {selectedCompany && (
-              <span className={styles.fieldHint}>
-                Se creará en {selectedCompany.name}.
-              </span>
-            )}
-          </div>
+          {showTemplateSelector && (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="business-type">Plantilla</label>
+              <select
+                id="business-type"
+                className={styles.select}
+                value={businessType}
+                onChange={(e) => setBusinessType(e.target.value)}
+                required
+              >
+                {projectType === 'brief'
+                  ? Object.entries(BRIEF_TEMPLATES).map(([key, value]) => (
+                    <option key={key} value={key}>{value.label}</option>
+                  ))
+                  : Object.entries(ESTRUCTURAS).map(([key, value]) => (
+                    <option key={key} value={key}>{value.label}</option>
+                  ))
+                }
+              </select>
+              {projectType === 'brief' && (
+                <span className={styles.fieldHint}>
+                  {BRIEF_TEMPLATES[businessType]?.description || ''}
+                </span>
+              )}
+              {projectType === 'page' && selectedCompany && (
+                <span className={styles.fieldHint}>Se creará en {selectedCompany.name}.</span>
+              )}
+            </div>
+          )}
+          {!showTemplateSelector && selectedCompany && (
+            <p className={styles.fieldHint} style={{ marginTop: -8 }}>Se creará en {selectedCompany.name}.</p>
+          )}
 
           {projectType === 'document' && (
             <div className={styles.field}>
@@ -322,7 +350,32 @@ export default function NewProject() {
         </form>
 
         <aside className={styles.previewColumn}>
-          {estructura ? (
+          {projectType === 'brief' ? (
+            <div className={styles.preview}>
+              <p className={styles.previewTitle}>{PROJECT_TYPES.brief.previewTitle}</p>
+              <div className={styles.pagesList}>
+                <div className={styles.pageBlock}>
+                  <p className={styles.pageName}>{BRIEF_TEMPLATES[businessType]?.label || 'Brief'}</p>
+                  {businessType === 'general' ? (
+                    <ul className={styles.sectionList}>
+                      <li className={styles.sectionItem}>Sección 1 — Información general del negocio</li>
+                      <li className={styles.sectionItem}>Sección 2 — Objetivos del sitio web</li>
+                      <li className={styles.sectionItem}>Sección 3 — Identidad visual</li>
+                      <li className={styles.sectionItem}>Sección 4 — Estado actual del sitio</li>
+                      <li className={styles.sectionItem}>Sección 5 — Competencia y posicionamiento</li>
+                      <li className={styles.sectionItem}>Sección 6 — Contenidos del sitio</li>
+                      <li className={styles.sectionItem}>Sección 7 — Accesos necesarios</li>
+                      <li className={styles.sectionItem}>Sección 8 — Cronograma</li>
+                      <li className={styles.sectionItem}>Sección 9 — Observaciones y aprobación</li>
+                    </ul>
+                  ) : (
+                    <p className={styles.previewNote}>Formulario vacío. Agrega tus propias preguntas.</p>
+                  )}
+                </div>
+              </div>
+              <p className={styles.previewNote}>Podrás editar las preguntas después de crear el proyecto.</p>
+            </div>
+          ) : estructura ? (
             <div className={styles.preview}>
               <p className={styles.previewTitle}>
                 {PROJECT_TYPES[projectType].previewTitle} {projectType === 'page' && estructura.label && <>para <strong>{estructura.label}</strong></>}
@@ -346,7 +399,7 @@ export default function NewProject() {
           ) : (
             <div className={styles.previewEmpty}>
               <p className={styles.previewEmptyText}>
-                Selecciona un tipo de negocio para ver la estructura sugerida.
+                Selecciona una plantilla para ver la estructura sugerida.
               </p>
             </div>
           )}
