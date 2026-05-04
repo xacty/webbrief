@@ -1845,6 +1845,55 @@ function buildSectionActivityEvents(previousPages, nextPayload) {
   return events
 }
 
+// For document/faq project types that have no section dividers,
+// compare the whole page HTML and emit a single activity event with
+// sectionId='__document__'. This gives the activity panel something to
+// group and allows click-to-scroll to work.
+function buildDocumentActivityEvents(previousPages, nextPayload) {
+  const events = []
+
+  nextPayload.forEach((nextPage) => {
+    const previousPage = previousPages.find((page) => page.id === nextPage.id)
+    const previousHtml = previousPage?.fullContent || buildDocumentHTML(previousPage?.sections || []) || ''
+    const nextHtml = nextPage.contentHtml || ''
+
+    if (normalizeHtmlForCompare(previousHtml) === normalizeHtmlForCompare(nextHtml)) return
+
+    const previousStats = getSectionStats(previousHtml)
+    const nextStats = getSectionStats(nextHtml)
+    const changes = new Set()
+
+    if (previousStats.headingSignature !== nextStats.headingSignature) changes.add('title_changed')
+    if (previousStats.textBody !== nextStats.textBody) changes.add('text_changed')
+    if (nextStats.imageCount > previousStats.imageCount) changes.add('image_added')
+    if (nextStats.imageCount < previousStats.imageCount) changes.add('image_removed')
+    if (
+      nextStats.imageCount === previousStats.imageCount &&
+      nextStats.imageSignature !== previousStats.imageSignature
+    ) changes.add('image_changed')
+    if (nextStats.ctaCount > previousStats.ctaCount) changes.add('cta_added')
+    if (nextStats.ctaCount < previousStats.ctaCount) changes.add('cta_removed')
+    if (
+      nextStats.ctaCount === previousStats.ctaCount &&
+      nextStats.ctaSignature !== previousStats.ctaSignature
+    ) changes.add('cta_changed')
+    if (nextStats.tableSignature !== previousStats.tableSignature) changes.add('table_changed')
+    if (changes.size === 0) changes.add('content_changed')
+
+    events.push({
+      pageId: nextPage.id,
+      pageName: nextPage.name,
+      sectionId: '__document__',
+      sectionName: nextPage.name || 'Documento',
+      changeTypes: [...changes],
+      previousIndex: null,
+      nextIndex: 0,
+    })
+  })
+
+  return events
+}
+
 function isUnreadSectionActivity(item) {
   return item?.eventType === 'section_edited'
     && item.metadata?.sectionId
@@ -2692,7 +2741,9 @@ export default function ProjectEditor() {
         reviewRequestedBy: page.reviewRequestedBy || null,
       }
     })
-    const sectionEvents = buildSectionActivityEvents(pages, payload)
+    const sectionEvents = projectType === 'page'
+      ? buildSectionActivityEvents(pages, payload)
+      : buildDocumentActivityEvents(pages, payload)
 
     saveInFlightRef.current = true
     setIsSaving(true)
@@ -5329,6 +5380,10 @@ function EditorPanel({
     if (!projectId) throw new Error('Proyecto no disponible')
     const formData = new FormData()
     formData.append('file', file)
+    // activeSectionId is null for document/faq types; fall back to '__document__'
+    // so asset_uploaded activity knows which "section" to scroll to on click.
+    if (activeSectionId) formData.append('sectionId', activeSectionId)
+    else formData.append('sectionId', '__document__')
     const data = await apiFetch(`/api/projects/${projectId}/assets`, {
       method: 'POST',
       body: formData,
@@ -5339,7 +5394,7 @@ function EditorPanel({
     }
 
     return data.asset
-  }, [projectId])
+  }, [projectId, activeSectionId])
 
   const editor = useEditor({
     extensions: [
@@ -7457,11 +7512,12 @@ function UpdatesPanel({
         item.eventType === 'section_edited'
         && item.metadata?.sectionId
         && item.metadata?.pageId === activePageId
-        && sectionOrder.has(item.metadata?.sectionId)
+        && (item.metadata.sectionId === '__document__' || sectionOrder.has(item.metadata.sectionId))
       ))
       .sort((a, b) => {
-        const aIndex = sectionOrder.get(a.metadata.sectionId) ?? 9999
-        const bIndex = sectionOrder.get(b.metadata.sectionId) ?? 9999
+        // '__document__' always sorts first (index 0)
+        const aIndex = a.metadata.sectionId === '__document__' ? 0 : (sectionOrder.get(a.metadata.sectionId) ?? 9999)
+        const bIndex = b.metadata.sectionId === '__document__' ? 0 : (sectionOrder.get(b.metadata.sectionId) ?? 9999)
         if (aIndex !== bIndex) return aIndex - bIndex
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       })
@@ -7472,7 +7528,11 @@ function UpdatesPanel({
       const sectionId = item.metadata.sectionId
       if (!groups.has(sectionId)) {
         const section = sections.find((s) => s.id === sectionId)
-        groups.set(sectionId, { sectionId, sectionName: section?.name || 'Sección', items: [] })
+        // For '__document__', use the stored sectionName (page name) from metadata
+        const sectionName = sectionId === '__document__'
+          ? (item.metadata.sectionName || 'Documento')
+          : (section?.name || item.metadata.sectionName || 'Sección')
+        groups.set(sectionId, { sectionId, sectionName, items: [] })
       }
       groups.get(sectionId).items.push(item)
     })
