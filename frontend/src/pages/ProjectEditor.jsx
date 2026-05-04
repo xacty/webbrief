@@ -3528,6 +3528,7 @@ export default function ProjectEditor() {
           <EditorPanel
             projectId={projectId}
             projectType={projectType}
+            activePageId={activePageId}
             initialContent={activePage?.fullContent || initialContentRef.current}
             seoMetadata={getPageSeoMetadata(activePage)}
             contentRules={getPageContentRules(activePage)}
@@ -5318,6 +5319,7 @@ function TableInlineButtons({ editor, wrapperRef }) {
 function EditorPanel({
   projectId,
   projectType = 'page',
+  activePageId = null,
   initialContent,
   seoMetadata = {},
   contentRules = {},
@@ -5384,6 +5386,8 @@ function EditorPanel({
     // so asset_uploaded activity knows which "section" to scroll to on click.
     if (activeSectionId) formData.append('sectionId', activeSectionId)
     else formData.append('sectionId', '__document__')
+    // pageId lets the activity panel filter uploads to the active page.
+    if (activePageId) formData.append('pageId', activePageId)
     const data = await apiFetch(`/api/projects/${projectId}/assets`, {
       method: 'POST',
       body: formData,
@@ -5394,7 +5398,7 @@ function EditorPanel({
     }
 
     return data.asset
-  }, [projectId, activeSectionId])
+  }, [projectId, activeSectionId, activePageId])
 
   const editor = useEditor({
     extensions: [
@@ -7509,7 +7513,7 @@ function UpdatesPanel({
   const sectionActivity = useMemo(() => (
     activity
       .filter((item) => (
-        item.eventType === 'section_edited'
+        (item.eventType === 'section_edited' || item.eventType === 'asset_uploaded')
         && item.metadata?.sectionId
         && item.metadata?.pageId === activePageId
         && (item.metadata.sectionId === '__document__' || sectionOrder.has(item.metadata.sectionId))
@@ -7540,9 +7544,15 @@ function UpdatesPanel({
   }, [sectionActivity, sections])
   // Only document-content events stay in the activity panel.
   // Everything else lives in the notifications dropdown (navbar bell).
+  // asset_uploaded items with a known sectionId are folded into sectionActivity;
+  // only orphaned uploads (no sectionId or no pageId match) fall here.
   const generalActivity = useMemo(() => (
-    activity.filter((item) => item.eventType === 'asset_uploaded')
-  ), [activity])
+    activity.filter((item) => (
+      item.eventType === 'asset_uploaded'
+      && !(item.metadata?.sectionId && item.metadata?.pageId === activePageId
+        && (item.metadata.sectionId === '__document__' || sectionOrder.has(item.metadata.sectionId)))
+    ))
+  ), [activity, activePageId, sectionOrder])
   const hasActivity = groupedSectionActivity.length > 0 || generalActivity.length > 0
   const pendingProposal = activePage?.pendingProposal || null
 
@@ -7763,9 +7773,20 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
 
   // Flatten metadata.history (collected per row) plus a top-level entry for rows without history
   // so "Ver detalle" lists every change with its own timestamp + actor.
+  // asset_uploaded items don't have changeTypes/history — use their title as the label.
   const detailEntries = useMemo(() => {
     const flat = []
     group.items.forEach((item) => {
+      if (item.eventType === 'asset_uploaded') {
+        flat.push({
+          key: item.id,
+          itemId: item.id,
+          label: item.title || 'Imagen subida',
+          actorLabel: item.actorLabel,
+          at: item.createdAt,
+        })
+        return
+      }
       const history = Array.isArray(item.metadata?.history) ? item.metadata.history : null
       if (history && history.length > 0) {
         history.forEach((entry, index) => {
@@ -7790,7 +7811,9 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
     return flat.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
   }, [group.items])
 
-  const latestChangesLabel = formatActivityChangeTypes(latestItem?.metadata?.changeTypes || [])
+  const latestChangesLabel = latestItem?.eventType === 'asset_uploaded'
+    ? (latestItem.title || 'Imagen subida')
+    : formatActivityChangeTypes(latestItem?.metadata?.changeTypes || [])
 
   function handleRowClick() {
     onNavigate?.(group.sectionId, { itemId: latestItem?.id, pageId })
@@ -7869,7 +7892,7 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
               onKeyDown={(e) => e.key === 'Enter' && handleDetailItemClick(entry)}
             >
               <span className={panelStyles.activityHistoryDesc}>
-                {formatActivityChangeTypes(entry.changeTypes) || 'Editó contenido'}
+                {entry.label || formatActivityChangeTypes(entry.changeTypes) || 'Editó contenido'}
               </span>
               <span className={panelStyles.activityHistoryMeta}>
                 {entry.actorLabel} · {formatPanelDate(entry.at)}

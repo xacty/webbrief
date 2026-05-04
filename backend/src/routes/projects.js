@@ -1786,7 +1786,7 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
       subjectId: asset.id,
       title: isSvg ? 'SVG adjuntado' : 'Imagen subida',
       description: asset.file_name,
-      metadata: { mimeType: asset.mime_type, renderInline: asset.render_inline, sectionId: req.body.sectionId || null },
+      metadata: { mimeType: asset.mime_type, renderInline: asset.render_inline, sectionId: req.body.sectionId || null, pageId: req.body.pageId || null },
     })
 
     return res.status(201).json({
