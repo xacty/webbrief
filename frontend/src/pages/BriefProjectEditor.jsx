@@ -154,6 +154,60 @@ function QuestionEditor({ question, index, total, onChange, onRemove, onMoveUp, 
   )
 }
 
+// ── Template save panel ───────────────────────────────────────────────────────
+
+function TemplateSavePanel({ companyId, formTitle, formDescription, questions }) {
+  const [templateName, setTemplateName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState('')
+
+  async function handleSave(e) {
+    e.preventDefault()
+    const trimmed = templateName.trim()
+    if (!trimmed || !companyId) return
+    setSaving(true)
+    setFeedback('')
+    try {
+      const structureJson = [{ formTitle, formDescription, questions }]
+      await apiFetch(`/api/companies/${companyId}/templates`, {
+        method: 'POST',
+        body: JSON.stringify({ name: trimmed, projectType: 'brief', structureJson }),
+      })
+      setTemplateName('')
+      setFeedback('Plantilla guardada.')
+      window.setTimeout(() => setFeedback(''), 3000)
+    } catch (err) {
+      setFeedback(err.message || 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className={styles.sideCard}>
+      <h2 className={styles.sideCardTitle}>Guardar como plantilla</h2>
+      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <input
+          className={styles.templateInput}
+          type="text"
+          placeholder="Nombre de la plantilla"
+          value={templateName}
+          onChange={(e) => setTemplateName(e.target.value)}
+        />
+        <button
+          className={styles.generateBtn}
+          type="submit"
+          disabled={saving || !templateName.trim()}
+        >
+          {saving ? 'Guardando...' : 'Guardar estructura actual'}
+        </button>
+      </form>
+      {feedback && <p className={styles.sideNote} style={{ color: feedback.startsWith('No') ? '#dc2626' : '#16a34a' }}>{feedback}</p>}
+      <p className={styles.sideNote}>La plantilla queda disponible al crear nuevos Briefs en esta empresa.</p>
+    </div>
+  )
+}
+
 // ── Share panel ───────────────────────────────────────────────────────────────
 
 function SharePanel({ projectId, initialToken }) {
@@ -576,6 +630,12 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
         {/* ── Sidebar ── */}
         <aside className={styles.sidebar}>
           <SharePanel projectId={projectId} initialToken={initialToken} />
+          <TemplateSavePanel
+            companyId={companyId}
+            formTitle={formTitle}
+            formDescription={formDescription}
+            questions={questions}
+          />
           <ResponsesPanel projectId={projectId} questions={questions} />
         </aside>
       </div>

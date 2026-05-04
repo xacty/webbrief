@@ -138,7 +138,9 @@ export default function NewProject() {
   const [name, setName] = useState('')
   const [projectType, setProjectType] = useState('page')
   const [businessType, setBusinessType] = useState('tabula_rasa')
+  const [templateId, setTemplateId] = useState('')  // selected company template id (or '')
   const [companyId, setCompanyId] = useState('')
+  const [companyTemplates, setCompanyTemplates] = useState([])
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [contentRules, setContentRules] = useState({})
@@ -170,13 +172,45 @@ export default function NewProject() {
     }
   }, [requestedCompanyId])
 
+  // Load company templates when companyId or projectType changes (page + brief only)
+  useEffect(() => {
+    if (!companyId || !['page', 'brief'].includes(projectType)) {
+      setCompanyTemplates([])
+      return
+    }
+    let active = true
+    apiFetch(`/api/companies/${companyId}/templates`)
+      .then((data) => {
+        if (!active) return
+        const filtered = (data.templates || []).filter((t) => t.project_type === projectType)
+        setCompanyTemplates(filtered)
+      })
+      .catch(() => {
+        if (active) setCompanyTemplates([])
+      })
+    return () => { active = false }
+  }, [companyId, projectType])
+
+  const selectedCompanyTemplate = companyTemplates.find((t) => t.id === templateId) || null
+
   const estructura = useMemo(
     () => {
+      if (templateId && selectedCompanyTemplate) {
+        // Company template preview
+        if (projectType === 'page') {
+          const pages = Array.isArray(selectedCompanyTemplate.structure_json)
+            ? selectedCompanyTemplate.structure_json
+            : []
+          return { label: selectedCompanyTemplate.name, pages }
+        }
+        return null // brief company template: preview handled separately below
+      }
       if (projectType === 'page') return businessType ? ESTRUCTURAS[businessType] : null
       if (projectType === 'brief') return null // brief preview shown separately
       return PROJECT_TYPES[projectType]
     },
-    [businessType, projectType]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [businessType, projectType, templateId, selectedCompanyTemplate]
   )
 
   const showTemplateSelector = PROJECT_TYPES[projectType]?.hasTemplate ?? false
@@ -204,7 +238,8 @@ export default function NewProject() {
         body: JSON.stringify({
           name,
           projectType,
-          businessType: businessType || undefined,
+          businessType: templateId ? undefined : (businessType || undefined),
+          templateId: templateId || undefined,
           companyId: companyId || undefined,
           contentRules: projectType === 'document' ? contentRules : undefined,
         }),
@@ -260,6 +295,7 @@ export default function NewProject() {
               onChange={(e) => {
                 setProjectType(e.target.value)
                 setBusinessType('tabula_rasa')
+                setTemplateId('')
               }}
               required
             >
@@ -276,25 +312,58 @@ export default function NewProject() {
               <select
                 id="business-type"
                 className={styles.select}
-                value={businessType}
-                onChange={(e) => setBusinessType(e.target.value)}
+                value={templateId || businessType}
+                onChange={(e) => {
+                  const val = e.target.value
+                  // Check if it's a company template id
+                  const isCompanyTpl = companyTemplates.some((t) => t.id === val)
+                  if (isCompanyTpl) {
+                    setTemplateId(val)
+                  } else {
+                    setTemplateId('')
+                    setBusinessType(val)
+                  }
+                }}
                 required
               >
-                {projectType === 'brief'
-                  ? Object.entries(BRIEF_TEMPLATES).map(([key, value]) => (
-                    <option key={key} value={key}>{value.label}</option>
-                  ))
-                  : Object.entries(ESTRUCTURAS).map(([key, value]) => (
-                    <option key={key} value={key}>{value.label}</option>
-                  ))
-                }
+                {projectType === 'brief' ? (
+                  <>
+                    <optgroup label="Plantillas generales">
+                      {Object.entries(BRIEF_TEMPLATES).map(([key, value]) => (
+                        <option key={key} value={key}>{value.label}</option>
+                      ))}
+                    </optgroup>
+                    {companyTemplates.length > 0 && (
+                      <optgroup label="Plantillas de esta empresa">
+                        {companyTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <optgroup label="Plantillas generales">
+                      {Object.entries(ESTRUCTURAS).map(([key, value]) => (
+                        <option key={key} value={key}>{value.label}</option>
+                      ))}
+                    </optgroup>
+                    {companyTemplates.length > 0 && (
+                      <optgroup label="Plantillas de esta empresa">
+                        {companyTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
+                )}
               </select>
-              {projectType === 'brief' && (
+              {projectType === 'brief' && !templateId && (
                 <span className={styles.fieldHint}>
                   {BRIEF_TEMPLATES[businessType]?.description || ''}
                 </span>
               )}
-              {projectType === 'page' && selectedCompany && (
+              {selectedCompany && (
                 <span className={styles.fieldHint}>Se creará en {selectedCompany.name}.</span>
               )}
             </div>
@@ -355,21 +424,45 @@ export default function NewProject() {
               <p className={styles.previewTitle}>{PROJECT_TYPES.brief.previewTitle}</p>
               <div className={styles.pagesList}>
                 <div className={styles.pageBlock}>
-                  <p className={styles.pageName}>{BRIEF_TEMPLATES[businessType]?.label || 'Brief'}</p>
-                  {businessType === 'general' ? (
-                    <ul className={styles.sectionList}>
-                      <li className={styles.sectionItem}>Sección 1 — Información general del negocio</li>
-                      <li className={styles.sectionItem}>Sección 2 — Objetivos del sitio web</li>
-                      <li className={styles.sectionItem}>Sección 3 — Identidad visual</li>
-                      <li className={styles.sectionItem}>Sección 4 — Estado actual del sitio</li>
-                      <li className={styles.sectionItem}>Sección 5 — Competencia y posicionamiento</li>
-                      <li className={styles.sectionItem}>Sección 6 — Contenidos del sitio</li>
-                      <li className={styles.sectionItem}>Sección 7 — Accesos necesarios</li>
-                      <li className={styles.sectionItem}>Sección 8 — Cronograma</li>
-                      <li className={styles.sectionItem}>Sección 9 — Observaciones y aprobación</li>
-                    </ul>
+                  {templateId && selectedCompanyTemplate ? (
+                    <>
+                      <p className={styles.pageName}>{selectedCompanyTemplate.name}</p>
+                      {(() => {
+                        const briefData = Array.isArray(selectedCompanyTemplate.structure_json)
+                          ? selectedCompanyTemplate.structure_json[0]
+                          : null
+                        const questions = briefData?.questions || []
+                        const sections = questions.filter((q) => q.type === 'section_header')
+                        return sections.length > 0
+                          ? (
+                            <ul className={styles.sectionList}>
+                              {sections.map((s) => (
+                                <li key={s.id} className={styles.sectionItem}>{s.label}</li>
+                              ))}
+                            </ul>
+                          )
+                          : <p className={styles.previewNote}>{questions.length} pregunta{questions.length !== 1 ? 's' : ''}.</p>
+                      })()}
+                    </>
                   ) : (
-                    <p className={styles.previewNote}>Formulario vacío. Agrega tus propias preguntas.</p>
+                    <>
+                      <p className={styles.pageName}>{BRIEF_TEMPLATES[businessType]?.label || 'Brief'}</p>
+                      {businessType === 'general' ? (
+                        <ul className={styles.sectionList}>
+                          <li className={styles.sectionItem}>Sección 1 — Información general del negocio</li>
+                          <li className={styles.sectionItem}>Sección 2 — Objetivos del sitio web</li>
+                          <li className={styles.sectionItem}>Sección 3 — Identidad visual</li>
+                          <li className={styles.sectionItem}>Sección 4 — Estado actual del sitio</li>
+                          <li className={styles.sectionItem}>Sección 5 — Competencia y posicionamiento</li>
+                          <li className={styles.sectionItem}>Sección 6 — Contenidos del sitio</li>
+                          <li className={styles.sectionItem}>Sección 7 — Accesos necesarios</li>
+                          <li className={styles.sectionItem}>Sección 8 — Cronograma</li>
+                          <li className={styles.sectionItem}>Sección 9 — Observaciones y aprobación</li>
+                        </ul>
+                      ) : (
+                        <p className={styles.previewNote}>Formulario vacío. Agrega tus propias preguntas.</p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

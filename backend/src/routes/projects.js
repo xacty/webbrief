@@ -12,7 +12,7 @@ import {
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { requireAuth } from '../middleware/auth.js'
-import { seedProjectPagesForType } from '../data/projectTemplates.js'
+import { seedProjectPagesForType, seedProjectPagesFromTemplate } from '../data/projectTemplates.js'
 import {
   canAccessCompany,
   canCreateProject,
@@ -568,7 +568,7 @@ router.get('/', async (req, res) => {
 })
 
 router.post('/', async (req, res) => {
-  const { name, clientName, clientEmail, businessType, companyId } = req.body
+  const { name, clientName, clientEmail, businessType, companyId, templateId } = req.body
   const projectType = normalizeProjectType(req.body.projectType)
   const normalizedBusinessType = businessType || 'tabula_rasa'
   const initialContentRules = req.body.contentRules && typeof req.body.contentRules === 'object'
@@ -595,7 +595,24 @@ router.post('/', async (req, res) => {
 
   try {
     const projectId = crypto.randomUUID()
-    const pages = seedProjectPagesForType(projectType, normalizedBusinessType)
+    let pages
+    if (templateId) {
+      const { data: companyTemplate, error: templateError } = await supabaseAdmin
+        .from('project_templates')
+        .select('id, project_type, structure_json, company_id')
+        .eq('id', templateId)
+        .maybeSingle()
+
+      if (templateError || !companyTemplate) {
+        return res.status(400).json({ error: 'Plantilla no encontrada' })
+      }
+      if (!canAccessCompany(req.currentUser, companyTemplate.company_id)) {
+        return res.status(403).json({ error: 'Sin acceso a esa plantilla' })
+      }
+      pages = seedProjectPagesFromTemplate(projectType, companyTemplate.structure_json)
+    } else {
+      pages = seedProjectPagesForType(projectType, normalizedBusinessType)
+    }
     const timestamp = new Date().toISOString()
     let fallbackClientName = 'Cliente'
     if (!clientName?.trim()) {

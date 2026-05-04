@@ -265,6 +265,51 @@ function seedBriefPage(templateKey = 'tabula_rasa') {
   }]
 }
 
+// ---------------------------------------------------------------------------
+// Seed pages from a saved company template (project_templates.structure_json)
+// For 'page' type: structureJson = [{ name, sections: string[] }, ...]
+// For 'brief' type: structureJson = [{ formTitle, formDescription, questions }]
+// ---------------------------------------------------------------------------
+
+export function seedProjectPagesFromTemplate(projectType, structureJson) {
+  if (!Array.isArray(structureJson) || structureJson.length === 0) {
+    return seedProjectPagesForType(projectType, 'tabula_rasa')
+  }
+
+  if (projectType === 'brief') {
+    const briefData = structureJson[0]
+    return [{
+      id: crypto.randomUUID(),
+      name: briefData.formTitle || 'Brief',
+      position: 0,
+      content_html: '',
+      content_json: {
+        formTitle: briefData.formTitle || 'Brief',
+        formDescription: briefData.formDescription || '',
+        questions: Array.isArray(briefData.questions) ? briefData.questions : [],
+      },
+      seo_metadata: {},
+      review_status: 'draft',
+    }]
+  }
+
+  // page type
+  return structureJson.map((page, index) => {
+    const sectionNames = Array.isArray(page.sections) ? page.sections : []
+    const sections = sectionNames.map(createSectionSeed)
+    const document = buildPageDocument(sections)
+    return {
+      id: crypto.randomUUID(),
+      name: String(page.name || `Página ${index + 1}`),
+      position: index,
+      content_html: document.html,
+      content_json: document.json,
+      seo_metadata: {},
+      review_status: 'draft',
+    }
+  })
+}
+
 export function seedProjectPagesForType(projectType = 'page', businessType = 'otro') {
   if (projectType === 'brief') {
     return seedBriefPage(businessType)

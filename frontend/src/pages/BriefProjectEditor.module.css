@@ -629,6 +629,25 @@
   cursor: not-allowed;
 }
 
+.templateInput {
+  width: 100%;
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.templateInput:focus {
+  border-color: #6366f1;
+  background: #fff;
+}
+
 /* ── Responses panel ── */
 .responsesList {
   display: flex;

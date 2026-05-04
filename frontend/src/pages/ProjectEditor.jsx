@@ -3623,6 +3623,8 @@ export default function ProjectEditor() {
           onActivityClick={navigateToActivity}
           onMarkActivityRead={markActivityRead}
           onNavigateToSection={navigateToSection}
+          companyId={projectMeta?.companyId || ''}
+          projectPages={pages}
         />
       </div>
 
@@ -7518,10 +7520,40 @@ function UpdatesPanel({
   onActivityClick,
   onMarkActivityRead,
   onNavigateToSection,
+  companyId = '',
+  projectPages = [],
 }) {
   const [deliverableTitle, setDeliverableTitle] = useState('')
   const [deliverableServiceType, setDeliverableServiceType] = useState('otro')
   const [deliverableSubmitting, setDeliverableSubmitting] = useState(false)
+  const [templateName, setTemplateName] = useState('')
+  const [templateSaving, setTemplateSaving] = useState(false)
+  const [templateFeedback, setTemplateFeedback] = useState('')
+
+  async function handleSaveTemplate(e) {
+    e.preventDefault()
+    const trimmed = templateName.trim()
+    if (!trimmed || !companyId) return
+    setTemplateSaving(true)
+    setTemplateFeedback('')
+    try {
+      const structureJson = projectPages.map((page) => ({
+        name: page.name,
+        sections: (page.sections || []).map((section) => section.name),
+      }))
+      await apiFetch(`/api/companies/${companyId}/templates`, {
+        method: 'POST',
+        body: JSON.stringify({ name: trimmed, projectType: 'page', structureJson }),
+      })
+      setTemplateName('')
+      setTemplateFeedback('Plantilla guardada.')
+      window.setTimeout(() => setTemplateFeedback(''), 3000)
+    } catch (err) {
+      setTemplateFeedback(err.message || 'No se pudo guardar')
+    } finally {
+      setTemplateSaving(false)
+    }
+  }
   const sectionOrder = useMemo(() => (
     new Map(sections.map((section, index) => [section.id, index]))
   ), [sections])
@@ -7698,6 +7730,31 @@ function UpdatesPanel({
             <p className={panelStyles.shareUrl}>Link copiado: {shareUrl}</p>
           )}
         </div>
+
+        {projectType === 'page' && canManageProjectMeta && companyId && (
+          <div className={panelStyles.shareBox}>
+            <span className={panelStyles.pendingTitle}>Plantillas</span>
+            <form className={panelStyles.templateForm} onSubmit={handleSaveTemplate}>
+              <input
+                className={panelStyles.templateInput}
+                type="text"
+                placeholder="Nombre de la plantilla"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+              <button
+                className={panelStyles.shareButton}
+                type="submit"
+                disabled={templateSaving || !templateName.trim()}
+              >
+                {templateSaving ? 'Guardando...' : 'Guardar estructura actual'}
+              </button>
+            </form>
+            {templateFeedback && (
+              <p className={panelStyles.shareUrl}>{templateFeedback}</p>
+            )}
+          </div>
+        )}
         {!hasActivity ? (
           <p className={panelStyles.updatesEmpty}>Sin actividad registrada aún.</p>
         ) : (
