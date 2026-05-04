@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Camera, Download, KeyRound, Save } from 'lucide-react'
+import { Bell, Camera, Download, Eye, EyeOff, KeyRound, Save } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { supabase } from '../lib/supabase'
@@ -50,6 +50,9 @@ export default function AccountSettingsPage() {
   const [profileError, setProfileError] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
   const [passwordError, setPasswordError] = useState('')
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const memberships = currentUser?.memberships || []
   const profileDirty = useMemo(() => (
@@ -299,48 +302,78 @@ export default function AccountSettingsPage() {
               <div className={styles.fieldGrid}>
                 <div className={styles.field}>
                   <label className={styles.fieldLabel} htmlFor="current-password">Contraseña actual</label>
-                  <input
-                    id="current-password"
-                    className={styles.input}
-                    type="password"
-                    autoComplete="current-password"
-                    value={passwordForm.currentPassword}
-                    onChange={(event) => setPasswordForm((current) => ({
-                      ...current,
-                      currentPassword: event.target.value,
-                    }))}
-                    required
-                  />
+                  <div className={styles.passwordWrap}>
+                    <input
+                      id="current-password"
+                      className={styles.input}
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={passwordForm.currentPassword}
+                      onChange={(event) => setPasswordForm((current) => ({
+                        ...current,
+                        currentPassword: event.target.value,
+                      }))}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className={styles.eyeBtn}
+                      aria-label={showCurrentPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      onClick={() => setShowCurrentPassword((v) => !v)}
+                    >
+                      {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <div className={styles.field}>
                   <label className={styles.fieldLabel} htmlFor="new-account-password">Nueva contraseña</label>
-                  <input
-                    id="new-account-password"
-                    className={styles.input}
-                    type="password"
-                    autoComplete="new-password"
-                    value={passwordForm.newPassword}
-                    onChange={(event) => setPasswordForm((current) => ({
-                      ...current,
-                      newPassword: event.target.value,
-                    }))}
-                    required
-                  />
+                  <div className={styles.passwordWrap}>
+                    <input
+                      id="new-account-password"
+                      className={styles.input}
+                      type={showNewPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      value={passwordForm.newPassword}
+                      onChange={(event) => setPasswordForm((current) => ({
+                        ...current,
+                        newPassword: event.target.value,
+                      }))}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className={styles.eyeBtn}
+                      aria-label={showNewPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      onClick={() => setShowNewPassword((v) => !v)}
+                    >
+                      {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <div className={styles.field}>
                   <label className={styles.fieldLabel} htmlFor="confirm-account-password">Confirmar nueva contraseña</label>
-                  <input
-                    id="confirm-account-password"
-                    className={styles.input}
-                    type="password"
-                    autoComplete="new-password"
-                    value={passwordForm.confirmPassword}
-                    onChange={(event) => setPasswordForm((current) => ({
-                      ...current,
-                      confirmPassword: event.target.value,
-                    }))}
-                    required
-                  />
+                  <div className={styles.passwordWrap}>
+                    <input
+                      id="confirm-account-password"
+                      className={styles.input}
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      value={passwordForm.confirmPassword}
+                      onChange={(event) => setPasswordForm((current) => ({
+                        ...current,
+                        confirmPassword: event.target.value,
+                      }))}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className={styles.eyeBtn}
+                      aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                    >
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
