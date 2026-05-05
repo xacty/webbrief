@@ -1382,7 +1382,7 @@ function deriveFaqItems(editor) {
   let current = null
 
   ;(json.content || []).forEach((node) => {
-    if (node.type === 'heading' && node.attrs?.level === 2) {
+    if (node.type === 'heading' && (node.attrs?.level === 2 || node.attrs?.level === 3)) {
       if (current) items.push(current)
       const question = (node.content || []).map((child) => child.text || '').join('').trim()
       current = {
@@ -1413,7 +1413,7 @@ function parseFaqItemsFromHtml(html) {
   let current = null
   Array.from(root.children).forEach((element) => {
     const tag = element.tagName?.toLowerCase()
-    if (tag === 'h2') {
+    if (tag === 'h2' || tag === 'h3') {
       if (current) items.push(current)
       current = { question: element.textContent?.replace(/\s+/g, ' ').trim() || '', answerNodes: [] }
       return
@@ -3525,8 +3525,6 @@ export default function ProjectEditor() {
             activeHeading={activeHeading}
             onFaqClick={handleDocumentHeadingClick}
             onExportCsv={() => exportFaqCsv(activePageForRead)}
-            seoExpanded={seoExpanded}
-            onSeoClick={handleSeoPanelClick}
           />
         ) : (
           <DocumentOutlinePanel
@@ -4101,7 +4099,7 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
   )
 }
 
-function FaqPanel({ items = [], activeHeading, onFaqClick, onExportCsv, seoExpanded = false, onSeoClick }) {
+function FaqPanel({ items = [], activeHeading, onFaqClick, onExportCsv }) {
   return (
     <div className={panelStyles.leftPanel}>
       <div className={panelStyles.panelHeader}>
@@ -4110,7 +4108,6 @@ function FaqPanel({ items = [], activeHeading, onFaqClick, onExportCsv, seoExpan
           <Download size={20} color="#2a2a2a" />
         </button>
       </div>
-      <SeoPanelButton active={seoExpanded} onClick={onSeoClick} />
       <div className={panelStyles.sectionList}>
         {items.map((item, index) => {
           const isActive = activeHeading?.sectionId === '__document__' && activeHeading?.headingIndex === item.headingIndex
@@ -4128,7 +4125,7 @@ function FaqPanel({ items = [], activeHeading, onFaqClick, onExportCsv, seoExpan
           )
         })}
         {items.length === 0 && (
-          <p className={panelStyles.emptyMsg}>Pega o escribe preguntas como H2 y respuestas como párrafos.</p>
+          <p className={panelStyles.emptyMsg}>Pega o escribe preguntas como H2 o H3 y respuestas como párrafos.</p>
         )}
       </div>
     </div>
@@ -5887,18 +5884,20 @@ function EditorPanel({
         null
       )}
       <div ref={scrollAreaRef} className={styles.editorScrollArea}>
-        <div className={seoRulesStyles.topTrayRow} data-seo-tray="">
-          <div className={seoRulesStyles.topTraySpacer} />
-          <div className={seoRulesStyles.topTraySurface}>
-            <SeoMetadataPanel
-              metadata={seoMetadata}
-              contentRules={normalizedRules}
-              expanded={seoExpanded}
-              onExpandedChange={onSeoExpandedChange}
-              onChange={onSeoChange}
-            />
+        {projectType !== 'faq' && (
+          <div className={seoRulesStyles.topTrayRow} data-seo-tray="">
+            <div className={seoRulesStyles.topTraySpacer} />
+            <div className={seoRulesStyles.topTraySurface}>
+              <SeoMetadataPanel
+                metadata={seoMetadata}
+                contentRules={normalizedRules}
+                expanded={seoExpanded}
+                onExpandedChange={onSeoExpandedChange}
+                onChange={onSeoChange}
+              />
+            </div>
           </div>
-        </div>
+        )}
         <div className={seoRulesStyles.editorPageRow}>
           <TypeLabelsColumn wrapperRef={wrapperRef} editor={editor} />
           <div
