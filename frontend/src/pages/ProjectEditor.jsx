@@ -2322,6 +2322,8 @@ export default function ProjectEditor() {
   const [panelError, setPanelError] = useState('')
   const [panelNotice, setPanelNotice] = useState('')
   const [shareUrl, setShareUrl] = useState('')
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [shareCopyFeedback, setShareCopyFeedback] = useState('')
   const [tooltipState, setTooltipState] = useState(null)
   const [sectionModalState, setSectionModalState] = useState({
     isOpen: false,
@@ -3010,13 +3012,30 @@ export default function ProjectEditor() {
         body: JSON.stringify({ label: 'Link para cliente' }),
       })
       setShareUrl(data.shareLink.url)
+      setShareCopyFeedback('')
+      setShareModalOpen(true)
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(data.shareLink.url)
+        try {
+          await navigator.clipboard.writeText(data.shareLink.url)
+          setShareCopyFeedback('Link copiado al portapapeles')
+        } catch {
+          // Clipboard puede fallar si el browser no permite; el botón Copiar del modal cubre el caso.
+        }
       }
       setPanelError('')
       loadSidePanelData()
     } catch (error) {
       setPanelError(error.message || 'No se pudo crear el link privado')
+    }
+  }
+
+  async function copyShareLinkToClipboard() {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard?.writeText?.(shareUrl)
+      setShareCopyFeedback('Link copiado al portapapeles')
+    } catch {
+      setShareCopyFeedback('No se pudo copiar — copialo manualmente')
     }
   }
 
@@ -3780,6 +3799,50 @@ export default function ProjectEditor() {
         onSetOpenMenuId={setOpenMenuId}
       />
 
+      {/* Modal de share link privado */}
+      {shareModalOpen && shareUrl && (
+        <div className={styles.modalOverlay} onClick={() => setShareModalOpen(false)}>
+          <div className={styles.modal} style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className={styles.modalTitle}>Link privado para cliente</h3>
+            <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
+              Cualquier persona con este link puede ver y comentar el contenido. Compartilo solo con quien necesite acceso.
+            </p>
+            <input
+              className={styles.modalInput}
+              type="text"
+              value={shareUrl}
+              readOnly
+              onFocus={(e) => e.target.select()}
+            />
+            {shareCopyFeedback && (
+              <p style={{ margin: 0, fontSize: 12, color: '#16a34a' }}>{shareCopyFeedback}</p>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className={styles.confirmDeleteBtn}
+                style={{ flex: 1, background: '#212222' }}
+                onClick={copyShareLinkToClipboard}
+              >
+                Copiar link
+              </button>
+              <button
+                className={styles.confirmCancelBtn}
+                style={{ flex: 1 }}
+                onClick={() => window.open(shareUrl, '_blank', 'noopener')}
+              >
+                Abrir en nueva pestaña
+              </button>
+            </div>
+            <button
+              className={styles.confirmCancelBtn}
+              onClick={() => setShareModalOpen(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal de confirmación para borrar página */}
       {deletePageConfirm && (
         <div className={styles.confirmOverlay} onClick={() => setDeletePageConfirm(null)}>
@@ -3938,6 +4001,7 @@ export default function ProjectEditor() {
           isRefreshing={isRefreshingActivity}
           shareUrl={shareUrl}
           onCreateShareLink={createShareLink}
+          onShowShareLink={() => { setShareCopyFeedback(''); setShareModalOpen(true) }}
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
           onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
@@ -8022,6 +8086,7 @@ function UpdatesPanel({
   isRefreshing = false,
   shareUrl = '',
   onCreateShareLink,
+  onShowShareLink,
   onCreateDeliverable,
   onUpdateDeliverableStatus,
   onApproveDesignerProposal,
@@ -8240,14 +8305,18 @@ function UpdatesPanel({
         <div className={panelStyles.shareBox}>
           <span className={panelStyles.pendingTitle}>Cliente</span>
           {canManageProjectMeta ? (
-            <button className={panelStyles.shareButton} onClick={onCreateShareLink}>
-              Crear link privado
-            </button>
+            <>
+              <button className={panelStyles.shareButton} onClick={onCreateShareLink}>
+                {shareUrl ? 'Crear nuevo link privado' : 'Crear link privado'}
+              </button>
+              {shareUrl && onShowShareLink && (
+                <button className={panelStyles.proposalSecondaryButton} onClick={onShowShareLink}>
+                  Ver link actual
+                </button>
+              )}
+            </>
           ) : (
             <p className={panelStyles.deliverablesEmpty}>El link privado lo gestiona manager/editor.</p>
-          )}
-          {shareUrl && (
-            <p className={panelStyles.shareUrl}>Link copiado: {shareUrl}</p>
           )}
         </div>
 
