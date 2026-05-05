@@ -4173,7 +4173,7 @@ function FaqPanel({ sections = [], activeSectionId, onSectionClick, onOpenAddSec
           <SectionItem
             key={section.id}
             index={i}
-            section={section}
+            section={{ ...section, name: section.headings?.[0]?.text || section.name }}
             isActive={section.id === activeSectionId}
             onClick={() => onSectionClick(section.id)}
             onRename={(name) => onRename(section.id, name)}
