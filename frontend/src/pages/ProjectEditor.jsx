@@ -5618,7 +5618,9 @@ function EditorPanel({
     }
 
     if (scrollRequest.type === 'documentHeading') {
-      targetEl = Array.from(pm.querySelectorAll('h1, h2, h3'))[scrollRequest.headingIndex] || null
+      // FAQ: headingIndex counts only H2/H3 (questions); H1 is a title and not counted
+      const headingSelector = projectType === 'faq' ? 'h2, h3' : 'h1, h2, h3'
+      targetEl = Array.from(pm.querySelectorAll(headingSelector))[scrollRequest.headingIndex] || null
       targetHeadingIndex = scrollRequest.headingIndex
     }
 
@@ -5723,7 +5725,9 @@ function EditorPanel({
       const triggerY = containerRect.top + OFFSET
 
       if (projectType !== 'page') {
-        const headings = Array.from(pm.querySelectorAll('h1, h2, h3'))
+        // FAQ: headingIndex counts only H2/H3 (questions); H1 is a title and not a FAQ item
+        const headingSelector = projectType === 'faq' ? 'h2, h3' : 'h1, h2, h3'
+        const headings = Array.from(pm.querySelectorAll(headingSelector))
         let headingIndex = 0
         headings.forEach((heading, index) => {
           if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
