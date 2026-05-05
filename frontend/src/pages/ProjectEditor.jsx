@@ -17,7 +17,7 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
@@ -2317,6 +2317,7 @@ export default function ProjectEditor() {
   const [activity, setActivity] = useState([])
   const [notifications, setNotifications] = useState([])
   const [deliverables, setDeliverables] = useState([])
+  const [isRefreshingActivity, setIsRefreshingActivity] = useState(false)
   const [selectedActivityId, setSelectedActivityId] = useState(null)
   const [panelError, setPanelError] = useState('')
   const [panelNotice, setPanelNotice] = useState('')
@@ -2619,6 +2620,15 @@ export default function ProjectEditor() {
       setPanelError(error.message || 'No se pudieron cargar las actualizaciones')
     }
   }, [projectId])
+
+  const refreshSidePanelData = useCallback(async () => {
+    setIsRefreshingActivity(true)
+    try {
+      await loadSidePanelData()
+    } finally {
+      setIsRefreshingActivity(false)
+    }
+  }, [loadSidePanelData])
 
   useEffect(() => {
     if (!loadingProject && projectId) {
@@ -3924,7 +3934,8 @@ export default function ProjectEditor() {
           canManageProjectMeta={canManageProjectMeta}
           canReviewDesignerProposals={canReviewDesignerProposals}
           isDesigner={isDesigner}
-          onRefresh={loadSidePanelData}
+          onRefresh={refreshSidePanelData}
+          isRefreshing={isRefreshingActivity}
           shareUrl={shareUrl}
           onCreateShareLink={createShareLink}
           onCreateDeliverable={createDeliverable}
@@ -4289,6 +4300,8 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
         <button
           className={pillClassName}
           onClick={onClick}
+          onDoubleClick={canManagePages ? () => setEditing(true) : undefined}
+          title={canManagePages ? 'Doble clic para renombrar' : undefined}
         >
           {page.name}
         </button>
@@ -8006,6 +8019,7 @@ function UpdatesPanel({
   canReviewDesignerProposals = false,
   isDesigner = false,
   onRefresh,
+  isRefreshing = false,
   shareUrl = '',
   onCreateShareLink,
   onCreateDeliverable,
@@ -8122,12 +8136,21 @@ function UpdatesPanel({
     <div className={panelStyles.rightPanel}>
       <div className={panelStyles.updatesHeader}>
         <span className={panelStyles.panelTitle}>Actividad</span>
-        <button className={panelStyles.updatesRefreshBtn} onClick={onRefresh}>Actualizar</button>
+        <button
+          className={panelStyles.updatesRefreshBtn}
+          onClick={onRefresh}
+          disabled={isRefreshing}
+        >
+          {isRefreshing && (
+            <RotateCw size={11} className={panelStyles.updatesRefreshSpinner} />
+          )}
+          {isRefreshing ? 'Actualizando…' : 'Actualizar'}
+        </button>
       </div>
       <div className={cx(panelStyles.rightPanelScroll, projectType === 'document' && panelStyles.rightPanelScrollWithDock)}>
         {error && <p className={panelStyles.updatesError}>{error}</p>}
         {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
-        {pendingProposal && (
+        {pendingProposal && projectType === 'page' && (
           <div className={panelStyles.proposalBox}>
             <div className={panelStyles.proposalHeader}>
               <span className={panelStyles.pendingTitle}>
@@ -8157,6 +8180,7 @@ function UpdatesPanel({
             ) : null}
           </div>
         )}
+        {projectType === 'page' && (
         <div className={panelStyles.deliverablesBox}>
           <span className={panelStyles.pendingTitle}>Entregables</span>
           {canManageProjectMeta ? (
@@ -8212,6 +8236,7 @@ function UpdatesPanel({
             </div>
           )}
         </div>
+        )}
         <div className={panelStyles.shareBox}>
           <span className={panelStyles.pendingTitle}>Cliente</span>
           {canManageProjectMeta ? (

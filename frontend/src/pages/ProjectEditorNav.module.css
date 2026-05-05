@@ -44,6 +44,12 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background 120ms, border-color 120ms;
+}
+
+.navBackBtn:hover {
+  background: #f0f4f9;
+  border-color: #c7c7c7;
 }
 
 .projectNameBtn,
@@ -66,6 +72,11 @@
   cursor: text;
   font-family: inherit;
   text-align: left;
+  transition: background 120ms;
+}
+
+.projectNameBtn:hover {
+  background: #f0f4f9;
 }
 
 .projectNameInput {
@@ -118,6 +129,7 @@
   font-family: inherit;
   display: flex;
   align-items: center;
+  transition: color 120ms;
 }
 
 .navPill {
@@ -125,9 +137,17 @@
   font-weight: 400;
 }
 
+.navPill:hover {
+  color: #1d4ed8;
+}
+
 .navPillActive {
   color: #f2f2f2;
   font-weight: 500;
+}
+
+.navPillMenuBtn:hover {
+  opacity: 0.95;
 }
 
 .navPillNoMenu {
@@ -174,14 +194,23 @@
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 120ms;
 }
 
 .navPillMenuItem {
   color: #2a2a2a;
 }
 
+.navPillMenuItem:hover {
+  background: #f0f4f9;
+}
+
 .navPillMenuItemDanger {
   color: #ef4444;
+}
+
+.navPillMenuItemDanger:hover {
+  background: #fef2f2;
 }
 
 .navPillInput {
@@ -222,6 +251,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 120ms;
+}
+
+.navPillAdd:hover {
+  background: #e8edf2;
 }
 
 .navRight {
@@ -252,6 +286,11 @@
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
+  transition: background 120ms;
+}
+
+.navSaveBtn:hover:not(.navSaveBtnDisabled) {
+  background: #0070d6;
 }
 
 .navSaveBtnDisabled {
@@ -266,14 +305,20 @@
 }
 
 .navIconBtn {
-  padding: 0;
+  padding: 6px;
   border: none;
+  border-radius: 8px;
   background: transparent;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  transition: background 120ms;
+}
+
+.navIconBtn:hover {
+  background: #f0f4f9;
 }
 
 .navBadge {
