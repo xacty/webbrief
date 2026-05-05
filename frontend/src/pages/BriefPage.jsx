@@ -14,8 +14,86 @@ async function apiFetch(path, options = {}) {
   return data
 }
 
-function QuestionField({ question, value, onChange }) {
+function FileUploadField({ question, value, onChange, token }) {
+  const files = Array.isArray(value) ? value : []
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  async function handleFiles(fileList) {
+    if (!fileList || fileList.length === 0) return
+    setUploadError('')
+    setUploading(true)
+    const next = [...files]
+    for (const file of fileList) {
+      try {
+        const form = new FormData()
+        form.append('file', file)
+        const response = await fetch(`${API_BASE}/api/public/brief/${token}/documents`, {
+          method: 'POST',
+          body: form,
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data?.error || `Error ${response.status}`)
+        next.push({
+          id: data.asset.id,
+          fileName: data.asset.fileName,
+          mimeType: data.asset.mimeType,
+          fileSize: data.asset.fileSize,
+          publicUrl: data.asset.publicUrl,
+        })
+      } catch (err) {
+        setUploadError(err.message || 'No se pudo subir el archivo')
+        break
+      }
+    }
+    onChange(next)
+    setUploading(false)
+  }
+
+  function removeFile(id) {
+    onChange(files.filter((f) => f.id !== id))
+  }
+
+  return (
+    <div className={styles.fieldGroup}>
+      <label className={styles.questionLabel}>
+        {question.label}
+        {question.required && <span className={styles.required}> *</span>}
+      </label>
+      {question.hint && <p className={styles.hint}>{question.hint}</p>}
+      <input
+        type="file"
+        multiple
+        onChange={(e) => handleFiles(e.target.files)}
+        disabled={uploading}
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv,image/*"
+      />
+      {uploading && <p className={styles.hint}>Subiendo…</p>}
+      {uploadError && <p className={styles.hint} style={{ color: '#dc2626' }}>{uploadError}</p>}
+      {files.length > 0 && (
+        <ul style={{ marginTop: 8, listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {files.map((f) => (
+            <li key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {f.fileName} <span style={{ color: '#94a3b8', fontSize: 11 }}>· {Math.round((f.fileSize || 0) / 1024)} KB</span>
+              </span>
+              <button type="button" onClick={() => removeFile(f.id)} style={{ background: 'transparent', border: 'none', color: '#dc2626', cursor: 'pointer' }}>
+                Quitar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function QuestionField({ question, value, onChange, token }) {
   const { type, label, hint, required, options } = question
+
+  if (type === 'file_upload') {
+    return <FileUploadField question={question} value={value} onChange={onChange} token={token} />
+  }
 
   if (type === 'section_header') {
     return (
@@ -285,6 +363,7 @@ export default function BriefPage() {
                 question={question}
                 value={answers[question.id]}
                 onChange={(val) => setAnswer(question.id, val)}
+                token={token}
               />
             ))}
           </div>

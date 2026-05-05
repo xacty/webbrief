@@ -13,6 +13,7 @@ const QUESTION_TYPE_LABELS = {
   long_text: 'Texto largo',
   single_choice: 'Opción única',
   multiple_choice: 'Selección múltiple',
+  file_upload: 'Archivos adjuntos',
 }
 
 const ADD_QUESTION_TYPES = [
@@ -21,6 +22,7 @@ const ADD_QUESTION_TYPES = [
   'long_text',
   'single_choice',
   'multiple_choice',
+  'file_upload',
 ]
 
 const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'

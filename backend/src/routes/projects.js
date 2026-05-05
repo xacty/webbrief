@@ -38,6 +38,65 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
 })
+
+// Brief documents pueden ser hasta 50 MB por archivo (10/25/50 selectionable
+// por proyecto vía projects.brief_max_file_mb). El límite global del multer
+// se setea al máximo permitido (50 MB); el endpoint valida después contra
+// el setting del proyecto.
+const briefDocsUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+})
+
+// Tope total acumulado por proyecto. El plan free de Supabase Storage es 1 GB;
+// con 500 MB por proyecto cabe ~2 proyectos full antes de tocar el límite.
+const PROJECT_TOTAL_BUDGET_BYTES = 500 * 1024 * 1024
+
+// Whitelist MIME types para Brief uploads. Imágenes van a ImageKit; el resto a Supabase Storage.
+const BRIEF_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'])
+const BRIEF_DOC_MIMES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
+  'application/vnd.oasis.opendocument.text', // odt
+  'application/vnd.oasis.opendocument.spreadsheet', // ods
+  'application/vnd.oasis.opendocument.presentation', // odp
+  'text/plain',
+  'text/csv',
+])
+
+// Extensiones permitidas (sanity check vs MIME header). Lo demás se rechaza.
+const BRIEF_ALLOWED_EXTS = new Set([
+  'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp',
+  'txt', 'csv',
+])
+
+function isAcceptedBriefMime(mime) {
+  return BRIEF_IMAGE_MIMES.has(mime) || BRIEF_DOC_MIMES.has(mime)
+}
+
+function getFileExtension(filename) {
+  if (!filename) return ''
+  const idx = filename.lastIndexOf('.')
+  if (idx < 0 || idx === filename.length - 1) return ''
+  return filename.slice(idx + 1).toLowerCase()
+}
+
+function sanitizeBriefFilename(name) {
+  if (!name) return 'archivo'
+  return name
+    .replace(/\.\./g, '')
+    .replace(/[\\/]/g, '_')
+    .replace(/[^a-zA-Z0-9._\-\s]/g, '')
+    .trim()
+    .slice(0, 200)
+}
+
 let archiveColumnsAvailable = true
 let projectPageVersionColumnAvailable = true
 let projectPageContentJsonColumnAvailable = true
@@ -2135,6 +2194,180 @@ router.get('/:id/brief/responses', async (req, res) => {
     return res.json({ responses: data || [] })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudieron cargar las respuestas' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Brief — documentos adjuntos (PDF, Office, imágenes)
+// ---------------------------------------------------------------------------
+
+router.get('/:id/brief/budget', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+
+    const { data: assets, error } = await supabaseAdmin
+      .from('project_assets')
+      .select('file_size')
+      .eq('project_id', project.id)
+      .is('trashed_at', null)
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    const usedBytes = (assets || []).reduce((sum, a) => sum + (a.file_size || 0), 0)
+    return res.json({
+      usedBytes,
+      totalBytes: PROJECT_TOTAL_BUDGET_BYTES,
+      maxFileMb: project.brief_max_file_mb || 10,
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo calcular el presupuesto' })
+  }
+})
+
+router.patch('/:id/brief/settings', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede cambiar la configuración del brief' })
+    }
+    const requested = Number(req.body?.maxFileMb)
+    if (![10, 25, 50].includes(requested)) {
+      return res.status(400).json({ error: 'maxFileMb debe ser 10, 25 o 50' })
+    }
+    const { error } = await supabaseAdmin
+      .from('projects')
+      .update({ brief_max_file_mb: requested })
+      .eq('id', project.id)
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json({ maxFileMb: requested })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo guardar' })
+  }
+})
+
+router.post('/:id/brief/documents', briefDocsUpload.single('file'), async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!req.file) return res.status(400).json({ error: 'file es requerido' })
+
+    const mime = req.file.mimetype || ''
+    const originalName = req.file.originalname || 'archivo'
+    const ext = getFileExtension(originalName)
+
+    if (!isAcceptedBriefMime(mime)) {
+      return res.status(400).json({ error: `Tipo de archivo no permitido (${mime})` })
+    }
+    if (ext && !BRIEF_ALLOWED_EXTS.has(ext)) {
+      return res.status(400).json({ error: `Extensión .${ext} no permitida` })
+    }
+
+    const maxFileMb = project.brief_max_file_mb || 10
+    if (req.file.size > maxFileMb * 1024 * 1024) {
+      return res.status(400).json({ error: `El archivo supera el tope de ${maxFileMb} MB por archivo` })
+    }
+
+    const { data: existingAssets, error: budgetError } = await supabaseAdmin
+      .from('project_assets')
+      .select('file_size')
+      .eq('project_id', project.id)
+      .is('trashed_at', null)
+    if (budgetError) return res.status(500).json({ error: budgetError.message })
+    const usedBytes = (existingAssets || []).reduce((sum, a) => sum + (a.file_size || 0), 0)
+    if (usedBytes + req.file.size > PROJECT_TOTAL_BUDGET_BYTES) {
+      const remainingMb = Math.max(0, Math.floor((PROJECT_TOTAL_BUDGET_BYTES - usedBytes) / (1024 * 1024)))
+      return res.status(400).json({
+        error: `Presupuesto del proyecto agotado. Restan ${remainingMb} MB de 500 MB.`,
+        usedBytes,
+        totalBytes: PROJECT_TOTAL_BUDGET_BYTES,
+      })
+    }
+
+    const assetId = crypto.randomUUID()
+    const safeName = sanitizeBriefFilename(originalName)
+
+    let storageBucket
+    let storagePath
+    let publicUrl = null
+    let imagekitFileId = null
+    let assetKind
+
+    if (BRIEF_IMAGE_MIMES.has(mime) && mime !== 'image/svg+xml') {
+      // Imágenes raster → ImageKit (mismo flujo que /assets)
+      const folder = buildImageKitPath('companies', project.company_id, 'projects', project.id, 'brief')
+      const uploadName = `${assetId}-${safeName}`
+      const uploadResponse = await uploadToImageKit({
+        buffer: req.file.buffer,
+        fileName: uploadName,
+        folder,
+        tags: ['brief-document'],
+      })
+      storageBucket = 'imagekit'
+      storagePath = uploadResponse.filePath || `${folder}/${uploadName}`
+      publicUrl = uploadResponse.url || null
+      imagekitFileId = uploadResponse.fileId || null
+      assetKind = 'image'
+    } else {
+      // Documentos (PDF/Office/SVG/CSV/etc) → Supabase Storage privado
+      const path = `${project.id}/${assetId}-${safeName}`
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('brief-documents')
+        .upload(path, req.file.buffer, {
+          contentType: mime,
+          cacheControl: '3600',
+          upsert: false,
+        })
+      if (uploadError) {
+        return res.status(500).json({
+          error: `No se pudo subir a Supabase Storage: ${uploadError.message}. Verificar que el bucket "brief-documents" exista (privado).`,
+        })
+      }
+      storageBucket = 'brief-documents'
+      storagePath = path
+      assetKind = mime === 'image/svg+xml' ? 'svg' : 'file'
+    }
+
+    const { data: asset, error: assetError } = await supabaseAdmin
+      .from('project_assets')
+      .insert({
+        id: assetId,
+        project_id: project.id,
+        deliverable_id: null,
+        page_id: req.body.pageId || null,
+        section_id: req.body.sectionId || null,
+        uploaded_by: req.currentUser?.id || null,
+        file_name: originalName,
+        storage_bucket: storageBucket,
+        storage_path: storagePath,
+        imagekit_file_id: imagekitFileId,
+        mime_type: mime,
+        asset_kind: assetKind,
+        public_url: publicUrl,
+        file_size: req.file.size,
+        render_inline: false,
+      })
+      .select('id, file_name, mime_type, asset_kind, file_size, public_url, storage_bucket, storage_path, created_at')
+      .single()
+
+    if (assetError) return res.status(500).json({ error: assetError.message })
+
+    return res.status(201).json({
+      asset: {
+        id: asset.id,
+        fileName: asset.file_name,
+        mimeType: asset.mime_type,
+        assetKind: asset.asset_kind,
+        fileSize: asset.file_size,
+        publicUrl: asset.public_url,
+        bucket: asset.storage_bucket,
+        path: asset.storage_path,
+        createdAt: asset.created_at,
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo subir el archivo' })
   }
 })
 

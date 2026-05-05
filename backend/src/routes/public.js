@@ -1,6 +1,51 @@
 import { Router } from 'express'
+import multer from 'multer'
+import crypto from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { hashToken, logProjectActivity } from '../lib/projectAccess.js'
+import { uploadToImageKit, buildImageKitPath } from '../lib/imagekit.js'
+
+const briefDocsUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+})
+
+const PROJECT_TOTAL_BUDGET_BYTES = 500 * 1024 * 1024
+const BRIEF_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'])
+const BRIEF_DOC_MIMES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/vnd.oasis.opendocument.presentation',
+  'text/plain',
+  'text/csv',
+])
+const BRIEF_ALLOWED_EXTS = new Set([
+  'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp',
+  'txt', 'csv',
+])
+function getFileExtension(filename) {
+  if (!filename) return ''
+  const idx = filename.lastIndexOf('.')
+  if (idx < 0 || idx === filename.length - 1) return ''
+  return filename.slice(idx + 1).toLowerCase()
+}
+function sanitizeBriefFilename(name) {
+  if (!name) return 'archivo'
+  return name
+    .replace(/\.\./g, '')
+    .replace(/[\\/]/g, '_')
+    .replace(/[^a-zA-Z0-9._\-\s]/g, '')
+    .trim()
+    .slice(0, 200)
+}
 
 const router = Router()
 
@@ -295,6 +340,132 @@ router.post('/brief/:token/submit', async (req, res) => {
     return res.status(201).json({ ok: true, submittedAt: response.submitted_at })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo enviar el brief' })
+  }
+})
+
+router.post('/brief/:token/documents', briefDocsUpload.single('file'), async (req, res) => {
+  try {
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
+      .select('id, company_id, project_type, brief_share_token, brief_max_file_mb, archived_at, trashed_at')
+      .eq('brief_share_token', req.params.token)
+      .is('archived_at', null)
+      .is('trashed_at', null)
+      .maybeSingle()
+    if (projectError) throw projectError
+    if (!project || project.project_type !== 'brief') {
+      return res.status(404).json({ error: 'Brief no encontrado o expirado' })
+    }
+    if (!req.file) return res.status(400).json({ error: 'file es requerido' })
+
+    const mime = req.file.mimetype || ''
+    const originalName = req.file.originalname || 'archivo'
+    const ext = getFileExtension(originalName)
+    const isImage = BRIEF_IMAGE_MIMES.has(mime)
+    const isDoc = BRIEF_DOC_MIMES.has(mime)
+
+    if (!isImage && !isDoc) {
+      return res.status(400).json({ error: `Tipo de archivo no permitido (${mime})` })
+    }
+    if (ext && !BRIEF_ALLOWED_EXTS.has(ext)) {
+      return res.status(400).json({ error: `Extensión .${ext} no permitida` })
+    }
+
+    const maxFileMb = project.brief_max_file_mb || 10
+    if (req.file.size > maxFileMb * 1024 * 1024) {
+      return res.status(400).json({ error: `El archivo supera el tope de ${maxFileMb} MB por archivo` })
+    }
+
+    const { data: existingAssets, error: budgetError } = await supabaseAdmin
+      .from('project_assets')
+      .select('file_size')
+      .eq('project_id', project.id)
+      .is('trashed_at', null)
+    if (budgetError) return res.status(500).json({ error: budgetError.message })
+    const usedBytes = (existingAssets || []).reduce((sum, a) => sum + (a.file_size || 0), 0)
+    if (usedBytes + req.file.size > PROJECT_TOTAL_BUDGET_BYTES) {
+      const remainingMb = Math.max(0, Math.floor((PROJECT_TOTAL_BUDGET_BYTES - usedBytes) / (1024 * 1024)))
+      return res.status(400).json({ error: `Presupuesto del proyecto agotado. Restan ${remainingMb} MB.` })
+    }
+
+    const assetId = crypto.randomUUID()
+    const safeName = sanitizeBriefFilename(originalName)
+
+    let storageBucket
+    let storagePath
+    let publicUrl = null
+    let imagekitFileId = null
+    let assetKind
+
+    if (isImage && mime !== 'image/svg+xml') {
+      const folder = buildImageKitPath('companies', project.company_id, 'projects', project.id, 'brief')
+      const uploadName = `${assetId}-${safeName}`
+      const uploadResponse = await uploadToImageKit({
+        buffer: req.file.buffer,
+        fileName: uploadName,
+        folder,
+        tags: ['brief-document', 'public-upload'],
+      })
+      storageBucket = 'imagekit'
+      storagePath = uploadResponse.filePath || `${folder}/${uploadName}`
+      publicUrl = uploadResponse.url || null
+      imagekitFileId = uploadResponse.fileId || null
+      assetKind = 'image'
+    } else {
+      const path = `${project.id}/${assetId}-${safeName}`
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('brief-documents')
+        .upload(path, req.file.buffer, {
+          contentType: mime,
+          cacheControl: '3600',
+          upsert: false,
+        })
+      if (uploadError) {
+        return res.status(500).json({
+          error: `No se pudo subir: ${uploadError.message}. Verificar que el bucket "brief-documents" exista.`,
+        })
+      }
+      storageBucket = 'brief-documents'
+      storagePath = path
+      assetKind = mime === 'image/svg+xml' ? 'svg' : 'file'
+    }
+
+    const { data: asset, error: assetError } = await supabaseAdmin
+      .from('project_assets')
+      .insert({
+        id: assetId,
+        project_id: project.id,
+        deliverable_id: null,
+        page_id: null,
+        section_id: null,
+        uploaded_by: null, // public upload, no auth user
+        file_name: originalName,
+        storage_bucket: storageBucket,
+        storage_path: storagePath,
+        imagekit_file_id: imagekitFileId,
+        mime_type: mime,
+        asset_kind: assetKind,
+        public_url: publicUrl,
+        file_size: req.file.size,
+        render_inline: false,
+      })
+      .select('id, file_name, mime_type, file_size, public_url, created_at')
+      .single()
+
+    if (assetError) return res.status(500).json({ error: assetError.message })
+
+    return res.status(201).json({
+      asset: {
+        id: asset.id,
+        fileName: asset.file_name,
+        mimeType: asset.mime_type,
+        fileSize: asset.file_size,
+        publicUrl: asset.public_url,
+        createdAt: asset.created_at,
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo subir el archivo' })
   }
 })
 
