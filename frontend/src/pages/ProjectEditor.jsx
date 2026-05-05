@@ -1018,8 +1018,7 @@ function buildSectionedHtmlFromPlainLines(lines) {
 
 function buildFaqHtmlFromPlainLines(lines) {
   const { contentLines } = parsePastedSeo(lines)
-  const parts = []
-  let sectionCount = 0
+  const blocks = []
 
   contentLines.forEach((line) => {
     const trimmed = line.trim()
@@ -1027,23 +1026,20 @@ function buildFaqHtmlFromPlainLines(lines) {
 
     const h1 = trimmed.match(/^h1\s*:\s*(.+)$/i)
     if (h1) {
-      parts.push(`<h1>${escapeEditorHtml(h1[1].trim())}</h1>`)
+      blocks.push(`<h1>${escapeEditorHtml(h1[1].trim())}</h1>`)
       return
     }
 
     const h2 = trimmed.match(/^h2\s*:\s*(.+)$/i)
     if (h2) {
-      sectionCount += 1
-      const sid = `s_${Date.now()}_${sectionCount}`
-      parts.push(`<div data-section-divider data-section-id="${escapeEditorHtml(sid)}" data-section-name="Pregunta Frecuente ${sectionCount}"></div>`)
-      parts.push(`<h2>${escapeEditorHtml(h2[1].trim())}</h2>`)
+      blocks.push(`<h2>${escapeEditorHtml(h2[1].trim())}</h2>`)
       return
     }
 
-    parts.push(htmlBlockFromPlainLine(trimmed))
+    blocks.push(htmlBlockFromPlainLine(trimmed))
   })
 
-  return sectionCount > 0 ? parts.join('') : null
+  return blocks.some((block) => block.startsWith('<h2>')) ? blocks.join('') : null
 }
 
 function buildDocumentHtmlFromPlainLines(lines) {
@@ -1240,48 +1236,32 @@ function buildRichSectionsFromPaste(html, { mode = 'page' } = {}) {
   const blocks = collectPasteBlocks(root)
 
   if (mode === 'faq') {
-    const faqParts = []
+    const faqBlocks = []
     let hasQuestion = false
-    let sectionCount = 0
-
-    function pushNewSection(questionText) {
-      sectionCount += 1
-      const sid = `s_${Date.now()}_${sectionCount}`
-      hasQuestion = true
-      faqParts.push(`<div data-section-divider data-section-id="${escapeEditorHtml(sid)}" data-section-name="Pregunta Frecuente ${sectionCount}"></div>`)
-      faqParts.push(`<h2>${escapeEditorHtml(questionText)}</h2>`)
-    }
-
     blocks.forEach((node) => {
       if (node.nodeType !== 1) return
       const prefix = getBlockPrefixInfo(node)
       if (prefix?.type === 'seo') return
       if (prefix?.type === 'h1') {
-        faqParts.push(`<h1>${escapeEditorHtml(prefix.text)}</h1>`)
+        faqBlocks.push(`<h1>${escapeEditorHtml(prefix.text)}</h1>`)
         return
       }
-      const tag = node.tagName?.toLowerCase()
-      if (prefix?.type === 'h2' || tag === 'h2') {
-        const text = prefix?.text || node.textContent?.replace(/\s+/g, ' ').trim() || ''
-        pushNewSection(text)
+      if (prefix?.type === 'h2') {
+        hasQuestion = true
+        faqBlocks.push(`<h2>${escapeEditorHtml(prefix.text)}</h2>`)
         return
       }
-      if (prefix?.type === 'h3' || tag === 'h3') {
-        const text = prefix?.text || node.textContent?.replace(/\s+/g, ' ').trim() || ''
-        if (!hasQuestion) {
-          pushNewSection(text)
-        } else {
-          faqParts.push(`<h3>${escapeEditorHtml(text)}</h3>`)
-        }
+      if (prefix?.type === 'h3') {
+        faqBlocks.push(`<h3>${escapeEditorHtml(prefix.text)}</h3>`)
         return
       }
       if (prefix?.type === 'cta') {
-        faqParts.push(`<div data-cta-button data-cta-text="${escapeEditorHtml(prefix.text)}" data-cta-url=""></div>`)
+        faqBlocks.push(`<div data-cta-button data-cta-text="${escapeEditorHtml(prefix.text)}" data-cta-url=""></div>`)
         return
       }
-      faqParts.push(node.outerHTML)
+      faqBlocks.push(node.outerHTML)
     })
-    return hasQuestion ? faqParts.join('') : null
+    return hasQuestion ? faqBlocks.join('') : null
   }
 
   const sections = []
@@ -1662,11 +1642,10 @@ function inferProjectType(project, pages = []) {
 }
 
 function mapPersistedPage(page, projectType = 'page') {
-  const usesSections = projectType === 'page' || projectType === 'faq'
-  const contentHtml = usesSections
+  const contentHtml = projectType === 'page'
     ? page.contentHtml
     : stripSectionDividersFromHtml(page.contentHtml)
-  const sections = usesSections ? parseSectionsFromHtml(contentHtml) : []
+  const sections = projectType === 'page' ? parseSectionsFromHtml(contentHtml) : []
 
   return {
     id: page.id,
@@ -1999,7 +1978,6 @@ function htmlToTextContent(html = '') {
 // Helper: getNextSectionNumber — devuelve el siguiente número para auto-nombrar
 // ---------------------------------------------------------------------------
 const AUTO_SECTION_NAME_RE = /^Sección (\d+)$/
-const AUTO_FAQ_SECTION_NAME_RE = /^Pregunta Frecuente (\d+)$/
 
 function isAutoSectionName(name) {
   return AUTO_SECTION_NAME_RE.test(name?.trim() || '')
@@ -2421,9 +2399,8 @@ export default function ProjectEditor() {
         setProjectMeta({ ...data.project, projectType: loadedProjectType })
         setPages(nextPages)
         setActivePageId(firstPage?.id || null)
-        const loadedUsesSections = loadedProjectType === 'page' || loadedProjectType === 'faq'
-        setActiveSectionId(loadedUsesSections ? initialSections[0]?.id || null : null)
-        setDerivedSections(loadedUsesSections ? initialSections.map((section) => ({
+        setActiveSectionId(loadedProjectType === 'page' ? initialSections[0]?.id || null : null)
+        setDerivedSections(loadedProjectType === 'page' ? initialSections.map((section) => ({
           id: section.id,
           name: section.name,
           headings: [],
@@ -2465,11 +2442,10 @@ export default function ProjectEditor() {
     }
 
     if (projectType === 'faq') {
-      const nextSections = deriveSectionsFromHtmlForSidebar(html)
-      setDerivedSections(nextSections)
+      setFaqItems(deriveFaqPanelItemsFromHtml(html))
       setDocumentOutline([])
-      setFaqItems([])
-      setActiveSectionId((current) => current || nextSections[0]?.id || null)
+      setDerivedSections([])
+      setActiveSectionId(null)
       return
     }
 
@@ -2529,21 +2505,13 @@ export default function ProjectEditor() {
     let sectionIndex = 0
     let changed = false
 
-    const isFaq = projectType === 'faq'
-
     state.doc.descendants((node, pos) => {
       if (node.type.name !== 'sectionDivider') return true
 
       sectionIndex += 1
 
-      const isAuto = isFaq
-        ? AUTO_FAQ_SECTION_NAME_RE.test(node.attrs.sectionName?.trim() || '')
-        : AUTO_SECTION_NAME_RE.test(node.attrs.sectionName?.trim() || '')
-
-      if (isAuto) {
-        const expectedName = isFaq
-          ? `Pregunta Frecuente ${sectionIndex}`
-          : `Sección ${sectionIndex}`
+      if (isAutoSectionName(node.attrs.sectionName)) {
+        const expectedName = `Sección ${sectionIndex}`
         if (node.attrs.sectionName !== expectedName) {
           tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, sectionName: expectedName })
           changed = true
@@ -2559,7 +2527,7 @@ export default function ProjectEditor() {
     editor.view.dispatch(tr)
     isRenumberingSections.current = false
     return true
-  }, [projectType])
+  }, [])
 
   const handleDocUpdate = useCallback((editor) => {
     if (isAutoRemoving.current || isRenumberingSections.current) return
@@ -2572,6 +2540,13 @@ export default function ProjectEditor() {
       setDocumentOutline(deriveDocumentOutline(editor))
       setDerivedSections([])
       setFaqItems([])
+      return
+    }
+
+    if (projectType === 'faq') {
+      setFaqItems(deriveFaqItems(editor))
+      setDocumentOutline([])
+      setDerivedSections([])
       return
     }
 
@@ -2591,7 +2566,7 @@ export default function ProjectEditor() {
         const { from, to } = editor.state.selection
         isAutoRemoving.current = true
         editor.chain()
-          .insertContentAt(0, { type: 'sectionDivider', attrs: { sectionId: id, sectionName: projectType === 'faq' ? 'Pregunta Frecuente 1' : 'Sección 1' } })
+          .insertContentAt(0, { type: 'sectionDivider', attrs: { sectionId: id, sectionName: 'Sección 1' } })
           .run()
         editor.commands.setTextSelection({ from: from + 1, to: to + 1 })
         isAutoRemoving.current = false
@@ -2663,6 +2638,12 @@ export default function ProjectEditor() {
       setFaqItems([])
       return
     }
+    if (projectType === 'faq') {
+      setFaqItems(deriveFaqItems(editor))
+      setDerivedSections([])
+      setDocumentOutline([])
+      return
+    }
     if (renumberAutoSections(editor)) {
       const sections = deriveSectionsFromDoc(editor)
       setDerivedSections(sections)
@@ -2701,6 +2682,14 @@ export default function ProjectEditor() {
       setDocumentOutline(deriveDocumentOutline(editorRef.current))
       setDerivedSections([])
       setFaqItems([])
+      setActiveSectionId(null)
+      return
+    }
+
+    if (projectType === 'faq') {
+      setFaqItems(deriveFaqItems(editorRef.current))
+      setDerivedSections([])
+      setDocumentOutline([])
       setActiveSectionId(null)
       return
     }
@@ -2754,7 +2743,7 @@ export default function ProjectEditor() {
         reviewRequestedBy: page.reviewRequestedBy || null,
       }
     })
-    const sectionEvents = (projectType === 'page' || projectType === 'faq')
+    const sectionEvents = projectType === 'page'
       ? buildSectionActivityEvents(pages, payload)
       : buildDocumentActivityEvents(pages, payload)
 
@@ -3098,10 +3087,7 @@ export default function ProjectEditor() {
     const id = `s_${Date.now()}`
     const currentSections = deriveSectionsFromDoc(editorRef.current)
     const sectionCount = currentSections.length
-    const autoName = projectType === 'faq'
-      ? `Pregunta Frecuente ${getNextSectionNumber(currentSections)}`
-      : `Sección ${getNextSectionNumber(currentSections)}`
-    const finalName = name?.trim() || autoName
+    const finalName = name?.trim() || `Sección ${getNextSectionNumber(currentSections)}`
 
     protectedEmptySectionIds.current.add(id)
 
@@ -3250,14 +3236,13 @@ export default function ProjectEditor() {
     if (!canEditProjectStructure) return
     const id = crypto.randomUUID()
     const sectionId = `s_${Date.now()}`
-    const newSectionName = projectType === 'faq' ? 'Pregunta Frecuente 1' : 'Sección 1'
-    const baseContent = (projectType === 'page' || projectType === 'faq')
-      ? buildDocumentHTML([{ id: sectionId, name: newSectionName, content: '<p></p>' }])
+    const baseContent = projectType === 'page'
+      ? buildDocumentHTML([{ id: sectionId, name: 'Sección 1', content: '<p></p>' }])
       : '<p></p>'
     const newPage = {
       id,
       name: 'Nueva página',
-      sections: (projectType === 'page' || projectType === 'faq') ? [{ id: sectionId, name: newSectionName, content: '<p></p>' }] : [],
+      sections: projectType === 'page' ? [{ id: sectionId, name: 'Sección 1', content: '<p></p>' }] : [],
       fullContent: baseContent,
       contentJson: null,
       seoMetadata: {},
@@ -3276,17 +3261,17 @@ export default function ProjectEditor() {
     if (editorRef.current) {
       protectedEmptySectionIds.current = new Set([sectionId])
       editorRef.current.commands.setContent(baseContent)
-      if (projectType === 'page' || projectType === 'faq') {
+      if (projectType === 'page') {
         renumberAutoSections(editorRef.current)
         const sections = deriveSectionsFromDoc(editorRef.current)
         setDerivedSections(sections)
       } else {
         setDerivedSections([])
-        setFaqItems([])
         setDocumentOutline(projectType === 'document' ? deriveDocumentOutline(editorRef.current) : [])
+        setFaqItems(projectType === 'faq' ? deriveFaqItems(editorRef.current) : [])
       }
     }
-    setActiveSectionId((projectType === 'page' || projectType === 'faq') ? sectionId : null)
+    setActiveSectionId(projectType === 'page' ? sectionId : null)
   }
 
   // ── Elimina una página (con confirmación) ──
@@ -3447,7 +3432,6 @@ export default function ProjectEditor() {
     <div ref={rootRef} className={styles.root}>
       {sectionModalState.isOpen && (
         <AddSectionModal
-          projectType={projectType}
           onConfirm={(name) => {
             const insertAfterSectionId = sectionModalState.insertAfterSectionId
             closeSectionModal()
@@ -3537,17 +3521,10 @@ export default function ProjectEditor() {
           />
         ) : projectType === 'faq' ? (
           <FaqPanel
-            sections={derivedSections}
-            activeSectionId={activeSectionId}
-            onSectionClick={handleSectionClick}
-            onMoveSection={moveSection}
-            onRename={renameSection}
-            onDelete={deleteSection}
-            onAddSection={() => openSectionModal(null)}
-            canManageSections={canEditProjectStructure}
+            items={faqItems}
+            activeHeading={activeHeading}
+            onFaqClick={handleDocumentHeadingClick}
             onExportCsv={() => exportFaqCsv(activePageForRead)}
-            openMenuId={openMenuId}
-            onSetOpenMenuId={setOpenMenuId}
           />
         ) : (
           <DocumentOutlinePanel
@@ -4037,9 +4014,8 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
 // ---------------------------------------------------------------------------
 // AddSectionModal — modal centrado para nombrar una nueva sección
 // ---------------------------------------------------------------------------
-function AddSectionModal({ onConfirm, onSkip, onClose, projectType = 'page' }) {
+function AddSectionModal({ onConfirm, onSkip, onClose }) {
   const [value, setValue] = useState('')
-  const isFaq = projectType === 'faq'
 
   useEffect(() => {
     function handleKey(e) { if (e.key === 'Escape') onClose() }
@@ -4050,11 +4026,11 @@ function AddSectionModal({ onConfirm, onSkip, onClose, projectType = 'page' }) {
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <p className={styles.modalTitle}>{isFaq ? 'Nombre de la pregunta' : 'Nombre de la sección'}</p>
+        <p className={styles.modalTitle}>Nombre de la sección</p>
         <input
           className={styles.modalInput}
           type="text"
-          placeholder={isFaq ? 'Ej: ¿Qué incluye el servicio?…' : 'Ej: Hero, Servicios, Contacto…'}
+          placeholder="Ej: Hero, Servicios, Contacto…"
           value={value}
           autoFocus
           onChange={(e) => setValue(e.target.value)}
@@ -4123,78 +4099,33 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
   )
 }
 
-function FaqPanel({ sections = [], activeSectionId, onSectionClick, onMoveSection, onRename, onDelete, onAddSection, canManageSections = true, onExportCsv, openMenuId, onSetOpenMenuId }) {
-  const [dragIndex, setDragIndex] = useState(null)
-  const [dropTargetIndex, setDropTargetIndex] = useState(null)
-
-  function handleDragOver(e, index) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    const rect = e.currentTarget.getBoundingClientRect()
-    const midY = rect.top + rect.height / 2
-    const target = e.clientY < midY ? index : index + 1
-    setDropTargetIndex(target)
-  }
-
-  function handleDrop(e) {
-    e.preventDefault()
-    if (dragIndex !== null && dropTargetIndex !== null) {
-      const toIndex = dropTargetIndex > dragIndex ? dropTargetIndex - 1 : dropTargetIndex
-      if (toIndex !== dragIndex) onMoveSection(dragIndex, toIndex)
-    }
-    setDragIndex(null)
-    setDropTargetIndex(null)
-  }
-
-  function handleDragEnd() {
-    setDragIndex(null)
-    setDropTargetIndex(null)
-  }
-
+function FaqPanel({ items = [], activeHeading, onFaqClick, onExportCsv }) {
   return (
     <div className={panelStyles.leftPanel}>
       <div className={panelStyles.panelHeader}>
         <span className={panelStyles.panelTitle}>Preguntas frecuentes</span>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {canManageSections && (
-            <button className={panelStyles.panelAddBtn} onClick={onAddSection} title="Agregar pregunta">
-              <Plus size={24} color="#2a2a2a" />
-            </button>
-          )}
-          <button className={panelStyles.panelAddBtn} onClick={onExportCsv} title="Exportar CSV">
-            <Download size={20} color="#2a2a2a" />
-          </button>
-        </div>
+        <button className={panelStyles.panelAddBtn} onClick={onExportCsv} title="Exportar CSV">
+          <Download size={20} color="#2a2a2a" />
+        </button>
       </div>
-      <div className={panelStyles.sectionList} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-        {sections.map((section, i) => (
-          <SectionItem
-            key={section.id}
-            index={i}
-            section={section}
-            isActive={section.id === activeSectionId}
-            onClick={() => onSectionClick(section.id)}
-            onRename={(name) => onRename(section.id, name)}
-            onDelete={() => onDelete(section.id)}
-            headings={section.headings || []}
-            sectionId={section.id}
-            activeHeading={null}
-            onHeadingClick={null}
-            isDragging={dragIndex === i}
-            showDropBefore={dropTargetIndex === i}
-            showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
-            canDrag={canManageSections && sections.length > 1}
-            canManageSection={canManageSections}
-            onDragStart={() => setDragIndex(i)}
-            onDragEnd={handleDragEnd}
-            onDragOver={(e) => handleDragOver(e, i)}
-            menuOpen={openMenuId === `section-${section.id}`}
-            onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
-            onCloseMenu={() => onSetOpenMenuId(null)}
-          />
-        ))}
-        {sections.length === 0 && (
-          <p className={panelStyles.emptyMsg}>Sin preguntas. Agregá una con +</p>
+      <div className={panelStyles.sectionList}>
+        {items.map((item, index) => {
+          const isActive = activeHeading?.sectionId === '__document__' && activeHeading?.headingIndex === item.headingIndex
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={isActive ? panelStyles.faqItemActive : panelStyles.faqItem}
+              onClick={() => onFaqClick?.(item.headingIndex)}
+            >
+              <span className={panelStyles.faqItemKicker}>Pregunta Frecuente {index + 1}</span>
+              <span className={panelStyles.faqQuestion}>{item.question}</span>
+              <span className={panelStyles.faqAnswer}>{item.answer || 'Sin respuesta todavía'}</span>
+            </button>
+          )
+        })}
+        {items.length === 0 && (
+          <p className={panelStyles.emptyMsg}>Pega o escribe preguntas como H2 o H3 y respuestas como párrafos.</p>
         )}
       </div>
     </div>
@@ -5607,7 +5538,7 @@ function EditorPanel({
         return true
       },
       transformPastedHTML(html) {
-        if (projectType === 'document') return stripSectionDividersFromHtml(html)
+        if (projectType !== 'page') return stripSectionDividersFromHtml(html)
         return html
       },
     },
@@ -5793,8 +5724,10 @@ function EditorPanel({
       const containerRect = scrollEl.getBoundingClientRect()
       const triggerY = containerRect.top + OFFSET
 
-      if (projectType === 'document') {
-        const headings = Array.from(pm.querySelectorAll('h1, h2, h3'))
+      if (projectType !== 'page') {
+        // FAQ: headingIndex counts only H2/H3 (questions); H1 is a title and not a FAQ item
+        const headingSelector = projectType === 'faq' ? 'h2, h3' : 'h1, h2, h3'
+        const headings = Array.from(pm.querySelectorAll(headingSelector))
         let headingIndex = 0
         headings.forEach((heading, index) => {
           if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
@@ -6902,7 +6835,7 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
       const sectionNodes = Array.from(content.querySelectorAll('[data-handoff-section-id]'))
       const triggerY = scroller.getBoundingClientRect().top + OFFSET
 
-      if (projectType === 'document') {
+      if (projectType !== 'page') {
         const headings = getContentHeadingNodes(content)
         let headingIndex = 0
         headings.forEach((heading, index) => {
@@ -7456,7 +7389,7 @@ function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest,
       if (programmaticScrollRef.current) return
       const triggerY = scroller.getBoundingClientRect().top + OFFSET
 
-      if (projectType === 'document') {
+      if (projectType !== 'page') {
         const headings = getPreviewHeadingNodes()
         let headingIndex = 0
         headings.forEach((heading, index) => {
