@@ -107,6 +107,14 @@
   background: var(--wb-surface-muted);
 }
 
+.versionBadge {
+  text-align: center;
+  font-size: 11px;
+  color: var(--wb-text-muted);
+  opacity: 0.5;
+  user-select: none;
+}
+
 .main {
   min-width: 0;
   min-height: 0;

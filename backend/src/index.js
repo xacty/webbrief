@@ -1,7 +1,11 @@
 // Cargar variables de entorno desde el archivo .env
 import 'dotenv/config'
 
+import { createRequire } from 'module'
 import express from 'express'
+
+const _require = createRequire(import.meta.url)
+const { version: APP_VERSION } = _require('../../frontend/package.json')
 import cors from 'cors'
 import authRoutes from './routes/auth.js'
 import companiesRoutes from './routes/companies.js'
@@ -22,7 +26,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
 // Ruta de prueba para verificar que el servidor funciona
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' })
+  res.json({ status: 'ok', version: APP_VERSION })
 })
 
 // Rutas de autenticación y datos

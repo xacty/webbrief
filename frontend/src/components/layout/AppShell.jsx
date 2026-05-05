@@ -101,6 +101,8 @@ export default function AppShell() {
           <button className={styles.logoutButton} onClick={handleLogout}>
             Cerrar sesión
           </button>
+
+          <span className={styles.versionBadge}>v{__APP_VERSION__}</span>
         </div>
       </aside>
 
