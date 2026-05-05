@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import styles from './BriefProjectEditor.module.css'
@@ -519,8 +519,10 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
             className={styles.backBtn}
             onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}
             type="button"
+            data-wb-tooltip={companyId ? 'Volver a la empresa' : 'Volver a empresas'}
+            aria-label="Volver"
           >
-            ← Volver
+            <ArrowLeft size={18} />
           </button>
           <div className={styles.navbarCenter}>
             <span className={styles.navbarProjectName}>{projectMeta?.name || 'Brief'}</span>

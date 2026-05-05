@@ -2325,8 +2325,6 @@ export default function ProjectEditor() {
   const [panelError, setPanelError] = useState('')
   const [panelNotice, setPanelNotice] = useState('')
   const [shareUrl, setShareUrl] = useState('')
-  const [shareModalOpen, setShareModalOpen] = useState(false)
-  const [shareCopyFeedback, setShareCopyFeedback] = useState('')
   const [tooltipState, setTooltipState] = useState(null)
   const [sectionModalState, setSectionModalState] = useState({
     isOpen: false,
@@ -3015,30 +3013,10 @@ export default function ProjectEditor() {
         body: JSON.stringify({ label: 'Link para cliente' }),
       })
       setShareUrl(data.shareLink.url)
-      setShareCopyFeedback('')
-      setShareModalOpen(true)
-      if (navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(data.shareLink.url)
-          setShareCopyFeedback('Link copiado al portapapeles')
-        } catch {
-          // Clipboard puede fallar si el browser no permite; el botón Copiar del modal cubre el caso.
-        }
-      }
       setPanelError('')
       loadSidePanelData()
     } catch (error) {
       setPanelError(error.message || 'No se pudo crear el link privado')
-    }
-  }
-
-  async function copyShareLinkToClipboard() {
-    if (!shareUrl) return
-    try {
-      await navigator.clipboard?.writeText?.(shareUrl)
-      setShareCopyFeedback('Link copiado al portapapeles')
-    } catch {
-      setShareCopyFeedback('No se pudo copiar — copialo manualmente')
     }
   }
 
@@ -3048,7 +3026,6 @@ export default function ProjectEditor() {
     try {
       await apiFetch(`/api/projects/${projectId}/share-links`, { method: 'DELETE' })
       setShareUrl('')
-      setShareModalOpen(false)
     } catch (error) {
       setPanelError(error.message || 'No se pudo revocar el link')
     }
@@ -3850,54 +3827,6 @@ export default function ProjectEditor() {
         onSetOpenMenuId={setOpenMenuId}
       />
 
-      {/* Modal de share link privado */}
-      {shareModalOpen && shareUrl && (
-        <div className={styles.modalOverlay} onClick={() => setShareModalOpen(false)}>
-          <div className={styles.shareLinkModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.shareLinkModalHeader}>
-              <Link2 size={16} aria-hidden="true" />
-              <h3 className={styles.shareLinkModalTitle}>Link privado para cliente</h3>
-            </div>
-            <p className={styles.shareLinkModalNote}>
-              Cualquier persona con este link puede ver y comentar.
-            </p>
-            <div className={styles.shareLinkRow}>
-              <span className={styles.shareLinkUrl} title={shareUrl}>{shareUrl}</span>
-              <button
-                type="button"
-                className={styles.shareLinkCopyBtn}
-                onClick={copyShareLinkToClipboard}
-                data-wb-tooltip="Copiar link"
-                aria-label="Copiar link"
-              >
-                {shareCopyFeedback ? <span className={styles.shareLinkCopiedBadge}>✓</span> : <Copy size={14} />}
-              </button>
-            </div>
-            <button
-              type="button"
-              className={styles.shareLinkOpenBtn}
-              onClick={() => window.open(shareUrl, '_blank', 'noopener')}
-            >
-              Abrir en nueva pestaña
-            </button>
-            <button
-              type="button"
-              className={styles.shareLinkRevokeBtn}
-              onClick={revokeShareLink}
-            >
-              Revocar link
-            </button>
-            <button
-              type="button"
-              className={styles.shareLinkCloseBtn}
-              onClick={() => setShareModalOpen(false)}
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Modal de confirmación para borrar página */}
       {deletePageConfirm && (
         <div className={styles.confirmOverlay} onClick={() => setDeletePageConfirm(null)}>
@@ -4056,7 +3985,7 @@ export default function ProjectEditor() {
           isRefreshing={isRefreshingActivity}
           shareUrl={shareUrl}
           onCreateShareLink={createShareLink}
-          onShowShareLink={() => { setShareCopyFeedback(''); setShareModalOpen(true) }}
+          onRevokeShareLink={revokeShareLink}
           onRestoreSection={restoreSectionContent}
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
@@ -8241,6 +8170,88 @@ function htmlToPlainText(html) {
   return (tmp.textContent || tmp.innerText || '').trim()
 }
 
+function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, onRevoke }) {
+  const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function handleCopy() {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard?.writeText?.(shareUrl)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // noop
+    }
+  }
+
+  async function handleCreate() {
+    if (busy) return
+    setBusy(true)
+    try { await onCreate?.() } finally { setBusy(false) }
+  }
+
+  if (!canManageProjectMeta) {
+    return (
+      <div className={panelStyles.shareBox}>
+        <span className={panelStyles.pendingTitle}>Cliente</span>
+        <p className={panelStyles.deliverablesEmpty}>El link privado lo gestiona manager/editor.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className={panelStyles.shareBox}>
+      <div className={styles.shareCardHeader}>
+        <Link2 size={14} aria-hidden="true" />
+        <span className={panelStyles.pendingTitle}>Link público</span>
+      </div>
+      {shareUrl ? (
+        <>
+          <div className={styles.shareLinkRow}>
+            <span className={styles.shareLinkUrl} title={shareUrl}>{shareUrl}</span>
+            <button
+              type="button"
+              className={styles.shareLinkCopyBtn}
+              onClick={handleCopy}
+              data-wb-tooltip="Copiar link"
+              aria-label="Copiar link"
+            >
+              {copied ? <span className={styles.shareLinkCopiedBadge}>✓</span> : <Copy size={14} />}
+            </button>
+          </div>
+          <button
+            type="button"
+            className={styles.shareLinkOpenBtn}
+            onClick={() => window.open(shareUrl, '_blank', 'noopener')}
+          >
+            Abrir en nueva pestaña
+          </button>
+          <button
+            type="button"
+            className={styles.shareLinkRevokeBtn}
+            onClick={onRevoke}
+          >
+            Revocar link
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          className={styles.shareLinkOpenBtn}
+          onClick={handleCreate}
+          disabled={busy}
+        >
+          {busy ? 'Creando…' : 'Crear link privado'}
+        </button>
+      )}
+      <p className={panelStyles.deliverablesEmpty} style={{ marginTop: 4 }}>
+        Comparte este link con el cliente para que vea y comente el contenido.
+      </p>
+    </div>
+  )
+}
+
 function HistoryTabPanel({ activity = [], sections = [], activePageId = '', projectType = 'page', onShowDiff }) {
   const sectionNameById = useMemo(() => {
     const map = new Map()
@@ -8401,7 +8412,7 @@ function UpdatesPanel({
   isRefreshing = false,
   shareUrl = '',
   onCreateShareLink,
-  onShowShareLink,
+  onRevokeShareLink,
   onRestoreSection,
   onCreateDeliverable,
   onUpdateDeliverableStatus,
@@ -8616,23 +8627,12 @@ function UpdatesPanel({
           )}
         </div>
         )}
-        <div className={panelStyles.shareBox}>
-          <span className={panelStyles.pendingTitle}>Cliente</span>
-          {canManageProjectMeta ? (
-            <>
-              <button className={panelStyles.shareButton} onClick={onCreateShareLink}>
-                {shareUrl ? 'Crear nuevo link privado' : 'Crear link privado'}
-              </button>
-              {shareUrl && onShowShareLink && (
-                <button className={panelStyles.proposalSecondaryButton} onClick={onShowShareLink}>
-                  Ver link actual
-                </button>
-              )}
-            </>
-          ) : (
-            <p className={panelStyles.deliverablesEmpty}>El link privado lo gestiona manager/editor.</p>
-          )}
-        </div>
+        <ShareLinkPanel
+          shareUrl={shareUrl}
+          canManageProjectMeta={canManageProjectMeta}
+          onCreate={onCreateShareLink}
+          onRevoke={onRevokeShareLink}
+        />
 
         {!hasActivity ? (
           <p className={panelStyles.updatesEmpty}>Sin actividad registrada aún.</p>

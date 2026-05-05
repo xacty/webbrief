@@ -125,12 +125,16 @@ function serializeCompany(company, membershipMap, statsMap) {
 }
 
 function normalizeProjectType(value) {
-  return ['page', 'document', 'faq'].includes(value) ? value : 'page'
+  return ['page', 'document', 'faq', 'brief'].includes(value) ? value : 'page'
 }
 
-function inferProjectType(project, firstPageName = '') {
+function inferProjectType(project, firstPageName = '', firstPageContentJson = null) {
   const explicitType = project?.project_type
-  if (explicitType === 'document' || explicitType === 'faq') return explicitType
+  if (
+    explicitType === 'document'
+    || explicitType === 'faq'
+    || explicitType === 'brief'
+  ) return explicitType
 
   const normalizedFirstPageName = String(firstPageName || '').trim().toLowerCase()
   if (normalizedFirstPageName === 'documento') return 'document'
@@ -140,6 +144,11 @@ function inferProjectType(project, firstPageName = '') {
     normalizedFirstPageName === 'preguntas frecuentes'
   ) {
     return 'faq'
+  }
+
+  // Brief detection: content_json tiene `questions` array (estructura única del brief)
+  if (firstPageContentJson && Array.isArray(firstPageContentJson.questions)) {
+    return 'brief'
   }
 
   return normalizeProjectType(explicitType)
@@ -268,10 +277,11 @@ router.get('/:id', async (req, res) => {
       .map((project) => project.id)
     let firstPageNameByProjectId = new Map()
 
+    let firstPageContentByProjectId = new Map()
     if (projectIdsNeedingInference.length > 0) {
       const { data: firstPages, error: firstPagesError } = await supabaseAdmin
         .from('project_pages')
-        .select('project_id, name, position')
+        .select('project_id, name, position, content_json')
         .in('project_id', projectIdsNeedingInference)
         .order('position', { ascending: true })
 
@@ -281,6 +291,7 @@ router.get('/:id', async (req, res) => {
       for (const page of firstPages || []) {
         if (!firstPageNameByProjectId.has(page.project_id)) {
           firstPageNameByProjectId.set(page.project_id, page.name || '')
+          firstPageContentByProjectId.set(page.project_id, page.content_json || null)
         }
       }
     }
@@ -293,7 +304,11 @@ router.get('/:id', async (req, res) => {
         client: project.client_name,
         clientEmail: project.client_email,
         businessType: project.business_type,
-        projectType: inferProjectType(project, firstPageNameByProjectId.get(project.id)),
+        projectType: inferProjectType(
+          project,
+          firstPageNameByProjectId.get(project.id),
+          firstPageContentByProjectId.get(project.id),
+        ),
         lastActivity: project.updated_at,
       })),
       members: (memberships || []).map((membership) => {
