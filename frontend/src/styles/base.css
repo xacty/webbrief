@@ -129,13 +129,13 @@ a {
 }
 
 @keyframes sectionFlash {
-  0%   { background-color: #fef9c3; }
-  15%  { background-color: #fef9c3; }
-  100% { background-color: transparent; }
+  0%   { background-color: rgba(254, 249, 195, 0.75); }
+  15%  { background-color: rgba(254, 249, 195, 0.75); }
+  100% { background-color: rgba(254, 249, 195, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   @keyframes sectionFlash {
-    0%, 100% { background-color: #fef9c3; }
+    0%, 100% { background-color: rgba(254, 249, 195, 0.75); }
   }
 }

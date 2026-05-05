@@ -543,18 +543,36 @@
   left: var(--tooltip-x, 0px);
   top: var(--tooltip-y, 0px);
   z-index: 1400;
-  max-width: 240px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  max-width: 260px;
+  padding: 6px 10px 7px;
+  border-radius: 4px;
+  background: #3c4043;
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  white-space: nowrap;
+  animation: tooltipIn 80ms ease-out;
+}
+
+@keyframes tooltipIn {
+  from { opacity: 0; transform: translate(-50%, -3px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.tooltipLabel {
   color: #fff;
   font-size: 12px;
-  font-weight: 500;
-  line-height: 1.35;
-  pointer-events: none;
-  transform: translate(-50%, -100%);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
-  white-space: nowrap;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.tooltipShortcut {
+  color: #bdc1c6;
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .activityMarkersCol {

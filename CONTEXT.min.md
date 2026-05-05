@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-05 (session 3)
+- Updated: 2026-05-05 (session 5)
 
 ## Targets
 
@@ -249,7 +249,7 @@
 - `apiDownloadToFile` uses anchor+query-token approach; new `apiSubmitDownload` uses hidden form POST for ZIP downloads
 - handoff panel scroll is synced with sidebar via `scrollRequest` prop; scroll listener fires `onScrollHeadingChange` for section/heading tracking
 - editor mode and handoff audience persist across page reloads via `sessionStorage` per project
-- floating tooltip system in ProjectEditor: 1.4s delay, follows pointer, replaces native `title` attribute
+- floating tooltip system in ProjectEditor: Google Docs–style dark `#3c4043` tooltip with label + shortcut, 300ms delay, positioned below the trigger; toolbar buttons use `data-wb-tooltip` to suppress native browser tooltip; remaining elements fall back to `title` attribute (intercepted, removed, restored on leave); shortcuts auto-format on Mac (Ctrl→⌘, Shift→⇧, Alt→⌥); fallback clears tooltip when pointer enters area without target (covers stale targets after re-render); useEffect depends on `loadingProject` so listener attaches after the rootRef div is mounted
 - autosave delay raised to 8s; blocked automatically after version-conflict error; runner stored in ref to avoid stale-closure issues
 - PreviewPanel wrapped in `.previewScroll` for independent internal scroll
 - scrollbar styles globalized to `*` (was scoped to specific class patterns)
@@ -266,6 +266,13 @@
 - SEO metadata section added to dev handoff panel (read-only, copy buttons per field); rendered at top of handoff content when `audience === 'dev'`; clicking "SEO metadata" in sections panel scrolls to `[data-seo-tray]` element
 - activity panel refactored: only `section_edited` + `asset_uploaded` shown; all lifecycle events moved to navbar bell notifications dropdown; pendingBox removed from updates panel
 - granular section events: `title_changed` (headings, separate from body), `text_changed` (body text), `image_changed` (same count, different src); backend `metadata.history[]` accumulates per-save entries (cap 50) for "Ver detalle" expansion
+- toolbar UX overhaul: hover state on buttons + dropdowns + section panel labels (`#f0f4f9`), Google blue active state (`#e8f0fe`), SVG icons replace emoji for link/image (`Link2`, `Image as ImageIcon` from lucide-react), block/alignment/spacing dropdowns include shortcut tooltips
+- alignment shortcuts work inside the editor: `AlignShortcuts` extension (priority 200) binds Mod-Shift-L/E/R/J to `setTextAlign('left'|'center'|'right'|'justify')` and returns true so ProseMirror calls `preventDefault()`; suppresses browser hard-refresh (Cmd+Shift+R) when editor has focus
+- section panel for `projectType === 'page'` no longer renders top-level H1Divider; H1s appear as headings inside their section. `deriveSectionsFromDoc(editor, projectType)` filters heading levels (`[1,2,3]` for page, `[2,3]` for FAQ); FAQ keeps `mergePanelItems` with top-level H1s
+- CTAs show in section panel as nested entries with a small `MousePointerClick` icon prefix (italic, gray); excluded from FAQ section headings
+- activity panel item active state now follows the editor's `activeSectionId` (scroll-driven), not the last clicked id; clicking a row auto-marks the group as read; "Marcar leída" button removed (kept only on the bell notifications dropdown); active row has `padding: 10px 12px` and `border-radius: 8px` for visual breathing room
+- yellow section-flash overlay is appended to the `[data-flash-container]` (the `editorCanvas` div) so it stays inside the canvas; `left: 0; right: 0` for full canvas width; opacity-based animation (`rgba(254,249,195,0.75) → 0`); inset 4px gap before next divider via `Math.min(lastBottom + pad, nextTop - gap)` (currently reverted to plain `nextDivider.top` per user feedback — investigate)
+- worktrees rule: edits must land in `/Users/adrian/GitHub/webbrief/` (the main repo). Changes only inside `.claude/worktrees/...` are not visible to the user's dev server until merged. Documented in `AI_GLOBAL.md` under "Working Directory Rule"
 
 ## Pending
 
@@ -274,3 +281,8 @@
 - document-type activity (article has no sections — needs global change tracking or single-section treatment)
 - FAQ activity: verify each Q+A section tracked correctly
 - Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.
+
+## Bugs pendientes en FAQs (rama gifted-lederberg-06ede7, no resueltos)
+
+- **Agregar pregunta frecuente siempre inserta al final** — el botón `+` del `FaqPanel` no puede capturar el `sectionId` activo porque al hacer click el editor pierde el foco antes de que el handler corra; `handleSelectionFocus` actualiza `capturedSectionForFaqRef` síncronamente pero algo en la cadena no funciona; requiere debugging presencial con logs en el editor mismo.
+- **H2/H3 escritos en la respuesta de una FAQ no auto-crean nueva sección** — el hook en `handleDocUpdate` que detecta H2/H3 sin `sectionDivider` precedente e inserta uno automáticamente no está funcionando; puede ser que `isAutoRemoving.current` bloquee el update o que el check `sections.length > 0` sea falso cuando debería no serlo.

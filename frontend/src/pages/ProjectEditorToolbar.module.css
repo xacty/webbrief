@@ -59,9 +59,17 @@
   text-align: left;
 }
 
+.dropdownItem:hover {
+  background: #f0f4f9;
+}
+
 .dropdownItemActive {
-  background: #f0f0f0;
-  font-weight: 700;
+  background: #e8f0fe;
+  font-weight: 600;
+}
+
+.dropdownItemActive:hover {
+  background: #d2e3fc;
 }
 
 .toolBtn {
@@ -78,9 +86,13 @@
   font-size: 14px;
 }
 
+.toolBtn:hover:not(.toolBtnDisabled) {
+  background: #f0f4f9;
+}
+
 .toolBtnActive {
-  background: #f0f0f0;
-  border-color: #d9d9d9;
+  background: #e8f0fe;
+  border-color: transparent;
 }
 
 .toolBtnDisabled {
@@ -108,6 +120,10 @@
   font: inherit;
   font-size: 14px;
   cursor: pointer;
+}
+
+.toolLabel:hover:not(.toolLabelDisabled) {
+  background: #f0f4f9;
 }
 
 .toolLabelDisabled {

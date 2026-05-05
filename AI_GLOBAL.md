@@ -7,6 +7,13 @@
   3. read `CONTEXT.md` only if more detail is needed
   4. read tool-specific bridge files such as `AGENTS.md` or `CLAUDE.md` if present
 
+## Working Directory Rule
+
+- **Always edit files in `/Users/adrian/GitHub/webbrief/`** — the main repository.
+- Never make changes only inside a worktree path (`.claude/worktrees/...`) and consider them done. Worktrees are isolated branches; changes there are invisible to the user's dev server.
+- If operating inside a worktree (detected by path containing `.claude/worktrees/`), apply all code changes to the main repo path instead, or explicitly warn the user before proceeding only in the worktree.
+- The user's dev server runs from the main repo. Changes made only in a worktree will not be visible until merged.
+
 ## Shared Workflow
 
 - Prefer the repo context files over guessing from partial chat history.

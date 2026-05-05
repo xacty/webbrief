@@ -202,8 +202,16 @@
   border: 1px solid transparent;
 }
 
+.sectionNavBtn:hover {
+  background: #f0f4f9;
+}
+
 .sectionNavBtnActive {
   border: 1px solid #212222;
+}
+
+.sectionNavBtnActive:hover {
+  background: #f0f4f9;
 }
 
 .sectionNavLeft {
@@ -344,6 +352,8 @@
 }
 
 .sectionHeadingItem {
+  display: flex;
+  align-items: center;
   margin-bottom: 1px;
   padding-left: 10px;
   cursor: pointer;
@@ -355,7 +365,8 @@
 }
 
 .sectionHeadingText {
-  display: block;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -373,6 +384,19 @@
 .sectionHeadingTextNested {
   font-weight: 400;
   padding-left: 8px;
+}
+
+.sectionCtaIcon {
+  flex-shrink: 0;
+  color: #64748b;
+  margin-right: 6px;
+}
+
+.sectionHeadingTextCta {
+  font-weight: 400;
+  font-style: italic;
+  color: #475569;
+  padding-left: 0;
 }
 
 .updatesHeader {
@@ -719,7 +743,8 @@
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  padding: 10px 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
   cursor: pointer;
   user-select: none;
 }

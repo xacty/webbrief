@@ -17,7 +17,7 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
@@ -562,19 +562,19 @@ const GoogleDocsHeadingShortcuts = Extension.create({
   },
 })
 
-// Desactiva Mod-Shift-r (hard refresh) y Mod-Shift-j (DevTools) que el browser
-// intercepta a nivel de chrome — preventDefault() no los puede bloquear.
-// priority < 100 (TextAlign default) para que este binding sobrescriba al de TextAlign.
-// Retorna true para marcar el evento como manejado y evitar que TipTap alinee el texto.
-// Nota: no puede prevenir el hard-refresh/DevTools del navegador (son atajos del chrome
-// del browser que operan sobre el DOM event), pero sí evita la acción de alineación.
-const DisableConflictingAlignShortcuts = Extension.create({
-  name: 'disableConflictingAlignShortcuts',
-  priority: 50,
+// Atajos de alineación estilo Google Docs: Mod-Shift-L/E/R/J.
+// Al retornar true desde un handler, ProseMirror llama preventDefault() en el
+// evento, evitando el hard-refresh (Cmd+Shift+R) del browser cuando el editor
+// tiene foco.
+const AlignShortcuts = Extension.create({
+  name: 'alignShortcuts',
+  priority: 200,
   addKeyboardShortcuts() {
     return {
-      'Mod-Shift-r': () => true,
-      'Mod-Shift-j': () => true,
+      'Mod-Shift-l': () => this.editor.chain().focus().setTextAlign('left').run(),
+      'Mod-Shift-e': () => this.editor.chain().focus().setTextAlign('center').run(),
+      'Mod-Shift-r': () => this.editor.chain().focus().setTextAlign('right').run(),
+      'Mod-Shift-j': () => this.editor.chain().focus().setTextAlign('justify').run(),
     }
   },
 })
@@ -782,37 +782,40 @@ const TextBlockLayoutExtension = Extension.create({
 // ---------------------------------------------------------------------------
 // Flash overlay: crea un div animado sobre el área de una sección
 // ---------------------------------------------------------------------------
-function createFlashOverlay(scrollEl, top, height) {
-  if (!scrollEl || height <= 0) return
+function createFlashOverlay(parentEl, top, height) {
+  if (!parentEl || height <= 0) return
   const overlay = document.createElement('div')
   Object.assign(overlay.style, {
     position: 'absolute',
     top: `${top}px`,
-    left: '6px',
-    right: '6px',
+    left: '0',
+    right: '0',
     height: `${Math.max(height, 60)}px`,
-    borderRadius: '10px',
+    borderRadius: '8px',
     pointerEvents: 'none',
     zIndex: '6',
     animation: 'sectionFlash 1200ms ease-out forwards',
   })
-  const prev = getComputedStyle(scrollEl).position
-  if (prev === 'static') scrollEl.style.position = 'relative'
-  scrollEl.appendChild(overlay)
+  const prev = getComputedStyle(parentEl).position
+  if (prev === 'static') parentEl.style.position = 'relative'
+  parentEl.appendChild(overlay)
   overlay.addEventListener('animationend', () => {
     overlay.remove()
-    if (prev === 'static') scrollEl.style.position = ''
+    if (prev === 'static') parentEl.style.position = ''
   }, { once: true })
 }
 
 function flashSectionInScrollEl(scrollEl, anchorEl, nextAnchorEl) {
   if (!scrollEl || !anchorEl) return
-  const scrollRect = scrollEl.getBoundingClientRect()
-  const top = anchorEl.getBoundingClientRect().top - scrollRect.top + scrollEl.scrollTop
+  // Append overlay to the canvas container if available so it stays visually
+  // contained within the editor canvas (not extending to scroll-area edges).
+  const container = anchorEl.closest('[data-flash-container]') || scrollEl
+  const containerRect = container.getBoundingClientRect()
+  const top = anchorEl.getBoundingClientRect().top - containerRect.top
   const bottom = nextAnchorEl
-    ? nextAnchorEl.getBoundingClientRect().top - scrollRect.top + scrollEl.scrollTop
+    ? nextAnchorEl.getBoundingClientRect().top - containerRect.top
     : top + Math.max(anchorEl.getBoundingClientRect().height, 200)
-  createFlashOverlay(scrollEl, top, bottom - top)
+  createFlashOverlay(container, top, bottom - top)
 }
 
 // ---------------------------------------------------------------------------
@@ -2080,10 +2083,14 @@ function getNextSectionNumber(sections) {
 // Helper: deriveSectionsFromDoc — extrae secciones del documento del editor
 // Todas las secciones están delimitadas por nodos sectionDivider.
 // ---------------------------------------------------------------------------
-function deriveSectionsFromDoc(editor) {
+function deriveSectionsFromDoc(editor, projectType) {
   if (!editor) return []
   const json = editor.getJSON()
   if (!json.content) return []
+
+  // Para FAQ los H1 son divisores top-level del panel, no headings de sección.
+  // Para Página Web/otros, los H1 son headings dentro de su sección.
+  const includedHeadingLevels = projectType === 'faq' ? [2, 3] : [1, 2, 3]
 
   const sections = []
   let currentSection = null
@@ -2110,8 +2117,7 @@ function deriveSectionsFromDoc(editor) {
       ))
     if (hasContent) currentSection.isEmpty = false
 
-    // Collect H2/H3 only — H1s are top-level divider items, not section headings
-    if (node.type === 'heading' && (node.attrs?.level === 2 || node.attrs?.level === 3)) {
+    if (node.type === 'heading' && includedHeadingLevels.includes(node.attrs?.level)) {
       const text = (node.content || []).map((c) => c.text || '').join('')
       if (text.trim()) {
         currentSection.headings.push({
@@ -2119,6 +2125,12 @@ function deriveSectionsFromDoc(editor) {
           text: text.trim(),
         })
       }
+    }
+
+    // CTAs aparecen en el panel como entradas anidadas con su label
+    if (node.type === 'ctaButton' && projectType !== 'faq') {
+      const text = (node.attrs?.ctaText || '').trim() || 'CTA'
+      currentSection.headings.push({ tag: 'cta', text })
     }
   })
   if (currentSection) sections.push(currentSection)
@@ -2280,7 +2292,6 @@ export default function ProjectEditor() {
   const rootRef = useRef(null)
   const tooltipTimerRef = useRef(null)
   const tooltipTargetRef = useRef(null)
-  const tooltipVisibleRef = useRef(false)
 
   const [projectMeta, setProjectMeta] = useState(null)
   const [pages, setPages] = useState([])
@@ -2434,40 +2445,53 @@ export default function ProjectEditor() {
       const target = tooltipTargetRef.current
       if (target?.dataset?.wbTooltipTitle) {
         target.setAttribute('title', target.dataset.wbTooltipTitle)
+        delete target.dataset.wbTooltipTitle
       }
       tooltipTargetRef.current = null
-      tooltipVisibleRef.current = false
       setTooltipState(null)
     }
 
-    function handlePointerOver(event) {
-      const target = event.target instanceof Element ? event.target.closest('[title]') : null
-      if (!target || !root.contains(target)) return
-      if (tooltipTargetRef.current === target) return
-
-      clearTooltipTarget()
-      const title = target.getAttribute('title')
-      if (!title) return
-
-      target.dataset.wbTooltipTitle = title
-      target.removeAttribute('title')
+    function showTooltip(target, text) {
       tooltipTargetRef.current = target
-
       tooltipTimerRef.current = window.setTimeout(() => {
         const rect = target.getBoundingClientRect()
-        tooltipVisibleRef.current = true
-        setTooltipState({
-          text: title,
-          x: rect.left + (rect.width / 2),
-          y: rect.top - 10,
-        })
+        const { label, shortcut } = parseTooltipTitle(text)
+        setTooltipState({ label, shortcut, x: rect.left + rect.width / 2, y: rect.bottom + 8 })
         tooltipTimerRef.current = null
-      }, 1400)
+      }, 300)
     }
 
-    function handlePointerMove(event) {
-      if (!tooltipTargetRef.current || !tooltipVisibleRef.current) return
-      setTooltipState((current) => current ? { ...current, x: event.clientX, y: event.clientY - 14 } : current)
+    function handlePointerOver(event) {
+      const el = event.target instanceof Element ? event.target : null
+      if (!el) return
+
+      // Prefer data-wb-tooltip (no native tooltip risk, no attribute juggling)
+      const wbTarget = el.closest('[data-wb-tooltip]')
+      if (wbTarget && root.contains(wbTarget)) {
+        if (tooltipTargetRef.current === wbTarget) return
+        clearTooltipTarget()
+        const text = wbTarget.getAttribute('data-wb-tooltip')
+        if (text) showTooltip(wbTarget, text)
+        return
+      }
+
+      // Fall back to title attribute (remove immediately to suppress native tooltip)
+      const titleTarget = el.closest('[title]')
+      if (titleTarget && root.contains(titleTarget)) {
+        if (tooltipTargetRef.current === titleTarget) return
+        clearTooltipTarget()
+        const text = titleTarget.getAttribute('title')
+        if (!text) return
+        titleTarget.dataset.wbTooltipTitle = text
+        titleTarget.removeAttribute('title')
+        showTooltip(titleTarget, text)
+        return
+      }
+
+      // No tooltip target under the pointer — clear any tooltip still showing.
+      // This handles stale targets (e.g. element re-rendered while hovered) and
+      // motion to areas without tooltips that pointerout might miss.
+      if (tooltipTargetRef.current) clearTooltipTarget()
     }
 
     function handlePointerOut(event) {
@@ -2479,16 +2503,14 @@ export default function ProjectEditor() {
     }
 
     root.addEventListener('pointerover', handlePointerOver)
-    root.addEventListener('pointermove', handlePointerMove)
     root.addEventListener('pointerout', handlePointerOut)
 
     return () => {
       root.removeEventListener('pointerover', handlePointerOver)
-      root.removeEventListener('pointermove', handlePointerMove)
       root.removeEventListener('pointerout', handlePointerOut)
       clearTooltipTarget()
     }
-  }, [])
+  }, [loadingProject])
 
   // ── Contenido inicial para el editor ──
   const initialContentRef = useRef('<p></p>')
@@ -2668,7 +2690,7 @@ export default function ProjectEditor() {
       return
     }
 
-    let sections = deriveSectionsFromDoc(editor)
+    let sections = deriveSectionsFromDoc(editor, projectType)
 
     // Si el doc tiene contenido pero no hay secciones (usuario escribió sin crear sección),
     // auto-insertar un identificador "Sección 1" al principio del documento.
@@ -2688,7 +2710,7 @@ export default function ProjectEditor() {
           .run()
         editor.commands.setTextSelection({ from: from + 1, to: to + 1 })
         isAutoRemoving.current = false
-        const newSections = deriveSectionsFromDoc(editor)
+        const newSections = deriveSectionsFromDoc(editor, projectType)
         setDerivedSections(newSections)
         setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
         setActiveSectionId(newSections[0]?.id ?? null)
@@ -2718,7 +2740,7 @@ export default function ProjectEditor() {
         editor.chain().insertContentAt(strayPos, { type: 'sectionDivider', attrs: { sectionId: newId, sectionName: newName } }).run()
         isAutoRemoving.current = false
         renumberAutoSections(editor)
-        const newSections = deriveSectionsFromDoc(editor)
+        const newSections = deriveSectionsFromDoc(editor, projectType)
         setDerivedSections(newSections)
         setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
         return
@@ -2728,7 +2750,7 @@ export default function ProjectEditor() {
     syncProtectedEmptySections(sections)
 
     if (renumberAutoSections(editor)) {
-      sections = deriveSectionsFromDoc(editor)
+      sections = deriveSectionsFromDoc(editor, projectType)
       syncProtectedEmptySections(sections)
     }
 
@@ -2765,10 +2787,10 @@ export default function ProjectEditor() {
           editor.chain().deleteRange({ from, to }).run()
           isAutoRemoving.current = false
           // Actualizar secciones después de la eliminación
-          let updated = deriveSectionsFromDoc(editor)
+          let updated = deriveSectionsFromDoc(editor, projectType)
           syncProtectedEmptySections(updated)
           if (renumberAutoSections(editor)) {
-            updated = deriveSectionsFromDoc(editor)
+            updated = deriveSectionsFromDoc(editor, projectType)
             syncProtectedEmptySections(updated)
           }
           setDerivedSections(updated)
@@ -2790,12 +2812,12 @@ export default function ProjectEditor() {
       return
     }
     if (renumberAutoSections(editor)) {
-      const sections = deriveSectionsFromDoc(editor)
+      const sections = deriveSectionsFromDoc(editor, projectType)
       setDerivedSections(sections)
       setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
       return
     }
-    const sections = deriveSectionsFromDoc(editor)
+    const sections = deriveSectionsFromDoc(editor, projectType)
     setDerivedSections(sections)
     setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
   }, [projectType, renumberAutoSections])
@@ -2836,7 +2858,7 @@ export default function ProjectEditor() {
 
     renumberAutoSections(editorRef.current)
 
-    const sections = deriveSectionsFromDoc(editorRef.current)
+    const sections = deriveSectionsFromDoc(editorRef.current, projectType)
     sections.forEach((section) => protectedEmptySectionIds.current.add(section.id))
     setDerivedSections(sections)
     setTopLevelH1s(deriveTopLevelH1sFromDoc(editorRef.current))
@@ -3241,7 +3263,7 @@ export default function ProjectEditor() {
     if (!editorRef.current) return
 
     const id = `s_${Date.now()}`
-    const currentSections = deriveSectionsFromDoc(editorRef.current)
+    const currentSections = deriveSectionsFromDoc(editorRef.current, projectType)
     const sectionCount = currentSections.length
     const finalName = `Pregunta Frecuente ${getNextSectionNumber(currentSections)}`
 
@@ -3310,7 +3332,7 @@ export default function ProjectEditor() {
     if (!editorRef.current) return
 
     const id = `s_${Date.now()}`
-    const currentSections = deriveSectionsFromDoc(editorRef.current)
+    const currentSections = deriveSectionsFromDoc(editorRef.current, projectType)
     const sectionCount = currentSections.length
     const autoPrefix = projectType === 'faq' ? 'Pregunta Frecuente' : 'Sección'
     const finalName = name?.trim() || `${autoPrefix} ${getNextSectionNumber(currentSections)}`
@@ -3420,7 +3442,7 @@ export default function ProjectEditor() {
     }
 
     renumberAutoSections(editorRef.current)
-    const updated = deriveSectionsFromDoc(editorRef.current)
+    const updated = deriveSectionsFromDoc(editorRef.current, projectType)
     setDerivedSections(updated)
     setTopLevelH1s(deriveTopLevelH1sFromDoc(editorRef.current))
     if (sectionId === activeSectionId || updated.length === 0) {
@@ -3476,7 +3498,7 @@ export default function ProjectEditor() {
 
     // 5. Post-move housekeeping
     renumberAutoSections(editor)
-    const updated = deriveSectionsFromDoc(editor)
+    const updated = deriveSectionsFromDoc(editor, projectType)
     setDerivedSections(updated)
     setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
 
@@ -3519,7 +3541,7 @@ export default function ProjectEditor() {
       editorRef.current.commands.setContent(baseContent)
       if (projectType === 'page' || projectType === 'faq') {
         renumberAutoSections(editorRef.current)
-        const sections = deriveSectionsFromDoc(editorRef.current)
+        const sections = deriveSectionsFromDoc(editorRef.current, projectType)
         setDerivedSections(sections)
         setTopLevelH1s([])
       } else {
@@ -3764,12 +3786,15 @@ export default function ProjectEditor() {
         </div>
       )}
 
-      {tooltipState?.text && (
+      {tooltipState?.label && (
         <div
           className={styles.floatingTooltip}
           ref={(node) => setCssVars(node, { '--tooltip-x': tooltipState.x, '--tooltip-y': tooltipState.y })}
         >
-          {tooltipState.text}
+          <span className={styles.tooltipLabel}>{tooltipState.label}</span>
+          {tooltipState.shortcut && (
+            <span className={styles.tooltipShortcut}>{tooltipState.shortcut}</span>
+          )}
         </div>
       )}
 
@@ -3888,6 +3913,7 @@ export default function ProjectEditor() {
           sections={derivedSections}
           activePage={activePage}
           activePageId={activePageId}
+          activeSectionId={activeSectionId}
           projectType={projectType}
           contentRules={getPageContentRules(activePage)}
           canEditContentRules={canEditContentRules}
@@ -4602,42 +4628,33 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
       </div>
       <SeoPanelButton active={seoExpanded} onClick={onSeoClick} />
       <div className={panelStyles.sectionList} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-        {mergePanelItems(sections, topLevelH1s).map((item) => {
-          if (item.kind === 'h1') {
-            return (
-              <H1Divider key={item.h1.id} text={item.h1.text} onClick={() => onH1Click?.(item.h1.h1Index)} />
-            )
-          }
-          const section = item.section
-          const i = item.sectionIndex
-          return (
-            <SectionItem
-              key={section.id}
-              index={i}
-              section={section}
-              isActive={section.id === activeSectionId}
-              onClick={() => onSectionClick(section.id)}
-              onRename={(name) => onRename(section.id, name)}
-              onDelete={() => onDelete(section.id)}
-              headings={section.headings || []}
-              sectionId={section.id}
-              activeHeading={activeHeading}
-              onHeadingClick={onHeadingClick}
-              isDragging={dragIndex === i}
-              showDropBefore={dropTargetIndex === i}
-              showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
-              canDrag={canManageSections && sections.length > 1}
-              canManageSection={canManageSections}
-              onDragStart={() => setDragIndex(i)}
-              onDragEnd={handleDragEnd}
-              onDragOver={(e) => handleDragOver(e, i)}
-              menuOpen={openMenuId === `section-${section.id}`}
-              onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
-              onCloseMenu={() => onSetOpenMenuId(null)}
-            />
-          )
-        })}
-        {sections.length === 0 && topLevelH1s.length === 0 && (
+        {sections.map((section, i) => (
+          <SectionItem
+            key={section.id}
+            index={i}
+            section={section}
+            isActive={section.id === activeSectionId}
+            onClick={() => onSectionClick(section.id)}
+            onRename={(name) => onRename(section.id, name)}
+            onDelete={() => onDelete(section.id)}
+            headings={section.headings || []}
+            sectionId={section.id}
+            activeHeading={activeHeading}
+            onHeadingClick={onHeadingClick}
+            isDragging={dragIndex === i}
+            showDropBefore={dropTargetIndex === i}
+            showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
+            canDrag={canManageSections && sections.length > 1}
+            canManageSection={canManageSections}
+            onDragStart={() => setDragIndex(i)}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => handleDragOver(e, i)}
+            menuOpen={openMenuId === `section-${section.id}`}
+            onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
+            onCloseMenu={() => onSetOpenMenuId(null)}
+          />
+        ))}
+        {sections.length === 0 && (
           <p className={panelStyles.emptyMsg}>Sin secciones. Agregá una con +</p>
         )}
       </div>
@@ -4764,10 +4781,14 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
                 className={cx(panelStyles.sectionHeadingItem, isHeadingActive && panelStyles.sectionHeadingItemActive)}
                 onClick={(e) => handleHeadingClick(e, i)}
               >
+                {h.tag === 'cta' && (
+                  <MousePointerClick size={11} className={panelStyles.sectionCtaIcon} />
+                )}
                 <span
                   className={cx(
                     panelStyles.sectionHeadingText,
                     h.tag === 'h1' ? panelStyles.sectionHeadingTextLevel1 : panelStyles.sectionHeadingTextNested,
+                    h.tag === 'cta' && panelStyles.sectionHeadingTextCta,
                   )}
                 >
                   {h.text}
@@ -5036,6 +5057,21 @@ function SectionActivityMarkers({ wrapperRef, editor, activities = [], selectedA
 }
 
 // ---------------------------------------------------------------------------
+// Tooltip helpers
+// ---------------------------------------------------------------------------
+const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+
+function parseTooltipTitle(title) {
+  const match = title.match(/^(.*?)\s*\(([^)]+)\)$/)
+  if (!match) return { label: title, shortcut: null }
+  const raw = match[2].trim()
+  const shortcut = isMac
+    ? raw.split('+').map(k => ({ ctrl: '⌘', shift: '⇧', alt: '⌥' }[k.toLowerCase()] ?? k)).join('')
+    : raw
+  return { label: match[1].trim(), shortcut }
+}
+
+// ---------------------------------------------------------------------------
 // Toolbar — barra de herramientas compartida
 // ---------------------------------------------------------------------------
 function Toolbar({ editor, projectId, onUndo, onRedo }) {
@@ -5228,14 +5264,18 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
   const activeBlockType = getActiveBlockType()
   const activeAlignment = getActiveAlignment()
   const blockOptions = [
-    { value: 'paragraph', label: 'Párrafo' },
-    ...[1, 2, 3, 4, 5, 6].map((level) => ({ value: String(level), label: `H${level}` })),
+    { value: 'paragraph', label: 'Párrafo', tooltip: 'Párrafo (Ctrl+Alt+0)' },
+    ...[1, 2, 3, 4, 5, 6].map((level) => ({
+      value: String(level),
+      label: `H${level}`,
+      tooltip: `Título ${level} (Ctrl+Alt+${level})`,
+    })),
   ]
   const alignmentOptions = [
-    { value: 'left', label: 'Izquierda', icon: <AlignLeft size={16} /> },
-    { value: 'center', label: 'Centro', icon: <AlignCenter size={16} /> },
-    { value: 'right', label: 'Derecha', icon: <AlignRight size={16} /> },
-    { value: 'justify', label: 'Justificado', icon: <AlignJustify size={16} /> },
+    { value: 'left', label: 'Izquierda', icon: <AlignLeft size={16} />, tooltip: 'Alinear a la izquierda (Ctrl+Shift+L)' },
+    { value: 'center', label: 'Centro', icon: <AlignCenter size={16} />, tooltip: 'Centrar (Ctrl+Shift+E)' },
+    { value: 'right', label: 'Derecha', icon: <AlignRight size={16} />, tooltip: 'Alinear a la derecha (Ctrl+Shift+R)' },
+    { value: 'justify', label: 'Justificado', icon: <AlignJustify size={16} />, tooltip: 'Justificar (Ctrl+Shift+J)' },
   ]
 
   return (
@@ -5271,7 +5311,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
           )}
           disabled={disabled}
           onClick={() => setOpenToolbarMenu((value) => value === 'block' ? null : 'block')}
-          title="Estilo de texto"
+          data-wb-tooltip="Estilo de texto"
         >
           <span>{blockOptions.find((option) => option.value === activeBlockType)?.label || 'Párrafo'}</span>
           <ChevronDown size={12} />
@@ -5287,6 +5327,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
                   activeBlockType === option.value && toolbarStyles.dropdownItemActive,
                 )}
                 onClick={() => applyBlockType(option.value)}
+                data-wb-tooltip={option.tooltip}
               >
                 <span>{option.label}</span>
               </button>
@@ -5333,7 +5374,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
           toolbarStyles.toolLabelRelative,
           disabled && toolbarStyles.toolLabelDisabled,
         )}
-        title="Color de texto"
+        data-wb-tooltip="Color de texto"
       >
         <span className={toolbarStyles.colorTrigger}>
           <Palette size={14} />
@@ -5352,7 +5393,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
           toolbarStyles.toolLabelRelative,
           disabled && toolbarStyles.toolLabelDisabled,
         )}
-        title="Color de resaltado"
+        data-wb-tooltip="Color de resaltado"
       >
         <span className={toolbarStyles.highlightSample}>H</span>
         <input
@@ -5370,7 +5411,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
           active={openToolbarMenu === 'align'}
           disabled={disabled}
           onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
-          title="Alineación"
+          title="Alineación de texto"
         >
           {getAlignmentIcon(activeAlignment)}
           <ChevronDown size={12} />
@@ -5389,6 +5430,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
                   editor?.chain().focus().setTextAlign(option.value).run()
                   setOpenToolbarMenu(null)
                 }}
+                data-wb-tooltip={option.tooltip}
               >
                 {option.icon}
                 <span>{option.label}</span>
@@ -5417,6 +5459,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
                 getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
               )}
               onClick={() => applyBlockSpacing('')}
+              data-wb-tooltip="Espaciado predeterminado"
             >
               <ListCollapse size={16} />
               <span>Predeterminado</span>
@@ -5430,6 +5473,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
                   getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
                 )}
                 onClick={() => applyBlockSpacing(key)}
+                data-wb-tooltip={`Espaciado ${preset.label.toLowerCase()}`}
               >
                 <ListCollapse size={16} />
                 <span>{preset.label}</span>
@@ -5491,7 +5535,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
         disabled={disabled}
         onClick={handleLink}
         title="Insertar enlace"
-      >🔗</ToolBtn>
+      ><Link2 size={16} /></ToolBtn>
 
       <ToolBtn
         active={editor?.isActive('ctaButton')}
@@ -5502,9 +5546,9 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
 
       <label
         className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
-        title="Insertar imagen"
+        data-wb-tooltip="Insertar imagen"
       >
-        🖼
+        <ImageIcon size={16} />
         <input
           type="file"
           accept="image/*"
@@ -5528,7 +5572,7 @@ function ToolBtn({ children, active, disabled, onClick, title }) {
         disabled && toolbarStyles.toolBtnDisabled,
       )}
       onClick={disabled ? undefined : onClick}
-      title={title}
+      data-wb-tooltip={title}
     >
       {children}
     </button>
@@ -5753,7 +5797,7 @@ function TableInlineButtons({ editor, wrapperRef }) {
           '--table-inline-height': pos.height,
         })}
         onClick={() => editor.chain().focus().addColumnAfter().run()}
-        title="Agregar columna"
+        data-wb-tooltip="Agregar columna"
       >+</button>
       {/* + button at bottom edge (add row) */}
       <button
@@ -5764,7 +5808,7 @@ function TableInlineButtons({ editor, wrapperRef }) {
           '--table-inline-width': pos.width,
         })}
         onClick={() => editor.chain().focus().addRowAfter().run()}
-        title="Agregar fila"
+        data-wb-tooltip="Agregar fila"
       >+</button>
     </>
   )
@@ -5882,7 +5926,7 @@ function EditorPanel({
       SectionDividerNode,
       CtaButtonNode,
       GoogleDocsHeadingShortcuts,
-      DisableConflictingAlignShortcuts,
+      AlignShortcuts,
     ],
     content: initialContent,
     editable: canWriteContent,
@@ -6356,6 +6400,7 @@ function EditorPanel({
               seoExpanded ? seoRulesStyles.editorPageExpanded : '',
             ].filter(Boolean).join(' ')}
             onMouseDown={focusEditorFromPage}
+            data-flash-container=""
           >
             <div ref={wrapperRef} className={seoRulesStyles.editorCanvasContent}>
               <EditorContent editor={editor} />
@@ -7949,6 +7994,7 @@ function UpdatesPanel({
   sections = [],
   activePage = null,
   activePageId = '',
+  activeSectionId = null,
   projectType = 'page',
   contentRules = {},
   canEditContentRules = false,
@@ -8215,6 +8261,7 @@ function UpdatesPanel({
                     key={group.sectionId}
                     group={group}
                     selectedActivityId={selectedActivityId}
+                    activeSectionId={activeSectionId}
                     onNavigate={onNavigateToSection}
                     onMarkRead={onMarkActivityRead}
                   />
@@ -8272,24 +8319,15 @@ function ActivityListItem({ item, selectedActivityId = null, onActivityClick, on
       <span className={panelStyles.updatesDatetime}>
         {item.actorLabel} · {formatPanelDate(item.createdAt)}
       </span>
-      {isUnreadSectionActivity(item) && (
-        <button
-          type="button"
-          className={panelStyles.markReadBtn}
-          onClick={() => onMarkActivityRead?.(item.id)}
-        >
-          Marcar leída
-        </button>
-      )}
     </li>
   )
 }
 
-function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRead }) {
+function SectionActivityGroup({ group, selectedActivityId, activeSectionId, onNavigate, onMarkRead }) {
   const [expanded, setExpanded] = useState(false)
   const latestItem = group.items[0]
   const hasUnread = group.items.some(isUnreadSectionActivity)
-  const isSelected = group.items.some((item) => item.id === selectedActivityId)
+  const isSelected = group.sectionId === activeSectionId
   const pageId = latestItem?.metadata?.pageId
 
   // Flatten metadata.history (collected per row) plus a top-level entry for rows without history
@@ -8336,12 +8374,18 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
     ? (latestItem.title || 'Imagen subida')
     : formatActivityChangeTypes(latestItem?.metadata?.changeTypes || [])
 
+  function markGroupRead() {
+    group.items.filter(isUnreadSectionActivity).forEach((item) => onMarkRead?.(item.id))
+  }
+
   function handleRowClick() {
     onNavigate?.(group.sectionId, { itemId: latestItem?.id, pageId })
+    markGroupRead()
   }
 
   function handleDetailItemClick(entry) {
     onNavigate?.(group.sectionId, { itemId: entry.itemId, pageId })
+    markGroupRead()
   }
 
   return (
@@ -8375,18 +8419,6 @@ function SectionActivityGroup({ group, selectedActivityId, onNavigate, onMarkRea
               onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
             >
               {expanded ? 'Ocultar detalle' : `Ver detalle (${detailEntries.length})`}
-            </button>
-          )}
-          {hasUnread && (
-            <button
-              type="button"
-              className={panelStyles.markReadBtn}
-              onClick={(e) => {
-                e.stopPropagation()
-                group.items.filter(isUnreadSectionActivity).forEach((item) => onMarkRead?.(item.id))
-              }}
-            >
-              Marcar leída
             </button>
           )}
         </div>
