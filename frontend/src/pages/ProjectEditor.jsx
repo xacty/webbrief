@@ -3188,8 +3188,12 @@ export default function ProjectEditor() {
     protectedEmptySectionIds.current.add(id)
 
     if (sectionCount === 0) {
-      // Documento vacío — insertar el identificador al inicio con un párrafo para escribir
-      const html = `<div data-section-divider data-section-id="${id}" data-section-name="${finalName}"></div><p></p>`
+      // Documento vacío — insertar el identificador al inicio
+      const isFaqType = projectType === 'faq'
+      const afterDividerHtml = isFaqType
+        ? (name?.trim() ? `<h3>${name.trim()}</h3>` : '<h3></h3>')
+        : '<p></p>'
+      const html = `<div data-section-divider data-section-id="${id}" data-section-name="${finalName}"></div>${afterDividerHtml}`
       editorRef.current.commands.setContent(html)
       const firstEditablePos = getFirstEditableTextPos(editorRef.current)
       if (firstEditablePos !== null) {
@@ -3201,9 +3205,13 @@ export default function ProjectEditor() {
       setTopLevelH1s([])
     } else {
       const insertPos = getSectionInsertPos(editorRef.current, insertAfterSectionId)
+      const isFaqType = projectType === 'faq'
+      const afterDividerNode = isFaqType
+        ? { type: 'heading', attrs: { level: 3 }, content: name?.trim() ? [{ type: 'text', text: name.trim() }] : undefined }
+        : { type: 'paragraph' }
       const sectionContent = [
         { type: 'sectionDivider', attrs: { sectionId: id, sectionName: finalName } },
-        { type: 'paragraph' },
+        afterDividerNode,
       ]
 
       if (insertPos !== null) {
@@ -3211,6 +3219,24 @@ export default function ProjectEditor() {
       } else {
         // Sidebar: si no hay sección objetivo, agregar al final
         editorRef.current.chain().focus('end').insertContent(sectionContent).run()
+      }
+
+      // Para FAQ, posicionar el cursor en el H3 recién creado
+      if (isFaqType) {
+        setTimeout(() => {
+          if (!editorRef.current) return
+          const { doc } = editorRef.current.state
+          let targetPos = null
+          doc.descendants((node, pos) => {
+            if (targetPos !== null) return false
+            if (node.type.name === 'sectionDivider' && node.attrs.sectionId === id) {
+              targetPos = pos + node.nodeSize
+            }
+          })
+          if (targetPos !== null) {
+            editorRef.current.chain().focus().setTextSelection(targetPos + 1).run()
+          }
+        }, 0)
       }
     }
 
@@ -3534,6 +3560,7 @@ export default function ProjectEditor() {
     <div ref={rootRef} className={styles.root}>
       {sectionModalState.isOpen && (
         <AddSectionModal
+          projectType={projectType}
           onConfirm={(name) => {
             const insertAfterSectionId = sectionModalState.insertAfterSectionId
             closeSectionModal()
@@ -4129,8 +4156,9 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
 // ---------------------------------------------------------------------------
 // AddSectionModal — modal centrado para nombrar una nueva sección
 // ---------------------------------------------------------------------------
-function AddSectionModal({ onConfirm, onSkip, onClose }) {
+function AddSectionModal({ onConfirm, onSkip, onClose, projectType = 'page' }) {
   const [value, setValue] = useState('')
+  const isFaq = projectType === 'faq'
 
   useEffect(() => {
     function handleKey(e) { if (e.key === 'Escape') onClose() }
@@ -4141,16 +4169,27 @@ function AddSectionModal({ onConfirm, onSkip, onClose }) {
   return (
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <p className={styles.modalTitle}>Nombre de la sección</p>
-        <input
-          className={styles.modalInput}
-          type="text"
-          placeholder="Ej: Hero, Servicios, Contacto…"
-          value={value}
-          autoFocus
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value.trim()) }}
-        />
+        <p className={styles.modalTitle}>{isFaq ? 'Pregunta frecuente' : 'Nombre de la sección'}</p>
+        {isFaq ? (
+          <textarea
+            className={styles.modalTextarea}
+            placeholder="Ej: ¿Qué incluye el servicio? (opcional)"
+            value={value}
+            autoFocus
+            rows={3}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        ) : (
+          <input
+            className={styles.modalInput}
+            type="text"
+            placeholder="Ej: Hero, Servicios, Contacto…"
+            value={value}
+            autoFocus
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(value.trim()) }}
+          />
+        )}
         <div className={styles.modalActions}>
           <button
             className={styles.modalBtnPrimary}

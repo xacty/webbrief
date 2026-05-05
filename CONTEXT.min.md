@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-02 (session 2)
+- Updated: 2026-05-05 (session 3)
 
 ## Targets
 
@@ -225,7 +225,12 @@
 - fixed frontend audit vulnerabilities by updating lockfile to Vite 6.4.2, PostCSS 8.5.12, and Picomatch 4.0.4; audit is 0 vulnerabilities locally and on VPS
 - documented basic operations/deploy flow in `docs/WEBRIEF_OPERATIONS_GUIDE.md`
 - added project types `page`/`document`/`faq`; visible labels are `Página Web`, `Artículo`, and `FAQs`
-- project type behavior differs by editor mode: `Página Web` keeps section dividers; `Artículo` is linear with heading outline; `FAQs` derives FAQ items from H2 question blocks and supports CSV export
+- project type behavior differs by editor mode: `Página Web` keeps section dividers; `Artículo` is linear with heading outline; `FAQs` uses sectionDivider model (same as Página Web) with H2/H3 question content and CSV export
+- FAQ sections: sectionDivider marks each "Pregunta Frecuente N"; content starts with H2 or H3 (the question text)
+- FAQ section panel title = first H2/H3 inside section; subtitle = "Pregunta Frecuente N" (9px, below title)
+- H1 elements in FAQ docs appear as top-level H1Divider items in section panel (interleaved with sections by docIndex via `mergePanelItems`)
+- `migrateFaqHtmlToSections(html)` auto-migrates legacy FAQ HTML (no dividers) to sectionDivider format on load
+- FAQ "+" button (add question): opens `AddSectionModal` with `projectType='faq'`; modal shows textarea (not input); creates sectionDivider + H3; cursor lands at H3 after insert; empty textarea = empty H3, question text pre-fills H3
 - editor paste supports SEO metadata extraction, H1/H2 section splitting for Página Web, FAQ question/answer creation, and rich-format preservation for common Google Docs/Word paste content
 - editor toolbar now includes alignment, indentation, color/highlight, spacing controls, table picker, and dropdown dismissal behavior
 - page-level SEO metadata and document content rules persist on `project_pages.seo_metadata` and `project_pages.content_rules`

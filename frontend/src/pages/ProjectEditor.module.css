@@ -429,6 +429,18 @@
   outline: none;
 }
 
+.modalTextarea {
+  padding: 9px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  color: #2a2a2a;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 .modalActions {
   display: flex;
   gap: 10px;

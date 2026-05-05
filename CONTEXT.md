@@ -465,6 +465,18 @@
 - App shell routing was normalized to a rooted layout with relative children. `UsersPage` now memoizes invite role options and avoids no-op invite form state writes to prevent render loops that freeze shell navigation.
 - Removed the visible `Operación` label from the app shell sidebar.
 
+## Completed (2026-05-05)
+
+- FAQs project type now uses the full sectionDivider model (identical to Página Web), replacing the previous linear-H2 approach.
+- `migrateFaqHtmlToSections(html)` auto-migrates legacy FAQ HTML (linear H2/H3 with no dividers) to sectionDivider format on first load; checks for `data-section-divider` presence before migrating.
+- FAQ section panel: section title = first H2/H3 text inside the section; subtitle = "Pregunta Frecuente N" at 9px below.
+- H1 elements in FAQ documents appear as dedicated `H1Divider` items in the section panel, interleaved with sections by `docIndex` via `mergePanelItems(sections, topLevelH1s)`.
+- `deriveTopLevelH1sFromDoc` / `deriveTopLevelH1sFromHtml` extract H1s as `{ id, text, docIndex, h1Index }` separate from sections.
+- FAQ "+" button opens `AddSectionModal` with `projectType='faq'`; modal renders a `<textarea>` instead of an `<input>` with placeholder "Ej: ¿Qué incluye el servicio? (opcional)".
+- `addSection` for FAQ type creates `sectionDivider` + `heading level:3` (instead of paragraph); if question text was entered it pre-fills the H3; cursor is positioned at H3 after insert via `setTimeout+doc.descendants`.
+- Auto-naming for FAQ type uses "Pregunta Frecuente" prefix (vs "Sección" for page type); `renumberAutoSections` is type-aware.
+- `AUTO_FAQ_SECTION_NAME_RE = /^Pregunta Frecuente (\d+)$/` used for renumbering FAQ sections.
+
 ## Pending
 
 - richer deliverables UI beyond compact editor panel
