@@ -4174,6 +4174,7 @@ function FaqPanel({ sections = [], activeSectionId, onSectionClick, onOpenAddSec
             key={section.id}
             index={i}
             section={{ ...section, name: section.headings?.[0]?.text || section.name }}
+            subtitle={section.name}
             isActive={section.id === activeSectionId}
             onClick={() => onSectionClick(section.id)}
             onRename={(name) => onRename(section.id, name)}
@@ -4279,7 +4280,7 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSec
 }
 
 // Ítem de sección: nav-button (Tag + nombre + menú) + lista de headings
-function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu }) {
+function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle }) {
 
   // ── Scroll al heading correspondiente en el editor al hacer click ──
   function handleHeadingClick(e, index) {
@@ -4344,16 +4345,21 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span
-              className={panelStyles.sectionName}
-              onDoubleClick={(e) => {
-                if (!canManageSection) return
-                e.stopPropagation()
-                setEditing(true)
-              }}
-            >
-              {section.name}
-            </span>
+            <div className={panelStyles.sectionNameWrap}>
+              <span
+                className={panelStyles.sectionName}
+                onDoubleClick={(e) => {
+                  if (!canManageSection) return
+                  e.stopPropagation()
+                  setEditing(true)
+                }}
+              >
+                {section.name}
+              </span>
+              {subtitle && (
+                <span className={panelStyles.sectionSubtitle}>{subtitle}</span>
+              )}
+            </div>
           )}
         </div>
 
