@@ -871,6 +871,36 @@ function stripSectionDividersFromHtml(html) {
   return root.innerHTML || '<p></p>'
 }
 
+// Convierte HTML de FAQ antiguo (H2/H3 lineales sin sectionDividers) al nuevo
+// formato con sectionDividers. Si el HTML ya tiene sectionDividers, no hace nada.
+function migrateFaqHtmlToSections(html) {
+  if (!html || typeof DOMParser === 'undefined') return html || '<p></p>'
+  if (html.includes('data-section-divider')) return html // ya migrado
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return html
+
+  let sectionCount = 0
+  const parts = []
+
+  Array.from(root.childNodes).forEach((node) => {
+    if (node.nodeType === 1) {
+      const tag = node.tagName.toLowerCase()
+      if (tag === 'h2' || tag === 'h3') {
+        sectionCount += 1
+        const sid = `s_${Date.now()}_${sectionCount}`
+        parts.push(`<div data-section-divider data-section-id="${sid}" data-section-name="Pregunta Frecuente ${sectionCount}"></div>`)
+      }
+    }
+    if (node.outerHTML) parts.push(node.outerHTML)
+    else if (node.nodeType === 3 && node.textContent?.trim()) parts.push(node.textContent)
+  })
+
+  return sectionCount > 0 ? parts.join('') : html
+}
+
 function createLocalId(prefix = 's') {
   return `${prefix}_${crypto.randomUUID?.() || Date.now()}`
 }
@@ -1644,8 +1674,10 @@ function inferProjectType(project, pages = []) {
 function mapPersistedPage(page, projectType = 'page') {
   const contentHtml = projectType === 'page'
     ? page.contentHtml
-    : stripSectionDividersFromHtml(page.contentHtml)
-  const sections = projectType === 'page' ? parseSectionsFromHtml(contentHtml) : []
+    : projectType === 'faq'
+      ? migrateFaqHtmlToSections(page.contentHtml || '')
+      : stripSectionDividersFromHtml(page.contentHtml)
+  const sections = (projectType === 'page' || projectType === 'faq') ? parseSectionsFromHtml(contentHtml) : []
 
   return {
     id: page.id,
@@ -1978,9 +2010,14 @@ function htmlToTextContent(html = '') {
 // Helper: getNextSectionNumber — devuelve el siguiente número para auto-nombrar
 // ---------------------------------------------------------------------------
 const AUTO_SECTION_NAME_RE = /^Sección (\d+)$/
+const AUTO_FAQ_SECTION_NAME_RE = /^Pregunta Frecuente (\d+)$/
 
 function isAutoSectionName(name) {
   return AUTO_SECTION_NAME_RE.test(name?.trim() || '')
+}
+
+function isAutoFaqSectionName(name) {
+  return AUTO_FAQ_SECTION_NAME_RE.test(name?.trim() || '')
 }
 
 function getNextSectionNumber(sections) {
@@ -2399,8 +2436,9 @@ export default function ProjectEditor() {
         setProjectMeta({ ...data.project, projectType: loadedProjectType })
         setPages(nextPages)
         setActivePageId(firstPage?.id || null)
-        setActiveSectionId(loadedProjectType === 'page' ? initialSections[0]?.id || null : null)
-        setDerivedSections(loadedProjectType === 'page' ? initialSections.map((section) => ({
+        const loadedUsesSections = loadedProjectType === 'page' || loadedProjectType === 'faq'
+        setActiveSectionId(loadedUsesSections ? initialSections[0]?.id || null : null)
+        setDerivedSections(loadedUsesSections ? initialSections.map((section) => ({
           id: section.id,
           name: section.name,
           headings: [],
@@ -2436,14 +2474,6 @@ export default function ProjectEditor() {
     if (projectType === 'document') {
       setDocumentOutline(deriveDocumentOutlineFromHtml(html))
       setFaqItems([])
-      setDerivedSections([])
-      setActiveSectionId(null)
-      return
-    }
-
-    if (projectType === 'faq') {
-      setFaqItems(deriveFaqPanelItemsFromHtml(html))
-      setDocumentOutline([])
       setDerivedSections([])
       setActiveSectionId(null)
       return
@@ -2500,6 +2530,7 @@ export default function ProjectEditor() {
   const renumberAutoSections = useCallback((editor) => {
     if (!editor) return false
 
+    const isFaq = projectType === 'faq'
     const { state } = editor
     let tr = state.tr
     let sectionIndex = 0
@@ -2510,8 +2541,14 @@ export default function ProjectEditor() {
 
       sectionIndex += 1
 
-      if (isAutoSectionName(node.attrs.sectionName)) {
-        const expectedName = `Sección ${sectionIndex}`
+      const isAuto = isFaq
+        ? isAutoFaqSectionName(node.attrs.sectionName)
+        : isAutoSectionName(node.attrs.sectionName)
+
+      if (isAuto) {
+        const expectedName = isFaq
+          ? `Pregunta Frecuente ${sectionIndex}`
+          : `Sección ${sectionIndex}`
         if (node.attrs.sectionName !== expectedName) {
           tr = tr.setNodeMarkup(pos, undefined, { ...node.attrs, sectionName: expectedName })
           changed = true
@@ -2527,7 +2564,7 @@ export default function ProjectEditor() {
     editor.view.dispatch(tr)
     isRenumberingSections.current = false
     return true
-  }, [])
+  }, [projectType])
 
   const handleDocUpdate = useCallback((editor) => {
     if (isAutoRemoving.current || isRenumberingSections.current) return
@@ -2540,13 +2577,6 @@ export default function ProjectEditor() {
       setDocumentOutline(deriveDocumentOutline(editor))
       setDerivedSections([])
       setFaqItems([])
-      return
-    }
-
-    if (projectType === 'faq') {
-      setFaqItems(deriveFaqItems(editor))
-      setDocumentOutline([])
-      setDerivedSections([])
       return
     }
 
@@ -2566,7 +2596,7 @@ export default function ProjectEditor() {
         const { from, to } = editor.state.selection
         isAutoRemoving.current = true
         editor.chain()
-          .insertContentAt(0, { type: 'sectionDivider', attrs: { sectionId: id, sectionName: 'Sección 1' } })
+          .insertContentAt(0, { type: 'sectionDivider', attrs: { sectionId: id, sectionName: projectType === 'faq' ? 'Pregunta Frecuente 1' : 'Sección 1' } })
           .run()
         editor.commands.setTextSelection({ from: from + 1, to: to + 1 })
         isAutoRemoving.current = false
@@ -2638,12 +2668,6 @@ export default function ProjectEditor() {
       setFaqItems([])
       return
     }
-    if (projectType === 'faq') {
-      setFaqItems(deriveFaqItems(editor))
-      setDerivedSections([])
-      setDocumentOutline([])
-      return
-    }
     if (renumberAutoSections(editor)) {
       const sections = deriveSectionsFromDoc(editor)
       setDerivedSections(sections)
@@ -2682,14 +2706,6 @@ export default function ProjectEditor() {
       setDocumentOutline(deriveDocumentOutline(editorRef.current))
       setDerivedSections([])
       setFaqItems([])
-      setActiveSectionId(null)
-      return
-    }
-
-    if (projectType === 'faq') {
-      setFaqItems(deriveFaqItems(editorRef.current))
-      setDerivedSections([])
-      setDocumentOutline([])
       setActiveSectionId(null)
       return
     }
@@ -3087,7 +3103,8 @@ export default function ProjectEditor() {
     const id = `s_${Date.now()}`
     const currentSections = deriveSectionsFromDoc(editorRef.current)
     const sectionCount = currentSections.length
-    const finalName = name?.trim() || `Sección ${getNextSectionNumber(currentSections)}`
+    const autoPrefix = projectType === 'faq' ? 'Pregunta Frecuente' : 'Sección'
+    const finalName = name?.trim() || `${autoPrefix} ${getNextSectionNumber(currentSections)}`
 
     protectedEmptySectionIds.current.add(id)
 
@@ -3236,13 +3253,14 @@ export default function ProjectEditor() {
     if (!canEditProjectStructure) return
     const id = crypto.randomUUID()
     const sectionId = `s_${Date.now()}`
-    const baseContent = projectType === 'page'
-      ? buildDocumentHTML([{ id: sectionId, name: 'Sección 1', content: '<p></p>' }])
+    const newSectionName = projectType === 'faq' ? 'Pregunta Frecuente 1' : 'Sección 1'
+    const baseContent = (projectType === 'page' || projectType === 'faq')
+      ? buildDocumentHTML([{ id: sectionId, name: newSectionName, content: '<p></p>' }])
       : '<p></p>'
     const newPage = {
       id,
       name: 'Nueva página',
-      sections: projectType === 'page' ? [{ id: sectionId, name: 'Sección 1', content: '<p></p>' }] : [],
+      sections: (projectType === 'page' || projectType === 'faq') ? [{ id: sectionId, name: newSectionName, content: '<p></p>' }] : [],
       fullContent: baseContent,
       contentJson: null,
       seoMetadata: {},
@@ -3261,17 +3279,17 @@ export default function ProjectEditor() {
     if (editorRef.current) {
       protectedEmptySectionIds.current = new Set([sectionId])
       editorRef.current.commands.setContent(baseContent)
-      if (projectType === 'page') {
+      if (projectType === 'page' || projectType === 'faq') {
         renumberAutoSections(editorRef.current)
         const sections = deriveSectionsFromDoc(editorRef.current)
         setDerivedSections(sections)
       } else {
         setDerivedSections([])
+        setFaqItems([])
         setDocumentOutline(projectType === 'document' ? deriveDocumentOutline(editorRef.current) : [])
-        setFaqItems(projectType === 'faq' ? deriveFaqItems(editorRef.current) : [])
       }
     }
-    setActiveSectionId(projectType === 'page' ? sectionId : null)
+    setActiveSectionId((projectType === 'page' || projectType === 'faq') ? sectionId : null)
   }
 
   // ── Elimina una página (con confirmación) ──
@@ -3521,9 +3539,18 @@ export default function ProjectEditor() {
           />
         ) : projectType === 'faq' ? (
           <FaqPanel
-            items={faqItems}
+            sections={derivedSections}
+            activeSectionId={activeSectionId}
+            onSectionClick={handleSectionClick}
+            onOpenAddSectionModal={() => openSectionModal(null)}
+            onRename={renameSection}
+            onDelete={deleteSection}
+            onMoveSection={moveSection}
+            canManageSections={canEditProjectStructure}
             activeHeading={activeHeading}
-            onFaqClick={handleDocumentHeadingClick}
+            onHeadingClick={handleHeadingClick}
+            openMenuId={openMenuId}
+            onSetOpenMenuId={setOpenMenuId}
             onExportCsv={() => exportFaqCsv(activePageForRead)}
           />
         ) : (
@@ -4099,33 +4126,77 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
   )
 }
 
-function FaqPanel({ items = [], activeHeading, onFaqClick, onExportCsv }) {
+function FaqPanel({ sections = [], activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv }) {
+  const [dragIndex, setDragIndex] = useState(null)
+  const [dropTargetIndex, setDropTargetIndex] = useState(null)
+
+  function handleDragOver(e, index) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const rect = e.currentTarget.getBoundingClientRect()
+    const midY = rect.top + rect.height / 2
+    setDropTargetIndex(e.clientY < midY ? index : index + 1)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    if (dragIndex !== null && dropTargetIndex !== null) {
+      const toIndex = dropTargetIndex > dragIndex ? dropTargetIndex - 1 : dropTargetIndex
+      if (toIndex !== dragIndex) onMoveSection(dragIndex, toIndex)
+    }
+    setDragIndex(null)
+    setDropTargetIndex(null)
+  }
+
+  function handleDragEnd() {
+    setDragIndex(null)
+    setDropTargetIndex(null)
+  }
+
   return (
     <div className={panelStyles.leftPanel}>
       <div className={panelStyles.panelHeader}>
         <span className={panelStyles.panelTitle}>Preguntas frecuentes</span>
-        <button className={panelStyles.panelAddBtn} onClick={onExportCsv} title="Exportar CSV">
-          <Download size={20} color="#2a2a2a" />
-        </button>
-      </div>
-      <div className={panelStyles.sectionList}>
-        {items.map((item, index) => {
-          const isActive = activeHeading?.sectionId === '__document__' && activeHeading?.headingIndex === item.headingIndex
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={isActive ? panelStyles.faqItemActive : panelStyles.faqItem}
-              onClick={() => onFaqClick?.(item.headingIndex)}
-            >
-              <span className={panelStyles.faqItemKicker}>Pregunta Frecuente {index + 1}</span>
-              <span className={panelStyles.faqQuestion}>{item.question}</span>
-              <span className={panelStyles.faqAnswer}>{item.answer || 'Sin respuesta todavía'}</span>
+        <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          {canManageSections && (
+            <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar pregunta">
+              <Plus size={24} color="#2a2a2a" />
             </button>
-          )
-        })}
-        {items.length === 0 && (
-          <p className={panelStyles.emptyMsg}>Pega o escribe preguntas como H2 o H3 y respuestas como párrafos.</p>
+          )}
+          <button className={panelStyles.panelAddBtn} onClick={onExportCsv} title="Exportar CSV">
+            <Download size={20} color="#2a2a2a" />
+          </button>
+        </div>
+      </div>
+      <div className={panelStyles.sectionList} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+        {sections.map((section, i) => (
+          <SectionItem
+            key={section.id}
+            index={i}
+            section={section}
+            isActive={section.id === activeSectionId}
+            onClick={() => onSectionClick(section.id)}
+            onRename={(name) => onRename(section.id, name)}
+            onDelete={() => onDelete(section.id)}
+            headings={section.headings || []}
+            sectionId={section.id}
+            activeHeading={activeHeading}
+            onHeadingClick={onHeadingClick}
+            isDragging={dragIndex === i}
+            showDropBefore={dropTargetIndex === i}
+            showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
+            canDrag={canManageSections && sections.length > 1}
+            canManageSection={canManageSections}
+            onDragStart={() => setDragIndex(i)}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => handleDragOver(e, i)}
+            menuOpen={openMenuId === `section-${section.id}`}
+            onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
+            onCloseMenu={() => onSetOpenMenuId(null)}
+          />
+        ))}
+        {sections.length === 0 && (
+          <p className={panelStyles.emptyMsg}>Sin preguntas. Agregá una con +</p>
         )}
       </div>
     </div>
@@ -5538,7 +5609,7 @@ function EditorPanel({
         return true
       },
       transformPastedHTML(html) {
-        if (projectType !== 'page') return stripSectionDividersFromHtml(html)
+        if (projectType === 'document') return stripSectionDividersFromHtml(html)
         return html
       },
     },
@@ -5724,10 +5795,8 @@ function EditorPanel({
       const containerRect = scrollEl.getBoundingClientRect()
       const triggerY = containerRect.top + OFFSET
 
-      if (projectType !== 'page') {
-        // FAQ: headingIndex counts only H2/H3 (questions); H1 is a title and not a FAQ item
-        const headingSelector = projectType === 'faq' ? 'h2, h3' : 'h1, h2, h3'
-        const headings = Array.from(pm.querySelectorAll(headingSelector))
+      if (projectType === 'document') {
+        const headings = Array.from(pm.querySelectorAll('h1, h2, h3'))
         let headingIndex = 0
         headings.forEach((heading, index) => {
           if (heading.getBoundingClientRect().top <= triggerY) headingIndex = index
@@ -6835,7 +6904,7 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
       const sectionNodes = Array.from(content.querySelectorAll('[data-handoff-section-id]'))
       const triggerY = scroller.getBoundingClientRect().top + OFFSET
 
-      if (projectType !== 'page') {
+      if (projectType === 'document') {
         const headings = getContentHeadingNodes(content)
         let headingIndex = 0
         headings.forEach((heading, index) => {
@@ -7389,7 +7458,7 @@ function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest,
       if (programmaticScrollRef.current) return
       const triggerY = scroller.getBoundingClientRect().top + OFFSET
 
-      if (projectType !== 'page') {
+      if (projectType === 'document') {
         const headings = getPreviewHeadingNodes()
         let headingIndex = 0
         headings.forEach((heading, index) => {

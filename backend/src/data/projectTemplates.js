@@ -328,15 +328,16 @@ export function seedProjectPagesForType(projectType = 'page', businessType = 'ot
   }
 
   if (projectType === 'faq') {
+    const sectionId = crypto.randomUUID()
     return [{
       id: crypto.randomUUID(),
       name: 'FAQs',
       position: 0,
-      content_html: '<h1>Preguntas frecuentes</h1><h2>Pregunta Frecuente 1</h2><p>Respuesta de ejemplo.</p>',
+      content_html: `<div data-section-divider data-section-id="${sectionId}" data-section-name="Pregunta Frecuente 1"></div><h2>Pregunta Frecuente 1</h2><p>Respuesta de ejemplo.</p>`,
       content_json: {
         type: 'doc',
         content: [
-          { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Preguntas frecuentes' }] },
+          { type: 'sectionDivider', attrs: { sectionId, sectionName: 'Pregunta Frecuente 1' } },
           { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Pregunta Frecuente 1' }] },
           { type: 'paragraph', content: [{ type: 'text', text: 'Respuesta de ejemplo.' }] },
         ],
