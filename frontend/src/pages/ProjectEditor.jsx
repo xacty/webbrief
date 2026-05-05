@@ -17,7 +17,7 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw, BookTemplate } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
@@ -3775,12 +3775,14 @@ export default function ProjectEditor() {
         pages={pages}
         activePageId={activePageId}
         projectName={projectMeta?.name || 'Proyecto'}
+        projectType={projectType}
         companyId={projectMeta?.companyId || ''}
         saveMessage={saveMessage}
         isDirty={isDirty}
         isSaving={isSaving}
         notifications={notificationActivity}
         canManagePages={canEditProjectStructure}
+        canManageProjectMeta={canManageProjectMeta}
         canRenameProject={canManageProjectMeta}
         canSave={canWriteContent}
         onPageClick={handlePageClick}
@@ -4129,16 +4131,101 @@ function NotificationsBell({ notifications = [], onMarkRead, onMarkAllRead, onRe
   )
 }
 
+function TemplatesDropdown({ companyId, pages, disabled = false }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const wrapperRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    function handleClick(event) {
+      if (!wrapperRef.current?.contains(event.target)) setOpen(false)
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  async function handleSave(event) {
+    event.preventDefault()
+    const trimmed = name.trim()
+    if (!trimmed || !companyId) return
+    setSaving(true)
+    setFeedback('')
+    try {
+      const structureJson = (pages || []).map((page) => ({
+        name: page.name,
+        sections: (page.sections || []).map((section) => section.name),
+      }))
+      await apiFetch(`/api/companies/${companyId}/templates`, {
+        method: 'POST',
+        body: JSON.stringify({ name: trimmed, projectType: 'page', structureJson }),
+      })
+      setName('')
+      setFeedback('Plantilla guardada.')
+      window.setTimeout(() => setFeedback(''), 3000)
+    } catch (err) {
+      setFeedback(err.message || 'No se pudo guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div ref={wrapperRef} className={navStyles.templatesDropdown}>
+      <button
+        type="button"
+        className={navStyles.templatesTrigger}
+        onClick={() => setOpen((value) => !value)}
+        disabled={disabled}
+        data-wb-tooltip="Plantillas"
+      >
+        <BookTemplate size={16} />
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className={navStyles.templatesMenu}>
+          <span className={navStyles.templatesMenuTitle}>Guardar como plantilla</span>
+          <form onSubmit={handleSave} className={navStyles.templatesForm}>
+            <input
+              type="text"
+              className={navStyles.templatesInput}
+              placeholder="Nombre de la plantilla"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
+            <button
+              type="submit"
+              className={navStyles.templatesSubmit}
+              disabled={saving || !name.trim()}
+            >
+              {saving ? 'Guardando…' : 'Guardar estructura actual'}
+            </button>
+          </form>
+          {feedback && <p className={navStyles.templatesFeedback}>{feedback}</p>}
+          <p className={navStyles.templatesHint}>
+            Próximamente: aplicar plantillas guardadas a la página actual.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Navbar({
   pages,
   activePageId,
   projectName,
+  projectType = 'page',
   companyId,
   saveMessage,
   isDirty,
   isSaving,
   notifications = [],
   canManagePages = true,
+  canManageProjectMeta = true,
   canRenameProject = true,
   canSave = true,
   onPageClick,
@@ -4192,6 +4279,9 @@ function Navbar({
           <button className={navStyles.navPillAdd} onClick={onAddPage} title="Agregar página">
             <Plus size={16} color="#2a2a2a" />
           </button>
+        )}
+        {projectType === 'page' && canManageProjectMeta && companyId && (
+          <TemplatesDropdown companyId={companyId} pages={pages} />
         )}
       </div>
 
@@ -8100,34 +8190,6 @@ function UpdatesPanel({
   const [deliverableTitle, setDeliverableTitle] = useState('')
   const [deliverableServiceType, setDeliverableServiceType] = useState('otro')
   const [deliverableSubmitting, setDeliverableSubmitting] = useState(false)
-  const [templateName, setTemplateName] = useState('')
-  const [templateSaving, setTemplateSaving] = useState(false)
-  const [templateFeedback, setTemplateFeedback] = useState('')
-
-  async function handleSaveTemplate(e) {
-    e.preventDefault()
-    const trimmed = templateName.trim()
-    if (!trimmed || !companyId) return
-    setTemplateSaving(true)
-    setTemplateFeedback('')
-    try {
-      const structureJson = projectPages.map((page) => ({
-        name: page.name,
-        sections: (page.sections || []).map((section) => section.name),
-      }))
-      await apiFetch(`/api/companies/${companyId}/templates`, {
-        method: 'POST',
-        body: JSON.stringify({ name: trimmed, projectType: 'page', structureJson }),
-      })
-      setTemplateName('')
-      setTemplateFeedback('Plantilla guardada.')
-      window.setTimeout(() => setTemplateFeedback(''), 3000)
-    } catch (err) {
-      setTemplateFeedback(err.message || 'No se pudo guardar')
-    } finally {
-      setTemplateSaving(false)
-    }
-  }
   const sectionOrder = useMemo(() => (
     new Map(sections.map((section, index) => [section.id, index]))
   ), [sections])
@@ -8320,30 +8382,6 @@ function UpdatesPanel({
           )}
         </div>
 
-        {projectType === 'page' && canManageProjectMeta && companyId && (
-          <div className={panelStyles.shareBox}>
-            <span className={panelStyles.pendingTitle}>Plantillas</span>
-            <form className={panelStyles.templateForm} onSubmit={handleSaveTemplate}>
-              <input
-                className={panelStyles.templateInput}
-                type="text"
-                placeholder="Nombre de la plantilla"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-              />
-              <button
-                className={panelStyles.shareButton}
-                type="submit"
-                disabled={templateSaving || !templateName.trim()}
-              >
-                {templateSaving ? 'Guardando...' : 'Guardar estructura actual'}
-              </button>
-            </form>
-            {templateFeedback && (
-              <p className={panelStyles.shareUrl}>{templateFeedback}</p>
-            )}
-          </div>
-        )}
         {!hasActivity ? (
           <p className={panelStyles.updatesEmpty}>Sin actividad registrada aún.</p>
         ) : (
