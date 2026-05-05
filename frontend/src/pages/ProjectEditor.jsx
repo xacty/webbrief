@@ -562,6 +562,23 @@ const GoogleDocsHeadingShortcuts = Extension.create({
   },
 })
 
+// Desactiva Mod-Shift-r (hard refresh) y Mod-Shift-j (DevTools) que el browser
+// intercepta a nivel de chrome — preventDefault() no los puede bloquear.
+// priority < 100 (TextAlign default) para que este binding sobrescriba al de TextAlign.
+// Retorna true para marcar el evento como manejado y evitar que TipTap alinee el texto.
+// Nota: no puede prevenir el hard-refresh/DevTools del navegador (son atajos del chrome
+// del browser que operan sobre el DOM event), pero sí evita la acción de alineación.
+const DisableConflictingAlignShortcuts = Extension.create({
+  name: 'disableConflictingAlignShortcuts',
+  priority: 50,
+  addKeyboardShortcuts() {
+    return {
+      'Mod-Shift-r': () => true,
+      'Mod-Shift-j': () => true,
+    }
+  },
+})
+
 const BLOCK_SPACING_PRESETS = {
   single: { label: 'Simple', lineHeight: '1.2', marginBottom: '0.45em' },
   normal: { label: 'Normal', lineHeight: '1.65', marginBottom: '0.9em' },
@@ -2269,6 +2286,8 @@ export default function ProjectEditor() {
   const [pages, setPages] = useState([])
   const [activePageId, setActivePageId] = useState(null)
   const [activeSectionId, setActiveSectionId] = useState(null)
+  // Captura el sectionId justo en mousedown (antes de que blur quite el foco del editor)
+  const capturedSectionForFaqRef = useRef(null)
   // Heading activo en el editor — { sectionId, headingIndex } | null
   const [activeHeading, setActiveHeading] = useState(null)
   // Sections derivadas del contenido del editor (source of truth = editor)
@@ -2293,6 +2312,10 @@ export default function ProjectEditor() {
   const [shareUrl, setShareUrl] = useState('')
   const [tooltipState, setTooltipState] = useState(null)
   const [sectionModalState, setSectionModalState] = useState({
+    isOpen: false,
+    insertAfterSectionId: null,
+  })
+  const [faqModalState, setFaqModalState] = useState({
     isOpen: false,
     insertAfterSectionId: null,
   })
@@ -2673,6 +2696,35 @@ export default function ProjectEditor() {
       }
     }
 
+    // FAQ: si hay un H2/H3 que no está inmediatamente después de un sectionDivider,
+    // insertar un sectionDivider antes de él para convertirlo en nueva pregunta.
+    if (projectType === 'faq' && sections.length > 0) {
+      let prevWasDivider = false
+      let strayPos = null
+      editor.state.doc.forEach((node, offset) => {
+        if (strayPos !== null) return
+        if (node.type.name === 'sectionDivider') { prevWasDivider = true; return }
+        if (node.type.name === 'heading' && (node.attrs.level === 2 || node.attrs.level === 3) && !prevWasDivider) {
+          strayPos = offset
+          return
+        }
+        prevWasDivider = false
+      })
+      if (strayPos !== null) {
+        const newId = `s_${Date.now()}`
+        const newName = `Pregunta Frecuente ${getNextSectionNumber(sections)}`
+        protectedEmptySectionIds.current.add(newId)
+        isAutoRemoving.current = true
+        editor.chain().insertContentAt(strayPos, { type: 'sectionDivider', attrs: { sectionId: newId, sectionName: newName } }).run()
+        isAutoRemoving.current = false
+        renumberAutoSections(editor)
+        const newSections = deriveSectionsFromDoc(editor)
+        setDerivedSections(newSections)
+        setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
+        return
+      }
+    }
+
     syncProtectedEmptySections(sections)
 
     if (renumberAutoSections(editor)) {
@@ -3044,6 +3096,7 @@ export default function ProjectEditor() {
   }
 
   function handleSelectionFocus({ sectionId, headingIndex }) {
+    if (sectionId) capturedSectionForFaqRef.current = sectionId
     setActiveSectionId(sectionId)
     setActiveHeading({ sectionId, headingIndex })
   }
@@ -3156,6 +3209,7 @@ export default function ProjectEditor() {
 
   // ── Scroll manual detectó un nuevo heading en el trigger point ──
   const handleScrollHeadingChange = useCallback(({ sectionId, headingIndex }) => {
+    if (sectionId) capturedSectionForFaqRef.current = sectionId
     setActiveSectionId(sectionId)
     setActiveHeading({ sectionId, headingIndex })
   }, [])
@@ -3172,6 +3226,82 @@ export default function ProjectEditor() {
       isOpen: false,
       insertAfterSectionId: null,
     })
+  }
+
+  function openFaqModal() {
+    setFaqModalState({ isOpen: true, insertAfterSectionId: capturedSectionForFaqRef.current })
+  }
+
+  function closeFaqModal() {
+    setFaqModalState({ isOpen: false, insertAfterSectionId: null })
+  }
+
+  function addFaqSection(questionText, insertAfterSectionId = null) {
+    if (!canEditProjectStructure) return
+    if (!editorRef.current) return
+
+    const id = `s_${Date.now()}`
+    const currentSections = deriveSectionsFromDoc(editorRef.current)
+    const sectionCount = currentSections.length
+    const finalName = `Pregunta Frecuente ${getNextSectionNumber(currentSections)}`
+
+    protectedEmptySectionIds.current.add(id)
+
+    const h3Node = questionText?.trim()
+      ? { type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text: questionText.trim() }] }
+      : { type: 'heading', attrs: { level: 3 } }
+
+    function focusNewH3() {
+      const { state } = editorRef.current
+      let h3Pos = null
+      let foundDivider = false
+      state.doc.descendants((node, pos) => {
+        if (h3Pos !== null) return false
+        if (node.type.name === 'sectionDivider' && node.attrs.sectionId === id) {
+          foundDivider = true
+          return true
+        }
+        if (foundDivider && node.isTextblock) {
+          h3Pos = pos + node.nodeSize - 1
+          return false
+        }
+        return true
+      })
+      if (h3Pos !== null) {
+        editorRef.current.chain().focus().setTextSelection(h3Pos).run()
+      } else {
+        editorRef.current.commands.focus('end')
+      }
+    }
+
+    if (sectionCount === 0) {
+      editorRef.current.commands.setContent({
+        type: 'doc',
+        content: [
+          { type: 'sectionDivider', attrs: { sectionId: id, sectionName: finalName } },
+          h3Node,
+        ],
+      })
+      focusNewH3()
+      setDerivedSections([{ id, name: finalName, headings: [], isEmpty: true, docIndex: 0 }])
+      setTopLevelH1s([])
+    } else {
+      const insertPos = getSectionInsertPos(editorRef.current, insertAfterSectionId)
+      const sectionContent = [
+        { type: 'sectionDivider', attrs: { sectionId: id, sectionName: finalName } },
+        h3Node,
+      ]
+      if (insertPos !== null) {
+        editorRef.current.chain().insertContentAt(insertPos, sectionContent).run()
+      } else {
+        editorRef.current.chain().focus('end').insertContent(sectionContent).run()
+      }
+      focusNewH3()
+    }
+
+    renumberAutoSections(editorRef.current)
+    setActiveSectionId(id)
+    setScrollRequest({ type: 'section', sectionId: id, requestId: Date.now() })
   }
 
   // ── Agrega una sección nueva via TipTap ──
@@ -3574,6 +3704,21 @@ export default function ProjectEditor() {
           onClose={closeSectionModal}
         />
       )}
+      {faqModalState.isOpen && (
+        <AddFaqModal
+          onConfirm={(questionText) => {
+            const insertAfterSectionId = faqModalState.insertAfterSectionId
+            closeFaqModal()
+            addFaqSection(questionText, insertAfterSectionId)
+          }}
+          onSkip={() => {
+            const insertAfterSectionId = faqModalState.insertAfterSectionId
+            closeFaqModal()
+            addFaqSection('', insertAfterSectionId)
+          }}
+          onClose={closeFaqModal}
+        />
+      )}
       {/* ── NAVBAR ── */}
         <Navbar
         pages={pages}
@@ -3657,7 +3802,7 @@ export default function ProjectEditor() {
             onH1Click={handleH1Click}
             activeSectionId={activeSectionId}
             onSectionClick={handleSectionClick}
-            onOpenAddSectionModal={() => openSectionModal(null)}
+            onOpenAddSectionModal={openFaqModal}
             onRename={renameSection}
             onDelete={deleteSection}
             onMoveSection={moveSection}
@@ -4154,6 +4299,51 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
 }
 
 // ---------------------------------------------------------------------------
+// AddFaqModal — modal centrado para crear una nueva pregunta frecuente
+// ---------------------------------------------------------------------------
+function AddFaqModal({ onConfirm, onSkip, onClose }) {
+  const [value, setValue] = useState('')
+
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <p className={styles.modalTitle}>Agregar pregunta frecuente</p>
+        <textarea
+          className={styles.modalTextarea}
+          placeholder="Ej: ¿Cuánto tiempo tarda la entrega?"
+          value={value}
+          autoFocus
+          rows={3}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              onConfirm(value.trim())
+            }
+          }}
+        />
+        <div className={styles.modalActions}>
+          <button
+            className={styles.modalBtnPrimary}
+            onClick={() => onConfirm(value.trim())}
+          >
+            Agregar
+          </button>
+          <button className={styles.modalBtnSecondary} onClick={onSkip}>
+            Saltar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // AddSectionModal — modal centrado para nombrar una nueva sección
 // ---------------------------------------------------------------------------
 function AddSectionModal({ onConfirm, onSkip, onClose, projectType = 'page' }) {
@@ -5692,6 +5882,7 @@ function EditorPanel({
       SectionDividerNode,
       CtaButtonNode,
       GoogleDocsHeadingShortcuts,
+      DisableConflictingAlignShortcuts,
     ],
     content: initialContent,
     editable: canWriteContent,

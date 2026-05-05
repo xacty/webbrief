@@ -438,6 +438,7 @@
   font-size: 14px;
   outline: none;
   resize: vertical;
+  min-height: 80px;
   line-height: 1.5;
 }
 
