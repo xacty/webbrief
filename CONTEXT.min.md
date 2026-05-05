@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-05 (session 5)
+- Updated: 2026-05-05 (session 6)
 
 ## Targets
 
@@ -273,6 +273,54 @@
 - activity panel item active state now follows the editor's `activeSectionId` (scroll-driven), not the last clicked id; clicking a row auto-marks the group as read; "Marcar leída" button removed (kept only on the bell notifications dropdown); active row has `padding: 10px 12px` and `border-radius: 8px` for visual breathing room
 - yellow section-flash overlay is appended to the `[data-flash-container]` (the `editorCanvas` div) so it stays inside the canvas; `left: 0; right: 0` for full canvas width; opacity-based animation (`rgba(254,249,195,0.75) → 0`); inset 4px gap before next divider via `Math.min(lastBottom + pad, nextTop - gap)` (currently reverted to plain `nextDivider.top` per user feedback — investigate)
 - worktrees rule: edits must land in `/Users/adrian/GitHub/webbrief/` (the main repo). Changes only inside `.claude/worktrees/...` are not visible to the user's dev server until merged. Documented in `AI_GLOBAL.md` under "Working Directory Rule"
+
+## Session 6 — UX batch + history + uploads + lifecycle
+
+- **Activity panel tabs**: header now has `[Actividad] [Historial]` with subrayado bottom-border style (no más pills oscuras). Botón Actualizar es icon-only (`RotateCw`) con tooltip; spinner cuando `isRefreshing`
+- **Activity panel "Actualizar" loading state**: `isRefreshingActivity` state + `refreshSidePanelData` wrapper; setea true antes del fetch, false en finally; botón disabled + spinner durante el fetch
+- **Activity history feature**: `metadata.history[]` ahora incluye `htmlAfter` (HTML serializado de la sección después del save). `htmlBefore` se deriva del `htmlAfter` de la entry anterior. Cap a 30 KB por snapshot, max 50 entries por sección. Tab "Historial" lista todas las entries por página con diff viewer (lib `diff` de npm, `diffWords`) y botón "Restaurar esta versión". Restore: `restoreSectionContent(sectionId, html)` borra el rango entre dividers y inserta el htmlAfter; marca isDirty pero no auto-saves
+- **Page rename con doble click** en el `PagePill` del navbar (mismo flujo que el menú "Renombrar")
+- **Hovers globales** en botones: toolbar (B/I/U/etc), panel (refresh, markRead, deliverable, share, secondary), navbar (pills, navIconBtn, navBackBtn, navSaveBtn, projectNameBtn, navPillMenuItem). Paleta: outline → `#f0f4f9`, dark `#212222` → `#000`, save `#0088ff` → `#0070d6`. Section panel labels también con hover
+- **Plantillas reubicadas al navbar**: `TemplatesDropdown` component al lado del botón "+ Nueva página". Usa `createPortal(document.body)` con `position: fixed` y coordenadas calculadas del trigger para no ser recortado por `overflow-x: auto` del navCenter. Removido el bloque "Plantillas" del UpdatesPanel
+- **Brief fixes**:
+  - Bug crítico de "Este proyecto no es un brief" en POST `/:id/brief/share`: el guard usaba `project.projectType` (camelCase) en una variable que viene de `getProjectById` con campos snake_case. Cambio a `project.project_type`
+  - Opción "Cliente sin cuenta" (`public_viewer`) en role preview de App.jsx; en BriefProjectEditor renderiza iframe del `/b/:token` cuando rolePreview es ese
+  - Brief Volver button: round icon-only matching `navBackBtn` del page editor (32x32, ArrowLeft, hover `#f0f4f9`)
+  - Brief form container: `max-width: 900px` con `align-items: center` en main column
+  - Brief rebrand de paleta: `#6366f1` indigo → `#212222`, `#4f46e5` → `#000`, `#eef2ff` → `#f0f4f9`. Navbar 70px alto + bg `#f0f0f0` + border-bottom `#212222`. Body bg neutral
+- **Brief uploads de PDF/Office/imágenes con presupuesto 500MB** (Fase 6):
+  - Migration `20260505_add_brief_uploads.sql`: `projects.brief_max_file_mb` (10/25/50, default 10) + index `project_assets_size_idx`
+  - **Requiere bucket privado `brief-documents` en Supabase Storage** (no se crea via SQL)
+  - Backend autenticado: `POST /:id/brief/documents` con multer 50MB, whitelist MIME estricta (PDF/Office/imágenes; rechaza exe/zip), doble validación MIME + extensión, suma file_size del proyecto vs `PROJECT_TOTAL_BUDGET_BYTES = 500 * 1024 * 1024`. Imágenes raster → ImageKit; resto → Supabase Storage privado
+  - Backend público: `POST /api/public/brief/:token/documents` (sin auth, valida token)
+  - `GET /:id/brief/budget` y `PATCH /:id/brief/settings` para UI futura
+  - Frontend: nuevo question type `file_upload` en BriefProjectEditor + `FileUploadField` en BriefPage con dropzone + lista + progreso por archivo
+- **File lifecycle** (Fase 7):
+  - Migration `20260506_lifecycle_notifications.sql`: tabla `project_lifecycle_notifications` (id, project_id, notification_type enum 7d/1d/1h/1m, scheduled_for, sent_at, created_at) + función SQL `schedule_project_lifecycle_notifications(project_id, project_type, trashed_at)` que borra pendings y reinserta según el tipo (non-brief: 4 rows, brief: 3 rows sin 7d)
+  - Política de retención: 30 días para non-brief (page/document/faq), 15 días para brief
+  - `purgeProjectAssets(projectId)` helper en `projects.js`: lista assets, rutea a `deleteFromImageKit(fileId)` (nuevo helper en `imagekit.js`) o `supabase.storage.from(bucket).remove([paths])` por bucket
+  - `DELETE /:id/permanent` ahora hace cascade delete de assets antes de borrar el proyecto
+  - `POST /:id/trash` ahora calcula retención (15d si brief, 30d si no), llama a `scheduleLifecycleNotifications` via RPC y registra activity con días reales
+  - `POST /:id/lifecycle/extend` (nuevo): "Mantener" — resetea `trashed_at = NOW`, recalcula `delete_after`, reagenda notificaciones
+  - `POST /:id/restore` ahora también limpia notificaciones pendientes
+  - `POST /:id/lifecycle/tick` (admin): procesa notificaciones pendientes (escribe `project_activity` con `eventType=lifecycle_warn`) y purga proyectos cuya retención expiró. Pensado para pg_cron (Supabase Pro) o cron del VPS
+- **Share landing label gramatical correcto** + detección de projectType:
+  - "Página web compartida" / "Artículo compartido" / "FAQs compartidas" / "Brief compartido"
+  - Backend `/api/public/share/:token` infiere projectType del primer page name si `project_type` está null/legacy ('Documento' → document, 'FAQs' → faq)
+- **Share link UX**: REMOVIDO el modal entirely. Reemplazado por `ShareLinkPanel` inline en el panel "Cliente" (mismo patrón del Brief que el usuario prefiere). URL row con copy icon + ✓ feedback + "Abrir en nueva pestaña" + "Revocar link" (rojo outlined). Endpoint `DELETE /api/projects/:id/share-links` revoca links activos
+- **Brief project type detection en project cards**: `inferProjectType` y `normalizeProjectType` en `companies.js` ahora incluyen 'brief'; también detecta brief por `content_json.questions` array si project_type está null
+- **Iconos del toolbar SVG**: emoji 🔗 → `Link2`, emoji 🖼 → `Image as ImageIcon`, CTA queda como `MousePointerClick`. Consistente con el resto de Lucide
+- **Section panel revertido para Page**: H1s ya no se muestran como divisores top-level en proyectos `page`; aparecen como headings dentro de su sección (igual que H2/H3). FAQ mantiene H1Divider top-level via `mergePanelItems`. `deriveSectionsFromDoc(editor, projectType)` filtra niveles `[1,2,3]` para page, `[2,3]` para FAQ
+- **Yellow flash contained in editorCanvas**: overlay appended a `[data-flash-container]` (editorCanvas div) en vez del scroll container. `left: 0, right: 0` para 100% del canvas. Opacity animation `rgba(254,249,195,0.75) → 0`
+- **Section panel cards**: hover `#f0f4f9` en sección activa e inactiva. Sección renombrada con doble clic en page pill
+- **Entregables (deliverables) ocultos en TODOS los project types**: gate `false &&` por feedback del usuario que no usa el feature por ahora. Código sigue para reactivar
+- **Tooltip useEffect dep on `loadingProject`**: el handler se re-pega cuando `loadingProject` pasa a false (porque el rootRef recién se monta entonces). Antes con deps `[]` el listener no se instalaba nunca
+
+## Pending — requires user action
+
+- **Aplicar migraciones a Supabase**: `20260505_add_brief_uploads.sql` y `20260506_lifecycle_notifications.sql`. Vía MCP de Supabase o dashboard SQL editor
+- **Crear bucket privado `brief-documents`** en Supabase Storage. No se crea via SQL; usar dashboard Storage > New bucket > name="brief-documents" + Private
+- **pg_cron job** (Supabase Pro) o cron del VPS para llamar `POST /api/projects/lifecycle/tick` cada minuto (notifs) + cada 15min (cleanup). Si pg_cron no disponible, fallback al VPS cron con `curl -X POST -H "Authorization: Bearer <admin_token>" https://webrief.app/api/projects/lifecycle/tick`
 
 ## Pending
 
