@@ -38,6 +38,15 @@ async function loadCurrentUser(user) {
 }
 
 export async function requireAuth(req, res, next) {
+  // Bypass para endpoints de cron / system que usan shared secret
+  const cronSecret = process.env.LIFECYCLE_CRON_SECRET
+  const headerSecret = req.headers['x-cron-secret']
+  if (cronSecret && headerSecret === cronSecret) {
+    req.currentUser = { id: null, email: 'system@cron', platformRole: 'system', memberships: [] }
+    req.accessToken = null
+    return next()
+  }
+
   const authHeader = req.headers.authorization
   const queryToken = typeof req.query?.access_token === 'string' ? req.query.access_token : ''
   const bodyToken = typeof req.body?.access_token === 'string' ? req.body.access_token : ''

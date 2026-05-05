@@ -2613,8 +2613,11 @@ router.delete('/:id/permanent', async (req, res) => {
 // Pensado para ser llamado por pg_cron (Supabase Pro) o por un cron del VPS.
 // ---------------------------------------------------------------------------
 router.post('/lifecycle/tick', async (req, res) => {
-  if (req.currentUser?.platformRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo admin' })
+  // Auth: admin user OR system (cron) — el bypass de cron secret está en
+  // el middleware requireAuth y deja currentUser.platformRole = 'system'
+  const role = req.currentUser?.platformRole
+  if (role !== 'admin' && role !== 'system') {
+    return res.status(403).json({ error: 'Solo admin o cron autorizado' })
   }
   const now = new Date()
   const result = { notificationsSent: 0, projectsPurged: 0, errors: [] }

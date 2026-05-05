@@ -339,3 +339,73 @@ Backend lazy-loads sharp so API can boot.
 Raster project asset uploads and avatar processing may return 503.
 Resolve before serious beta/production.
 ```
+
+## Lifecycle Cron Setup (papelera + retention notifications)
+
+Endpoint:
+```text
+POST /api/projects/lifecycle/tick
+```
+
+Procesa notificaciones pendientes (escribe in-app vía project_activity) y
+purga proyectos cuya retención expiró (30d non-brief, 15d brief).
+
+Auth: admin user OR shared header `X-Cron-Secret: <LIFECYCLE_CRON_SECRET>`.
+
+### 1. Generar secret y guardar en VPS
+
+```bash
+ssh deploy@199.192.22.74
+openssl rand -hex 32
+# Copia el output — será tu LIFECYCLE_CRON_SECRET
+```
+
+Editar `/var/www/webrief/backend/.env` y agregar:
+```env
+LIFECYCLE_CRON_SECRET=<el-secret-generado>
+```
+
+Reiniciar el backend:
+```bash
+pm2 restart webrief-backend --update-env
+```
+
+### 2. Crear cron job del VPS
+
+```bash
+crontab -e
+```
+
+Agregar (reemplazar `<SECRET>` por el valor real):
+```cron
+# Lifecycle: tick cada minuto procesa notifs + cleanup
+* * * * * curl -fsS -X POST -H "X-Cron-Secret: <SECRET>" https://webrief.app/api/projects/lifecycle/tick > /dev/null
+```
+
+Una sola llamada — el endpoint procesa notifs + cleanup en cada tick.
+
+### 3. Probar manualmente
+
+```bash
+curl -X POST -H "X-Cron-Secret: <SECRET>" https://webrief.app/api/projects/lifecycle/tick
+# Esperado: {"notificationsSent":N,"projectsPurged":M,"errors":[]}
+```
+
+### Alternativa: pg_cron + pg_net (Supabase Pro)
+
+Si en el futuro pasamos a Supabase Pro y queremos que la DB se auto-llame
+sin depender del VPS:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+SELECT cron.schedule('lifecycle-tick', '* * * * *', $$
+  SELECT net.http_post(
+    url := 'https://webrief.app/api/projects/lifecycle/tick',
+    headers := jsonb_build_object('X-Cron-Secret', '<SECRET>')
+  );
+$$);
+```
+
+Por ahora el setup recomendado es VPS cron por simplicidad.
