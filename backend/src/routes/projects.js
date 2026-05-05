@@ -6,6 +6,7 @@ import {
   buildImageKitPath,
   buildImageKitTransformations,
   buildImageKitUrl,
+  deleteFromImageKit,
   parseImageKitPathFromUrl,
   sanitizeFileName,
   slugifyFileBaseName,
@@ -2402,6 +2403,17 @@ router.post('/:id/archive', async (req, res) => {
   }
 })
 
+async function scheduleLifecycleNotifications(projectId, projectType, trashedAt) {
+  const { error } = await supabaseAdmin.rpc('schedule_project_lifecycle_notifications', {
+    p_project_id: projectId,
+    p_project_type: projectType || 'page',
+    p_trashed_at: trashedAt,
+  })
+  if (error) {
+    console.warn(`[lifecycle] schedule_project_lifecycle_notifications failed for ${projectId}: ${error.message}`)
+  }
+}
+
 router.post('/:id/trash', async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
@@ -2411,7 +2423,8 @@ router.post('/:id/trash', async (req, res) => {
     }
 
     const trashedAt = new Date()
-    const deleteAfter = new Date(trashedAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+    const retentionDays = project.project_type === 'brief' ? 15 : 30
+    const deleteAfter = new Date(trashedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000)
     const { error } = await supabaseAdmin
       .from('projects')
       .update({
@@ -2423,6 +2436,8 @@ router.post('/:id/trash', async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message })
 
+    await scheduleLifecycleNotifications(project.id, project.project_type, trashedAt.toISOString())
+
     await logProjectActivity({
       projectId: project.id,
       currentUser: req.currentUser,
@@ -2430,12 +2445,49 @@ router.post('/:id/trash', async (req, res) => {
       subjectType: 'project',
       subjectId: project.id,
       title: 'Proyecto enviado a papelera',
-      description: 'Retención de 30 días',
+      description: `Retención de ${retentionDays} días`,
     })
 
     return res.json({ trashedAt: trashedAt.toISOString(), deleteAfter: deleteAfter.toISOString() })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo enviar el proyecto a papelera' })
+  }
+})
+
+// "Mantener" — extend retention. Resetea trashed_at = NOW y reagenda notificaciones.
+router.post('/:id/lifecycle/extend', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser, { includeTrashed: true })
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede extender la retención' })
+    }
+    if (!project.trashed_at) {
+      return res.status(400).json({ error: 'El proyecto no está en papelera' })
+    }
+
+    const trashedAt = new Date()
+    const retentionDays = project.project_type === 'brief' ? 15 : 30
+    const deleteAfter = new Date(trashedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000)
+    const { error } = await supabaseAdmin
+      .from('projects')
+      .update({
+        trashed_at: trashedAt.toISOString(),
+        delete_after: deleteAfter.toISOString(),
+      })
+      .eq('id', project.id)
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    await scheduleLifecycleNotifications(project.id, project.project_type, trashedAt.toISOString())
+
+    return res.json({
+      trashedAt: trashedAt.toISOString(),
+      deleteAfter: deleteAfter.toISOString(),
+      retentionDays,
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo extender la retención' })
   }
 })
 
@@ -2459,11 +2511,56 @@ router.post('/:id/restore', async (req, res) => {
       .eq('id', project.id)
 
     if (error) return res.status(500).json({ error: error.message })
+
+    // Limpiar notificaciones pendientes — el proyecto ya no está en papelera
+    await supabaseAdmin
+      .from('project_lifecycle_notifications')
+      .delete()
+      .eq('project_id', project.id)
+      .is('sent_at', null)
+
     return res.json({ restored: true })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo restaurar el proyecto' })
   }
 })
+
+async function purgeProjectAssets(projectId) {
+  const { data: assets, error } = await supabaseAdmin
+    .from('project_assets')
+    .select('id, storage_bucket, storage_path, imagekit_file_id')
+    .eq('project_id', projectId)
+
+  if (error) {
+    console.warn(`[lifecycle] could not list assets for project ${projectId}: ${error.message}`)
+    return { deletedCount: 0, errors: [error.message] }
+  }
+
+  let deletedCount = 0
+  const errors = []
+  const supabasePathsByBucket = new Map()
+
+  for (const asset of assets || []) {
+    if (asset.imagekit_file_id) {
+      const result = await deleteFromImageKit(asset.imagekit_file_id)
+      if (result.ok) deletedCount++
+      else errors.push(`imagekit:${asset.id}:${result.reason}`)
+    } else if (asset.storage_bucket && asset.storage_path && asset.storage_bucket !== 'imagekit') {
+      const list = supabasePathsByBucket.get(asset.storage_bucket) || []
+      list.push(asset.storage_path)
+      supabasePathsByBucket.set(asset.storage_bucket, list)
+    }
+  }
+
+  for (const [bucket, paths] of supabasePathsByBucket.entries()) {
+    if (paths.length === 0) continue
+    const { error: removeError } = await supabaseAdmin.storage.from(bucket).remove(paths)
+    if (removeError) errors.push(`supabase:${bucket}:${removeError.message}`)
+    else deletedCount += paths.length
+  }
+
+  return { deletedCount, errors }
+}
 
 router.delete('/:id/permanent', async (req, res) => {
   try {
@@ -2473,16 +2570,109 @@ router.delete('/:id/permanent', async (req, res) => {
       return res.status(403).json({ error: 'Solo admin puede borrar permanentemente este proyecto' })
     }
 
+    // Cascade: borrar assets de imagekit + supabase storage antes de borrar el proyecto.
+    // Errores aquí se loggean pero no bloquean el delete del proyecto.
+    const purgeResult = await purgeProjectAssets(project.id)
+    if (purgeResult.errors.length > 0) {
+      console.warn(`[lifecycle] permanent-delete project ${project.id}: ${purgeResult.errors.length} asset purge errors: ${purgeResult.errors.join(', ')}`)
+    }
+
     const { error } = await supabaseAdmin
       .from('projects')
       .delete()
       .eq('id', project.id)
 
     if (error) return res.status(500).json({ error: error.message })
-    return res.json({ deleted: true })
+    return res.json({ deleted: true, assetsDeleted: purgeResult.deletedCount })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo borrar permanentemente el proyecto' })
   }
+})
+
+// ---------------------------------------------------------------------------
+// Lifecycle tick — procesa notificaciones pendientes + cleanup de papelera.
+// Pensado para ser llamado por pg_cron (Supabase Pro) o por un cron del VPS.
+// ---------------------------------------------------------------------------
+router.post('/lifecycle/tick', async (req, res) => {
+  if (req.currentUser?.platformRole !== 'admin') {
+    return res.status(403).json({ error: 'Solo admin' })
+  }
+  const now = new Date()
+  const result = { notificationsSent: 0, projectsPurged: 0, errors: [] }
+
+  // 1. Enviar notificaciones pendientes
+  try {
+    const { data: pending, error } = await supabaseAdmin
+      .from('project_lifecycle_notifications')
+      .select('id, project_id, notification_type, scheduled_for')
+      .is('sent_at', null)
+      .lte('scheduled_for', now.toISOString())
+      .limit(100)
+    if (error) throw error
+    for (const notif of pending || []) {
+      const { data: project } = await supabaseAdmin
+        .from('projects')
+        .select('id, name, project_type, trashed_at')
+        .eq('id', notif.project_id)
+        .maybeSingle()
+      // Si el proyecto se restauró o ya no existe, marca como sent y skip
+      if (!project || !project.trashed_at) {
+        await supabaseAdmin
+          .from('project_lifecycle_notifications')
+          .update({ sent_at: now.toISOString() })
+          .eq('id', notif.id)
+        continue
+      }
+      const labels = {
+        lifecycle_warn_7d: 'en 7 días',
+        lifecycle_warn_1d: 'en 24 horas',
+        lifecycle_warn_1h: 'en 1 hora',
+        lifecycle_warn_1m: 'en 1 minuto',
+      }
+      const label = labels[notif.notification_type] || 'pronto'
+      // Insertar notification in-app via project_activity (eventType lifecycle_warn)
+      await logProjectActivity({
+        projectId: project.id,
+        currentUser: null,
+        eventType: 'lifecycle_warn',
+        subjectType: 'project',
+        subjectId: project.id,
+        title: `${project.name} se eliminará ${label}`,
+        description: 'Click "Mantener" en la papelera para extender la retención.',
+        metadata: { notificationType: notif.notification_type },
+      })
+      await supabaseAdmin
+        .from('project_lifecycle_notifications')
+        .update({ sent_at: now.toISOString() })
+        .eq('id', notif.id)
+      result.notificationsSent++
+    }
+  } catch (error) {
+    result.errors.push(`notifications: ${error.message}`)
+  }
+
+  // 2. Cleanup de proyectos cuya retención expiró
+  try {
+    const { data: expired, error } = await supabaseAdmin
+      .from('projects')
+      .select('id, project_type, trashed_at')
+      .not('trashed_at', 'is', null)
+      .limit(50)
+    if (error) throw error
+    for (const project of expired || []) {
+      const trashedAt = new Date(project.trashed_at)
+      const retentionDays = project.project_type === 'brief' ? 15 : 30
+      const expiry = new Date(trashedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000)
+      if (now < expiry) continue
+      await purgeProjectAssets(project.id)
+      await supabaseAdmin.from('projects').delete().eq('id', project.id)
+      result.projectsPurged++
+    }
+  } catch (error) {
+    result.errors.push(`cleanup: ${error.message}`)
+  }
+
+  return res.json(result)
 })
 
 export default router

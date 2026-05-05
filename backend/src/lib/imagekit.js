@@ -126,3 +126,14 @@ export async function uploadToImageKit({
     tags,
   })
 }
+
+export async function deleteFromImageKit(fileId) {
+  if (!fileId) return { ok: false, reason: 'missing-file-id' }
+  if (!isImageKitConfigured()) return { ok: false, reason: 'imagekit-not-configured' }
+  try {
+    await imagekit.files.delete(fileId)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, reason: error?.message || 'imagekit-delete-failed' }
+  }
+}
