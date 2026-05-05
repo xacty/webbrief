@@ -2066,7 +2066,7 @@ router.post('/:id/brief/share', async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
-    if (project.projectType !== 'brief') return res.status(400).json({ error: 'Este proyecto no es un brief' })
+    if (project.project_type !== 'brief') return res.status(400).json({ error: 'Este proyecto no es un brief' })
     if (!canManageProjectMeta(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede gestionar el link del brief' })
     }

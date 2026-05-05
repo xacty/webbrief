@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X } from 'lucide-react'
 import { apiFetch } from '../lib/api'
+import { useAuth } from '../auth/AuthContext'
 import styles from './BriefProjectEditor.module.css'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -383,6 +384,19 @@ function ResponsesPanel({ projectId, questions }) {
 
 export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
   const navigate = useNavigate()
+  const { rolePreview } = useAuth()
+  const isPublicPreview = rolePreview === 'public_viewer'
+  const [previewToken, setPreviewToken] = useState(null)
+  const [previewError, setPreviewError] = useState('')
+
+  useEffect(() => {
+    if (!isPublicPreview || !projectId) return
+    let active = true
+    apiFetch(`/api/projects/${projectId}/brief/share`, { method: 'POST' })
+      .then((data) => { if (active) setPreviewToken(data.token) })
+      .catch((err) => { if (active) setPreviewError(err.message || 'No se pudo cargar la vista de cliente') })
+    return () => { active = false }
+  }, [isPublicPreview, projectId])
 
   // Brief data lives in pages[0].contentJson
   const firstPage = pages?.[0] || null
@@ -494,6 +508,49 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
 
   const companyId = projectMeta?.companyId
   const initialToken = projectMeta?.briefShareToken || null
+
+  if (isPublicPreview) {
+    return (
+      <div className={styles.root}>
+        <header className={styles.navbar}>
+          <button
+            className={styles.backBtn}
+            onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}
+            type="button"
+          >
+            ← Volver
+          </button>
+          <div className={styles.navbarCenter}>
+            <span className={styles.navbarProjectName}>{projectMeta?.name || 'Brief'}</span>
+            <span className={styles.navbarBadge}>Vista de cliente</span>
+          </div>
+          <div className={styles.navbarRight}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
+              Estás viendo el brief como lo vería un cliente sin cuenta.
+            </span>
+          </div>
+        </header>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          {previewError ? (
+            <div style={{ margin: 'auto', padding: 24, color: '#dc2626' }}>
+              {previewError}
+            </div>
+          ) : !previewToken ? (
+            <div style={{ margin: 'auto', padding: 24, color: '#64748b' }}>
+              Cargando vista de cliente…
+            </div>
+          ) : (
+            <iframe
+              key={previewToken}
+              src={`/b/${previewToken}`}
+              title="Vista de cliente"
+              style={{ flex: 1, border: 0, background: '#fff' }}
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={styles.root}>

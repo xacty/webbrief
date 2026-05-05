@@ -26,6 +26,7 @@ const ROLE_PREVIEW_OPTIONS = [
     .filter((role) => role !== 'user')
     .map((role) => ({ value: role, label: getPlatformRoleLabel(role) })),
   ...COMPANY_ROLE_ORDER.map((role) => ({ value: role, label: getCompanyRoleLabel(role) })),
+  { value: 'public_viewer', label: 'Cliente sin cuenta' },
 ]
 
 function PrivateRoute({ children }) {
