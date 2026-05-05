@@ -18,6 +18,7 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw, BookTemplate } from 'lucide-react'
+import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
@@ -1913,6 +1914,7 @@ function buildSectionActivityEvents(previousPages, nextPayload) {
         changeTypes,
         previousIndex: previous?.index ?? null,
         nextIndex,
+        sectionHtml: section.content || '',
       })
     })
 
@@ -3479,6 +3481,40 @@ export default function ProjectEditor() {
     }
   }
 
+  // ── Restaurar contenido de sección desde un snapshot (history) ──
+  function restoreSectionContent(sectionId, htmlAfter) {
+    if (!canWriteContent || !editorRef.current) return false
+    if (typeof htmlAfter !== 'string') return false
+    const editor = editorRef.current
+    const { state } = editor
+    const { doc } = state
+
+    let dividerEnd = null
+    let nextDividerPos = null
+    doc.descendants((node, offset) => {
+      if (node.type.name === 'sectionDivider') {
+        if (dividerEnd === null && node.attrs?.sectionId === sectionId) {
+          dividerEnd = offset + node.nodeSize
+        } else if (dividerEnd !== null && nextDividerPos === null) {
+          nextDividerPos = offset
+        }
+      }
+    })
+
+    if (dividerEnd === null) return false
+
+    const from = dividerEnd
+    const to = nextDividerPos !== null ? nextDividerPos : state.doc.content.size
+
+    editor.chain().focus()
+      .deleteRange({ from, to })
+      .insertContentAt(from, htmlAfter || '<p></p>')
+      .run()
+
+    setIsDirty(true)
+    return true
+  }
+
   // ── Mover sección (drag & drop reorder) ──
   function moveSection(fromIndex, toIndex) {
     if (!canEditProjectStructure) return
@@ -4004,6 +4040,7 @@ export default function ProjectEditor() {
           shareUrl={shareUrl}
           onCreateShareLink={createShareLink}
           onShowShareLink={() => { setShareCopyFeedback(''); setShareModalOpen(true) }}
+          onRestoreSection={restoreSectionContent}
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
           onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
@@ -8155,6 +8192,153 @@ function deliverableStatusLabel(status) {
   return DELIVERABLE_STATUS_OPTIONS.find((option) => option.value === status)?.label || status
 }
 
+function htmlToPlainText(html) {
+  if (!html) return ''
+  if (typeof document === 'undefined') return html
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html
+  return (tmp.textContent || tmp.innerText || '').trim()
+}
+
+function HistoryTabPanel({ activity = [], sections = [], activePageId = '', projectType = 'page', onShowDiff }) {
+  const sectionNameById = useMemo(() => {
+    const map = new Map()
+    sections.forEach((s) => map.set(s.id, s.name))
+    return map
+  }, [sections])
+
+  const entries = useMemo(() => {
+    const flat = []
+    activity.forEach((item) => {
+      if (item.eventType !== 'section_edited') return
+      if (!item.metadata?.sectionId) return
+      // Filtrar por página activa si el item tiene pageId
+      if (item.metadata.pageId && activePageId && item.metadata.pageId !== activePageId) return
+      const sectionId = item.metadata.sectionId
+      const sectionName = sectionNameById.get(sectionId)
+        || item.metadata.sectionName
+        || 'Sección'
+      const history = Array.isArray(item.metadata?.history) ? item.metadata.history : []
+      // history is ordered most-recent first per backend; iterate to compute htmlBefore/htmlAfter pairs
+      history.forEach((entry, index) => {
+        const previous = history[index + 1]
+        flat.push({
+          key: `${item.id}-${entry.at || index}`,
+          sectionId,
+          sectionName,
+          changeTypes: entry.changeTypes || [],
+          actorLabel: entry.actorLabel || item.actorLabel,
+          at: entry.at || item.createdAt,
+          htmlAfter: typeof entry.htmlAfter === 'string' ? entry.htmlAfter : '',
+          htmlBefore: typeof previous?.htmlAfter === 'string' ? previous.htmlAfter : '',
+          isLegacy: typeof entry.htmlAfter !== 'string',
+        })
+      })
+    })
+    return flat.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+  }, [activity, activePageId, sectionNameById])
+
+  if (projectType !== 'page') {
+    return (
+      <p className={panelStyles.historyEmpty}>
+        El historial está disponible solo en proyectos de Página web por ahora.
+      </p>
+    )
+  }
+
+  if (entries.length === 0) {
+    return (
+      <p className={panelStyles.historyEmpty}>
+        Sin historial de cambios todavía. Cada save guarda una versión de la sección que cambió.
+      </p>
+    )
+  }
+
+  return (
+    <ul className={panelStyles.historyList}>
+      {entries.map((entry) => (
+        <li key={entry.key} className={panelStyles.historyItem}>
+          <div className={panelStyles.historyItemHeader}>
+            <span className={panelStyles.historyItemSection}>{entry.sectionName}</span>
+            <span className={panelStyles.historyItemTime}>
+              {entry.actorLabel} · {formatPanelDate(entry.at)}
+            </span>
+          </div>
+          {entry.changeTypes.length > 0 && (
+            <span className={panelStyles.historyItemChanges}>
+              {formatActivityChangeTypes(entry.changeTypes)}
+            </span>
+          )}
+          <div className={panelStyles.historyItemActions}>
+            {entry.isLegacy ? (
+              <span className={panelStyles.historyItemChanges}>Versión legacy (sin diff disponible)</span>
+            ) : (
+              <button
+                type="button"
+                className={panelStyles.historyDiffBtn}
+                onClick={() => onShowDiff?.(entry)}
+              >
+                Ver cambios
+              </button>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function HistoryDiffModal({ entry, onClose, onRestore }) {
+  const before = htmlToPlainText(entry.htmlBefore || '')
+  const after = htmlToPlainText(entry.htmlAfter || '')
+  const parts = useMemo(() => {
+    try {
+      return diffWords(before, after)
+    } catch {
+      return [{ value: after }]
+    }
+  }, [before, after])
+
+  return (
+    <div
+      className={styles.modalOverlay}
+      onClick={onClose}
+      style={{ alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div className={panelStyles.diffModal} onClick={(e) => e.stopPropagation()}>
+        <h3 className={panelStyles.diffModalTitle}>{entry.sectionName}</h3>
+        <p className={panelStyles.diffModalMeta}>
+          {entry.actorLabel} · {formatPanelDate(entry.at)} · {formatActivityChangeTypes(entry.changeTypes) || 'Cambio'}
+        </p>
+        <div className={panelStyles.diffPanel}>
+          {parts.length === 0 || (parts.length === 1 && !parts[0].added && !parts[0].removed && !parts[0].value) ? (
+            <span className={panelStyles.historyItemChanges}>(Sin contenido textual)</span>
+          ) : (
+            parts.map((part, i) => {
+              const cls = part.added ? panelStyles.diffAdded : part.removed ? panelStyles.diffRemoved : ''
+              return <span key={i} className={cls}>{part.value}</span>
+            })
+          )}
+        </div>
+        <div className={panelStyles.diffModalActions}>
+          <button type="button" className={panelStyles.diffModalClose} onClick={onClose}>Cerrar</button>
+          <button
+            type="button"
+            className={panelStyles.diffModalRestore}
+            onClick={() => {
+              if (window.confirm('Restaurar el contenido de esta sección a este estado? El cambio queda en el editor; recuerda guardar para que sea permanente.')) {
+                onRestore?.(entry.htmlAfter)
+              }
+            }}
+          >
+            Restaurar esta versión
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function UpdatesPanel({
   activity = [],
   deliverables = [],
@@ -8177,6 +8361,7 @@ function UpdatesPanel({
   shareUrl = '',
   onCreateShareLink,
   onShowShareLink,
+  onRestoreSection,
   onCreateDeliverable,
   onUpdateDeliverableStatus,
   onApproveDesignerProposal,
@@ -8190,6 +8375,8 @@ function UpdatesPanel({
   const [deliverableTitle, setDeliverableTitle] = useState('')
   const [deliverableServiceType, setDeliverableServiceType] = useState('otro')
   const [deliverableSubmitting, setDeliverableSubmitting] = useState(false)
+  const [activeTab, setActiveTab] = useState('actividad') // 'actividad' | 'historial'
+  const [diffEntry, setDiffEntry] = useState(null)
   const sectionOrder = useMemo(() => (
     new Map(sections.map((section, index) => [section.id, index]))
   ), [sections])
@@ -8262,7 +8449,22 @@ function UpdatesPanel({
   return (
     <div className={panelStyles.rightPanel}>
       <div className={panelStyles.updatesHeader}>
-        <span className={panelStyles.panelTitle}>Actividad</span>
+        <div className={panelStyles.tabsBar}>
+          <button
+            type="button"
+            className={cx(panelStyles.tab, activeTab === 'actividad' && panelStyles.tabActive)}
+            onClick={() => setActiveTab('actividad')}
+          >
+            Actividad
+          </button>
+          <button
+            type="button"
+            className={cx(panelStyles.tab, activeTab === 'historial' && panelStyles.tabActive)}
+            onClick={() => setActiveTab('historial')}
+          >
+            Historial
+          </button>
+        </div>
         <button
           className={panelStyles.updatesRefreshBtn}
           onClick={onRefresh}
@@ -8275,6 +8477,16 @@ function UpdatesPanel({
         </button>
       </div>
       <div className={cx(panelStyles.rightPanelScroll, projectType === 'document' && panelStyles.rightPanelScrollWithDock)}>
+        {activeTab === 'historial' ? (
+          <HistoryTabPanel
+            activity={activity}
+            sections={sections}
+            activePageId={activePageId}
+            projectType={projectType}
+            onShowDiff={(entry) => setDiffEntry(entry)}
+          />
+        ) : (
+        <>
         {error && <p className={panelStyles.updatesError}>{error}</p>}
         {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
         {pendingProposal && projectType === 'page' && (
@@ -8418,7 +8630,21 @@ function UpdatesPanel({
             )}
           </>
         )}
+        </>
+        )}
       </div>
+      {diffEntry && (
+        <HistoryDiffModal
+          entry={diffEntry}
+          onClose={() => setDiffEntry(null)}
+          onRestore={(html) => {
+            if (diffEntry.sectionId && onRestoreSection) {
+              const ok = onRestoreSection(diffEntry.sectionId, html)
+              if (ok) setDiffEntry(null)
+            }
+          }}
+        />
+      )}
       {projectType === 'document' && (
         <div className={panelStyles.rightPanelDock}>
           <div className={panelStyles.rightPanelDockCard}>

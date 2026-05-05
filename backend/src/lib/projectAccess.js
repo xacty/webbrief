@@ -172,6 +172,15 @@ function normalizeSectionActivityEvent(event) {
 
   if (changeTypes.length === 0) return null
 
+  // Cap snapshot to ~30 KB to avoid blowing up the metadata column.
+  // Each history entry stores htmlAfter; with cap of 50 entries per row,
+  // worst case ~1.5 MB per section row. Acceptable for jsonb in Supabase.
+  const MAX_SNAPSHOT_BYTES = 30_000
+  const rawHtml = typeof event.sectionHtml === 'string' ? event.sectionHtml : ''
+  const sectionHtml = rawHtml.length > MAX_SNAPSHOT_BYTES
+    ? rawHtml.slice(0, MAX_SNAPSHOT_BYTES)
+    : rawHtml
+
   return {
     pageId: String(event.pageId),
     pageName: String(event.pageName || 'Página'),
@@ -180,6 +189,7 @@ function normalizeSectionActivityEvent(event) {
     changeTypes,
     previousIndex: Number.isFinite(Number(event.previousIndex)) ? Number(event.previousIndex) : null,
     nextIndex: Number.isFinite(Number(event.nextIndex)) ? Number(event.nextIndex) : null,
+    sectionHtml,
   }
 }
 
@@ -316,6 +326,10 @@ export async function recordSectionEditActivities({ projectId, currentUser, sect
         actorId: currentUser?.id || null,
         actorLabel: actor,
         at: timestamp,
+        // htmlAfter: snapshot of the section's HTML right after this save.
+        // The previous entry's htmlAfter is "htmlBefore" for diff purposes.
+        // Empty string means snapshot was unavailable (e.g. section_removed).
+        htmlAfter: event.sectionHtml || '',
       }
       // Cap history to the most recent 50 entries.
       const nextHistory = [historyEntry, ...previousHistory].slice(0, 50)
