@@ -1494,7 +1494,7 @@ function deriveFaqPanelItemsFromHtml(html) {
 }
 
 function deriveSectionsFromHtmlForSidebar(html) {
-  return parseSectionsFromHtml(html).map((section) => {
+  return parseSectionsFromHtml(html).map((section, index) => {
     let headings = []
     let isEmpty = true
 
@@ -1502,7 +1502,8 @@ function deriveSectionsFromHtmlForSidebar(html) {
       const doc = new DOMParser().parseFromString(`<div id="root">${section.content || ''}</div>`, 'text/html')
       const root = doc.getElementById('root')
       if (root) {
-        headings = Array.from(root.querySelectorAll('h1, h2, h3'))
+        // Solo H2/H3 — los H1 son divisores top-level del panel
+        headings = Array.from(root.querySelectorAll('h2, h3'))
           .map((node) => {
             const text = node.textContent?.replace(/\s+/g, ' ').trim() || ''
             if (!text) return null
@@ -1528,8 +1529,42 @@ function deriveSectionsFromHtmlForSidebar(html) {
       name: section.name,
       headings,
       isEmpty,
+      docIndex: index,
     }
   })
+}
+
+// H1s top-level extraídos del HTML completo de la página.
+// Cada H1 incluye su posición relativa entre childNodes para ordenarlos
+// junto a las secciones. Para esto contamos solo dividers + H1s top-level.
+function deriveTopLevelH1sFromHtml(html) {
+  if (!html || typeof DOMParser === 'undefined') return []
+  const doc = new DOMParser().parseFromString(`<div id="root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('root')
+  if (!root) return []
+
+  const items = []
+  let dividerCount = 0
+  Array.from(root.childNodes).forEach((node) => {
+    if (node.nodeType !== 1) return
+    if (node.matches?.('div[data-section-divider]')) {
+      dividerCount += 1
+      return
+    }
+    const tag = node.tagName?.toLowerCase()
+    if (tag !== 'h1') return
+    const text = node.textContent?.replace(/\s+/g, ' ').trim() || ''
+    items.push({
+      id: `h1-html-${items.length}`,
+      text: text || `Título ${items.length + 1}`,
+      // Aparece "después" de la sección con docIndex = dividerCount - 1
+      // (o sea, dentro del contenido de esa sección). Si dividerCount === 0,
+      // aparece antes de cualquier sección.
+      docIndex: dividerCount > 0 ? dividerCount - 1 + 0.5 : -0.5,
+      h1Index: items.length,
+    })
+  })
+  return items
 }
 
 function csvCell(value) {
@@ -2036,7 +2071,7 @@ function deriveSectionsFromDoc(editor) {
   const sections = []
   let currentSection = null
 
-  for (const node of json.content) {
+  json.content.forEach((node, idx) => {
     if (node.type === 'sectionDivider') {
       if (currentSection) sections.push(currentSection)
       currentSection = {
@@ -2044,11 +2079,12 @@ function deriveSectionsFromDoc(editor) {
         name: node.attrs.sectionName,
         headings: [],
         isEmpty: true,
+        docIndex: idx,
       }
-      continue
+      return
     }
 
-    if (!currentSection) continue
+    if (!currentSection) return
 
     // Check if node has real content
     const hasContent = ['ctaButton', 'image', 'table'].includes(node.type)
@@ -2057,8 +2093,8 @@ function deriveSectionsFromDoc(editor) {
       ))
     if (hasContent) currentSection.isEmpty = false
 
-    // Collect headings (h1-h3)
-    if (node.type === 'heading' && node.attrs?.level <= 3) {
+    // Collect H2/H3 only — H1s are top-level divider items, not section headings
+    if (node.type === 'heading' && (node.attrs?.level === 2 || node.attrs?.level === 3)) {
       const text = (node.content || []).map((c) => c.text || '').join('')
       if (text.trim()) {
         currentSection.headings.push({
@@ -2067,9 +2103,32 @@ function deriveSectionsFromDoc(editor) {
         })
       }
     }
-  }
+  })
   if (currentSection) sections.push(currentSection)
   return sections
+}
+
+// Top-level H1s: extraídos del editor como elementos divisores del panel.
+// Cada H1 incluye su docIndex (posición en json.content) para ordenarlos
+// junto a las secciones por orden de aparición en el documento.
+function deriveTopLevelH1sFromDoc(editor) {
+  if (!editor) return []
+  const json = editor.getJSON()
+  if (!json.content) return []
+
+  const items = []
+  json.content.forEach((node, idx) => {
+    if (node.type === 'heading' && node.attrs?.level === 1) {
+      const text = (node.content || []).map((c) => c.text || '').join('').trim()
+      items.push({
+        id: `h1-${idx}`,
+        text: text || `Título ${items.length + 1}`,
+        docIndex: idx,
+        h1Index: items.length, // 0-based index entre todos los H1 del doc
+      })
+    }
+  })
+  return items
 }
 
 function getFirstEditableTextPos(editor) {
@@ -2214,6 +2273,7 @@ export default function ProjectEditor() {
   const [activeHeading, setActiveHeading] = useState(null)
   // Sections derivadas del contenido del editor (source of truth = editor)
   const [derivedSections, setDerivedSections] = useState([])
+  const [topLevelH1s, setTopLevelH1s] = useState([])
   const [documentOutline, setDocumentOutline] = useState([])
   const [faqItems, setFaqItems] = useState([])
   const [seoExpanded, setSeoExpanded] = useState(false)
@@ -2438,12 +2498,14 @@ export default function ProjectEditor() {
         setActivePageId(firstPage?.id || null)
         const loadedUsesSections = loadedProjectType === 'page' || loadedProjectType === 'faq'
         setActiveSectionId(loadedUsesSections ? initialSections[0]?.id || null : null)
-        setDerivedSections(loadedUsesSections ? initialSections.map((section) => ({
+        setDerivedSections(loadedUsesSections ? initialSections.map((section, idx) => ({
           id: section.id,
           name: section.name,
           headings: [],
           isEmpty: false,
+          docIndex: idx,
         })) : [])
+        setTopLevelH1s(loadedUsesSections ? deriveTopLevelH1sFromHtml(firstPage?.fullContent || '') : [])
         setDocumentOutline([])
         setFaqItems([])
         initialContentRef.current = firstPage?.fullContent || '<p></p>'
@@ -2475,12 +2537,14 @@ export default function ProjectEditor() {
       setDocumentOutline(deriveDocumentOutlineFromHtml(html))
       setFaqItems([])
       setDerivedSections([])
+      setTopLevelH1s([])
       setActiveSectionId(null)
       return
     }
 
     const nextSections = deriveSectionsFromHtmlForSidebar(html)
     setDerivedSections(nextSections)
+    setTopLevelH1s(deriveTopLevelH1sFromHtml(html))
     setDocumentOutline([])
     setFaqItems([])
     setActiveSectionId((current) => current || nextSections[0]?.id || null)
@@ -2576,6 +2640,7 @@ export default function ProjectEditor() {
     if (projectType === 'document') {
       setDocumentOutline(deriveDocumentOutline(editor))
       setDerivedSections([])
+      setTopLevelH1s([])
       setFaqItems([])
       return
     }
@@ -2602,6 +2667,7 @@ export default function ProjectEditor() {
         isAutoRemoving.current = false
         const newSections = deriveSectionsFromDoc(editor)
         setDerivedSections(newSections)
+        setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
         setActiveSectionId(newSections[0]?.id ?? null)
         return
       }
@@ -2615,6 +2681,7 @@ export default function ProjectEditor() {
     }
 
     setDerivedSections(sections)
+    setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
 
     // Auto-remove empty sections (aplica a todas, incluida la primera).
     // Solo cuando hay más de una sección para no borrar la única existente.
@@ -2653,6 +2720,7 @@ export default function ProjectEditor() {
             syncProtectedEmptySections(updated)
           }
           setDerivedSections(updated)
+          setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
         }
       }
     }
@@ -2665,16 +2733,19 @@ export default function ProjectEditor() {
     if (projectType === 'document') {
       setDocumentOutline(deriveDocumentOutline(editor))
       setDerivedSections([])
+      setTopLevelH1s([])
       setFaqItems([])
       return
     }
     if (renumberAutoSections(editor)) {
       const sections = deriveSectionsFromDoc(editor)
       setDerivedSections(sections)
+      setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
       return
     }
     const sections = deriveSectionsFromDoc(editor)
     setDerivedSections(sections)
+    setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
   }, [projectType, renumberAutoSections])
 
   const snapshotActivePage = useCallback(() => {
@@ -2705,6 +2776,7 @@ export default function ProjectEditor() {
     if (projectType === 'document') {
       setDocumentOutline(deriveDocumentOutline(editorRef.current))
       setDerivedSections([])
+      setTopLevelH1s([])
       setFaqItems([])
       setActiveSectionId(null)
       return
@@ -2715,6 +2787,7 @@ export default function ProjectEditor() {
     const sections = deriveSectionsFromDoc(editorRef.current)
     sections.forEach((section) => protectedEmptySectionIds.current.add(section.id))
     setDerivedSections(sections)
+    setTopLevelH1s(deriveTopLevelH1sFromDoc(editorRef.current))
 
     const firstId = sections[0]?.id ?? null
     setActiveSectionId(firstId)
@@ -2988,6 +3061,12 @@ export default function ProjectEditor() {
     setScrollRequest({ type: 'documentHeading', headingIndex, requestId: Date.now() })
   }
 
+  // Click en un H1 divisor del panel: scroll al H1 correspondiente en el editor.
+  function handleH1Click(h1Index) {
+    setActiveSectionId(null)
+    setScrollRequest({ type: 'h1', h1Index, requestId: Date.now() })
+  }
+
   function handleSeoPanelClick() {
     setSeoExpanded((value) => !value)
     setScrollRequest({ type: 'seo', requestId: Date.now() })
@@ -3118,7 +3197,8 @@ export default function ProjectEditor() {
       } else {
         editorRef.current.commands.focus('end')
       }
-      setDerivedSections([{ id, name: finalName, headings: [], isEmpty: true }])
+      setDerivedSections([{ id, name: finalName, headings: [], isEmpty: true, docIndex: 0 }])
+      setTopLevelH1s([])
     } else {
       const insertPos = getSectionInsertPos(editorRef.current, insertAfterSectionId)
       const sectionContent = [
@@ -3186,6 +3266,7 @@ export default function ProjectEditor() {
     renumberAutoSections(editorRef.current)
     const updated = deriveSectionsFromDoc(editorRef.current)
     setDerivedSections(updated)
+    setTopLevelH1s(deriveTopLevelH1sFromDoc(editorRef.current))
     if (sectionId === activeSectionId || updated.length === 0) {
       setActiveSectionId(updated[0]?.id ?? null)
     }
@@ -3241,6 +3322,7 @@ export default function ProjectEditor() {
     renumberAutoSections(editor)
     const updated = deriveSectionsFromDoc(editor)
     setDerivedSections(updated)
+    setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
 
     const movedSectionId = derivedSections[fromIndex]?.id
     if (movedSectionId) {
@@ -3283,8 +3365,10 @@ export default function ProjectEditor() {
         renumberAutoSections(editorRef.current)
         const sections = deriveSectionsFromDoc(editorRef.current)
         setDerivedSections(sections)
+        setTopLevelH1s([])
       } else {
         setDerivedSections([])
+        setTopLevelH1s([])
         setFaqItems([])
         setDocumentOutline(projectType === 'document' ? deriveDocumentOutline(editorRef.current) : [])
       }
@@ -3523,6 +3607,8 @@ export default function ProjectEditor() {
         {projectType === 'page' ? (
           <SectionsPanel
             sections={derivedSections}
+            topLevelH1s={topLevelH1s}
+            onH1Click={handleH1Click}
             activeSectionId={activeSectionId}
             onSectionClick={handleSectionClick}
             onOpenAddSectionModal={() => openSectionModal(null)}
@@ -3540,6 +3626,8 @@ export default function ProjectEditor() {
         ) : projectType === 'faq' ? (
           <FaqPanel
             sections={derivedSections}
+            topLevelH1s={topLevelH1s}
+            onH1Click={handleH1Click}
             activeSectionId={activeSectionId}
             onSectionClick={handleSectionClick}
             onOpenAddSectionModal={() => openSectionModal(null)}
@@ -4126,7 +4214,7 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
   )
 }
 
-function FaqPanel({ sections = [], activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv }) {
+function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -4169,34 +4257,43 @@ function FaqPanel({ sections = [], activeSectionId, onSectionClick, onOpenAddSec
         </div>
       </div>
       <div className={panelStyles.sectionList} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-        {sections.map((section, i) => (
-          <SectionItem
-            key={section.id}
-            index={i}
-            section={{ ...section, name: section.headings?.[0]?.text || section.name }}
-            subtitle={section.name}
-            isActive={section.id === activeSectionId}
-            onClick={() => onSectionClick(section.id)}
-            onRename={(name) => onRename(section.id, name)}
-            onDelete={() => onDelete(section.id)}
-            headings={section.headings || []}
-            sectionId={section.id}
-            activeHeading={activeHeading}
-            onHeadingClick={onHeadingClick}
-            isDragging={dragIndex === i}
-            showDropBefore={dropTargetIndex === i}
-            showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
-            canDrag={canManageSections && sections.length > 1}
-            canManageSection={canManageSections}
-            onDragStart={() => setDragIndex(i)}
-            onDragEnd={handleDragEnd}
-            onDragOver={(e) => handleDragOver(e, i)}
-            menuOpen={openMenuId === `section-${section.id}`}
-            onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
-            onCloseMenu={() => onSetOpenMenuId(null)}
-          />
-        ))}
-        {sections.length === 0 && (
+        {mergePanelItems(sections, topLevelH1s).map((item) => {
+          if (item.kind === 'h1') {
+            return (
+              <H1Divider key={item.h1.id} text={item.h1.text} onClick={() => onH1Click?.(item.h1.h1Index)} />
+            )
+          }
+          const section = item.section
+          const i = item.sectionIndex
+          return (
+            <SectionItem
+              key={section.id}
+              index={i}
+              section={{ ...section, name: section.headings?.[0]?.text || section.name }}
+              subtitle={section.name}
+              isActive={section.id === activeSectionId}
+              onClick={() => onSectionClick(section.id)}
+              onRename={(name) => onRename(section.id, name)}
+              onDelete={() => onDelete(section.id)}
+              headings={section.headings || []}
+              sectionId={section.id}
+              activeHeading={activeHeading}
+              onHeadingClick={onHeadingClick}
+              isDragging={dragIndex === i}
+              showDropBefore={dropTargetIndex === i}
+              showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
+              canDrag={canManageSections && sections.length > 1}
+              canManageSection={canManageSections}
+              onDragStart={() => setDragIndex(i)}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => handleDragOver(e, i)}
+              menuOpen={openMenuId === `section-${section.id}`}
+              onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
+              onCloseMenu={() => onSetOpenMenuId(null)}
+            />
+          )
+        })}
+        {sections.length === 0 && topLevelH1s.length === 0 && (
           <p className={panelStyles.emptyMsg}>Sin preguntas. Agregá una con +</p>
         )}
       </div>
@@ -4204,7 +4301,38 @@ function FaqPanel({ sections = [], activeSectionId, onSectionClick, onOpenAddSec
   )
 }
 
-function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick }) {
+// Mezcla secciones y H1s top-level ordenados por docIndex (orden de aparición
+// en el documento). Las secciones mantienen su índice original (sectionIndex)
+// para que el drag-and-drop siga operando solo sobre secciones.
+function mergePanelItems(sections, topLevelH1s) {
+  const items = [
+    ...sections.map((section, sectionIndex) => ({
+      kind: 'section',
+      section,
+      sectionIndex,
+      sortKey: section.docIndex ?? sectionIndex,
+    })),
+    ...topLevelH1s.map((h1) => ({
+      kind: 'h1',
+      h1,
+      sortKey: h1.docIndex,
+    })),
+  ]
+  items.sort((a, b) => a.sortKey - b.sortKey)
+  return items
+}
+
+function H1Divider({ text, onClick }) {
+  return (
+    <button type="button" className={panelStyles.h1Divider} onClick={onClick} title={text}>
+      <span className={panelStyles.h1DividerLine} aria-hidden="true" />
+      <span className={panelStyles.h1DividerText}>{text}</span>
+      <span className={panelStyles.h1DividerLine} aria-hidden="true" />
+    </button>
+  )
+}
+
+function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -4245,33 +4373,42 @@ function SectionsPanel({ sections, activeSectionId, onSectionClick, onOpenAddSec
       </div>
       <SeoPanelButton active={seoExpanded} onClick={onSeoClick} />
       <div className={panelStyles.sectionList} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
-        {sections.map((section, i) => (
-          <SectionItem
-            key={section.id}
-            index={i}
-            section={section}
-            isActive={section.id === activeSectionId}
-            onClick={() => onSectionClick(section.id)}
-            onRename={(name) => onRename(section.id, name)}
-            onDelete={() => onDelete(section.id)}
-            headings={section.headings || []}
-            sectionId={section.id}
-            activeHeading={activeHeading}
-            onHeadingClick={onHeadingClick}
-            isDragging={dragIndex === i}
-            showDropBefore={dropTargetIndex === i}
-            showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
-            canDrag={canManageSections && sections.length > 1}
-            canManageSection={canManageSections}
-            onDragStart={() => setDragIndex(i)}
-            onDragEnd={handleDragEnd}
-            onDragOver={(e) => handleDragOver(e, i)}
-            menuOpen={openMenuId === `section-${section.id}`}
-            onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
-            onCloseMenu={() => onSetOpenMenuId(null)}
-          />
-        ))}
-        {sections.length === 0 && (
+        {mergePanelItems(sections, topLevelH1s).map((item) => {
+          if (item.kind === 'h1') {
+            return (
+              <H1Divider key={item.h1.id} text={item.h1.text} onClick={() => onH1Click?.(item.h1.h1Index)} />
+            )
+          }
+          const section = item.section
+          const i = item.sectionIndex
+          return (
+            <SectionItem
+              key={section.id}
+              index={i}
+              section={section}
+              isActive={section.id === activeSectionId}
+              onClick={() => onSectionClick(section.id)}
+              onRename={(name) => onRename(section.id, name)}
+              onDelete={() => onDelete(section.id)}
+              headings={section.headings || []}
+              sectionId={section.id}
+              activeHeading={activeHeading}
+              onHeadingClick={onHeadingClick}
+              isDragging={dragIndex === i}
+              showDropBefore={dropTargetIndex === i}
+              showDropAfter={dropTargetIndex === i + 1 && i === sections.length - 1}
+              canDrag={canManageSections && sections.length > 1}
+              canManageSection={canManageSections}
+              onDragStart={() => setDragIndex(i)}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => handleDragOver(e, i)}
+              menuOpen={openMenuId === `section-${section.id}`}
+              onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
+              onCloseMenu={() => onSetOpenMenuId(null)}
+            />
+          )
+        })}
+        {sections.length === 0 && topLevelH1s.length === 0 && (
           <p className={panelStyles.emptyMsg}>Sin secciones. Agregá una con +</p>
         )}
       </div>
@@ -5699,6 +5836,10 @@ function EditorPanel({
       const headingSelector = projectType === 'faq' ? 'h2, h3' : 'h1, h2, h3'
       targetEl = Array.from(pm.querySelectorAll(headingSelector))[scrollRequest.headingIndex] || null
       targetHeadingIndex = scrollRequest.headingIndex
+    }
+
+    if (scrollRequest.type === 'h1') {
+      targetEl = Array.from(pm.querySelectorAll('h1'))[scrollRequest.h1Index] || null
     }
 
     if (!targetEl) {
