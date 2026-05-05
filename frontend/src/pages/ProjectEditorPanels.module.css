@@ -405,6 +405,8 @@
   justify-content: space-between;
   gap: 10px;
   flex-shrink: 0;
+  padding-bottom: 0;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .rightPanelScroll {
@@ -435,7 +437,6 @@
   pointer-events: auto;
 }
 
-.updatesRefreshBtn,
 .markReadBtn,
 .proposalSecondaryButton {
   border: 1px solid #d9d9d9;
@@ -449,26 +450,48 @@
   transition: background 120ms, border-color 120ms;
 }
 
-.updatesRefreshBtn:hover:not(:disabled),
 .markReadBtn:hover:not(:disabled),
 .proposalSecondaryButton:hover:not(:disabled) {
   background: #f0f4f9;
   border-color: #c7c7c7;
 }
 
-.updatesRefreshBtn:disabled,
 .markReadBtn:disabled,
 .proposalSecondaryButton:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-.updatesRefreshBtn,
 .markReadBtn {
   padding: 5px 9px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.updatesRefreshBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.updatesRefreshBtn:hover:not(:disabled) {
+  background: #f0f4f9;
+  color: #2a2a2a;
+}
+
+.updatesRefreshBtn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .updatesRefreshSpinner {
@@ -727,35 +750,49 @@
 
 .tabsBar {
   display: inline-flex;
-  gap: 4px;
+  gap: 18px;
+  align-items: center;
 }
 
 .tab {
-  padding: 4px 10px;
-  border: 1px solid transparent;
-  border-radius: 999px;
+  position: relative;
+  padding: 6px 0;
+  border: none;
   background: transparent;
-  color: #64748b;
+  color: #94a3b8;
   font: inherit;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 120ms, color 120ms;
+  transition: color 120ms;
+}
+
+.tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: transparent;
+  border-radius: 2px 2px 0 0;
+  transition: background 120ms;
 }
 
 .tab:hover {
-  background: #f0f4f9;
   color: #2a2a2a;
 }
 
 .tabActive {
+  color: #2a2a2a;
+}
+
+.tabActive::after {
   background: #212222;
-  color: #fff;
 }
 
 .tabActive:hover {
-  background: #000;
-  color: #fff;
+  color: #2a2a2a;
 }
 
 .historyList {

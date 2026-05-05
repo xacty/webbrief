@@ -401,6 +401,137 @@
   background: rgba(0, 0, 0, 0.35);
 }
 
+.shareLinkModal {
+  width: 420px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 24px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.22);
+}
+
+.shareLinkModalHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2a2a2a;
+}
+
+.shareLinkModalTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.shareLinkModalNote {
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.shareLinkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.shareLinkUrl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2a2a2a;
+  font-size: 12px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.shareLinkCopyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms;
+}
+
+.shareLinkCopyBtn:hover {
+  background: #f0f4f9;
+}
+
+.shareLinkCopiedBadge {
+  color: #16a34a;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.shareLinkOpenBtn {
+  height: 38px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: #212222;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+.shareLinkOpenBtn:hover {
+  background: #000;
+}
+
+.shareLinkRevokeBtn {
+  margin-top: 4px;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: #ef4444;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms;
+  border-radius: 6px;
+}
+
+.shareLinkRevokeBtn:hover {
+  background: #fef2f2;
+}
+
+.shareLinkCloseBtn {
+  margin-top: -4px;
+  padding: 6px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.shareLinkCloseBtn:hover {
+  background: #f0f4f9;
+  color: #2a2a2a;
+}
+
 .modal {
   width: 320px;
   display: flex;

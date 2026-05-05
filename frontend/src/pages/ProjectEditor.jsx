@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 
 const BriefProjectEditor = lazy(() => import('./BriefProjectEditor'))
@@ -3041,6 +3042,18 @@ export default function ProjectEditor() {
     }
   }
 
+  async function revokeShareLink() {
+    if (!shareUrl) return
+    if (!window.confirm('¿Revocar el link? Los clientes que ya lo tengan no podrán acceder.')) return
+    try {
+      await apiFetch(`/api/projects/${projectId}/share-links`, { method: 'DELETE' })
+      setShareUrl('')
+      setShareModalOpen(false)
+    } catch (error) {
+      setPanelError(error.message || 'No se pudo revocar el link')
+    }
+  }
+
   async function createDeliverable({ title, serviceType }) {
     if (!canEditProjectStructure) return false
     try {
@@ -3840,39 +3853,43 @@ export default function ProjectEditor() {
       {/* Modal de share link privado */}
       {shareModalOpen && shareUrl && (
         <div className={styles.modalOverlay} onClick={() => setShareModalOpen(false)}>
-          <div className={styles.modal} style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
-            <h3 className={styles.modalTitle}>Link privado para cliente</h3>
-            <p style={{ margin: 0, fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
-              Cualquier persona con este link puede ver y comentar el contenido. Compartilo solo con quien necesite acceso.
+          <div className={styles.shareLinkModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.shareLinkModalHeader}>
+              <Link2 size={16} aria-hidden="true" />
+              <h3 className={styles.shareLinkModalTitle}>Link privado para cliente</h3>
+            </div>
+            <p className={styles.shareLinkModalNote}>
+              Cualquier persona con este link puede ver y comentar.
             </p>
-            <input
-              className={styles.modalInput}
-              type="text"
-              value={shareUrl}
-              readOnly
-              onFocus={(e) => e.target.select()}
-            />
-            {shareCopyFeedback && (
-              <p style={{ margin: 0, fontSize: 12, color: '#16a34a' }}>{shareCopyFeedback}</p>
-            )}
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div className={styles.shareLinkRow}>
+              <span className={styles.shareLinkUrl} title={shareUrl}>{shareUrl}</span>
               <button
-                className={styles.confirmDeleteBtn}
-                style={{ flex: 1, background: '#212222' }}
+                type="button"
+                className={styles.shareLinkCopyBtn}
                 onClick={copyShareLinkToClipboard}
+                data-wb-tooltip="Copiar link"
+                aria-label="Copiar link"
               >
-                Copiar link
-              </button>
-              <button
-                className={styles.confirmCancelBtn}
-                style={{ flex: 1 }}
-                onClick={() => window.open(shareUrl, '_blank', 'noopener')}
-              >
-                Abrir en nueva pestaña
+                {shareCopyFeedback ? <span className={styles.shareLinkCopiedBadge}>✓</span> : <Copy size={14} />}
               </button>
             </div>
             <button
-              className={styles.confirmCancelBtn}
+              type="button"
+              className={styles.shareLinkOpenBtn}
+              onClick={() => window.open(shareUrl, '_blank', 'noopener')}
+            >
+              Abrir en nueva pestaña
+            </button>
+            <button
+              type="button"
+              className={styles.shareLinkRevokeBtn}
+              onClick={revokeShareLink}
+            >
+              Revocar link
+            </button>
+            <button
+              type="button"
+              className={styles.shareLinkCloseBtn}
               onClick={() => setShareModalOpen(false)}
             >
               Cerrar
@@ -4173,15 +4190,34 @@ function TemplatesDropdown({ companyId, pages, disabled = false }) {
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [menuPos, setMenuPos] = useState(null)
   const wrapperRef = useRef(null)
+  const menuRef = useRef(null)
 
   useEffect(() => {
     if (!open) return undefined
+    // Compute menu position from trigger rect (portal renders to body)
+    const rect = wrapperRef.current?.getBoundingClientRect()
+    if (rect) {
+      setMenuPos({ top: rect.bottom + 8, left: rect.left, width: 280 })
+    }
     function handleClick(event) {
-      if (!wrapperRef.current?.contains(event.target)) setOpen(false)
+      if (wrapperRef.current?.contains(event.target)) return
+      if (menuRef.current?.contains(event.target)) return
+      setOpen(false)
+    }
+    function handleScroll() {
+      const r = wrapperRef.current?.getBoundingClientRect()
+      if (r) setMenuPos({ top: r.bottom + 8, left: r.left, width: 280 })
     }
     window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      window.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+      window.removeEventListener('resize', handleScroll)
+    }
   }, [open])
 
   async function handleSave(event) {
@@ -4221,8 +4257,12 @@ function TemplatesDropdown({ companyId, pages, disabled = false }) {
         <BookTemplate size={16} />
         <ChevronDown size={12} />
       </button>
-      {open && (
-        <div className={navStyles.templatesMenu}>
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className={navStyles.templatesMenu}
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+        >
           <span className={navStyles.templatesMenuTitle}>Guardar como plantilla</span>
           <form onSubmit={handleSave} className={navStyles.templatesForm}>
             <input
@@ -4245,7 +4285,8 @@ function TemplatesDropdown({ companyId, pages, disabled = false }) {
           <p className={navStyles.templatesHint}>
             Próximamente: aplicar plantillas guardadas a la página actual.
           </p>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -8469,11 +8510,10 @@ function UpdatesPanel({
           className={panelStyles.updatesRefreshBtn}
           onClick={onRefresh}
           disabled={isRefreshing}
+          data-wb-tooltip="Actualizar"
+          aria-label={isRefreshing ? 'Actualizando' : 'Actualizar'}
         >
-          {isRefreshing && (
-            <RotateCw size={11} className={panelStyles.updatesRefreshSpinner} />
-          )}
-          {isRefreshing ? 'Actualizando…' : 'Actualizar'}
+          <RotateCw size={14} className={isRefreshing ? panelStyles.updatesRefreshSpinner : undefined} />
         </button>
       </div>
       <div className={cx(panelStyles.rightPanelScroll, projectType === 'document' && panelStyles.rightPanelScrollWithDock)}>

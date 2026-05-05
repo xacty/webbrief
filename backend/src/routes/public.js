@@ -108,6 +108,15 @@ router.get('/share/:token', async (req, res) => {
       .update({ last_used_at: new Date().toISOString() })
       .eq('id', shareLink.id)
 
+    // Inferir tipo desde el primer page name si project_type es null/page legacy.
+    const firstPageName = String(pages?.[0]?.name || '').trim().toLowerCase()
+    let resolvedType = project.project_type
+    if (!resolvedType || resolvedType === 'page') {
+      if (firstPageName === 'documento') resolvedType = 'document'
+      else if (['faqs', 'faq', 'preguntas frecuentes'].includes(firstPageName)) resolvedType = 'faq'
+      else resolvedType = project.project_type || 'page'
+    }
+
     return res.json({
       project: {
         id: project.id,
@@ -115,7 +124,7 @@ router.get('/share/:token', async (req, res) => {
         clientName: project.client_name,
         clientEmail: project.client_email,
         businessType: project.business_type,
-        projectType: project.project_type || 'page',
+        projectType: resolvedType,
         updatedAt: project.updated_at,
       },
       pages: (pages || []).map(serializePublicPage),

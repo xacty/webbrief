@@ -1736,6 +1736,25 @@ router.patch('/:id/deliverables/:deliverableId', async (req, res) => {
   }
 })
 
+router.delete('/:id/share-links', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canManageProjectMeta(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede revocar links de este proyecto' })
+    }
+    const { error } = await supabaseAdmin
+      .from('project_share_links')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('project_id', project.id)
+      .is('revoked_at', null)
+    if (error) return res.status(500).json({ error: error.message })
+    return res.json({ revoked: true })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo revocar el link' })
+  }
+})
+
 router.post('/:id/share-links', async (req, res) => {
   const { label = 'Link privado', expiresAt = null } = req.body
 

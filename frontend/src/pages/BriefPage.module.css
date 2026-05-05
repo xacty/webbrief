@@ -139,7 +139,7 @@
 }
 
 .input:focus {
-  border-color: #6366f1;
+  border-color: #212222;
   background: #fff;
 }
 
@@ -159,7 +159,7 @@
 }
 
 .textarea:focus {
-  border-color: #6366f1;
+  border-color: #212222;
   background: #fff;
 }
 
@@ -194,7 +194,7 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  accent-color: #6366f1;
+  accent-color: #212222;
   cursor: pointer;
 }
 
@@ -211,7 +211,7 @@
   font-weight: 700;
   font-family: inherit;
   color: #fff;
-  background: #6366f1;
+  background: #212222;
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -219,7 +219,7 @@
 }
 
 .submitButton:hover:not(:disabled) {
-  background: #4f46e5;
+  background: #000;
 }
 
 .submitButton:disabled {

@@ -126,14 +126,20 @@ export default function SharePage() {
   if (loading) return <div className={styles.state}>Cargando contenido...</div>
   if (error) return <div className={styles.state}>{error}</div>
 
-  const typeLabels = { page: 'Página web', document: 'Artículo', faq: 'FAQs', brief: 'Brief' }
-  const typeLabel = typeLabels[project?.projectType] || 'Proyecto'
+  // Frase completa con concordancia de género/número correcta en español.
+  const typeHeadings = {
+    page: 'Página web compartida',
+    document: 'Artículo compartido',
+    faq: 'FAQs compartidas',
+    brief: 'Brief compartido',
+  }
+  const heading = typeHeadings[project?.projectType] || 'Contenido compartido'
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>{typeLabel} compartido</p>
+          <p className={styles.eyebrow}>{heading}</p>
           <h1 className={styles.title}>{project?.name}</h1>
           <p className={styles.subtitle}>{project?.clientName}</p>
         </div>
