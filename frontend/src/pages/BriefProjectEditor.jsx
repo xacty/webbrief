@@ -564,8 +564,10 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
           className={styles.backBtn}
           onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}
           type="button"
+          data-wb-tooltip={companyId ? 'Volver a la empresa' : 'Volver a empresas'}
+          aria-label="Volver"
         >
-          ← Volver
+          <ArrowLeft size={18} />
         </button>
 
         <div className={styles.navbarCenter}>

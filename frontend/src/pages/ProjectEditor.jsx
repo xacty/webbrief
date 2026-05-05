@@ -8570,7 +8570,7 @@ function UpdatesPanel({
             ) : null}
           </div>
         )}
-        {projectType === 'page' && (
+        {false && projectType === 'page' && (
         <div className={panelStyles.deliverablesBox}>
           <span className={panelStyles.pendingTitle}>Entregables</span>
           {canManageProjectMeta ? (
