@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-05 (session 6)
+- Updated: 2026-05-06 (session 7)
 
 ## Targets
 
@@ -316,6 +316,28 @@
 - **Entregables (deliverables) ocultos en TODOS los project types**: gate `false &&` por feedback del usuario que no usa el feature por ahora. Código sigue para reactivar
 - **Tooltip useEffect dep on `loadingProject`**: el handler se re-pega cuando `loadingProject` pasa a false (porque el rootRef recién se monta entonces). Antes con deps `[]` el listener no se instalaba nunca
 
+## Session 7 — FAQ modal, alignment shortcut conflicts, table fixes
+
+- **AddFaqModal**: nuevo modal con `<textarea>` (en lugar del input de texto del modal genérico) para crear preguntas frecuentes. Enter confirma; Shift+Enter newline; Escape cierra; botón "Saltar" crea una FAQ vacía. `addFaqSection(questionText, insertAfterSectionId)` inserta `sectionDivider + heading level 3` (no párrafo) y posiciona el cursor al final del H3. CSS `.modalTextarea` (extiende `.modalInput` con `resize: vertical; min-height: 80px; line-height: 1.5`)
+- **DisableConflictingAlignShortcuts** (Extension de TipTap, priority 50 — más baja que TextAlign default 100 — para que sus bindings sobrescriban): retorna `true` para `Mod-Shift-r` y `Mod-Shift-j` (consume el evento sin alinear). Resuelve el bug de que el editor alineaba el texto en respuesta a `Cmd+Shift+R` (hard refresh del navegador) y `Cmd+Shift+J` (DevTools de Chrome). Nota: `preventDefault()` no puede bloquear esos atajos a nivel de chrome del browser; este fix solo evita que TipTap haga la acción de alineación duplicada
+- **Tablas — borrado fiable**:
+  - `ToolBtn` ahora hace `onMouseDown={e.preventDefault()}` para no quitar el foco del editor antes del click. Sin esto, `editor.chain().focus().deleteTable().run()` perdía el contexto de la celda y el comando fallaba en silencio. Aplica a TODOS los toolbar buttons (no solo tablas)
+  - `TableRightClickMenu`: el handler de `contextmenu` ahora usa `editor.view.posAtCoords({x, y})` + `editor.commands.setTextSelection(pos)` para mover el cursor a la celda donde se hizo right-click antes de mostrar el menu. Items pasan a `onMouseDown` con `preventDefault + stopPropagation` para disparar antes de que el listener `document.click` cierre el menu. Añadido `:hover` style en items
+- **Tablas — botones inline `±`**:
+  - Columnas (a la derecha de la tabla): apilados verticalmente. `−` arriba (mitad superior, height = pos.height/2), `+` abajo (mitad inferior, offset top por height/2)
+  - Filas (debajo de la tabla): lado a lado. `−` izquierda (mitad, width = pos.width/2), `+` derecha (mitad, offset left por width/2)
+  - Helpers `deleteLastColumn()` y `deleteLastRow()` reposicionan el cursor en la última col/fila ANTES de llamar `deleteColumn()/deleteRow()`, así el botón siempre borra la última (no la actual)
+  - CSS `.tableInlineBtnRemove` (rojo: bg `#fef2f2`, color `#ef4444`, border `#fecaca`, hover `#fee2e2`) compartido entre los dos botones de quitar
+- **Tablas — layout uniforme**:
+  - `:global(.ProseMirror table colgroup col) { width: auto !important }` anula los anchos inline que TipTap añade al `<col>` por la feature de resize. Todas las columnas reparten el 100% por igual
+  - `height: 36px` en `:global(.ProseMirror th/td)` para uniformar la altura de filas vacías (antes la primera fila se veía más corta que las siguientes)
+  - `margin: 0.5em 0 2em` en la tabla (antes `0.5em 0`) para que los inline buttons no se superpongan con el bloque siguiente
+
+## Bugs FAQ aún sin resolver (intentos en sesión 7 sin éxito)
+
+- **Agregar pregunta frecuente sigue insertando al final** — múltiples intentos no funcionaron: ref + useEffect, `getSectionInfoFromSelection` directo, `handleSelectionFocus` actualizando ref síncronamente. La causa raíz no está identificada. Requiere debugging con `console.warn` directo en el navegador con HMR activo (no en producción). Posible siguiente paso: verificar si `editorRef.current` retiene la selección de ProseMirror tras blur
+- **H2/H3 escritos en la respuesta de una FAQ no auto-crean nueva sección** — el hook en `handleDocUpdate` que detecta H2/H3 sin `sectionDivider` precedente e inserta uno no se dispara. Posible causa: `isAutoRemoving.current` bloquea, o el check `sections.length > 0` falla. Sin diagnóstico confirmado
+
 ## Pending — requires user action
 
 - **Aplicar migraciones a Supabase**: `20260505_add_brief_uploads.sql` y `20260506_lifecycle_notifications.sql`. Vía MCP de Supabase o dashboard SQL editor
@@ -330,7 +352,4 @@
 - FAQ activity: verify each Q+A section tracked correctly
 - Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.
 
-## Bugs pendientes en FAQs (rama gifted-lederberg-06ede7, no resueltos)
-
-- **Agregar pregunta frecuente siempre inserta al final** — el botón `+` del `FaqPanel` no puede capturar el `sectionId` activo porque al hacer click el editor pierde el foco antes de que el handler corra; `handleSelectionFocus` actualiza `capturedSectionForFaqRef` síncronamente pero algo en la cadena no funciona; requiere debugging presencial con logs en el editor mismo.
-- **H2/H3 escritos en la respuesta de una FAQ no auto-crean nueva sección** — el hook en `handleDocUpdate` que detecta H2/H3 sin `sectionDivider` precedente e inserta uno automáticamente no está funcionando; puede ser que `isAutoRemoving.current` bloquee el update o que el check `sections.length > 0` sea falso cuando debería no serlo.
+(Bugs FAQ pendientes movidos a la sección "Bugs FAQ aún sin resolver" arriba)
