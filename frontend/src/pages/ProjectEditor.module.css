@@ -793,8 +793,16 @@
   white-space: nowrap;
 }
 
+.tableCtxMenuItem:hover {
+  background: #f0f4f9;
+}
+
 .tableCtxMenuItemDanger {
   color: #ef4444;
+}
+
+.tableCtxMenuItemDanger:hover {
+  background: #fef2f2;
 }
 
 .tableCtxMenuDivider {
@@ -820,7 +828,7 @@
   z-index: 10;
 }
 
-.tableInlineBtnColumn {
+.tableInlineBtnCol {
   top: var(--table-inline-top, 0px);
   left: var(--table-inline-left, 0px);
   width: 22px;
@@ -832,6 +840,17 @@
   left: var(--table-inline-left, 0px);
   width: var(--table-inline-width, 0px);
   height: 22px;
+}
+
+.tableInlineBtnRemove {
+  background: #fef2f2;
+  color: #ef4444;
+  border-color: #fecaca;
+}
+
+.tableInlineBtnRemove:hover {
+  background: #fee2e2;
+  opacity: 1;
 }
 
 .editorScrollArea {
@@ -1650,14 +1669,21 @@
 
 :global(.ProseMirror table) {
   width: 100%;
-  margin: 0.5em 0;
+  margin: 0.5em 0 2em;
   border-collapse: collapse;
   table-layout: fixed;
+}
+
+/* Forzar que todas las columnas queden del mismo ancho — anula widths inline
+   que TipTap pueda haber añadido al colgroup por la feature de resize. */
+:global(.ProseMirror table colgroup col) {
+  width: auto !important;
 }
 
 :global(.ProseMirror th),
 :global(.ProseMirror td) {
   min-width: 60px;
+  height: 36px;
   padding: 6px 10px;
   border: 1px solid #d9d9d9;
   vertical-align: top;

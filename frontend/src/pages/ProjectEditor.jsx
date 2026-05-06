@@ -5745,6 +5745,9 @@ function ToolBtn({ children, active, disabled, onClick, title }) {
         active && toolbarStyles.toolBtnActive,
         disabled && toolbarStyles.toolBtnDisabled,
       )}
+      // Evita que el botón quite el foco del editor antes del click — la selección
+      // del editor (necesaria para comandos contextuales como deleteTable) se preserva.
+      onMouseDown={(e) => e.preventDefault()}
       onClick={disabled ? undefined : onClick}
       data-wb-tooltip={title}
     >
@@ -5850,7 +5853,12 @@ function TableRightClickMenu({ editor }) {
     const dom = editor.view.dom
 
     function handleContextMenu(e) {
-      // Only show if cursor is inside a table
+      // Try to place cursor at right-click position so commands target the correct cell
+      const coords = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+      if (coords) {
+        editor.commands.setTextSelection(coords.pos)
+      }
+      // Only show if (now-updated) cursor is inside a table
       if (!editor.isActive('table')) return
       e.preventDefault()
       // Find the position:relative wrapper that contains us
@@ -5902,7 +5910,7 @@ function TableRightClickMenu({ editor }) {
           : <div
               key={i}
               className={cx(styles.tableCtxMenuItem, item.danger && styles.tableCtxMenuItemDanger)}
-              onClick={() => { item.action(); setMenu(null) }}
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); item.action(); setMenu(null) }}
             >{item.label}</div>
       )}
     </div>
@@ -5960,28 +5968,93 @@ function TableInlineButtons({ editor, wrapperRef }) {
 
   if (!pos) return null
 
+  // Helpers para reposicionar el cursor en la última col/fila antes de borrar
+  function deleteLastColumn() {
+    const { $from } = editor.state.selection
+    let tableDepth = null
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d).type.name === 'table') { tableDepth = d; break }
+    }
+    if (tableDepth !== null) {
+      const tableStart = $from.start(tableDepth) - 1
+      const tableNode = editor.state.doc.nodeAt(tableStart)
+      const firstRow = tableNode?.firstChild
+      if (tableNode && firstRow) {
+        const lastColIdx = firstRow.childCount - 1
+        let cellPos = tableStart + 1 + 1
+        for (let i = 0; i < lastColIdx; i++) cellPos += firstRow.child(i).nodeSize
+        editor.chain().focus().setTextSelection(cellPos + 1).deleteColumn().run()
+        return
+      }
+    }
+    editor.chain().focus().deleteColumn().run()
+  }
+
+  function deleteLastRow() {
+    const { $from } = editor.state.selection
+    let tableDepth = null
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d).type.name === 'table') { tableDepth = d; break }
+    }
+    if (tableDepth !== null) {
+      const tableStart = $from.start(tableDepth) - 1
+      const tableNode = editor.state.doc.nodeAt(tableStart)
+      if (tableNode && tableNode.childCount > 0) {
+        let rowPos = tableStart + 1
+        for (let i = 0; i < tableNode.childCount - 1; i++) rowPos += tableNode.child(i).nodeSize
+        editor.chain().focus().setTextSelection(rowPos + 2).deleteRow().run()
+        return
+      }
+    }
+    editor.chain().focus().deleteRow().run()
+  }
+
+  const halfH = pos.height / 2
+  const halfW = pos.width / 2
+
   return (
     <>
-      {/* + button at right edge (add column) */}
+      {/* COLUMNAS: − arriba (mitad superior), + abajo (mitad inferior) */}
       <button
-        className={cx(styles.tableInlineBtn, styles.tableInlineBtnColumn)}
+        className={cx(styles.tableInlineBtn, styles.tableInlineBtnCol, styles.tableInlineBtnRemove)}
         ref={(node) => setCssVars(node, {
           '--table-inline-top': pos.top,
           '--table-inline-left': pos.right + 4,
-          '--table-inline-height': pos.height,
+          '--table-inline-height': halfH,
         })}
-        onClick={() => editor.chain().focus().addColumnAfter().run()}
+        onMouseDown={(e) => { e.preventDefault(); deleteLastColumn() }}
+        data-wb-tooltip="Quitar última columna"
+      >−</button>
+      <button
+        className={cx(styles.tableInlineBtn, styles.tableInlineBtnCol)}
+        ref={(node) => setCssVars(node, {
+          '--table-inline-top': pos.top + halfH,
+          '--table-inline-left': pos.right + 4,
+          '--table-inline-height': halfH,
+        })}
+        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().addColumnAfter().run() }}
         data-wb-tooltip="Agregar columna"
       >+</button>
-      {/* + button at bottom edge (add row) */}
+
+      {/* FILAS: − a la izquierda (mitad), + a la derecha (mitad) */}
+      <button
+        className={cx(styles.tableInlineBtn, styles.tableInlineBtnRow, styles.tableInlineBtnRemove)}
+        ref={(node) => setCssVars(node, {
+          '--table-inline-top': pos.bottom + 4,
+          '--table-inline-left': pos.left,
+          '--table-inline-width': halfW,
+        })}
+        onMouseDown={(e) => { e.preventDefault(); deleteLastRow() }}
+        data-wb-tooltip="Quitar última fila"
+      >−</button>
       <button
         className={cx(styles.tableInlineBtn, styles.tableInlineBtnRow)}
         ref={(node) => setCssVars(node, {
           '--table-inline-top': pos.bottom + 4,
-          '--table-inline-left': pos.left,
-          '--table-inline-width': pos.width,
+          '--table-inline-left': pos.left + halfW,
+          '--table-inline-width': halfW,
         })}
-        onClick={() => editor.chain().focus().addRowAfter().run()}
+        onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().addRowAfter().run() }}
         data-wb-tooltip="Agregar fila"
       >+</button>
     </>
