@@ -401,6 +401,162 @@ export async function recordSectionEditActivities({ projectId, currentUser, sect
   return recorded
 }
 
+const SEO_FIELD_LABELS = {
+  seo_title_changed: 'Cambió title tag',
+  seo_description_changed: 'Cambió meta description',
+  seo_slug_changed: 'Cambió URL slug',
+}
+
+function diffSeoMetadata(previous = {}, next = {}) {
+  const changes = []
+  const fields = ['titleTag', 'metaDescription', 'urlSlug']
+  const labels = {
+    titleTag: 'seo_title_changed',
+    metaDescription: 'seo_description_changed',
+    urlSlug: 'seo_slug_changed',
+  }
+  const previousValues = {}
+  const nextValues = {}
+  for (const field of fields) {
+    const prev = (previous?.[field] ?? '').toString()
+    const curr = (next?.[field] ?? '').toString()
+    if (prev !== curr) {
+      changes.push(labels[field])
+      previousValues[field] = prev
+      nextValues[field] = curr
+    }
+  }
+  return { changes, previousValues, nextValues }
+}
+
+// Inserta o mergea actividad seo_changed por (project, page, actor) — replica el patrón
+// de recordSectionEditActivities pero scopeado al "virtual section" __seo__.
+// Acumula history[] con cap 50 y se actualiza in-place mientras esté unread.
+export async function recordSeoChangedActivities({ projectId, currentUser, seoEvents = [] }) {
+  if (!projectActivityTableAvailable) {
+    if (Date.now() < projectActivityRetryAt) return []
+    projectActivityTableAvailable = true
+  }
+  if (!Array.isArray(seoEvents) || seoEvents.length === 0) return []
+
+  const validEvents = seoEvents
+    .filter((event) => event?.pageId && Array.isArray(event.changeTypes) && event.changeTypes.length > 0)
+    .map((event) => ({
+      pageId: String(event.pageId),
+      pageName: String(event.pageName || 'Página'),
+      changeTypes: [...new Set(event.changeTypes.map(String))].slice(0, 6),
+      previousValues: event.previousValues || {},
+      nextValues: event.nextValues || {},
+    }))
+
+  if (validEvents.length === 0) return []
+
+  const timestamp = new Date().toISOString()
+  const actor = actorLabel(currentUser)
+  const recorded = []
+
+  try {
+    const { data: existingActivities, error: existingError } = await supabaseAdmin
+      .from('project_activity')
+      .select('id, metadata, created_at')
+      .eq('project_id', projectId)
+      .eq('actor_user_id', currentUser?.id)
+      .eq('event_type', 'seo_changed')
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (existingError) {
+      if (isMissingTableError(existingError, 'project_activity')) {
+        projectActivityTableAvailable = false
+        projectActivityRetryAt = Date.now() + 30_000
+        return []
+      }
+      throw existingError
+    }
+
+    for (const event of validEvents) {
+      const labels = event.changeTypes.map((type) => SEO_FIELD_LABELS[type] || 'Cambió SEO')
+      const title = `Se actualizó SEO de ${event.pageName}`
+      const description = labels.join(' · ')
+      const match = (existingActivities || []).find((activity) => {
+        const md = activity.metadata || {}
+        return md.pageId === event.pageId
+          && md.sectionId === '__seo__'
+          && !md.readAt
+      })
+
+      const previousHistory = Array.isArray(match?.metadata?.history) ? match.metadata.history : []
+      const historyEntry = {
+        changeTypes: event.changeTypes,
+        actorId: currentUser?.id || null,
+        actorLabel: actor,
+        at: timestamp,
+        previousValues: event.previousValues,
+        nextValues: event.nextValues,
+      }
+      const nextHistory = [historyEntry, ...previousHistory].slice(0, 50)
+
+      const metadata = {
+        ...(match?.metadata || {}),
+        pageId: event.pageId,
+        pageName: event.pageName,
+        sectionId: '__seo__',
+        sectionName: 'SEO metadata',
+        changeTypes: event.changeTypes,
+        previousValues: event.previousValues,
+        nextValues: event.nextValues,
+        history: nextHistory,
+      }
+      delete metadata.readAt
+      delete metadata.readBy
+      delete metadata.readByLabel
+
+      if (match) {
+        const { data, error } = await supabaseAdmin
+          .from('project_activity')
+          .update({ title, description, metadata, created_at: timestamp })
+          .eq('id', match.id)
+          .select('id, project_id, actor_label, event_type, subject_type, subject_id, title, description, metadata, created_at')
+          .single()
+        if (error) throw error
+        recorded.push(data)
+        continue
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('project_activity')
+        .insert({
+          project_id: projectId,
+          actor_user_id: currentUser?.id || null,
+          actor_label: actor,
+          event_type: 'seo_changed',
+          subject_type: 'seo',
+          subject_id: null,
+          title,
+          description,
+          metadata,
+          created_at: timestamp,
+        })
+        .select('id, project_id, actor_label, event_type, subject_type, subject_id, title, description, metadata, created_at')
+        .single()
+
+      if (error) throw error
+      recorded.push(data)
+    }
+  } catch (error) {
+    if (isMissingTableError(error, 'project_activity')) {
+      projectActivityTableAvailable = false
+      projectActivityRetryAt = Date.now() + 30_000
+      return []
+    }
+    throw error
+  }
+
+  return recorded
+}
+
+export { diffSeoMetadata }
+
 export async function createProjectNotifications({ projectId, currentUser, eventType, title, body, metadata = {} }) {
   if (!notificationsTableAvailable) {
     if (Date.now() < notificationsRetryAt) return []

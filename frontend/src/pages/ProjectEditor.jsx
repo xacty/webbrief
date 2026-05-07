@@ -2022,6 +2022,9 @@ function formatActivityChangeTypes(changeTypes = []) {
     section_removed: 'Eliminó sección',
     section_renamed: 'Renombró sección',
     content_changed: 'Editó contenido',
+    seo_title_changed: 'Cambió title tag',
+    seo_description_changed: 'Cambió meta description',
+    seo_slug_changed: 'Cambió URL slug',
   }
 
   return changeTypes.map((type) => labels[type] || 'Editó contenido').join(' · ')
@@ -3206,6 +3209,17 @@ export default function ProjectEditor() {
 
     if (itemId) setSelectedActivityId(itemId)
     if (removed) return
+
+    // Virtual section __seo__ → expand + scroll to SEO tray, no editor section selection
+    if (sectionId === '__seo__') {
+      setSeoExpanded(true)
+      const fireSeo = () => {
+        setScrollRequest({ type: 'seo', requestId: Date.now() })
+      }
+      if (isPageSwitch) window.setTimeout(fireSeo, 480)
+      else fireSeo()
+      return
+    }
 
     setActiveSectionId(sectionId)
     setActiveHeading({ sectionId, headingIndex: 0 })
@@ -8859,15 +8873,24 @@ function UpdatesPanel({
   const sectionActivity = useMemo(() => (
     activity
       .filter((item) => (
-        (item.eventType === 'section_edited' || item.eventType === 'asset_uploaded')
+        (item.eventType === 'section_edited' || item.eventType === 'asset_uploaded' || item.eventType === 'seo_changed')
         && item.metadata?.sectionId
         && item.metadata?.pageId === activePageId
-        && (item.metadata.sectionId === '__document__' || sectionOrder.has(item.metadata.sectionId))
+        && (
+          item.metadata.sectionId === '__document__'
+          || item.metadata.sectionId === '__seo__'
+          || sectionOrder.has(item.metadata.sectionId)
+        )
       ))
       .sort((a, b) => {
-        // '__document__' always sorts first (index 0)
-        const aIndex = a.metadata.sectionId === '__document__' ? 0 : (sectionOrder.get(a.metadata.sectionId) ?? 9999)
-        const bIndex = b.metadata.sectionId === '__document__' ? 0 : (sectionOrder.get(b.metadata.sectionId) ?? 9999)
+        // '__seo__' first, '__document__' second, real sections by docIndex
+        const ordinal = (sectionId) => {
+          if (sectionId === '__seo__') return -1
+          if (sectionId === '__document__') return 0
+          return sectionOrder.get(sectionId) ?? 9999
+        }
+        const aIndex = ordinal(a.metadata.sectionId)
+        const bIndex = ordinal(b.metadata.sectionId)
         if (aIndex !== bIndex) return aIndex - bIndex
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       })
@@ -8878,9 +8901,11 @@ function UpdatesPanel({
       const sectionId = item.metadata.sectionId
       if (!groups.has(sectionId)) {
         const section = sections.find((s) => s.id === sectionId)
-        // For '__document__', use the stored sectionName (page name) from metadata
+        // Special virtual section IDs use the metadata-stored sectionName
         const sectionName = sectionId === '__document__'
           ? (item.metadata.sectionName || 'Documento')
+          : sectionId === '__seo__'
+          ? (item.metadata.sectionName || 'SEO metadata')
           : (section?.name || item.metadata.sectionName || 'Sección')
         groups.set(sectionId, { sectionId, sectionName, items: [] })
       }

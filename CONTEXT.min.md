@@ -365,11 +365,6 @@
   - `height: 36px` en `:global(.ProseMirror th/td)` para uniformar la altura de filas vacías (antes la primera fila se veía más corta que las siguientes)
   - `margin: 0.5em 0 2em` en la tabla (antes `0.5em 0`) para que los inline buttons no se superpongan con el bloque siguiente
 
-## Bugs FAQ aún sin resolver (intentos en sesión 7 sin éxito)
-
-- **Agregar pregunta frecuente sigue insertando al final** — múltiples intentos no funcionaron: ref + useEffect, `getSectionInfoFromSelection` directo, `handleSelectionFocus` actualizando ref síncronamente. La causa raíz no está identificada. Requiere debugging con `console.warn` directo en el navegador con HMR activo (no en producción). Posible siguiente paso: verificar si `editorRef.current` retiene la selección de ProseMirror tras blur
-- **H2/H3 escritos en la respuesta de una FAQ no auto-crean nueva sección** — el hook en `handleDocUpdate` que detecta H2/H3 sin `sectionDivider` precedente e inserta uno no se dispara. Posible causa: `isAutoRemoving.current` bloquea, o el check `sections.length > 0` falla. Sin diagnóstico confirmado
-
 ## Session 9 — MCP supabaseLocal wired + security migrations applied
 
 - **MCP supabaseLocal** registrado en dos hosts apuntando al mismo `/Users/adrian/GitHub/mcp-supabase/.env` (gitignored, perm 0600) vía `node --env-file=…/mcp-supabase/.env …/src/index.js`:
@@ -417,5 +412,3 @@
 - document-type activity (article has no sections — needs global change tracking or single-section treatment)
 - FAQ activity: verify each Q+A section tracked correctly
 - Plan ejecutable para separar Supabase Dev vs Prod (free tier) en `docs/WEBRIEF_DEV_DB_PLAN.md`; ~1.5–2h, 10 fases. Hasta ejecutarlo, no probar SQL destructivo/schema changes contra Prod sin haber validado en algún sandbox primero.
-
-(Bugs FAQ pendientes movidos a la sección "Bugs FAQ aún sin resolver" arriba)

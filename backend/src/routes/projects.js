@@ -26,6 +26,7 @@ import {
   canWriteProjectContent,
   createProjectNotifications,
   createShareToken,
+  diffSeoMetadata,
   getAccessibleCompanyIds,
   getCompanyRole,
   getProjectById,
@@ -33,6 +34,7 @@ import {
   isMissingTableError,
   logProjectActivity,
   recordSectionEditActivities,
+  recordSeoChangedActivities,
   serializeActivity,
 } from '../lib/projectAccess.js'
 
@@ -968,6 +970,7 @@ router.put('/:id/pages', async (req, res) => {
         'position',
         columns.version ? 'version' : null,
         columns.contentRules ? 'content_rules' : null,
+        columns.seoMetadata ? 'seo_metadata' : null,
       ].filter(Boolean).join(', ')
 
       return supabaseAdmin
@@ -1187,6 +1190,41 @@ router.put('/:id/pages', async (req, res) => {
         currentUser: req.currentUser,
         sectionEvents,
       })
+    }
+
+    // SEO diff: para page/document, detectamos cambios en seo_metadata por página
+    // y emitimos `seo_changed` granular, scopeado al virtual section __seo__.
+    // FAQs no usan SEO por página en la UI, así que naturalmente la diff queda vacía.
+    if (projectPageSeoMetadataColumnAvailable) {
+      const previousSeoByPageId = new Map(
+        (existingPages || []).map((page) => [page.id, page.seo_metadata || {}])
+      )
+      const seoEvents = []
+      for (const requestPage of pages) {
+        const pageId = coerceUuid(requestPage.id)
+        if (!pageId) continue
+        const previous = previousSeoByPageId.get(pageId)
+        if (!previous) continue
+        const next = requestPage.seoMetadata && typeof requestPage.seoMetadata === 'object'
+          ? requestPage.seoMetadata
+          : {}
+        const { changes, previousValues, nextValues } = diffSeoMetadata(previous, next)
+        if (changes.length === 0) continue
+        seoEvents.push({
+          pageId,
+          pageName: requestPage.name?.trim() || 'Página',
+          changeTypes: changes,
+          previousValues,
+          nextValues,
+        })
+      }
+      if (seoEvents.length > 0) {
+        await recordSeoChangedActivities({
+          projectId: project.id,
+          currentUser: req.currentUser,
+          seoEvents,
+        })
+      }
     }
 
     if (sectionEvents.length > 0 || source !== 'autosave') {
