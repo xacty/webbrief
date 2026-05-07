@@ -6543,6 +6543,17 @@ function EditorPanel({
         return true
       },
       handleDOMEvents: {
+        mousedown(view, event) {
+          // Right-click: block ProseMirror from moving the cursor / collapsing the selection.
+          // Google Docs preserves whatever selection (or cursor position) the user had before
+          // the right-click. Returning true tells ProseMirror to skip this event entirely.
+          // Tables manage their own right-click flow (TableRightClickMenu) so we skip there.
+          if (event.button !== 2) return false
+          const target = event.target
+          if (target instanceof Element && target.closest('table')) return false
+          event.preventDefault()
+          return true
+        },
         dragover(view, event) {
           const files = Array.from(event.dataTransfer?.files || [])
           if (!files.some((file) => file.type.startsWith('image/'))) return false
@@ -6679,35 +6690,18 @@ function EditorPanel({
     targets.forEach((el) => el.setAttribute('data-wb-active', 'true'))
   }, [activeCommentId, editor])
 
-  // Right-click context menu (Google Docs–style). Suprime el menú nativo del browser
-  // dentro del editor; defiere al TableRightClickMenu cuando el click es en una tabla.
-  // Preserva la selección actual del editor al hacer right-click dentro del rango
-  // seleccionado (sino ProseMirror movería el cursor en mousedown, colapsando la selección).
+  // Right-click context menu (Google Docs–style). El mousedown de button=2 ya está
+  // bloqueado por editorProps.handleDOMEvents.mousedown más arriba, así que la selección
+  // no se mueve al hacer right-click. Acá solo intercepto contextmenu para abrir el menú
+  // custom, defiriendo al TableRightClickMenu cuando el click es en una tabla.
+  // Capturo un snapshot de la selección en el momento exacto del contextmenu — el menú
+  // usa este snapshot (y restaura via setTextSelection antes de cada comando) para que
+  // cortar/copiar/comentar funcionen aun si la selección se perdiera por algún edge case.
   const [contextMenuPos, setContextMenuPos] = useState(null)
+  const [contextMenuSelection, setContextMenuSelection] = useState({ from: 0, to: 0, empty: true })
   useEffect(() => {
     if (!editor) return
     const editorDom = editor.view.dom
-
-    function handleMouseDownCapture(e) {
-      if (e.button !== 2) return
-      if (e.target instanceof HTMLElement && e.target.closest('table')) return
-      const { from, to, empty } = editor.state.selection
-      if (empty) return
-      // Check if click is inside the current selection range
-      let coords
-      try {
-        coords = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
-      } catch {
-        return
-      }
-      if (!coords) return
-      if (coords.pos >= from && coords.pos <= to) {
-        // Click landed inside the selection — block ProseMirror's default cursor move.
-        e.preventDefault()
-        e.stopPropagation()
-        e.stopImmediatePropagation()
-      }
-    }
 
     function handleContextMenu(e) {
       const target = e.target
@@ -6715,15 +6709,13 @@ function EditorPanel({
       if (!editorDom.contains(target)) return
       if (target.closest('table')) return // delegate to TableRightClickMenu
       e.preventDefault()
+      const { from, to, empty } = editor.state.selection
+      setContextMenuSelection({ from, to, empty })
       setContextMenuPos({ x: e.clientX, y: e.clientY })
     }
 
-    editorDom.addEventListener('mousedown', handleMouseDownCapture, true)
     document.addEventListener('contextmenu', handleContextMenu)
-    return () => {
-      editorDom.removeEventListener('mousedown', handleMouseDownCapture, true)
-      document.removeEventListener('contextmenu', handleContextMenu)
-    }
+    return () => document.removeEventListener('contextmenu', handleContextMenu)
   }, [editor])
 
   useEffect(() => {
@@ -7122,6 +7114,7 @@ function EditorPanel({
         canComment={canComment}
         onAddComment={onAddComment}
         onClose={() => setContextMenuPos(null)}
+        selectionSnapshot={contextMenuSelection}
       />
     </div>
   )

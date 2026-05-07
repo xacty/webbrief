@@ -39,7 +39,7 @@ function Separator() {
   return <div className={styles.separator} />
 }
 
-export default function EditorContextMenu({ open, position, editor, onClose, onAddComment, canComment = false }) {
+export default function EditorContextMenu({ open, position, editor, onClose, onAddComment, canComment = false, selectionSnapshot = null }) {
   const menuRef = useRef(null)
   const [submenu, setSubmenu] = useState(null) // 'block' | null
   const [adjustedPos, setAdjustedPos] = useState(null)
@@ -97,20 +97,40 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
   if (!open || !editor) return null
   const pos = adjustedPos || initialPos(position.x, position.y)
 
-  const selection = editor.state.selection
-  const hasSelection = !selection.empty
+  // Selección efectiva: usa el snapshot capturado al abrir el menú (más confiable
+  // que leer editor.state.selection ahora, ya que algún paint/event entre abrir
+  // el menú y este render podría haberla mutado).
+  const snap = selectionSnapshot || { from: 0, to: 0, empty: true }
+  const hasSelection = !snap.empty
+  const snapFrom = snap.from
+  const snapTo = snap.to
+
+  // Restaura la selección capturada antes de correr el comando, así cualquier
+  // acción que dependa del rango (cut/copy/delete/comentar/link) opera sobre
+  // el texto que el usuario tenía seleccionado al hacer right-click.
+  function restoreSelection() {
+    if (!editor) return
+    if (snap.empty) {
+      editor.chain().focus().setTextSelection(snapFrom).run()
+    } else {
+      editor.chain().focus().setTextSelection({ from: snapFrom, to: snapTo }).run()
+    }
+  }
 
   async function safeRun(fn) {
-    try { await fn() } catch (err) { console.warn('[ctxmenu] action failed:', err.message) }
+    try {
+      restoreSelection()
+      await fn()
+    } catch (err) {
+      console.warn('[ctxmenu] action failed:', err.message)
+    }
     onClose?.()
   }
 
   function handleCut() {
     safeRun(async () => {
-      const { from, to } = editor.state.selection
-      if (from === to) return
-      const text = editor.state.doc.textBetween(from, to, ' ', ' ')
-      const html = window.getSelection()?.toString() ? window.getSelection().toString() : text
+      if (snap.empty) return
+      const text = editor.state.doc.textBetween(snapFrom, snapTo, ' ', ' ')
       try {
         if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text)
         else document.execCommand('copy')
@@ -121,9 +141,8 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
 
   function handleCopy() {
     safeRun(async () => {
-      const { from, to } = editor.state.selection
-      if (from === to) return
-      const text = editor.state.doc.textBetween(from, to, ' ', ' ')
+      if (snap.empty) return
+      const text = editor.state.doc.textBetween(snapFrom, snapTo, ' ', ' ')
       try {
         if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text)
         else document.execCommand('copy')
@@ -137,7 +156,6 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
         const text = await navigator.clipboard.readText()
         if (text) editor.chain().focus().insertContent(text).run()
       } catch {
-        // Browser may block clipboard read; user can use Cmd+V keyboard shortcut as fallback.
         window.alert('Tu navegador bloqueó el acceso al portapapeles. Usá ' + mod + '+V.')
       }
     })
@@ -161,8 +179,12 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
   }
 
   function handleAddCommentClick() {
+    if (!snap.empty) {
+      editor.chain().focus().setTextSelection({ from: snapFrom, to: snapTo }).run()
+    }
     onClose?.()
-    onAddComment?.()
+    // Defer so the editor selection is committed before the composer reads it.
+    window.setTimeout(() => onAddComment?.(), 0)
   }
 
   function handleInsertLink() {
