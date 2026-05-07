@@ -7,6 +7,8 @@ import {
   getAccessibleCompanyIds,
 } from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
+import { rateLimiters } from '../middleware/security.js'
+import { logSecurityEvent } from '../lib/securityAudit.js'
 
 const router = Router()
 let archiveColumnsAvailable = true
@@ -421,7 +423,7 @@ router.post('/', async (req, res) => {
   }
 })
 
-router.post('/:id/archive', async (req, res) => {
+router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
   if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
     return res.status(403).json({ error: 'Tu rol no puede archivar esta empresa' })
   }
@@ -429,7 +431,7 @@ router.post('/:id/archive', async (req, res) => {
   try {
     const { data: company, error: lookupError } = await supabaseAdmin
       .from('companies')
-      .select('id, slug')
+      .select('id, slug, archived_at, trashed_at')
       .eq('id', req.params.id)
       .maybeSingle()
 
@@ -437,6 +439,9 @@ router.post('/:id/archive', async (req, res) => {
     if (!company) return res.status(404).json({ error: 'Empresa no encontrada' })
     if (company.slug === 'webrief') {
       return res.status(400).json({ error: 'La empresa interna WeBrief no se puede archivar' })
+    }
+    if (company.trashed_at) {
+      return res.status(400).json({ error: 'Una empresa en papelera no se puede archivar' })
     }
 
     const archivedAt = new Date().toISOString()
@@ -446,13 +451,20 @@ router.post('/:id/archive', async (req, res) => {
       .eq('id', company.id)
 
     if (error) return res.status(500).json({ error: error.message })
+    await logSecurityEvent(req, {
+      action: 'company_archived',
+      resourceType: 'company',
+      resourceId: company.id,
+      companyId: company.id,
+      metadata: { wasArchived: Boolean(company.archived_at) },
+    })
     return res.json({ archivedAt })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo archivar la empresa' })
   }
 })
 
-router.post('/:id/trash', async (req, res) => {
+router.post('/:id/trash', rateLimiters.sensitiveAction, async (req, res) => {
   if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
     return res.status(403).json({ error: 'Tu rol no puede enviar esta empresa a papelera' })
   }
@@ -460,7 +472,7 @@ router.post('/:id/trash', async (req, res) => {
   try {
     const { data: company, error: lookupError } = await supabaseAdmin
       .from('companies')
-      .select('id, slug')
+      .select('id, slug, archived_at, trashed_at')
       .eq('id', req.params.id)
       .maybeSingle()
 
@@ -468,6 +480,9 @@ router.post('/:id/trash', async (req, res) => {
     if (!company) return res.status(404).json({ error: 'Empresa no encontrada' })
     if (company.slug === 'webrief') {
       return res.status(400).json({ error: 'La empresa interna WeBrief no se puede enviar a papelera' })
+    }
+    if (company.trashed_at) {
+      return res.status(400).json({ error: 'La empresa ya está en papelera' })
     }
 
     const trashedAt = new Date()
@@ -482,18 +497,37 @@ router.post('/:id/trash', async (req, res) => {
       .eq('id', company.id)
 
     if (error) return res.status(500).json({ error: error.message })
+    await logSecurityEvent(req, {
+      action: 'company_trashed',
+      resourceType: 'company',
+      resourceId: company.id,
+      companyId: company.id,
+      metadata: { wasArchived: Boolean(company.archived_at), deleteAfter: deleteAfter.toISOString() },
+    })
     return res.json({ trashedAt: trashedAt.toISOString(), deleteAfter: deleteAfter.toISOString() })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo enviar la empresa a papelera' })
   }
 })
 
-router.post('/:id/restore', async (req, res) => {
+router.post('/:id/restore', rateLimiters.sensitiveAction, async (req, res) => {
   if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
     return res.status(403).json({ error: 'Tu rol no puede restaurar esta empresa' })
   }
 
   try {
+    const { data: company, error: lookupError } = await supabaseAdmin
+      .from('companies')
+      .select('id, archived_at, trashed_at')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (lookupError) return res.status(500).json({ error: lookupError.message })
+    if (!company) return res.status(404).json({ error: 'Empresa no encontrada' })
+    if (!company.archived_at && !company.trashed_at) {
+      return res.status(400).json({ error: 'La empresa no está archivada ni en papelera' })
+    }
+
     const { error } = await supabaseAdmin
       .from('companies')
       .update({
@@ -506,13 +540,23 @@ router.post('/:id/restore', async (req, res) => {
       .eq('id', req.params.id)
 
     if (error) return res.status(500).json({ error: error.message })
+    await logSecurityEvent(req, {
+      action: 'company_restored',
+      resourceType: 'company',
+      resourceId: company.id,
+      companyId: company.id,
+      metadata: {
+        wasArchived: Boolean(company.archived_at),
+        wasTrashed: Boolean(company.trashed_at),
+      },
+    })
     return res.json({ restored: true })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo restaurar la empresa' })
   }
 })
 
-router.delete('/:id/permanent', async (req, res) => {
+router.delete('/:id/permanent', rateLimiters.sensitiveAction, async (req, res) => {
   if (req.currentUser.platformRole !== 'admin') {
     return res.status(403).json({ error: 'Solo admin puede borrar empresas' })
   }
@@ -520,7 +564,7 @@ router.delete('/:id/permanent', async (req, res) => {
   try {
     const { data: company, error: lookupError } = await supabaseAdmin
       .from('companies')
-      .select('id, slug')
+      .select('id, slug, trashed_at')
       .eq('id', req.params.id)
       .maybeSingle()
 
@@ -529,6 +573,9 @@ router.delete('/:id/permanent', async (req, res) => {
     if (company.slug === 'webrief') {
       return res.status(400).json({ error: 'La empresa interna WeBrief no se puede borrar' })
     }
+    if (!company.trashed_at) {
+      return res.status(400).json({ error: 'Solo se pueden borrar permanentemente empresas en papelera' })
+    }
 
     const { error } = await supabaseAdmin
       .from('companies')
@@ -536,6 +583,12 @@ router.delete('/:id/permanent', async (req, res) => {
       .eq('id', company.id)
 
     if (error) return res.status(500).json({ error: error.message })
+    await logSecurityEvent(req, {
+      action: 'company_permanently_deleted',
+      resourceType: 'company',
+      resourceId: company.id,
+      companyId: company.id,
+    })
     return res.json({ deleted: true })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo borrar la empresa' })

@@ -46,7 +46,7 @@ create table if not exists public.projects (
   client_name text,
   client_email text,
   business_type text not null,
-  project_type text not null default 'page' check (project_type in ('page', 'document', 'faq')),
+  project_type text not null default 'page' check (project_type in ('page', 'document', 'faq', 'brief')),
   created_by uuid references public.profiles(id) on delete set null,
   archived_at timestamptz,
   archived_by uuid references public.profiles(id) on delete set null,
@@ -217,6 +217,54 @@ create table if not exists public.project_assets (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.security_events (
+  id uuid primary key default gen_random_uuid(),
+  actor_user_id uuid references public.profiles(id) on delete set null,
+  actor_email text,
+  actor_role text,
+  ip_address text,
+  user_agent text,
+  request_id text,
+  action text not null,
+  resource_type text not null,
+  resource_id text,
+  company_id uuid references public.companies(id) on delete set null,
+  project_id uuid references public.projects(id) on delete set null,
+  target_user_id uuid references public.profiles(id) on delete set null,
+  outcome text not null default 'success' check (outcome in ('success', 'denied', 'failed')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.rate_limit_buckets (
+  key text primary key,
+  count integer not null default 0,
+  reset_at timestamptz not null,
+  blocked_until timestamptz,
+  violations integer not null default 0,
+  violation_expires_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.security_blocks (
+  id uuid primary key default gen_random_uuid(),
+  block_type text not null check (block_type in ('user', 'ip')),
+  user_id uuid references public.profiles(id) on delete cascade,
+  ip_address text,
+  reason text not null,
+  blocked_by uuid references public.profiles(id) on delete set null,
+  blocked_at timestamptz not null default now(),
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  revoked_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (
+    (block_type = 'user' and user_id is not null and ip_address is null)
+    or
+    (block_type = 'ip' and ip_address is not null and user_id is null)
+  )
+);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -361,6 +409,16 @@ create index if not exists project_deliverables_project_idx on public.project_de
 create index if not exists project_comments_project_idx on public.project_comments(project_id, created_at desc);
 create index if not exists project_approvals_project_idx on public.project_approvals(project_id, created_at desc);
 create index if not exists project_assets_project_idx on public.project_assets(project_id, created_at desc) where trashed_at is null;
+create index if not exists security_events_created_idx on public.security_events(created_at desc);
+create index if not exists security_events_actor_created_idx on public.security_events(actor_user_id, created_at desc);
+create index if not exists security_events_company_created_idx on public.security_events(company_id, created_at desc);
+create index if not exists security_events_project_created_idx on public.security_events(project_id, created_at desc);
+create index if not exists security_events_action_created_idx on public.security_events(action, created_at desc);
+create index if not exists security_events_request_id_idx on public.security_events(request_id) where request_id is not null;
+create index if not exists rate_limit_buckets_updated_idx on public.rate_limit_buckets(updated_at);
+create index if not exists security_blocks_active_user_idx on public.security_blocks(user_id, blocked_at desc) where revoked_at is null and block_type = 'user';
+create index if not exists security_blocks_active_ip_idx on public.security_blocks(ip_address, blocked_at desc) where revoked_at is null and block_type = 'ip';
+create index if not exists security_blocks_created_idx on public.security_blocks(blocked_at desc);
 
 alter table public.companies enable row level security;
 alter table public.profiles enable row level security;
@@ -375,6 +433,192 @@ alter table public.project_comments enable row level security;
 alter table public.project_approvals enable row level security;
 alter table public.project_share_links enable row level security;
 alter table public.project_assets enable row level security;
+alter table public.security_events enable row level security;
+alter table public.rate_limit_buckets enable row level security;
+alter table public.security_blocks enable row level security;
+
+create or replace function public.get_auth_audit_events(
+  p_since timestamptz default now() - interval '7 days',
+  p_limit integer default 100,
+  p_offset integer default 0
+) returns table (
+  id text,
+  created_at timestamptz,
+  action text,
+  outcome text,
+  actor_user_id uuid,
+  actor_email text,
+  ip_address text,
+  user_agent text,
+  metadata jsonb
+)
+language sql
+security definer
+set search_path = public, auth
+as $$
+  select
+    a.id::text,
+    a.created_at,
+    coalesce(
+      a.payload::jsonb ->> 'action',
+      a.payload::jsonb ->> 'event',
+      a.payload::jsonb ->> 'type',
+      'auth_event'
+    ) as action,
+    case
+      when lower(coalesce(a.payload::jsonb ->> 'status', '')) in ('error', 'failed', 'denied') then 'failed'
+      when a.payload::jsonb ? 'error' then 'failed'
+      else 'success'
+    end as outcome,
+    case
+      when coalesce(a.payload::jsonb ->> 'actor_id', a.payload::jsonb ->> 'user_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        then coalesce(a.payload::jsonb ->> 'actor_id', a.payload::jsonb ->> 'user_id')::uuid
+      else null
+    end as actor_user_id,
+    coalesce(
+      a.payload::jsonb ->> 'actor_username',
+      a.payload::jsonb ->> 'email',
+      a.payload::jsonb #>> '{traits,email}',
+      a.payload::jsonb #>> '{metadata,email}'
+    ) as actor_email,
+    coalesce(
+      a.ip_address::text,
+      a.payload::jsonb ->> 'ip_address',
+      a.payload::jsonb #>> '{metadata,ip_address}'
+    ) as ip_address,
+    coalesce(
+      a.payload::jsonb ->> 'user_agent',
+      a.payload::jsonb #>> '{metadata,user_agent}'
+    ) as user_agent,
+    a.payload::jsonb - 'token' - 'access_token' - 'password' - 'authorization' as metadata
+  from auth.audit_log_entries a
+  where a.created_at >= p_since
+  order by a.created_at desc
+  limit least(greatest(p_limit, 1), 500)
+  offset greatest(p_offset, 0);
+$$;
+
+create or replace function public.consume_rate_limit(
+  p_key text,
+  p_window_ms integer,
+  p_max integer,
+  p_block_ms integer,
+  p_max_block_ms integer,
+  p_violation_ttl_ms integer,
+  p_progressive boolean default true
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_count integer := 0;
+  v_reset_at timestamptz := v_now + (p_window_ms * interval '1 millisecond');
+  v_blocked_until timestamptz;
+  v_violations integer := 0;
+  v_violation_expires_at timestamptz;
+  v_multiplier integer := 1;
+  v_next_block_ms integer := p_block_ms;
+  v_retry_after integer := 0;
+  v_existing record;
+begin
+  perform pg_advisory_xact_lock(hashtext(p_key));
+
+  select *
+  into v_existing
+  from public.rate_limit_buckets
+  where key = p_key;
+
+  if found then
+    if v_existing.reset_at > v_now then
+      v_count := v_existing.count;
+      v_reset_at := v_existing.reset_at;
+    end if;
+
+    v_blocked_until := v_existing.blocked_until;
+
+    if v_existing.violation_expires_at > v_now then
+      v_violations := v_existing.violations;
+      v_violation_expires_at := v_existing.violation_expires_at;
+    end if;
+  end if;
+
+  if v_blocked_until is not null and v_blocked_until > v_now then
+    v_retry_after := ceil(extract(epoch from (v_blocked_until - v_now)));
+
+    return jsonb_build_object(
+      'blocked', true,
+      'alreadyBlocked', true,
+      'retryAfterSeconds', v_retry_after,
+      'count', v_count,
+      'resetAtMs', floor(extract(epoch from v_reset_at) * 1000),
+      'violations', v_violations
+    );
+  end if;
+
+  v_count := v_count + 1;
+
+  if v_count > p_max then
+    if p_progressive then
+      v_violations := v_violations + 1;
+    else
+      v_violations := 1;
+    end if;
+
+    v_violation_expires_at := v_now + (p_violation_ttl_ms * interval '1 millisecond');
+    v_multiplier := case
+      when p_progressive then least((power(2, greatest(v_violations - 1, 0)))::integer, 16)
+      else 1
+    end;
+    v_next_block_ms := least(p_block_ms * v_multiplier, p_max_block_ms);
+    v_blocked_until := v_now + (v_next_block_ms * interval '1 millisecond');
+    v_retry_after := ceil(extract(epoch from (v_blocked_until - v_now)));
+
+    insert into public.rate_limit_buckets (
+      key, count, reset_at, blocked_until, violations, violation_expires_at, updated_at
+    ) values (
+      p_key, v_count, v_reset_at, v_blocked_until, v_violations, v_violation_expires_at, v_now
+    )
+    on conflict (key) do update set
+      count = excluded.count,
+      reset_at = excluded.reset_at,
+      blocked_until = excluded.blocked_until,
+      violations = excluded.violations,
+      violation_expires_at = excluded.violation_expires_at,
+      updated_at = excluded.updated_at;
+
+    return jsonb_build_object(
+      'blocked', true,
+      'retryAfterSeconds', v_retry_after,
+      'count', v_count,
+      'resetAtMs', floor(extract(epoch from v_reset_at) * 1000),
+      'violations', v_violations,
+      'blockMs', v_next_block_ms
+    );
+  end if;
+
+  insert into public.rate_limit_buckets (
+    key, count, reset_at, blocked_until, violations, violation_expires_at, updated_at
+  ) values (
+    p_key, v_count, v_reset_at, null, v_violations, v_violation_expires_at, v_now
+  )
+  on conflict (key) do update set
+    count = excluded.count,
+    reset_at = excluded.reset_at,
+    blocked_until = excluded.blocked_until,
+    violations = excluded.violations,
+    violation_expires_at = excluded.violation_expires_at,
+    updated_at = excluded.updated_at;
+
+  return jsonb_build_object(
+    'blocked', false,
+    'count', v_count,
+    'resetAtMs', floor(extract(epoch from v_reset_at) * 1000),
+    'violations', v_violations
+  );
+end;
+$$;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (

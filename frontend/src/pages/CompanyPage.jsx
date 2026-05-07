@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Copy, Trash2 } from 'lucide-react'
+import { Archive, ArrowRight, Copy, Pencil, Trash2, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -8,8 +8,11 @@ import {
   canInviteMembers,
   canManageProjectLifecycle as canManageProjectLifecycleForRole,
   getInviteRoleOptions,
+  isAdmin,
 } from '../lib/roleCapabilities'
 import {
+  COMPANY_ROLE_ORDER,
+  MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
@@ -91,11 +94,34 @@ export default function CompanyPage() {
   const [inviteRole, setInviteRole] = useState('editor')
   const [inviteFeedback, setInviteFeedback] = useState('')
   const [inviting, setInviting] = useState(false)
+  const [editingMember, setEditingMember] = useState(null)
+  const [editForm, setEditForm] = useState({ fullName: '', role: 'editor' })
+  const [editError, setEditError] = useState('')
+  const [editBusy, setEditBusy] = useState(false)
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
   const canCreateProjects = canCreateProjectsForRole(currentUser, company?.membershipRole)
   const inviteRoles = getInviteRoleOptions(currentUser, company?.membershipRole)
+  const isAdminUser = isAdmin(currentUser)
+  const isCompanyManager = company?.membershipRole === 'manager'
+
+  function canManageMember(member) {
+    if (!member) return false
+    if (isAdminUser) return true
+    if (!isCompanyManager) return false
+    return member.role !== 'manager'
+  }
+
+  function getMemberRoleOptions(member) {
+    if (isAdminUser) return COMPANY_ROLE_ORDER
+    const baseOptions = MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER
+    return member && baseOptions.includes(member.role)
+      ? baseOptions
+      : member?.role
+        ? [member.role, ...baseOptions.filter((role) => role !== member.role)]
+        : baseOptions
+  }
 
   useEffect(() => {
     let active = true
@@ -179,6 +205,68 @@ export default function CompanyPage() {
       setInviteFeedback(err.message || 'No se pudo enviar la invitación')
     } finally {
       setInviting(false)
+    }
+  }
+
+  function openEditMember(member) {
+    setEditingMember(member)
+    setEditForm({
+      fullName: member.fullName || '',
+      role: member.role || 'editor',
+    })
+    setEditError('')
+  }
+
+  function closeEditMember() {
+    setEditingMember(null)
+    setEditError('')
+  }
+
+  async function handleSaveEditMember(e) {
+    e.preventDefault()
+    if (!editingMember) return
+
+    const trimmedName = String(editForm.fullName || '').trim()
+    const nextRole = editForm.role
+    const nameChanged = trimmedName !== (editingMember.fullName || '')
+    const roleChanged = nextRole !== editingMember.role
+
+    if (!nameChanged && !roleChanged) {
+      closeEditMember()
+      return
+    }
+
+    setEditBusy(true)
+    setEditError('')
+
+    try {
+      if (nameChanged) {
+        await apiFetch(`/api/users/${editingMember.userId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ fullName: trimmedName }),
+        })
+      }
+
+      if (roleChanged) {
+        await apiFetch(`/api/users/${editingMember.userId}/memberships/${companyId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ role: nextRole }),
+        })
+      }
+
+      const nextMembers = members.map((existing) => (
+        existing.userId === editingMember.userId
+          ? { ...existing, fullName: trimmedName, role: nextRole }
+          : existing
+      ))
+      setMembers(nextMembers)
+      if (company) writeCompanyCache(companyId, { company, projects, members: nextMembers })
+
+      closeEditMember()
+    } catch (err) {
+      setEditError(err.message || 'No se pudo actualizar al miembro')
+    } finally {
+      setEditBusy(false)
     }
   }
 
@@ -456,25 +544,99 @@ export default function CompanyPage() {
                   </div>
                 ) : (
                   <div className={styles.membersList}>
-                    {members.map((member) => (
-                      <article key={member.userId} className={styles.memberRow}>
-                        <div>
-                          <p className={styles.memberName}>{member.fullName || 'Sin nombre'}</p>
-                          <p className={styles.memberEmail}>{member.email || 'Sin email'}</p>
-                        </div>
+                    {members.map((member) => {
+                      const memberManageable = canManageMember(member)
+                      return (
+                        <article key={member.userId} className={styles.memberRow}>
+                          <div>
+                            <p className={styles.memberName}>{member.fullName || 'Sin nombre'}</p>
+                            <p className={styles.memberEmail}>{member.email || 'Sin email'}</p>
+                          </div>
 
-                        <div className={styles.memberMeta}>
-                          <span className={styles.memberRole}>{roleLabel(member.role)}</span>
-                          <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
-                        </div>
-                      </article>
-                    ))}
+                          <div className={styles.memberMeta}>
+                            <span className={styles.memberRole}>{roleLabel(member.role)}</span>
+                            <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
+                          </div>
+
+                          {memberManageable && (
+                            <button
+                              type="button"
+                              className={styles.editMemberButton}
+                              onClick={() => openEditMember(member)}
+                              title="Editar miembro"
+                              aria-label="Editar miembro"
+                            >
+                              <Pencil aria-hidden="true" />
+                            </button>
+                          )}
+                        </article>
+                      )
+                    })}
                   </div>
                 )}
               </div>
             </aside>
           </div>
         </>
+      )}
+
+      {editingMember && (
+        <div className={styles.modalBackdrop} onClick={(e) => { if (e.target === e.currentTarget) closeEditMember() }}>
+          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-member-title">
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 id="edit-member-title" className={styles.modalTitle}>Editar miembro</h2>
+                <p className={styles.modalSubtitle}>
+                  {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
+                </p>
+              </div>
+              <button type="button" className={styles.modalClose} onClick={closeEditMember} aria-label="Cerrar">
+                <X aria-hidden="true" />
+              </button>
+            </div>
+
+            <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
+              <label className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Nombre</span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={editForm.fullName}
+                  onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
+                  placeholder="Nombre completo"
+                />
+              </label>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Rol en {company?.name || 'empresa'}</span>
+                <select
+                  className={styles.input}
+                  value={editForm.role}
+                  onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
+                >
+                  {getMemberRoleOptions(editingMember).map((role) => (
+                    <option key={role} value={role}>{roleLabel(role)}</option>
+                  ))}
+                </select>
+              </label>
+
+              <p className={styles.fieldHint}>
+                Email: {editingMember.email || 'Sin email'}
+              </p>
+
+              {editError && <p className={styles.modalError}>{editError}</p>}
+
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={closeEditMember}>
+                  Cancelar
+                </button>
+                <button type="submit" className={styles.primaryButton} disabled={editBusy}>
+                  {editBusy ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
     </div>
   )

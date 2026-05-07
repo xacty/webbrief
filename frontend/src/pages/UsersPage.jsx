@@ -90,7 +90,7 @@ export default function UsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteForm, setInviteForm] = useState(EMPTY_INVITE_FORM)
   const [editingUser, setEditingUser] = useState(null)
-  const [editForm, setEditForm] = useState({ fullName: '', email: '', platformRole: 'user' })
+  const [editForm, setEditForm] = useState({ fullName: '', email: '', platformRole: 'user', companyRoles: {} })
   const [avatarFile, setAvatarFile] = useState(null)
   const [avatarPreview, setAvatarPreview] = useState('')
   const [expandedUserId, setExpandedUserId] = useState('')
@@ -292,11 +292,17 @@ export default function UsersPage() {
   }
 
   function openEditUser(user) {
+    const initialCompanyRoles = (user.companies || []).reduce((accumulator, company) => {
+      accumulator[company.companyId] = company.role
+      return accumulator
+    }, {})
+
     setEditingUser(user)
     setEditForm({
       fullName: user.fullName || '',
       email: user.email || '',
       platformRole: user.platformRole || 'user',
+      companyRoles: initialCompanyRoles,
     })
     setAvatarFile(null)
     setAvatarPreview(user.avatarUrl || '')
@@ -330,9 +336,22 @@ export default function UsersPage() {
     event.preventDefault()
     if (!editingUser) return
 
-    const body = isAdminUser
-      ? editForm
+    const profileBody = isAdminUser
+      ? {
+          fullName: editForm.fullName,
+          email: editForm.email,
+          platformRole: editForm.platformRole,
+        }
       : { fullName: editForm.fullName }
+
+    const targetPlatformRole = isAdminUser ? editForm.platformRole : editingUser.platformRole
+    const companyRoleChanges = targetPlatformRole === 'user'
+      ? (editingUser.companies || []).filter((company) => {
+          const nextRole = editForm.companyRoles?.[company.companyId]
+          if (!nextRole || nextRole === company.role) return false
+          return canManageMembership(company)
+        })
+      : []
 
     setBusyKey(`edit:${editingUser.id}`)
     setError('')
@@ -341,8 +360,16 @@ export default function UsersPage() {
     try {
       await apiFetch(`/api/users/${editingUser.id}`, {
         method: 'PATCH',
-        body: JSON.stringify(body),
+        body: JSON.stringify(profileBody),
       })
+
+      for (const company of companyRoleChanges) {
+        const nextRole = editForm.companyRoles[company.companyId]
+        await apiFetch(`/api/users/${editingUser.id}/memberships/${company.companyId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ role: nextRole }),
+        })
+      }
 
       if (avatarFile) {
         setActionMessage('Subiendo avatar...')
@@ -836,15 +863,25 @@ export default function UsersPage() {
         </div>
       </footer>
 
-      {editingUser && (
+      {editingUser && (() => {
+        const editTargetCompanies = editingUser.companies || []
+        const effectivePlatformRole = isAdminUser ? editForm.platformRole : (editingUser.platformRole || 'user')
+        const editTargetIsGlobal = isGlobalPlatformRole(effectivePlatformRole)
+        const hasManageableMembership = editTargetCompanies.some((company) => canManageMembership(company))
+        const showCompanyRolesSection = !editTargetIsGlobal && editTargetCompanies.length > 0 && (isAdminUser || hasManageableMembership)
+        const modalSubtitle = isAdminUser
+          ? 'Actualiza identidad, email, rol de plataforma y roles por empresa.'
+          : hasManageableMembership
+            ? 'Actualiza el nombre y los roles por empresa.'
+            : 'Actualiza el nombre visible del usuario.'
+
+        return (
         <div className={styles.modalBackdrop}>
           <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
             <div className={styles.panelHeader}>
               <div>
                 <h2 id="edit-user-title" className={styles.panelTitle}>Editar usuario</h2>
-                <p className={styles.panelText}>
-                  {isAdminUser ? 'Actualiza identidad, email y rol de plataforma.' : 'Actualiza el nombre visible del usuario.'}
-                </p>
+                <p className={styles.panelText}>{modalSubtitle}</p>
               </div>
               <button className={styles.iconButton} onClick={closeEditUser} aria-label="Cerrar">
                 <X aria-hidden="true" />
@@ -928,6 +965,45 @@ export default function UsersPage() {
                 </>
               )}
 
+              {showCompanyRolesSection && (
+                <div className={styles.membershipSection}>
+                  <p className={styles.membershipTitle}>Roles por empresa</p>
+                  <div className={styles.membershipList}>
+                    {editTargetCompanies.map((company) => {
+                      const manageable = canManageMembership(company)
+                      const currentRole = editForm.companyRoles?.[company.companyId] ?? company.role
+                      return (
+                        <div key={`${editingUser.id}-edit-${company.companyId}`} className={styles.membershipRow}>
+                          <div>
+                            <p className={styles.membershipCompany}>{company.companyName}</p>
+                            <p className={styles.membershipMeta}>/{company.companySlug}</p>
+                          </div>
+                          {manageable ? (
+                            <select
+                              className={styles.roleSelect}
+                              value={currentRole}
+                              onChange={(event) => {
+                                const nextRole = event.target.value
+                                setEditForm((current) => ({
+                                  ...current,
+                                  companyRoles: { ...current.companyRoles, [company.companyId]: nextRole },
+                                }))
+                              }}
+                            >
+                              {membershipRoleOptions(company).map((role) => (
+                                <option key={role} value={role}>{roleLabel(role)}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className={styles.membershipBadge}>{roleLabel(company.role)}</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className={styles.formActions}>
                 <button className={styles.tertiaryButton} type="button" onClick={closeEditUser}>
                   Cancelar
@@ -939,7 +1015,8 @@ export default function UsersPage() {
             </form>
           </section>
         </div>
-      )}
+      )
+      })()}
     </div>
   )
 }

@@ -13,6 +13,8 @@ import {
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { requireAuth } from '../middleware/auth.js'
+import { rateLimiters } from '../middleware/security.js'
+import { logSecurityEvent } from '../lib/securityAudit.js'
 import { seedProjectPagesForType, seedProjectPagesFromTemplate } from '../data/projectTemplates.js'
 import {
   canAccessCompany,
@@ -1736,7 +1738,7 @@ router.patch('/:id/deliverables/:deliverableId', async (req, res) => {
   }
 })
 
-router.delete('/:id/share-links', async (req, res) => {
+router.delete('/:id/share-links', rateLimiters.shareLink, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
@@ -1749,13 +1751,20 @@ router.delete('/:id/share-links', async (req, res) => {
       .eq('project_id', project.id)
       .is('revoked_at', null)
     if (error) return res.status(500).json({ error: error.message })
+    await logSecurityEvent(req, {
+      action: 'project_share_links_revoked',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+    })
     return res.json({ revoked: true })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo revocar el link' })
   }
 })
 
-router.post('/:id/share-links', async (req, res) => {
+router.post('/:id/share-links', rateLimiters.shareLink, async (req, res) => {
   const { label = 'Link privado', expiresAt = null } = req.body
 
   try {
@@ -1792,6 +1801,15 @@ router.post('/:id/share-links', async (req, res) => {
       description: data.label,
     })
 
+    await logSecurityEvent(req, {
+      action: 'project_share_link_created',
+      resourceType: 'share_link',
+      resourceId: data.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { expiresAt: data.expires_at },
+    })
+
     return res.status(201).json({
       shareLink: {
         id: data.id,
@@ -1809,7 +1827,7 @@ router.post('/:id/share-links', async (req, res) => {
   }
 })
 
-router.post('/:id/assets', upload.single('file'), async (req, res) => {
+router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file'), async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) {
@@ -1884,6 +1902,15 @@ router.post('/:id/assets', upload.single('file'), async (req, res) => {
       title: isSvg ? 'SVG adjuntado' : 'Imagen subida',
       description: asset.file_name,
       metadata: { mimeType: asset.mime_type, renderInline: asset.render_inline, sectionId: req.body.sectionId || null, pageId: req.body.pageId || null },
+    })
+
+    await logSecurityEvent(req, {
+      action: 'project_asset_uploaded',
+      resourceType: 'asset',
+      resourceId: asset.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { mimeType: asset.mime_type, fileSize: asset.file_size, renderInline: asset.render_inline },
     })
 
     return res.status(201).json({
@@ -2141,7 +2168,7 @@ router.post('/:id/duplicate', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Brief — share token management + responses
 // ---------------------------------------------------------------------------
-router.post('/:id/brief/share', async (req, res) => {
+router.post('/:id/brief/share', rateLimiters.shareLink, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
@@ -2169,13 +2196,21 @@ router.post('/:id/brief/share', async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message })
 
+    await logSecurityEvent(req, {
+      action: 'brief_share_link_created',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+    })
+
     return res.json({ token })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo generar el link' })
   }
 })
 
-router.delete('/:id/brief/share', async (req, res) => {
+router.delete('/:id/brief/share', rateLimiters.shareLink, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
@@ -2189,6 +2224,13 @@ router.delete('/:id/brief/share', async (req, res) => {
       .eq('id', project.id)
 
     if (error) return res.status(500).json({ error: error.message })
+    await logSecurityEvent(req, {
+      action: 'brief_share_link_revoked',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+    })
     return res.json({ ok: true })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo revocar el link' })
@@ -2267,7 +2309,7 @@ router.patch('/:id/brief/settings', async (req, res) => {
   }
 })
 
-router.post('/:id/brief/documents', briefDocsUpload.single('file'), async (req, res) => {
+router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsUpload.single('file'), async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
@@ -2373,6 +2415,15 @@ router.post('/:id/brief/documents', briefDocsUpload.single('file'), async (req, 
 
     if (assetError) return res.status(500).json({ error: assetError.message })
 
+    await logSecurityEvent(req, {
+      action: 'brief_document_uploaded',
+      resourceType: 'asset',
+      resourceId: asset.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { mimeType: asset.mime_type, fileSize: asset.file_size, assetKind: asset.asset_kind },
+    })
+
     return res.status(201).json({
       asset: {
         id: asset.id,
@@ -2391,7 +2442,7 @@ router.post('/:id/brief/documents', briefDocsUpload.single('file'), async (req, 
   }
 })
 
-router.post('/:id/archive', async (req, res) => {
+router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
@@ -2416,6 +2467,14 @@ router.post('/:id/archive', async (req, res) => {
       title: 'Proyecto archivado',
     })
 
+    await logSecurityEvent(req, {
+      action: 'project_archived',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+    })
+
     return res.json({ archivedAt: timestamp })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo archivar el proyecto' })
@@ -2433,7 +2492,7 @@ async function scheduleLifecycleNotifications(projectId, projectType, trashedAt)
   }
 }
 
-router.post('/:id/trash', async (req, res) => {
+router.post('/:id/trash', rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
@@ -2467,6 +2526,15 @@ router.post('/:id/trash', async (req, res) => {
       description: `Retención de ${retentionDays} días`,
     })
 
+    await logSecurityEvent(req, {
+      action: 'project_trashed',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { retentionDays, deleteAfter: deleteAfter.toISOString() },
+    })
+
     return res.json({ trashedAt: trashedAt.toISOString(), deleteAfter: deleteAfter.toISOString() })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo enviar el proyecto a papelera' })
@@ -2474,7 +2542,7 @@ router.post('/:id/trash', async (req, res) => {
 })
 
 // "Mantener" — extend retention. Resetea trashed_at = NOW y reagenda notificaciones.
-router.post('/:id/lifecycle/extend', async (req, res) => {
+router.post('/:id/lifecycle/extend', rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser, { includeTrashed: true })
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
@@ -2500,6 +2568,15 @@ router.post('/:id/lifecycle/extend', async (req, res) => {
 
     await scheduleLifecycleNotifications(project.id, project.project_type, trashedAt.toISOString())
 
+    await logSecurityEvent(req, {
+      action: 'project_retention_extended',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { retentionDays, deleteAfter: deleteAfter.toISOString() },
+    })
+
     return res.json({
       trashedAt: trashedAt.toISOString(),
       deleteAfter: deleteAfter.toISOString(),
@@ -2510,12 +2587,15 @@ router.post('/:id/lifecycle/extend', async (req, res) => {
   }
 })
 
-router.post('/:id/restore', async (req, res) => {
+router.post('/:id/restore', rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser, { includeTrashed: true })
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
     if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede restaurar este proyecto' })
+    }
+    if (!project.archived_at && !project.trashed_at) {
+      return res.status(400).json({ error: 'El proyecto no está archivado ni en papelera' })
     }
 
     const { error } = await supabaseAdmin
@@ -2537,6 +2617,18 @@ router.post('/:id/restore', async (req, res) => {
       .delete()
       .eq('project_id', project.id)
       .is('sent_at', null)
+
+    await logSecurityEvent(req, {
+      action: 'project_restored',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: {
+        wasArchived: Boolean(project.archived_at),
+        wasTrashed: Boolean(project.trashed_at),
+      },
+    })
 
     return res.json({ restored: true })
   } catch (error) {
@@ -2581,12 +2673,15 @@ async function purgeProjectAssets(projectId) {
   return { deletedCount, errors }
 }
 
-router.delete('/:id/permanent', async (req, res) => {
+router.delete('/:id/permanent', rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser, { includeTrashed: true })
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
     if (req.currentUser.platformRole !== 'admin') {
       return res.status(403).json({ error: 'Solo admin puede borrar permanentemente este proyecto' })
+    }
+    if (!project.trashed_at) {
+      return res.status(400).json({ error: 'Solo se pueden borrar permanentemente proyectos en papelera' })
     }
 
     // Cascade: borrar assets de imagekit + supabase storage antes de borrar el proyecto.
@@ -2602,6 +2697,14 @@ router.delete('/:id/permanent', async (req, res) => {
       .eq('id', project.id)
 
     if (error) return res.status(500).json({ error: error.message })
+    await logSecurityEvent(req, {
+      action: 'project_permanently_deleted',
+      resourceType: 'project',
+      resourceId: project.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { assetsDeleted: purgeResult.deletedCount, assetPurgeErrors: purgeResult.errors.length },
+    })
     return res.json({ deleted: true, assetsDeleted: purgeResult.deletedCount })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo borrar permanentemente el proyecto' })

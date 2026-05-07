@@ -10,6 +10,8 @@ import {
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { supabaseAdmin } from '../lib/supabase.js'
+import { rateLimiters } from '../middleware/security.js'
+import { logSecurityEvent } from '../lib/securityAudit.js'
 import {
   canInviteCompanyRole,
   canManageCompanyUsers,
@@ -389,7 +391,7 @@ router.get('/', async (req, res) => {
   }
 })
 
-router.post('/', async (req, res) => {
+router.post('/', rateLimiters.inviteUser, async (req, res) => {
   const { email, fullName, role, companyId, platformRole } = req.body
 
   try {
@@ -408,6 +410,14 @@ router.post('/', async (req, res) => {
         email,
         fullName,
         platformRole: nextPlatformRole,
+      })
+
+      await logSecurityEvent(req, {
+        action: 'global_user_invited',
+        resourceType: 'user',
+        resourceId: profile.userId,
+        targetUserId: profile.userId,
+        metadata: { platformRole: nextPlatformRole, inviteSent: profile.inviteSent },
       })
 
       return res.status(201).json({
@@ -432,6 +442,15 @@ router.post('/', async (req, res) => {
       platformRole: nextPlatformRole,
     })
 
+    await logSecurityEvent(req, {
+      action: 'company_user_invited',
+      resourceType: 'user',
+      resourceId: invitedUser.id,
+      companyId,
+      targetUserId: invitedUser.id,
+      metadata: { role, platformRole: nextPlatformRole, inviteSent: invitedUser.inviteSent },
+    })
+
     return res.status(201).json({
       message: invitedUser.inviteSent ? 'Invitacion enviada' : 'Acceso agregado',
       invitedUser,
@@ -441,7 +460,7 @@ router.post('/', async (req, res) => {
   }
 })
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', rateLimiters.sensitiveAction, async (req, res) => {
   const userId = req.params.id
   const { fullName, email, platformRole } = req.body
 
@@ -511,13 +530,25 @@ router.patch('/:id', async (req, res) => {
       if (updateError) throw updateError
     }
 
+    await logSecurityEvent(req, {
+      action: 'user_profile_updated',
+      resourceType: 'user',
+      resourceId: userId,
+      targetUserId: userId,
+      metadata: {
+        changedFields: Object.keys(profileUpdates).filter((field) => field !== 'updated_at'),
+        previousPlatformRole: profile.platform_role,
+        nextPlatformRole: profileUpdates.platform_role || profile.platform_role,
+      },
+    })
+
     return res.json({ updated: true })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo actualizar el usuario' })
   }
 })
 
-router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
+router.post('/:id/avatar', rateLimiters.authenticatedUpload, upload.single('avatar'), async (req, res) => {
   const userId = req.params.id
 
   try {
@@ -566,6 +597,14 @@ router.post('/:id/avatar', upload.single('avatar'), async (req, res) => {
       .eq('id', userId)
 
     if (profileError) throw profileError
+
+    await logSecurityEvent(req, {
+      action: 'user_avatar_uploaded',
+      resourceType: 'user',
+      resourceId: userId,
+      targetUserId: userId,
+      metadata: { mimeType: req.file.mimetype, fileSize: req.file.size },
+    })
 
     return res.json({
       avatarUrl,
@@ -625,7 +664,7 @@ router.get('/:id/avatar/export', async (req, res) => {
   }
 })
 
-router.patch('/:id/memberships/:companyId', async (req, res) => {
+router.patch('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async (req, res) => {
   const { id: userId, companyId } = req.params
   const { role } = req.body
 
@@ -659,13 +698,20 @@ router.patch('/:id/memberships/:companyId', async (req, res) => {
       .eq('user_id', userId)
 
     if (error) throw error
+    await logSecurityEvent(req, {
+      action: 'company_membership_role_updated',
+      resourceType: 'company_membership',
+      companyId,
+      targetUserId: userId,
+      metadata: { previousRole: membership.role, nextRole: role },
+    })
     return res.json({ updated: true })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo actualizar el acceso' })
   }
 })
 
-router.delete('/:id/memberships/:companyId', async (req, res) => {
+router.delete('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async (req, res) => {
   const { id: userId, companyId } = req.params
 
   try {
@@ -687,13 +733,20 @@ router.delete('/:id/memberships/:companyId', async (req, res) => {
       .eq('user_id', userId)
 
     if (error) throw error
+    await logSecurityEvent(req, {
+      action: 'company_membership_removed',
+      resourceType: 'company_membership',
+      companyId,
+      targetUserId: userId,
+      metadata: { previousRole: membership.role },
+    })
     return res.json({ removed: true })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo quitar el acceso' })
   }
 })
 
-router.post('/:id/removal-requests', async (req, res) => {
+router.post('/:id/removal-requests', rateLimiters.sensitiveAction, async (req, res) => {
   const targetUserId = req.params.id
   const { companyId } = req.body || {}
 
@@ -765,13 +818,21 @@ router.post('/:id/removal-requests', async (req, res) => {
 
     if (notificationsError) throw notificationsError
 
+    await logSecurityEvent(req, {
+      action: 'company_membership_removal_requested',
+      resourceType: 'company_membership',
+      companyId,
+      targetUserId,
+      metadata: { targetRole: targetMembership.role, recipientCount: recipients.length },
+    })
+
     return res.status(201).json({ requested: true })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo crear la solicitud' })
   }
 })
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', rateLimiters.sensitiveAction, async (req, res) => {
   if (!isAdmin(req.currentUser)) {
     return res.status(403).json({ error: 'Solo admin puede borrar cuentas' })
   }
@@ -806,6 +867,14 @@ router.delete('/:id', async (req, res) => {
 
     const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
     if (error) throw error
+
+    await logSecurityEvent(req, {
+      action: 'user_deleted',
+      resourceType: 'user',
+      resourceId: userId,
+      targetUserId: userId,
+      metadata: { previousPlatformRole: profile.platform_role },
+    })
 
     return res.json({ deleted: true })
   } catch (error) {

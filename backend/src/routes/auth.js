@@ -2,6 +2,9 @@ import { Router } from 'express'
 import { inviteUserToCompany } from '../lib/users.js'
 import { canInviteCompanyRole } from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
+import { rateLimiters } from '../middleware/security.js'
+import { logSecurityEvent } from '../lib/securityAudit.js'
+import { normalizeEmail, normalizeText } from '../lib/validation.js'
 import { normalizePlatformRole } from '../../../shared/userRoles.js'
 
 const router = Router()
@@ -15,11 +18,13 @@ router.get('/me', requireAuth, async (req, res) => {
   return res.json({ user: req.currentUser })
 })
 
-router.post('/invite-user', requireAuth, async (req, res) => {
+router.post('/invite-user', requireAuth, rateLimiters.inviteUser, async (req, res) => {
   const { email, fullName, role, companyId, platformRole } = req.body
+  const normalizedEmail = normalizeEmail(email)
+  const normalizedFullName = normalizeText(fullName, 120)
 
-  if (!email || !role) {
-    return res.status(400).json({ error: 'email y role son requeridos' })
+  if (!normalizedEmail || !role) {
+    return res.status(400).json({ error: 'Datos de invitación inválidos' })
   }
 
   const targetCompanyId = companyId || req.currentUser.memberships[0]?.companyId
@@ -32,12 +37,22 @@ router.post('/invite-user', requireAuth, async (req, res) => {
   }
 
   try {
+    const allowedPlatformRole = getAllowedPlatformRole(req.currentUser, platformRole)
     const invitedUser = await inviteUserToCompany({
-      email,
-      fullName,
+      email: normalizedEmail,
+      fullName: normalizedFullName,
       role,
       companyId: targetCompanyId,
-      platformRole: getAllowedPlatformRole(req.currentUser, platformRole),
+      platformRole: allowedPlatformRole,
+    })
+
+    await logSecurityEvent(req, {
+      action: 'company_user_invited',
+      resourceType: 'user',
+      resourceId: invitedUser.id,
+      companyId: targetCompanyId,
+      targetUserId: invitedUser.id,
+      metadata: { role, platformRole: allowedPlatformRole, inviteSent: invitedUser.inviteSent },
     })
 
     return res.status(201).json({
@@ -45,7 +60,12 @@ router.post('/invite-user', requireAuth, async (req, res) => {
       invitedUser,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear la invitacion' })
+    console.error('invite-user failed', {
+      actorId: req.currentUser.id,
+      companyId: targetCompanyId,
+      error: error.message,
+    })
+    return res.status(500).json({ error: 'No se pudo crear la invitación' })
   }
 })
 

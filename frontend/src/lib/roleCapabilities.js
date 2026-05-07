@@ -31,6 +31,10 @@ export function canUseTrashNav(currentUser) {
     || currentUser?.memberships?.some((membership) => membership.role === 'manager')
 }
 
+export function canUseSecurityNav(currentUser) {
+  return isAdmin(currentUser)
+}
+
 export function getInviteRoleOptions(currentUser, membershipRole) {
   // Use realPlatformRole when in preview so invite options reflect true admin level.
   const platformRole = currentUser?.realPlatformRole || currentUser?.platformRole

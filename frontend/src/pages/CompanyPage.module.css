@@ -407,11 +407,38 @@ select.input {
 .memberRow {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 12px;
   border-radius: 14px;
   background: var(--wb-surface-muted);
   border: 1px solid #e8eef7;
+}
+
+.editMemberButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--wb-text-muted);
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.editMemberButton:hover {
+  background: #fff;
+  border-color: var(--wb-border);
+  color: var(--wb-text);
+}
+
+.editMemberButton svg {
+  width: 16px;
+  height: 16px;
 }
 
 .memberName {
@@ -482,6 +509,108 @@ select.input {
 
 .error {
   color: var(--wb-danger);
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.modal {
+  width: min(460px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-lg);
+  background: var(--wb-surface);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modalSubtitle {
+  margin: 6px 0 0;
+  color: var(--wb-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.modalClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--wb-border);
+  background: var(--wb-surface);
+  color: var(--wb-text-muted);
+  cursor: pointer;
+}
+
+.modalClose:hover {
+  background: var(--wb-surface-muted);
+  color: var(--wb-text);
+}
+
+.modalClose svg {
+  width: 16px;
+  height: 16px;
+}
+
+.modalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wb-text-muted);
+}
+
+.fieldHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--wb-text-muted);
+}
+
+.modalError {
+  margin: 0;
+  color: var(--wb-danger);
+  font-size: 13px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 @media (max-width: 1040px) {

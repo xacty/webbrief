@@ -6,3 +6,5 @@ node_modules/
 *.db
 dist/
 .DS_Store
+.claude/worktrees/
+.claude/plans/

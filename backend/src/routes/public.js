@@ -4,6 +4,16 @@ import crypto from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { hashToken, logProjectActivity } from '../lib/projectAccess.js'
 import { uploadToImageKit, buildImageKitPath } from '../lib/imagekit.js'
+import { logSecurityEvent } from '../lib/securityAudit.js'
+import { publicAntiScrapingHeaders, rateLimiters } from '../middleware/security.js'
+import {
+  INPUT_LIMITS,
+  isValidPublicToken,
+  normalizeEmail,
+  normalizeOptionalSafeId,
+  normalizeText,
+  validateAnswersPayload,
+} from '../lib/validation.js'
 
 const briefDocsUpload = multer({
   storage: multer.memoryStorage(),
@@ -11,6 +21,8 @@ const briefDocsUpload = multer({
 })
 
 const PROJECT_TOTAL_BUDGET_BYTES = 500 * 1024 * 1024
+const MAX_PUBLIC_PAGES = 50
+const MAX_PUBLIC_BRIEF_QUESTIONS = 80
 const BRIEF_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'])
 const BRIEF_DOC_MIMES = new Set([
   'application/pdf',
@@ -49,6 +61,16 @@ function sanitizeBriefFilename(name) {
 
 const router = Router()
 
+router.use(publicAntiScrapingHeaders)
+router.use(rateLimiters.publicTokenProbe)
+
+router.param('token', (req, res, next, token) => {
+  if (!isValidPublicToken(token)) {
+    return res.status(404).json({ error: 'Recurso no encontrado' })
+  }
+  return next()
+})
+
 function serializePublicPage(page) {
   return {
     id: page.id,
@@ -60,6 +82,14 @@ function serializePublicPage(page) {
     version: page.version || 1,
     updatedAt: page.updated_at,
   }
+}
+
+function serializePublicQuestions(questions) {
+  if (!Array.isArray(questions)) return []
+  return questions
+    .slice(0, MAX_PUBLIC_BRIEF_QUESTIONS)
+    .map((question) => question && typeof question === 'object' ? question : null)
+    .filter(Boolean)
 }
 
 async function getActiveShare(token) {
@@ -76,7 +106,7 @@ async function getActiveShare(token) {
   return shareLink
 }
 
-router.get('/share/:token', async (req, res) => {
+router.get('/share/:token', rateLimiters.publicRead, async (req, res) => {
   try {
     const shareLink = await getActiveShare(req.params.token)
     if (!shareLink) return res.status(404).json({ error: 'Link no encontrado o expirado' })
@@ -96,7 +126,8 @@ router.get('/share/:token', async (req, res) => {
         .from('project_pages')
         .select('*')
         .eq('project_id', shareLink.project_id)
-        .order('position', { ascending: true }),
+        .order('position', { ascending: true })
+        .limit(MAX_PUBLIC_PAGES),
     ])
 
     if (projectError) throw projectError
@@ -134,10 +165,16 @@ router.get('/share/:token', async (req, res) => {
   }
 })
 
-router.post('/share/:token/comments', async (req, res) => {
+router.post('/share/:token/comments', rateLimiters.publicMutation, async (req, res) => {
   const { authorName, authorEmail, body, pageId = null, sectionId = null } = req.body
-  if (!authorName?.trim() || !authorEmail?.trim() || !body?.trim()) {
-    return res.status(400).json({ error: 'authorName, authorEmail y body son requeridos' })
+  const normalizedAuthorName = normalizeText(authorName, INPUT_LIMITS.publicName)
+  const normalizedAuthorEmail = normalizeEmail(authorEmail)
+  const normalizedBody = normalizeText(body, INPUT_LIMITS.comment)
+  const normalizedPageId = normalizeOptionalSafeId(pageId)
+  const normalizedSectionId = normalizeOptionalSafeId(sectionId)
+
+  if (!normalizedAuthorName || !normalizedAuthorEmail || !normalizedBody) {
+    return res.status(400).json({ error: 'Comentario inválido' })
   }
 
   try {
@@ -148,11 +185,11 @@ router.post('/share/:token/comments', async (req, res) => {
       .from('project_comments')
       .insert({
         project_id: shareLink.project_id,
-        page_id: pageId,
-        section_id: sectionId,
-        author_name: authorName.trim(),
-        author_email: authorEmail.trim().toLowerCase(),
-        body: body.trim(),
+        page_id: normalizedPageId,
+        section_id: normalizedSectionId,
+        author_name: normalizedAuthorName,
+        author_email: normalizedAuthorEmail,
+        body: normalizedBody,
         source: 'share',
       })
       .select('id, project_id, page_id, section_id, author_name, author_email, body, status, created_at')
@@ -175,6 +212,14 @@ router.post('/share/:token/comments', async (req, res) => {
       },
     })
 
+    await logSecurityEvent(req, {
+      action: 'public_share_comment_created',
+      resourceType: 'comment',
+      resourceId: data.id,
+      projectId: shareLink.project_id,
+      metadata: { pageId: data.page_id, sectionId: data.section_id },
+    })
+
     return res.status(201).json({
       comment: {
         id: data.id,
@@ -193,10 +238,16 @@ router.post('/share/:token/comments', async (req, res) => {
   }
 })
 
-router.post('/share/:token/approvals', async (req, res) => {
+router.post('/share/:token/approvals', rateLimiters.publicMutation, async (req, res) => {
   const { reviewerName, reviewerEmail, status, comment = '', pageId = null, sectionId = null } = req.body
-  if (!reviewerName?.trim() || !reviewerEmail?.trim() || !['approved', 'changes_requested'].includes(status)) {
-    return res.status(400).json({ error: 'reviewerName, reviewerEmail y status válido son requeridos' })
+  const normalizedReviewerName = normalizeText(reviewerName, INPUT_LIMITS.publicName)
+  const normalizedReviewerEmail = normalizeEmail(reviewerEmail)
+  const normalizedComment = normalizeText(comment, INPUT_LIMITS.comment)
+  const normalizedPageId = normalizeOptionalSafeId(pageId)
+  const normalizedSectionId = normalizeOptionalSafeId(sectionId)
+
+  if (!normalizedReviewerName || !normalizedReviewerEmail || !['approved', 'changes_requested'].includes(status)) {
+    return res.status(400).json({ error: 'Aprobación inválida' })
   }
 
   try {
@@ -207,12 +258,12 @@ router.post('/share/:token/approvals', async (req, res) => {
       .from('project_approvals')
       .insert({
         project_id: shareLink.project_id,
-        page_id: pageId,
-        section_id: sectionId,
-        reviewer_name: reviewerName.trim(),
-        reviewer_email: reviewerEmail.trim().toLowerCase(),
+        page_id: normalizedPageId,
+        section_id: normalizedSectionId,
+        reviewer_name: normalizedReviewerName,
+        reviewer_email: normalizedReviewerEmail,
         status,
-        comment: comment?.trim() || null,
+        comment: normalizedComment || null,
       })
       .select('id, project_id, page_id, section_id, reviewer_name, reviewer_email, status, comment, created_at')
       .single()
@@ -232,6 +283,14 @@ router.post('/share/:token/approvals', async (req, res) => {
         pageId: data.page_id,
         sectionId: data.section_id,
       },
+    })
+
+    await logSecurityEvent(req, {
+      action: 'public_share_approval_created',
+      resourceType: 'approval',
+      resourceId: data.id,
+      projectId: shareLink.project_id,
+      metadata: { status: data.status, pageId: data.page_id, sectionId: data.section_id },
     })
 
     return res.status(201).json({
@@ -256,7 +315,7 @@ router.post('/share/:token/approvals', async (req, res) => {
 // Brief public routes — no authentication required
 // ---------------------------------------------------------------------------
 
-router.get('/brief/:token', async (req, res) => {
+router.get('/brief/:token', rateLimiters.publicRead, async (req, res) => {
   try {
     const { data: project, error } = await supabaseAdmin
       .from('projects')
@@ -288,7 +347,7 @@ router.get('/brief/:token', async (req, res) => {
         projectId: project.id,
         formTitle: briefData.formTitle || project.name,
         formDescription: briefData.formDescription || '',
-        questions: Array.isArray(briefData.questions) ? briefData.questions : [],
+        questions: serializePublicQuestions(briefData.questions),
       },
     })
   } catch (error) {
@@ -296,19 +355,20 @@ router.get('/brief/:token', async (req, res) => {
   }
 })
 
-router.post('/brief/:token/submit', async (req, res) => {
+router.post('/brief/:token/submit', rateLimiters.publicMutation, async (req, res) => {
   const { respondentName, respondentEmail, answers } = req.body
-  if (!respondentName?.trim() || !respondentEmail?.trim()) {
-    return res.status(400).json({ error: 'respondentName y respondentEmail son requeridos' })
-  }
-  if (!answers || typeof answers !== 'object') {
-    return res.status(400).json({ error: 'answers debe ser un objeto' })
+  const normalizedRespondentName = normalizeText(respondentName, INPUT_LIMITS.publicName)
+  const normalizedRespondentEmail = normalizeEmail(respondentEmail)
+  const answersValidation = validateAnswersPayload(answers)
+
+  if (!normalizedRespondentName || !normalizedRespondentEmail || !answersValidation.ok) {
+    return res.status(400).json({ error: 'Respuesta inválida' })
   }
 
   try {
     const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
-      .select('id, name, project_type, archived_at, trashed_at')
+      .select('id, company_id, name, project_type, archived_at, trashed_at')
       .eq('brief_share_token', req.params.token)
       .is('archived_at', null)
       .is('trashed_at', null)
@@ -324,8 +384,8 @@ router.post('/brief/:token/submit', async (req, res) => {
       .insert({
         project_id: project.id,
         share_token: req.params.token,
-        respondent_name: respondentName.trim(),
-        respondent_email: respondentEmail.trim().toLowerCase(),
+        respondent_name: normalizedRespondentName,
+        respondent_email: normalizedRespondentEmail,
         answers,
       })
       .select('id, submitted_at')
@@ -339,11 +399,20 @@ router.post('/brief/:token/submit', async (req, res) => {
       subjectType: 'brief_response',
       subjectId: response.id,
       title: 'Brief completado',
-      description: `${respondentName.trim()} (${respondentEmail.trim().toLowerCase()})`,
+      description: `${normalizedRespondentName} (${normalizedRespondentEmail})`,
       metadata: {
-        respondentName: respondentName.trim(),
-        respondentEmail: respondentEmail.trim().toLowerCase(),
+        respondentName: normalizedRespondentName,
+        respondentEmail: normalizedRespondentEmail,
       },
+    })
+
+    await logSecurityEvent(req, {
+      action: 'public_brief_submitted',
+      resourceType: 'brief_response',
+      resourceId: response.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { answerKeys: Object.keys(answers || {}).length },
     })
 
     return res.status(201).json({ ok: true, submittedAt: response.submitted_at })
@@ -352,7 +421,7 @@ router.post('/brief/:token/submit', async (req, res) => {
   }
 })
 
-router.post('/brief/:token/documents', briefDocsUpload.single('file'), async (req, res) => {
+router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUpload.single('file'), async (req, res) => {
   try {
     const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
@@ -462,6 +531,15 @@ router.post('/brief/:token/documents', briefDocsUpload.single('file'), async (re
       .single()
 
     if (assetError) return res.status(500).json({ error: assetError.message })
+
+    await logSecurityEvent(req, {
+      action: 'public_brief_document_uploaded',
+      resourceType: 'asset',
+      resourceId: asset.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { mimeType: asset.mime_type, fileSize: asset.file_size, assetKind },
+    })
 
     return res.status(201).json({
       asset: {

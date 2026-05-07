@@ -1,4 +1,7 @@
 import { supabaseAdmin } from '../lib/supabase.js'
+import { getActiveSecurityBlock } from '../lib/securityBlocks.js'
+import { logSecurityEvent } from '../lib/securityAudit.js'
+import { getRequestLogContext, writeSecurityLog } from '../lib/securityLogger.js'
 
 async function loadCurrentUser(user) {
   const [
@@ -56,19 +59,67 @@ export async function requireAuth(req, res, next) {
   const token = bearerToken || queryToken || bodyToken
 
   if (!token) {
+    writeSecurityLog('warn', 'auth_token_missing', getRequestLogContext(req))
+    await logSecurityEvent(req, {
+      action: 'auth_token_missing',
+      resourceType: 'auth',
+      outcome: 'denied',
+    })
     return res.status(401).json({ error: 'Token no proporcionado' })
   }
 
   try {
     const { data, error } = await supabaseAdmin.auth.getUser(token)
     if (error || !data?.user) {
+      writeSecurityLog('warn', 'auth_token_invalid', {
+        ...getRequestLogContext(req),
+        authError: error?.message || 'missing_user',
+      })
+      await logSecurityEvent(req, {
+        action: 'auth_token_invalid',
+        resourceType: 'auth',
+        outcome: 'denied',
+        metadata: { reason: error?.message || 'missing_user' },
+      })
       return res.status(401).json({ error: 'Token invalido o expirado' })
     }
 
     req.currentUser = await loadCurrentUser(data.user)
     req.accessToken = token
+    const userBlock = await getActiveSecurityBlock(req, {
+      userId: req.currentUser.id,
+      ipAddress: req.clientIp,
+    })
+
+    if (userBlock?.blockType === 'user') {
+      writeSecurityLog('warn', 'security_user_blocked_request', {
+        ...getRequestLogContext(req),
+        blockId: userBlock.id,
+        reason: userBlock.reason,
+      })
+      await logSecurityEvent(req, {
+        action: 'blocked_user_request_denied',
+        resourceType: 'security_block',
+        resourceId: userBlock.id,
+        targetUserId: req.currentUser.id,
+        outcome: 'denied',
+        metadata: { reason: userBlock.reason },
+      })
+      return res.status(403).json({ error: 'Usuario bloqueado por seguridad', blockId: userBlock.id })
+    }
+
     return next()
   } catch (error) {
+    writeSecurityLog('warn', 'auth_validation_failed', {
+      ...getRequestLogContext(req),
+      error: error.message,
+    })
+    await logSecurityEvent(req, {
+      action: 'auth_validation_failed',
+      resourceType: 'auth',
+      outcome: 'failed',
+      metadata: { reason: error.message },
+    })
     return res.status(401).json({ error: error.message || 'No se pudo validar la sesion' })
   }
 }

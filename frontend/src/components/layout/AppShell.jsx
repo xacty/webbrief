@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
-import { canManageUsersNav, canUseTrashNav } from '../../lib/roleCapabilities'
+import { canManageUsersNav, canUseSecurityNav, canUseTrashNav } from '../../lib/roleCapabilities'
 import {
   getCompanyRoleLabel,
   getPlatformRoleTitle,
@@ -22,6 +22,7 @@ export default function AppShell() {
   const { currentUser, signOut } = useAuth()
   const canManageUsers = canManageUsersNav(currentUser)
   const canUseTrash = canUseTrashNav(currentUser)
+  const canUseSecurity = canUseSecurityNav(currentUser)
 
   async function handleLogout() {
     await signOut()
@@ -74,6 +75,16 @@ export default function AppShell() {
                   Papelera
                 </NavLink>
               </>
+            )}
+            {canUseSecurity && (
+              <NavLink
+                to="/security"
+                className={({ isActive }) => (
+                  isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                )}
+              >
+                Seguridad
+              </NavLink>
             )}
           </nav>
         </div>
