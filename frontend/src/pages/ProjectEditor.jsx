@@ -19,8 +19,9 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
 import { CommentMark, findCommentRange, getCommentIdsInDoc } from '../extensions/CommentMark'
-import CommentsPanel from '../components/editor/CommentsPanel'
 import CommentComposerPopover from '../components/editor/CommentComposerPopover'
+import CommentMarginCards from '../components/editor/CommentMarginCards'
+import EditorContextMenu from '../components/editor/EditorContextMenu'
 import {
   fetchComments,
   createComment,
@@ -4227,6 +4228,17 @@ export default function ProjectEditor() {
             activeCommentId={activeCommentId}
             onAddComment={handleAddComment}
             canComment={canWriteContent && commentsAvailable}
+            commentThreads={pageThreads}
+            commentProfiles={commentProfiles}
+            commentLiveIds={liveCommentIds}
+            commentCurrentUser={currentUser}
+            commentReadOnly={!canWriteContent}
+            onSelectCommentThread={handleSelectThread}
+            onReplyComment={handleReplyComment}
+            onResolveComment={handleResolveComment}
+            onReopenComment={handleReopenComment}
+            onEditComment={handleEditComment}
+            onDeleteComment={handleDeleteComment}
           />
         )}
 
@@ -6423,6 +6435,17 @@ function EditorPanel({
   activeCommentId = null,
   onAddComment,
   canComment = false,
+  commentThreads = [],
+  commentProfiles = [],
+  commentLiveIds = null,
+  commentCurrentUser = null,
+  commentReadOnly = false,
+  onSelectCommentThread,
+  onReplyComment,
+  onResolveComment,
+  onReopenComment,
+  onEditComment,
+  onDeleteComment,
 }) {
   const wrapperRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -6655,6 +6678,23 @@ function EditorPanel({
     const targets = root.querySelectorAll(`span[data-comment-id="${CSS.escape(activeCommentId)}"]`)
     targets.forEach((el) => el.setAttribute('data-wb-active', 'true'))
   }, [activeCommentId, editor])
+
+  // Right-click context menu (Google Docs–style). Suprime el menú nativo del browser
+  // dentro del editor; defiere al TableRightClickMenu cuando el click es en una tabla.
+  const [contextMenuPos, setContextMenuPos] = useState(null)
+  useEffect(() => {
+    if (!editor) return
+    function handleContextMenu(e) {
+      const target = e.target
+      if (!(target instanceof HTMLElement)) return
+      if (!editor.view.dom.contains(target)) return
+      if (target.closest('table')) return // delegate to TableRightClickMenu
+      e.preventDefault()
+      setContextMenuPos({ x: e.clientX, y: e.clientY })
+    }
+    document.addEventListener('contextmenu', handleContextMenu)
+    return () => document.removeEventListener('contextmenu', handleContextMenu)
+  }, [editor])
 
   useEffect(() => {
     return () => {
@@ -7029,7 +7069,30 @@ function EditorPanel({
             onMarkerClick={onActivityMarkerClick}
           />
         </div>
+        <CommentMarginCards
+          scrollAreaRef={scrollAreaRef}
+          threads={commentThreads}
+          profiles={commentProfiles}
+          currentUser={commentCurrentUser}
+          activeCommentId={activeCommentId}
+          liveCommentIds={commentLiveIds}
+          onSelectThread={onSelectCommentThread}
+          onReply={onReplyComment}
+          onResolve={onResolveComment}
+          onReopen={onReopenComment}
+          onEdit={onEditComment}
+          onDelete={onDeleteComment}
+          readOnly={commentReadOnly}
+        />
       </div>
+      <EditorContextMenu
+        open={Boolean(contextMenuPos)}
+        position={contextMenuPos || { x: 0, y: 0 }}
+        editor={editor}
+        canComment={canComment}
+        onAddComment={onAddComment}
+        onClose={() => setContextMenuPos(null)}
+      />
     </div>
   )
 }
@@ -8958,20 +9021,6 @@ function UpdatesPanel({
           >
             Actividad
           </button>
-          {commentsAvailable && (
-            <button
-              type="button"
-              className={cx(panelStyles.tab, activeTab === 'comentarios' && panelStyles.tabActive)}
-              onClick={() => setActiveTab('comentarios')}
-            >
-              Comentarios
-              {commentThreads.filter((t) => !t.root.resolvedAt).length > 0 && (
-                <span style={{ marginLeft: 6, fontSize: 11, color: '#0070d6' }}>
-                  ({commentThreads.filter((t) => !t.root.resolvedAt).length})
-                </span>
-              )}
-            </button>
-          )}
           <button
             type="button"
             className={cx(panelStyles.tab, activeTab === 'historial' && panelStyles.tabActive)}
@@ -8998,21 +9047,6 @@ function UpdatesPanel({
             activePageId={activePageId}
             projectType={projectType}
             onShowDiff={(entry) => setDiffEntry(entry)}
-          />
-        ) : activeTab === 'comentarios' ? (
-          <CommentsPanel
-            threads={commentThreads}
-            profiles={commentProfiles}
-            currentUser={currentUser}
-            activeCommentId={activeCommentId}
-            liveCommentIds={liveCommentIds}
-            onSelectThread={onSelectCommentThread}
-            onReply={onReplyComment}
-            onResolve={onResolveComment}
-            onReopen={onReopenComment}
-            onEdit={onEditComment}
-            onDelete={onDeleteComment}
-            readOnly={commentsReadOnly}
           />
         ) : (
         <>
