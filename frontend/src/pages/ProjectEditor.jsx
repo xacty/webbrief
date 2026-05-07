@@ -6681,19 +6681,49 @@ function EditorPanel({
 
   // Right-click context menu (Google Docs–style). Suprime el menú nativo del browser
   // dentro del editor; defiere al TableRightClickMenu cuando el click es en una tabla.
+  // Preserva la selección actual del editor al hacer right-click dentro del rango
+  // seleccionado (sino ProseMirror movería el cursor en mousedown, colapsando la selección).
   const [contextMenuPos, setContextMenuPos] = useState(null)
   useEffect(() => {
     if (!editor) return
+    const editorDom = editor.view.dom
+
+    function handleMouseDownCapture(e) {
+      if (e.button !== 2) return
+      if (e.target instanceof HTMLElement && e.target.closest('table')) return
+      const { from, to, empty } = editor.state.selection
+      if (empty) return
+      // Check if click is inside the current selection range
+      let coords
+      try {
+        coords = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+      } catch {
+        return
+      }
+      if (!coords) return
+      if (coords.pos >= from && coords.pos <= to) {
+        // Click landed inside the selection — block ProseMirror's default cursor move.
+        e.preventDefault()
+        e.stopPropagation()
+        e.stopImmediatePropagation()
+      }
+    }
+
     function handleContextMenu(e) {
       const target = e.target
       if (!(target instanceof HTMLElement)) return
-      if (!editor.view.dom.contains(target)) return
+      if (!editorDom.contains(target)) return
       if (target.closest('table')) return // delegate to TableRightClickMenu
       e.preventDefault()
       setContextMenuPos({ x: e.clientX, y: e.clientY })
     }
+
+    editorDom.addEventListener('mousedown', handleMouseDownCapture, true)
     document.addEventListener('contextmenu', handleContextMenu)
-    return () => document.removeEventListener('contextmenu', handleContextMenu)
+    return () => {
+      editorDom.removeEventListener('mousedown', handleMouseDownCapture, true)
+      document.removeEventListener('contextmenu', handleContextMenu)
+    }
   }, [editor])
 
   useEffect(() => {

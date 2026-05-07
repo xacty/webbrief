@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Bold, Italic, Underline, Strikethrough,
@@ -9,12 +9,13 @@ import styles from './EditorContextMenu.module.css'
 
 const MENU_WIDTH = 240
 const SUBMENU_WIDTH = 200
+const MARGIN = 8
 
-function clampPos(x, y, w = MENU_WIDTH, h = 360) {
-  const margin = 8
-  const left = Math.max(margin, Math.min(x, window.innerWidth - w - margin))
-  const top = Math.max(margin, Math.min(y, window.innerHeight - h - margin))
-  return { left, top }
+// Posición inicial del cursor: clamp horizontal solamente.
+// El alto se mide en useLayoutEffect después del render para flip vertical preciso.
+function initialPos(x, y, w = MENU_WIDTH) {
+  const left = Math.max(MARGIN, Math.min(x, window.innerWidth - w - MARGIN))
+  return { left, top: y }
 }
 
 function MenuItem({ icon: Icon, label, shortcut, onSelect, disabled, danger, hasSubmenu, onMouseEnter }) {
@@ -41,6 +42,7 @@ function Separator() {
 export default function EditorContextMenu({ open, position, editor, onClose, onAddComment, canComment = false }) {
   const menuRef = useRef(null)
   const [submenu, setSubmenu] = useState(null) // 'block' | null
+  const [adjustedPos, setAdjustedPos] = useState(null)
 
   useEffect(() => {
     if (!open) return
@@ -59,14 +61,41 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
   }, [open, onClose])
 
   useEffect(() => {
-    if (!open) setSubmenu(null)
+    if (!open) {
+      setSubmenu(null)
+      setAdjustedPos(null)
+    }
   }, [open])
+
+  // Mide el menú real después del render y flip vertical si no hay espacio abajo.
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current) return
+    const rect = menuRef.current.getBoundingClientRect()
+    const viewportH = window.innerHeight
+    const desiredTop = position.y
+    const fitsBelow = desiredTop + rect.height + MARGIN <= viewportH
+    let top
+    if (fitsBelow) {
+      top = desiredTop
+    } else {
+      // Try opening upward (anchor menu bottom at click point)
+      const upwardTop = desiredTop - rect.height
+      if (upwardTop >= MARGIN) {
+        top = upwardTop
+      } else {
+        // No room either way — pin to viewport with margin
+        top = Math.max(MARGIN, viewportH - rect.height - MARGIN)
+      }
+    }
+    const left = Math.max(MARGIN, Math.min(position.x, window.innerWidth - rect.width - MARGIN))
+    setAdjustedPos({ left, top })
+  }, [open, position.x, position.y])
 
   const isMac = useMemo(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform), [])
   const mod = isMac ? '⌘' : 'Ctrl'
 
   if (!open || !editor) return null
-  const pos = clampPos(position.x, position.y)
+  const pos = adjustedPos || initialPos(position.x, position.y)
 
   const selection = editor.state.selection
   const hasSelection = !selection.empty
@@ -159,7 +188,7 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
     <div
       ref={menuRef}
       className={styles.menu}
-      style={{ left: pos.left, top: pos.top }}
+      style={{ left: pos.left, top: pos.top, visibility: adjustedPos ? 'visible' : 'hidden' }}
       role="menu"
     >
       <MenuItem icon={Scissors} label="Cortar" shortcut={`${mod}+X`} onSelect={handleCut} disabled={!hasSelection} />
