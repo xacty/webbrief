@@ -71,12 +71,24 @@ router.param('token', (req, res, next, token) => {
   return next()
 })
 
+// Remueve los <span data-comment-id="..."> del HTML manteniendo el texto.
+// Los comentarios son internal-only en v1; el cliente público no debe verlos.
+function stripCommentMarks(html) {
+  if (!html || typeof html !== 'string') return html || ''
+  // Matchea <span> que contenga data-comment-id (en cualquier orden de attrs)
+  // y reemplaza con su contenido. Luego también limpia spans de cierre huérfanos.
+  return html.replace(
+    /<span\b[^>]*\bdata-comment-id\s*=\s*["'][^"']*["'][^>]*>([\s\S]*?)<\/span>/gi,
+    '$1',
+  )
+}
+
 function serializePublicPage(page) {
   return {
     id: page.id,
     name: page.name,
     position: page.position,
-    contentHtml: page.content_html,
+    contentHtml: stripCommentMarks(page.content_html),
     contentJson: page.content_json,
     seoMetadata: page.seo_metadata || {},
     version: page.version || 1,

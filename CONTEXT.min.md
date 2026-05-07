@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-07 (session 9)
+- Updated: 2026-05-07 (session 10)
 
 ## Targets
 
@@ -22,6 +22,7 @@
 - `editor.document-structure`
 - `editor.updates-panel`
 - `editor.handoff`
+- `editor.comments`
 - `share`
 - `backend.activity`
 - `backend.assets`
@@ -70,6 +71,7 @@
 - GitHub `main` is the production code source; deploy flow is local commit -> push `main` -> VPS `git pull` -> backend install/restart + frontend build
 - Operational guide lives at `docs/WEBRIEF_OPERATIONS_GUIDE.md`
 - Local `.env` files currently determine whether local dev hits Supabase Prod or a future Supabase Dev; using Prod locally is risky for DB/schema tests
+- Comments system v1 (Google Docs–style): `project_comments` extended with `parent_comment_id`, `anchor_snippet`, `mentions[]`, `resolved_at/by`, `edited_at`, `deleted_at/by`; TipTap `CommentMark` (`frontend/src/extensions/CommentMark.js`) wraps anchored text in `<span data-comment-id>`; backend routes at `backend/src/routes/comments.js` mounted under `/api/projects/:id/comments`; UI in `frontend/src/components/editor/CommentsPanel.jsx` + `CommentComposerPopover.jsx`; Realtime channel via `frontend/src/lib/commentsRealtime.js`; emails via `backend/src/lib/commentEmails.js` (Resend REST, env `RESEND_API_KEY` + `COMMENTS_EMAIL_FROM`)
 
 ## Editor Invariants
 
@@ -149,6 +151,9 @@
   - `watch`: bell dropdown reads non-content events from project_activity; mark-as-read uses metadata.readAt
 - `target=editor.handoff`
   - `keep`: copy-safe central content; labels/actions outside selectable text
+- `target=editor.comments`
+  - `keep`: Google Docs–style anchored threads via TipTap `CommentMark`; internal-only (Supabase Auth identity); Brief editable, Handoff/Preview show highlights + read-only panel; public `/share/:token` strips marks via `stripCommentMarks` in backend; thread = root comment + replies via `parent_comment_id`; resolve sets `resolved_at` + `resolved_by_user_id` on root only; soft delete preserves tombstone if replies exist; mentions validated against company memberships; Realtime via `supabase_realtime` publication on `project_comments`; emails via Resend REST (no SDK) gated by `RESEND_API_KEY` env (no-op if missing)
+  - `watch`: 15-min edit window enforced server-side; mark serializes as `<span data-comment-id="<uuid>">` so HTML autosave persists it; mark deletion when text is fully removed creates "orphan" thread (shown with "(texto eliminado)" label); rate limit `sensitiveAction` covers create/edit/delete/reply/resolve
 - `target=share`
   - `keep`: public token route with email gate, comments, approvals/change requests
 - `target=backend.auth`
@@ -380,6 +385,20 @@
 - **Pendings cerrados**: las migraciones SQL de sesiones previas (`20260505_add_brief_uploads`, `20260506_lifecycle_notifications`) ya estaban aplicadas en remote (`list_migrations` lo confirmó)
 - **Deploy a VPS hecho**: 2 commits de seguridad (sesión 7-8 hardening + sesión 9 MCP/cron) + plan Dev/Prod pusheados a `main`; VPS hizo `git pull`, `npm install` (sin nuevos packages), `npm run build` frontend, `pm2 restart`, health check ok
 - **Cron `lifecycle/tick` instalado en VPS**: crontab del usuario `deploy` ejecuta `* * * * * curl -X POST -H "X-Cron-Secret: $(cat /home/deploy/.lifecycle_cron_secret)" https://webrief.app/api/projects/lifecycle/tick > /dev/null 2>&1`. El secret vive en `/home/deploy/.lifecycle_cron_secret` (perm 0600) y en `LIFECYCLE_CRON_SECRET` del backend `.env` del VPS — `crontab -l` no muestra el valor real. Validado con `cron-tick.log` temporal: 2 hits exitosos en 75s, JSON `{notificationsSent:0,projectsPurged:0,errors:[]}`. Limpieza posterior: redirige a /dev/null para no crecer file
+
+## Session 10 — Comments system (Google Docs–style)
+
+- **Migration `20260507_comment_threads`** aplicada en Prod: extiende `project_comments` con 8 columnas (`parent_comment_id`, `anchor_snippet`, `mentions uuid[]`, `resolved_at`, `resolved_by_user_id`, `edited_at`, `deleted_at`, `deleted_by_user_id`), 4 índices nuevos (`thread_idx`, `parent_idx`, `mentions_idx` GIN, `active_root_idx` partial), y `alter publication supabase_realtime add table public.project_comments`. Idempotente (`add column if not exists`); confirmado vía MCP que las 8 columnas + publicación están live.
+- **TipTap `CommentMark`** custom (`frontend/src/extensions/CommentMark.js`): mark inclusive=false, `commentId` + `resolved` attrs, comandos `setComment(id)`, `unsetComment(id)`, `unsetAllComments()`, `markCommentResolved(id, bool)`. Helpers `getCommentIdsInDoc(editor)` y `findCommentRange(editor, id)` para detectar huérfanos y scrollear al rango. Renderiza `<span data-comment-id="<uuid>" class="wb-comment">`; estilos globales en `ProjectEditor.module.css` (highlight amarillo + estados active/resolved/orphan).
+- **Backend route** `backend/src/routes/comments.js` montado en `/api/projects` (no en `projects.js` para no inflarlo): GET list (devuelve `comments`, `profiles`, `members` para autocomplete de menciones), POST root (`pageId`, `anchorSnippet`, `body`, `mentions[]`), POST reply, PATCH (15-min ventana del autor enforced server-side), DELETE (soft + hard si root sin replies), resolve, reopen. Rate limit `sensitiveAction`. Auth via `requireAuth`. Cada acción dispara `logProjectActivity` con eventos `comment_created`/`comment_replied`/`comment_resolved`/`comment_reopened`.
+- **Notifications + emails**: insertar en `notifications` table para usuarios mencionados + participantes del thread (excluyendo al actor); email via Resend REST (`backend/src/lib/commentEmails.js`, sin SDK — fetch directo) gated por `RESEND_API_KEY` env. Template branded WeBrief, link CTA `https://webrief.app/project/{id}/editor?commentId={id}`.
+- **Realtime**: `frontend/src/lib/commentsRealtime.js` suscribe a `project:<id>:comments` channel con filtro `project_id=eq.<id>`. INSERT/UPDATE/DELETE merge inteligente en state local. Habilitado en mount de `ProjectEditor.jsx`.
+- **UI editor**: botón `MessageSquare` en toolbar (disabled si `selection.empty || !canWriteContent || !commentsAvailable`); `CommentComposerPopover` con `createPortal` al body, posicionado vía `editor.view.coordsAtPos(from)`; autocomplete de @menciones con regex `(?:^|\s)@([\w.\-]*)$` que matchea miembros contra `members[]`; `CommentsPanel` como tab nuevo en `UpdatesPanel` junto a Actividad/Historial, con filtros `Sin resolver/Resueltos/Todos`, contador `(N)` de threads abiertos, threads ordenados con huérfanos al final.
+- **Click delegation global** en `ProjectEditor` rootRef detecta clicks en `span[data-comment-id]` en cualquier modo (Brief/Handoff/Preview) y setea `activeCommentId` → la card del panel recibe `.threadCardActive` + scrollIntoView; click en card → `editor.commands.setTextSelection({from,to})` + scroll programático.
+- **Modos read-only**: en Handoff/Preview, los `<span data-comment-id>` ya viven en el HTML guardado y se ven con el mismo CSS automáticamente; panel muestra threads pero `commentsReadOnly = editorMode !== 'brief' || !canWriteContent` desactiva inputs/acciones (solo filtros y click→scroll funcionan).
+- **Aislamiento público**: `backend/src/routes/public.js` ahora aplica `stripCommentMarks(html)` en `serializePublicPage` — regex `<span\b[^>]*\bdata-comment-id\s*=\s*[...]>([\s\S]*?)<\/span>` reemplaza span entero por su contenido. Cliente público de `/share/:token` no ve highlights ni threads; los comentarios son internal-only en v1.
+- **Tests**: 9 tests nuevos en `backend/test/comments.test.js` (isUuid, sanitizeMentions cap+filter+invalid, serializeComment soft-delete + camelCase + null, EDIT_WINDOW_MS); suite total 13/13 verde.
+- **Resend API key configurada** (`RESEND_API_KEY` en `backend/.env`) — smoke test contra `https://api.resend.com/emails` pasó (recibe `id` UUID). VPS aún no actualizado.
 
 ## Pending — requires user action
 

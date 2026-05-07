@@ -18,7 +18,21 @@ import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw, BookTemplate } from 'lucide-react'
+import { CommentMark, findCommentRange, getCommentIdsInDoc } from '../extensions/CommentMark'
+import CommentsPanel from '../components/editor/CommentsPanel'
+import CommentComposerPopover from '../components/editor/CommentComposerPopover'
+import {
+  fetchComments,
+  createComment,
+  replyComment,
+  editComment,
+  deleteComment,
+  resolveComment,
+  reopenComment,
+  groupCommentsIntoThreads,
+} from '../lib/commentsApi'
+import { subscribeProjectComments } from '../lib/commentsRealtime'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
@@ -2346,6 +2360,16 @@ export default function ProjectEditor() {
   // flashRequest: activa el highlight amarillo sobre una sección tras navegar.
   const [flashRequest, setFlashRequest] = useState(null)
 
+  // Sistema de comentarios estilo Google Docs
+  const [comments, setComments] = useState([])
+  const [commentProfiles, setCommentProfiles] = useState([])
+  const [commentMembers, setCommentMembers] = useState([])
+  const [commentsAvailable, setCommentsAvailable] = useState(true)
+  const [activeCommentId, setActiveCommentId] = useState(null)
+  const [composerState, setComposerState] = useState(null) // { mode, anchorRect, anchorSnippet, range, commentId? }
+  const [liveCommentIds, setLiveCommentIds] = useState(null)
+  const commentsLoadingRef = useRef(false)
+
   // Ref al editor único
   const editorRef = useRef(null)
   const saveInFlightRef = useRef(false)
@@ -3735,6 +3759,254 @@ export default function ProjectEditor() {
     }
   }
 
+  // ── Click delegation para highlights de comentarios en cualquier modo ──
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    function handleClick(event) {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      const span = target.closest('span[data-comment-id]')
+      if (!span || !root.contains(span)) return
+      const commentId = span.getAttribute('data-comment-id')
+      if (!commentId) return
+      setActiveCommentId(commentId)
+    }
+    root.addEventListener('click', handleClick)
+    return () => root.removeEventListener('click', handleClick)
+  }, [rootRef.current])
+
+  // ── Comments (Google Docs–style anchored threads) ─────────────────────
+  const refreshComments = useCallback(async () => {
+    if (!projectId || !commentsAvailable) return
+    if (commentsLoadingRef.current) return
+    commentsLoadingRef.current = true
+    try {
+      const result = await fetchComments(projectId, { includeResolved: true })
+      if (!result.available) {
+        setCommentsAvailable(false)
+        setComments([])
+        setCommentMembers([])
+        return
+      }
+      setComments(result.comments)
+      setCommentProfiles(result.profiles)
+      setCommentMembers(result.members)
+    } catch (error) {
+      console.warn('[comments] fetch failed:', error.message)
+    } finally {
+      commentsLoadingRef.current = false
+    }
+  }, [projectId, commentsAvailable])
+
+  useEffect(() => {
+    if (!projectId) return
+    refreshComments()
+  }, [projectId, refreshComments])
+
+  // Realtime: cambios remotos a project_comments se mergean en el state local
+  useEffect(() => {
+    if (!projectId || !commentsAvailable) return
+    const unsubscribe = subscribeProjectComments(projectId, ({ event, row, oldRow }) => {
+      if (!row && !oldRow) return
+      if (event === 'DELETE') {
+        const id = oldRow?.id
+        if (!id) return
+        setComments((prev) => prev.filter((c) => c.id !== id))
+        return
+      }
+      if (event === 'INSERT' && row) {
+        setComments((prev) => (prev.find((c) => c.id === row.id) ? prev : [...prev, row]))
+        return
+      }
+      if (event === 'UPDATE' && row) {
+        setComments((prev) => prev.map((c) => (c.id === row.id ? { ...c, ...row } : c)))
+      }
+    })
+    return unsubscribe
+  }, [projectId, commentsAvailable])
+
+  // Mantener un set de commentIds que ESTÁN en el doc actual (para detectar huérfanos)
+  useEffect(() => {
+    if (!editorRef.current) return
+    const update = () => setLiveCommentIds(getCommentIdsInDoc(editorRef.current))
+    update()
+    const editor = editorRef.current
+    const onUpdate = () => update()
+    editor.on('update', onUpdate)
+    return () => editor.off('update', onUpdate)
+  }, [editorRef.current, activePageId])
+
+  const pageThreads = useMemo(() => {
+    const filtered = comments.filter((c) => c.pageId === activePageId)
+    return groupCommentsIntoThreads(filtered)
+  }, [comments, activePageId])
+
+  function computeAnchorRectFromSelection(editor) {
+    if (!editor) return null
+    const { from, to } = editor.state.selection
+    if (from === to) return null
+    try {
+      const startCoords = editor.view.coordsAtPos(from)
+      const endCoords = editor.view.coordsAtPos(to)
+      return {
+        left: Math.min(startCoords.left, endCoords.left),
+        right: Math.max(startCoords.right, endCoords.right),
+        top: Math.min(startCoords.top, endCoords.top),
+        bottom: Math.max(startCoords.bottom, endCoords.bottom),
+      }
+    } catch {
+      return null
+    }
+  }
+
+  function handleAddComment() {
+    const editor = editorRef.current
+    if (!editor) return
+    const { from, to, empty } = editor.state.selection
+    if (empty) return
+    const snippet = editor.state.doc.textBetween(from, to, ' ', ' ').slice(0, 200)
+    const rect = computeAnchorRectFromSelection(editor)
+    if (!rect) return
+    setComposerState({
+      mode: 'create',
+      anchorRect: rect,
+      anchorSnippet: snippet,
+      range: { from, to },
+    })
+  }
+
+  async function handleComposerSubmit({ body, mentions }) {
+    if (!composerState) return
+    if (composerState.mode === 'create') {
+      try {
+        const created = await createComment(projectId, {
+          pageId: activePageId,
+          anchorSnippet: composerState.anchorSnippet,
+          body,
+          mentions,
+        })
+        if (created && editorRef.current && composerState.range) {
+          const { from, to } = composerState.range
+          editorRef.current
+            .chain()
+            .focus()
+            .setTextSelection({ from, to })
+            .setComment(created.id)
+            .run()
+          setIsDirty(true)
+        }
+        setComments((prev) => (created ? [...prev, created] : prev))
+        if (created) setActiveCommentId(created.id)
+        setComposerState(null)
+      } catch (error) {
+        window.alert(error.message || 'No se pudo crear el comentario')
+      }
+      return
+    }
+    if (composerState.mode === 'edit' && composerState.commentId) {
+      try {
+        const updated = await editComment(projectId, composerState.commentId, { body, mentions })
+        setComments((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+        setComposerState(null)
+      } catch (error) {
+        window.alert(error.message || 'No se pudo editar el comentario')
+      }
+    }
+  }
+
+  function handleComposerCancel() {
+    setComposerState(null)
+  }
+
+  async function handleReplyComment(rootId, body) {
+    try {
+      const reply = await replyComment(projectId, rootId, { body, mentions: [] })
+      if (reply) setComments((prev) => [...prev, reply])
+    } catch (error) {
+      window.alert(error.message || 'No se pudo enviar la respuesta')
+    }
+  }
+
+  async function handleResolveComment(rootId) {
+    try {
+      const updated = await resolveComment(projectId, rootId)
+      if (!updated) return
+      setComments((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      if (editorRef.current) {
+        editorRef.current.commands.markCommentResolved(rootId, true)
+        setIsDirty(true)
+      }
+      if (activeCommentId === rootId) setActiveCommentId(null)
+    } catch (error) {
+      window.alert(error.message || 'No se pudo resolver')
+    }
+  }
+
+  async function handleReopenComment(rootId) {
+    try {
+      const updated = await reopenComment(projectId, rootId)
+      if (!updated) return
+      setComments((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      if (editorRef.current) {
+        editorRef.current.commands.markCommentResolved(rootId, false)
+        setIsDirty(true)
+      }
+    } catch (error) {
+      window.alert(error.message || 'No se pudo reabrir')
+    }
+  }
+
+  function handleEditComment(comment) {
+    setComposerState({
+      mode: 'edit',
+      anchorRect: { left: window.innerWidth / 2 - 160, right: 0, top: 80, bottom: 80 },
+      anchorSnippet: comment.anchorSnippet || '',
+      commentId: comment.id,
+      initialBody: comment.body,
+      initialMentions: comment.mentions || [],
+    })
+  }
+
+  async function handleDeleteComment(comment) {
+    if (!window.confirm('¿Eliminar este comentario?')) return
+    try {
+      const updated = await deleteComment(projectId, comment.id)
+      if (updated?.deletedAt) {
+        setComments((prev) => prev.map((c) => (c.id === comment.id ? updated : c)))
+      } else {
+        setComments((prev) => prev.filter((c) => c.id !== comment.id))
+      }
+      if (!comment.parentCommentId && editorRef.current) {
+        editorRef.current.commands.unsetComment(comment.id)
+        setIsDirty(true)
+      }
+      if (activeCommentId === comment.id) setActiveCommentId(null)
+    } catch (error) {
+      window.alert(error.message || 'No se pudo eliminar')
+    }
+  }
+
+  function handleSelectThread(rootId) {
+    setActiveCommentId(rootId)
+    const editor = editorRef.current
+    if (!editor) return
+    const range = findCommentRange(editor, rootId)
+    if (!range) return
+    editor.commands.setTextSelection(range)
+    editor.commands.focus()
+    try {
+      const coords = editor.view.coordsAtPos(range.from)
+      const scrollEl = rootRef.current?.querySelector('[data-flash-container]')?.parentElement
+      if (scrollEl && typeof coords?.top === 'number') {
+        const editorRect = scrollEl.getBoundingClientRect()
+        scrollEl.scrollTop += coords.top - editorRect.top - 100
+      }
+    } catch {
+      // ignore — best-effort scroll
+    }
+  }
+
   if (loadingProject) {
     return <div className={styles.loadingState}>Cargando proyecto...</div>
   }
@@ -3937,6 +4209,10 @@ export default function ProjectEditor() {
             sectionActivities={sectionReviewActivities.filter((item) => item.metadata?.pageId === activePageId)}
             selectedActivityId={selectedActivityId}
             onActivityMarkerClick={handleActivityMarkerClick}
+            onCommentClick={(commentId) => setActiveCommentId(commentId)}
+            activeCommentId={activeCommentId}
+            onAddComment={handleAddComment}
+            canComment={canWriteContent && commentsAvailable}
           />
         )}
 
@@ -3996,6 +4272,20 @@ export default function ProjectEditor() {
           onNavigateToSection={navigateToSection}
           companyId={projectMeta?.companyId || ''}
           projectPages={pages}
+          commentsAvailable={commentsAvailable}
+          commentThreads={pageThreads}
+          commentProfiles={commentProfiles}
+          commentMembers={commentMembers}
+          activeCommentId={activeCommentId}
+          liveCommentIds={liveCommentIds}
+          currentUser={currentUser}
+          onSelectCommentThread={handleSelectThread}
+          onReplyComment={handleReplyComment}
+          onResolveComment={handleResolveComment}
+          onReopenComment={handleReopenComment}
+          onEditComment={handleEditComment}
+          onDeleteComment={handleDeleteComment}
+          commentsReadOnly={editorMode !== 'brief' || !canWriteContent}
         />
       </div>
 
@@ -4016,6 +4306,17 @@ export default function ProjectEditor() {
         canSendToReview={canSendToReview}
         availableModes={availableEditorModes}
         disabled={!pages.length}
+      />
+      <CommentComposerPopover
+        open={Boolean(composerState)}
+        anchorRect={composerState?.anchorRect}
+        anchorSnippet={composerState?.anchorSnippet || ''}
+        initialBody={composerState?.initialBody || ''}
+        initialMentions={composerState?.initialMentions || []}
+        members={commentMembers}
+        onCancel={handleComposerCancel}
+        onSubmit={handleComposerSubmit}
+        submitLabel={composerState?.mode === 'edit' ? 'Guardar' : 'Comentar'}
       />
     </div>
   )
@@ -5248,7 +5549,7 @@ function parseTooltipTitle(title) {
 // ---------------------------------------------------------------------------
 // Toolbar — barra de herramientas compartida
 // ---------------------------------------------------------------------------
-function Toolbar({ editor, projectId, onUndo, onRedo }) {
+function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment = false }) {
   const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
   const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
@@ -5712,6 +6013,16 @@ function Toolbar({ editor, projectId, onUndo, onRedo }) {
       ><Link2 size={16} /></ToolBtn>
 
       <ToolBtn
+        active={editor?.isActive('comment')}
+        disabled={disabled || !canComment || (editor?.state?.selection?.empty ?? true)}
+        onClick={() => {
+          if (!editor || editor.state.selection.empty) return
+          onAddComment?.()
+        }}
+        title="Agregar comentario"
+      ><MessageSquare size={16} /></ToolBtn>
+
+      <ToolBtn
         active={editor?.isActive('ctaButton')}
         disabled={disabled}
         onClick={handleCtaInsert}
@@ -6094,6 +6405,10 @@ function EditorPanel({
   sectionActivities = [],
   selectedActivityId = null,
   onActivityMarkerClick,
+  onCommentClick,
+  activeCommentId = null,
+  onAddComment,
+  canComment = false,
 }) {
   const wrapperRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -6174,10 +6489,22 @@ function EditorPanel({
       CtaButtonNode,
       GoogleDocsHeadingShortcuts,
       AlignShortcuts,
+      CommentMark,
     ],
     content: initialContent,
     editable: canWriteContent,
     editorProps: {
+      handleClickOn(view, pos, node, nodePos, event, direct) {
+        if (!direct) return false
+        const target = event.target
+        if (!(target instanceof HTMLElement)) return false
+        const span = target.closest('span[data-comment-id]')
+        if (!span) return false
+        const commentId = span.getAttribute('data-comment-id')
+        if (!commentId) return false
+        onCommentClick?.(commentId)
+        return true
+      },
       handleDOMEvents: {
         dragover(view, event) {
           const files = Array.from(event.dataTransfer?.files || [])
@@ -6304,6 +6631,16 @@ function EditorPanel({
   useEffect(() => {
     if (editor) editor.setEditable(canWriteContent)
   }, [canWriteContent, editor])
+
+  useEffect(() => {
+    const root = scrollAreaRef.current
+    if (!root) return
+    const previous = root.querySelectorAll('span[data-comment-id][data-wb-active="true"]')
+    previous.forEach((el) => el.removeAttribute('data-wb-active'))
+    if (!activeCommentId) return
+    const targets = root.querySelectorAll(`span[data-comment-id="${CSS.escape(activeCommentId)}"]`)
+    targets.forEach((el) => el.setAttribute('data-wb-active', 'true'))
+  }, [activeCommentId, editor])
 
   useEffect(() => {
     return () => {
@@ -6619,7 +6956,7 @@ function EditorPanel({
 
   return (
     <div className={styles.centerPanel}>
-      <Toolbar editor={editor} projectId={projectId} onUndo={onUndo} onRedo={onRedo} />
+      <Toolbar editor={editor} projectId={projectId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
       <TableContextBar editor={editor} />
       {projectType === 'document' && (
         null
@@ -8496,11 +8833,25 @@ function UpdatesPanel({
   onNavigateToSection,
   companyId = '',
   projectPages = [],
+  commentsAvailable = true,
+  commentThreads = [],
+  commentProfiles = [],
+  commentMembers = [],
+  activeCommentId = null,
+  liveCommentIds = null,
+  currentUser = null,
+  onSelectCommentThread,
+  onReplyComment,
+  onResolveComment,
+  onReopenComment,
+  onEditComment,
+  onDeleteComment,
+  commentsReadOnly = false,
 }) {
   const [deliverableTitle, setDeliverableTitle] = useState('')
   const [deliverableServiceType, setDeliverableServiceType] = useState('otro')
   const [deliverableSubmitting, setDeliverableSubmitting] = useState(false)
-  const [activeTab, setActiveTab] = useState('actividad') // 'actividad' | 'historial'
+  const [activeTab, setActiveTab] = useState('actividad') // 'actividad' | 'comentarios' | 'historial'
   const [diffEntry, setDiffEntry] = useState(null)
   const sectionOrder = useMemo(() => (
     new Map(sections.map((section, index) => [section.id, index]))
@@ -8582,6 +8933,20 @@ function UpdatesPanel({
           >
             Actividad
           </button>
+          {commentsAvailable && (
+            <button
+              type="button"
+              className={cx(panelStyles.tab, activeTab === 'comentarios' && panelStyles.tabActive)}
+              onClick={() => setActiveTab('comentarios')}
+            >
+              Comentarios
+              {commentThreads.filter((t) => !t.root.resolvedAt).length > 0 && (
+                <span style={{ marginLeft: 6, fontSize: 11, color: '#0070d6' }}>
+                  ({commentThreads.filter((t) => !t.root.resolvedAt).length})
+                </span>
+              )}
+            </button>
+          )}
           <button
             type="button"
             className={cx(panelStyles.tab, activeTab === 'historial' && panelStyles.tabActive)}
@@ -8608,6 +8973,21 @@ function UpdatesPanel({
             activePageId={activePageId}
             projectType={projectType}
             onShowDiff={(entry) => setDiffEntry(entry)}
+          />
+        ) : activeTab === 'comentarios' ? (
+          <CommentsPanel
+            threads={commentThreads}
+            profiles={commentProfiles}
+            currentUser={currentUser}
+            activeCommentId={activeCommentId}
+            liveCommentIds={liveCommentIds}
+            onSelectThread={onSelectCommentThread}
+            onReply={onReplyComment}
+            onResolve={onResolveComment}
+            onReopen={onReopenComment}
+            onEdit={onEditComment}
+            onDelete={onDeleteComment}
+            readOnly={commentsReadOnly}
           />
         ) : (
         <>

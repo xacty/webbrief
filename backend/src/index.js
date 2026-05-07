@@ -10,6 +10,7 @@ import cors from 'cors'
 import authRoutes from './routes/auth.js'
 import companiesRoutes from './routes/companies.js'
 import projectsRoutes from './routes/projects.js'
+import commentsRoutes from './routes/comments.js'
 import usersRoutes from './routes/users.js'
 import notificationsRoutes from './routes/notifications.js'
 import publicRoutes from './routes/public.js'
@@ -50,6 +51,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 app.use('/api/auth', authRoutes)
 app.use('/api/companies', companiesRoutes)
 app.use('/api/projects', projectsRoutes)
+app.use('/api/projects', commentsRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/notifications', notificationsRoutes)
 app.use('/api/trash', trashRoutes)

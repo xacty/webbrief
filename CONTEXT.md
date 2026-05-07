@@ -631,6 +631,77 @@ Resumen exprés:
 - Auto-naming for FAQ type uses "Pregunta Frecuente" prefix (vs "Sección" for page type); `renumberAutoSections` is type-aware.
 - `AUTO_FAQ_SECTION_NAME_RE = /^Pregunta Frecuente (\d+)$/` used for renumbering FAQ sections.
 
+## Completed (2026-05-07) — Comments system v1 (Google Docs–style)
+
+**Scope**: anchored threaded comments for internal authenticated team only. Public `/share/:token` viewers do NOT see comments (marks stripped from served HTML); brief project type out of scope (no TipTap there).
+
+**DB** (migration `supabase/migrations/20260507_comment_threads.sql` applied to Prod via MCP):
+- Extends `project_comments` with: `parent_comment_id uuid` (FK self, cascade) for thread roots vs replies; `anchor_snippet text` (fragment of original anchored text, fallback when mark dropped); `mentions uuid[]` (default `{}`, validated against company memberships); `resolved_at timestamptz` + `resolved_by_user_id uuid` (root-level only); `edited_at timestamptz`; `deleted_at timestamptz` + `deleted_by_user_id uuid` (soft delete, tombstone if has replies, hard delete only if root + no replies).
+- Indexes: `project_comments_thread_idx` (project,page,parent,resolved), `project_comments_parent_idx` (parent,created — partial WHERE parent IS NOT NULL), `project_comments_mentions_idx` (GIN on mentions), `project_comments_active_root_idx` (project,page,created — partial WHERE parent IS NULL AND deleted IS NULL).
+- Realtime: `alter publication supabase_realtime add table public.project_comments` inside DO block (idempotent).
+- RLS already enabled on the table; backend uses service role so RLS bypassed as in other routes.
+
+**Backend** (`backend/src/routes/comments.js` mounted at `/api/projects` — separate file to avoid bloating `projects.js`):
+- All endpoints require `requireAuth`; access enforced via `canAccessCompany(currentUser, companyId)` (any project member can read/comment, not restricted to writers).
+- Endpoints: `GET /:id/comments?pageId=&includeResolved=` (returns `comments`, `profiles` for display, `members` for mention autocomplete), `POST /:id/comments` (root, body `{pageId, anchorSnippet, body, mentions[]}`), `POST /:id/comments/:commentId/replies`, `PATCH /:id/comments/:commentId` (15-min window enforced via `Date.now() - new Date(created_at).getTime() < EDIT_WINDOW_MS` server-side; rejects with 403 if window expired or actor mismatch), `DELETE /:id/comments/:commentId` (hard delete if root + no replies, soft delete otherwise; admin can delete any), `POST /:id/comments/:commentId/resolve` (any member; sets `resolved_at`/`resolved_by_user_id` on root only — replies inherit), `POST /:id/comments/:commentId/reopen`.
+- Each mutation logs to `project_activity` (`comment_created`, `comment_replied`, `comment_resolved`, `comment_reopened`); creation also calls `logSecurityEvent` for audit.
+- Mentions: `sanitizeMentions(arr, allowedSet)` filters non-UUIDs, dedupes, validates against `fetchProjectMemberIds(companyId)`, caps at 20.
+- Notifications: `notifyUsers` inserts to `notifications` table (eventType `comment_mention`/`comment_reply`/`comment_resolved`); recipients = thread participants + new mentions, excluding actor.
+- Emails (`backend/src/lib/commentEmails.js`): Resend REST API via `fetch` (no SDK dep); env-gated by `RESEND_API_KEY` (no-op if missing — no-throw, returns `{sent:false, reason:'missing_api_key'}`); branded HTML+text template; CTA `${FRONTEND_URL}/project/{id}/editor?commentId={focusId}`; subjects `[WeBrief] X te mencionó en Y` / `X respondió tu comentario en Y`. Calls fire-and-forget per recipient via `.catch(console.warn)`.
+- Rate limit `sensitiveAction` (10min window, 40 req max) covers create/edit/delete/reply/resolve/reopen.
+- Tests in `backend/test/comments.test.js` (9 new tests, 13 total pass): `isUuid` accept/reject, `sanitizeMentions` (filter invalid, cap at 20, empty for non-array), `serializeComment` (hides body when soft-deleted, snake→camel mapping, null input), `EDIT_WINDOW_MS` constant.
+
+**Frontend TipTap mark** (`frontend/src/extensions/CommentMark.js`):
+- `Mark.create({ name: 'comment', inclusive: false, exitable: true, spanning: true })`. Attrs `commentId` (required) + `resolved` (boolean default false).
+- `parseHTML: 'span[data-comment-id]'`. `renderHTML` → `<span data-comment-id="..." class="wb-comment" [data-comment-resolved="true"]>`.
+- Commands: `setComment(id)`, `unsetComment(id)` (iterates doc.descendants, removes mark only where commentId matches), `unsetAllComments()`, `markCommentResolved(id, bool)` (removes + readds mark with new resolved attr to update DOM).
+- Helpers `getCommentIdsInDoc(editor)` returns `Set<string>` of comment IDs present in current doc (used to detect orphaned threads); `findCommentRange(editor, id)` returns `{from, to}` of first matching mark for scroll/select.
+- Wired into `useEditor.extensions[]` array in `ProjectEditor.jsx` after existing custom extensions.
+
+**Frontend UI components**:
+- `frontend/src/components/editor/CommentsPanel.jsx`: full panel with threads (root + replies), filter chips (Sin resolver/Resueltos/Todos), live count badge, avatars (initials fallback), relative time, edit/delete actions for own comments within 15-min window, resolve/reopen on root cards, reply textarea with Cmd+Enter shortcut, orphan label `(texto eliminado)` when `liveCommentIds` doesn't contain the id.
+- `frontend/src/components/editor/CommentComposerPopover.jsx`: portal-rendered popover positioned via `editor.view.coordsAtPos(from)`; clamped to viewport with margin; `MentionsAutocomplete` sub-component with regex `(?:^|\s)@([\w.\-]*)$` to detect mention typing; selecting from dropdown inserts `@FullName ` and adds id to `mentionUserIds`. Final mentions filtered to those whose name still appears in body before submit. Submit on Cmd+Enter; Esc cancels.
+- `frontend/src/components/editor/CommentsUI.module.css`: shared styles for panel + popover + mentions dropdown.
+- `frontend/src/lib/commentsApi.js`: typed wrappers around `apiFetch` for each endpoint, plus `groupCommentsIntoThreads(comments)` that returns `[{ root, replies[] }]` sorted by created_at.
+- `frontend/src/lib/commentsRealtime.js`: `subscribeProjectComments(projectId, handler)` subscribes to `project:<id>:comments` Supabase channel filtered by `project_id=eq.<id>`; handler receives `{event, row, oldRow}` with snake→camel normalized rows; returns unsubscribe fn.
+
+**Frontend wiring in `ProjectEditor.jsx`**:
+- New state: `comments[]`, `commentProfiles[]`, `commentMembers[]`, `commentsAvailable`, `activeCommentId`, `composerState` ({mode, anchorRect, anchorSnippet, range, commentId?}), `liveCommentIds Set`. `pageThreads` derived via `groupCommentsIntoThreads(comments.filter(pageId === activePageId))`.
+- `refreshComments` useCallback fetches + sets state; called on mount + projectId change. Realtime subscription useEffect wired to merge INSERT/UPDATE/DELETE into local state (no full refetch).
+- `liveCommentIds` synced via `editor.on('update')` listener, also retriggered on `activePageId` change.
+- Toolbar button `MessageSquare` between Link2 and CTA buttons; disabled if `selection.empty || !canWriteContent || !commentsAvailable`. Click opens composer with selection range + 200-char snippet.
+- Submit flow: `createComment` → on success `editor.chain().focus().setTextSelection({from,to}).setComment(id).run()` wraps the mark, sets isDirty for autosave to persist.
+- Resolve/reopen: also calls `editor.commands.markCommentResolved(id, bool)` to update mark's `data-comment-resolved` attr in doc, sets isDirty.
+- Delete root: also calls `editor.commands.unsetComment(id)` to remove mark from doc.
+- Click delegation in rootRef: any `span[data-comment-id]` click sets `activeCommentId`. Works in Brief/Handoff/Preview because all three render the same HTML wrapped in rootRef.
+- Highlight active sync: useEffect inside `EditorPanel` queries `span[data-comment-id="${id}"]` and sets `data-wb-active="true"` → CSS rule `[data-wb-active='true']` applies stronger highlight.
+- `UpdatesPanel` extended with new `comentarios` tab (between Actividad and Historial); button shows count badge `(N)` of unresolved threads. Reads `commentThreads`, `commentMembers`, `currentUser`, etc. via new props.
+- `CommentComposerPopover` rendered at root level of ProjectEditor JSX (after `FloatingEditorBar`) so it overlays the entire UI.
+
+**Public isolation** (`backend/src/routes/public.js`):
+- New helper `stripCommentMarks(html)` uses regex `/<span\b[^>]*\bdata-comment-id\s*=\s*["'][^"']*["'][^>]*>([\s\S]*?)<\/span>/gi` to replace `<span data-comment-id>...</span>` with just inner content. Applied in `serializePublicPage` to `contentHtml` (not `contentJson` since public viewer reads from html only). No public endpoint exposes the comments table.
+
+**CSS** (`frontend/src/pages/ProjectEditor.module.css`):
+- `:global(span[data-comment-id])` → bg `rgba(254,240,138,0.45)`, border-bottom `2px solid #f59e0b`, cursor pointer.
+- `:hover` raises bg opacity to 0.75; `[data-wb-active='true']` to 0.95 with darker border `#d97706`.
+- `[data-comment-resolved='true']` → transparent bg, dashed `#d1d5db` border-bottom.
+- `[data-public-share]` ancestor → strips visual entirely (defense-in-depth on top of backend stripping).
+
+**Decisions made (Q&A in plan phase)**:
+- Audience: internal team only (Supabase Auth identity) — most Google Docs–like; public client comments out of scope for v1.
+- Threads with replies (vs flat).
+- Brief editable + Handoff/Preview read-only with visible highlights (vs hide entirely).
+- Realtime via Supabase channels (vs manual refresh / polling).
+- Extras included: edit own (15-min window), delete own/admin, @mentions with email, resolve/reopen.
+
+**Env vars added**:
+- `RESEND_API_KEY` (required for emails; no-op if missing).
+- `COMMENTS_EMAIL_FROM` (optional, default `WeBrief <noreply@webrief.app>`).
+
+**Pending follow-ups**:
+- Verify end-to-end in browser preview (DB + email both wired now; never tested in actual browser session, code is unproven for real interactions).
+- VPS deploy (post-context-update commit + push + ssh git-pull + restart).
+
 ## Pending
 
 - richer deliverables UI beyond compact editor panel

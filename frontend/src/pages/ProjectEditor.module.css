@@ -1717,3 +1717,38 @@
   text-decoration: none;
   font-weight: 500;
 }
+
+/* CommentMark — highlight Google Docs–style sobre el rango anclado.
+   Aplica en editor, Handoff y Preview mientras el HTML guardado contenga
+   los <span data-comment-id>. La ruta pública strippea estos spans. */
+:global(span[data-comment-id]) {
+  background: rgba(254, 240, 138, 0.45);
+  border-bottom: 2px solid #f59e0b;
+  cursor: pointer;
+  border-radius: 1px;
+  transition: background 120ms ease;
+}
+
+:global(span[data-comment-id]:hover) {
+  background: rgba(254, 240, 138, 0.75);
+}
+
+:global(span[data-comment-id][data-wb-active='true']) {
+  background: rgba(254, 240, 138, 0.95);
+  border-bottom-color: #d97706;
+}
+
+:global(span[data-comment-id][data-comment-resolved='true']) {
+  background: transparent;
+  border-bottom: 1px dashed #d1d5db;
+}
+
+:global([data-wb-hide-resolved='true'] span[data-comment-id][data-comment-resolved='true']) {
+  background: transparent;
+  border-bottom: none;
+}
+
+:global([data-public-share] span[data-comment-id]) {
+  background: transparent;
+  border-bottom: none;
+}

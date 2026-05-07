@@ -156,12 +156,20 @@ create table if not exists public.project_comments (
   project_id uuid not null references public.projects(id) on delete cascade,
   page_id uuid references public.project_pages(id) on delete set null,
   section_id text,
+  parent_comment_id uuid references public.project_comments(id) on delete cascade,
+  anchor_snippet text,
+  mentions uuid[] not null default '{}',
   actor_user_id uuid references public.profiles(id) on delete set null,
   author_name text not null,
   author_email text not null,
   body text not null,
   source text not null default 'app' check (source in ('app', 'share')),
   status text not null default 'open' check (status in ('open', 'resolved')),
+  resolved_at timestamptz,
+  resolved_by_user_id uuid references public.profiles(id) on delete set null,
+  edited_at timestamptz,
+  deleted_at timestamptz,
+  deleted_by_user_id uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -407,6 +415,10 @@ create index if not exists companies_test_created_idx on public.companies(create
 create index if not exists projects_company_active_updated_idx on public.projects(company_id, updated_at desc) where archived_at is null and trashed_at is null;
 create index if not exists project_deliverables_project_idx on public.project_deliverables(project_id, updated_at desc) where trashed_at is null;
 create index if not exists project_comments_project_idx on public.project_comments(project_id, created_at desc);
+create index if not exists project_comments_thread_idx on public.project_comments(project_id, page_id, parent_comment_id, resolved_at);
+create index if not exists project_comments_parent_idx on public.project_comments(parent_comment_id, created_at) where parent_comment_id is not null;
+create index if not exists project_comments_mentions_idx on public.project_comments using gin (mentions);
+create index if not exists project_comments_active_root_idx on public.project_comments(project_id, page_id, created_at desc) where parent_comment_id is null and deleted_at is null;
 create index if not exists project_approvals_project_idx on public.project_approvals(project_id, created_at desc);
 create index if not exists project_assets_project_idx on public.project_assets(project_id, created_at desc) where trashed_at is null;
 create index if not exists security_events_created_idx on public.security_events(created_at desc);
