@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-06 (session 9)
+- Updated: 2026-05-07 (session 9)
 
 ## Targets
 
@@ -378,6 +378,7 @@
 - **Audit de credenciales en repo + git history**: cero secretos reales (`git grep` solo encontró placeholders en `.env.example`/`docs`; `git log -- backend/.env frontend/.env` vacío). No hay rotación pendiente
 - **Validación**: `cd backend && npm test` → 4/4 pass; `cd frontend && npm run build` → exit 0 (warnings preexistentes de chunks > 500 KB)
 - **Pendings cerrados**: las migraciones SQL de sesiones previas (`20260505_add_brief_uploads`, `20260506_lifecycle_notifications`) ya estaban aplicadas en remote (`list_migrations` lo confirmó)
+- **Deploy a VPS hecho**: 2 commits de seguridad (sesión 7-8 hardening + sesión 9 MCP/cron) + plan Dev/Prod pusheados a `main`; VPS hizo `git pull`, `npm install` (sin nuevos packages), `npm run build` frontend, `pm2 restart`, health check ok
 - **Cron `lifecycle/tick` instalado en VPS**: crontab del usuario `deploy` ejecuta `* * * * * curl -X POST -H "X-Cron-Secret: $(cat /home/deploy/.lifecycle_cron_secret)" https://webrief.app/api/projects/lifecycle/tick > /dev/null 2>&1`. El secret vive en `/home/deploy/.lifecycle_cron_secret` (perm 0600) y en `LIFECYCLE_CRON_SECRET` del backend `.env` del VPS — `crontab -l` no muestra el valor real. Validado con `cron-tick.log` temporal: 2 hits exitosos en 75s, JSON `{notificationsSent:0,projectsPurged:0,errors:[]}`. Limpieza posterior: redirige a /dev/null para no crecer file
 
 ## Pending — requires user action
@@ -396,6 +397,6 @@
 - SEO changes (`seo_changed` event) as granular activity for page + article projects
 - document-type activity (article has no sections — needs global change tracking or single-section treatment)
 - FAQ activity: verify each Q+A section tracked correctly
-- Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.
+- Plan ejecutable para separar Supabase Dev vs Prod (free tier) en `docs/WEBRIEF_DEV_DB_PLAN.md`; ~1.5–2h, 10 fases. Hasta ejecutarlo, no probar SQL destructivo/schema changes contra Prod sin haber validado en algún sandbox primero.
 
 (Bugs FAQ pendientes movidos a la sección "Bugs FAQ aún sin resolver" arriba)
