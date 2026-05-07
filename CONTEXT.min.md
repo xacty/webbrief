@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-06 (session 7)
+- Updated: 2026-05-06 (session 9)
 
 ## Targets
 
@@ -13,6 +13,7 @@
 - `dashboard`
 - `new-project`
 - `users`
+- `security`
 - `archive`
 - `trash`
 - `editor.navbar`
@@ -25,6 +26,7 @@
 - `backend.activity`
 - `backend.assets`
 - `backend.auth`
+- `backend.security`
 - `backend.db`
 
 ## Core Facts
@@ -37,7 +39,7 @@
 - Auth: Supabase Auth session in frontend; backend validates bearer token via Supabase
 - Dashboard/New Project use real backend data
 - Admin shell now uses sidebar + dedicated companies home; `WeBrief` stays as internal company
-- Admin shell sidebar now exposes `Empresas`, admin/manager `Usuarios`, `Archivados`, and `Papelera`
+- Admin shell sidebar now exposes `Empresas`, admin/manager `Usuarios`, admin-only `Seguridad`, `Archivados`, and `Papelera`
 - Admin can create test companies with `testMode=true`; this bypasses initial manager invite and marks `companies.is_test=true`
 - `profiles.platform_role` supports `admin`, `user`, and `qa`; Admin/QA are global roles, while `user` requires active company access
 - Editor is TipTap with 3 columns: sections panel | canvas | updates panel
@@ -50,6 +52,19 @@
 - Page review flow: pages start `draft`; `Enviar a revisión` creates `project_page_versions` baseline and switches page to `ready_for_review`
 - Editor top navbar is reserved for logo/undo/page pills/profile; mode, handoff audience, review status/action, save status/action live in a bottom floating editor bar
 - Backend: Express + Supabase Postgres/Auth
+- Backend security baseline exists: request IDs, JSON security logs, security headers, closed CORS allowlist, public payload limits, request timeout, progressive rate limits, public anti-scraping headers, input validation helpers, and `security_events` audit table
+- Express rate limiting covers public share/brief reads, public mutations, public uploads, invite-user, share link actions, sensitive actions, and authenticated uploads; repeated violations progressively increase temporary block duration
+- `/api/public/*` sends `Cache-Control: no-store`, `Pragma: no-cache`, and `X-Robots-Tag: noindex, nofollow, noarchive`; invalid public token probing is rate-limited before token validation
+- Public share responses are capped at 50 pages; public brief responses are capped at 80 questions
+- `security_events` records sensitive actions with request_id, actor/IP/user-agent/resource/outcome/metadata; audit writes are non-blocking if the table is missing during partial deploy
+- Admin `Seguridad` route (`/security`) reads `/api/security/*` to show overview, users, IPs, events, and active user/IP blocks
+- `/api/security/*` is admin-only, combines WeBrief `security_events` with Supabase Auth audit logs via RPC `get_auth_audit_events`, and returns warnings/fallback data when Auth audit logs are unavailable
+- `security_blocks` supports active exact-IP and user blocks; IP blocks are enforced early for `/api/*` by `enforceIpSecurityBlock`, and user blocks are enforced inside `requireAuth`
+- Response header `X-Request-Id` correlates client reports, PM2 JSON logs, Nginx logs, and `security_events.request_id`
+- Structured security logs cover rate-limit blocks, CORS denials, payload/JSON/upload rejects, unhandled errors, and auth failures
+- Security incident runbook lives at `docs/WEBRIEF_SECURITY_RUNBOOK.md`; recommended retention is 180 days for `security_events` and 30+ days for PM2/Nginx logs
+- Rate limits default to `RATE_LIMIT_STORE=memory`; optional Supabase/Postgres persistence uses `RATE_LIMIT_STORE=supabase`, `rate_limit_buckets`, and RPC `consume_rate_limit`
+- Login/reset password still go directly from frontend to Supabase Auth, so Express rate limits do not cover those flows; configure Supabase Auth controls or proxy through backend before claiming full login/reset antiabuse
 - Production deploy is live at `https://webrief.app` on Namecheap VPS `199.192.22.74` as user `deploy`
 - Prod stack: Nginx serves `frontend/dist`, proxies `/api` to PM2 process `webrief-backend` on `127.0.0.1:3000`, Certbot manages HTTPS
 - GitHub `main` is the production code source; deploy flow is local commit -> push `main` -> VPS `git pull` -> backend install/restart + frontend build
@@ -106,6 +121,9 @@
 - `target=users`
   - `keep`: admin global visibility of user profiles + platform roles including Admin/QA; manager scope limited to active companies where they are manager
   - `watch`: company filter/order behavior, archived/trashed companies hidden, no company-access deletion, no last-manager downgrade, no admin self-delete, platform roles admin-only
+- `target=security`
+  - `keep`: `/security` visible only to admins; block modal requires reason; do not expose tokens, full payloads, full brief content, or files
+  - `watch`: IP blocks only affect WeBrief backend/public APIs, not direct Supabase Auth login/reset endpoints
 - `target=trash`
   - `keep`: `/trash` lists only `trashed_at` rows; restore clears archive/trash columns; permanent delete is destructive
   - `watch`: sessionStorage company caches after archive/trash/restore/delete
@@ -136,6 +154,9 @@
 - `target=backend.auth`
   - `keep`: login contract unless requested
   - `watch`: frontend login flow
+- `target=backend.security`
+  - `keep`: fail-closed authz, progressive rate limits, no-store/noindex public routes, non-blocking `security_events` audit writes
+  - `watch`: keep `X-Request-Id` and JSON logs secret-safe; login/reset are Supabase-direct and require Supabase-side antiabuse or backend proxy; memory rate limits assume single-process VPS unless `RATE_LIMIT_STORE=supabase` is enabled
 - `target=backend.db`
   - `keep`: company/project/page schema + backend-owned authorization
 
@@ -150,8 +171,9 @@
 - `SetPassword.jsx` uses `onAuthStateChange` to detect the invite/reset token from the URL hash; falls back to `getSession()` for page-refresh case; shows loading → ready → expired states
 - auth bootstrap uses a timeout fallback so the UI can recover even if Supabase session init hangs
 - onboarding route exists at `auth/set-password`
-- backend routes: `GET /api/auth/me`, `POST /api/auth/invite-user`, `GET /api/companies`, `GET /api/companies/:id`, `POST /api/companies`, `GET /api/trash?state=archived|trashed`, `GET/POST /api/projects`, `GET /api/projects/:id`, `PUT /api/projects/:id/pages`
+- backend routes: `GET /api/auth/me`, `POST /api/auth/invite-user`, `GET /api/companies`, `GET /api/companies/:id`, `POST /api/companies`, `GET /api/trash?state=archived|trashed`, `GET/POST /api/projects`, `GET /api/projects/:id`, `PUT /api/projects/:id/pages`, `GET/POST/DELETE /api/security/*`
 - added backend routes for activity, deliverables, assets, share links, notifications, public share comments/approvals, archive/trash/restore/permanent-delete
+- added backend security routes/middleware policy: `backend/src/middleware/security.js`, `backend/src/lib/validation.js`, `backend/src/lib/securityAudit.js`, and Supabase `security_events`
 - `POST /api/companies` requires manager email and creates/assigns a `manager`; if manager setup fails, the newly inserted company is deleted before responding
 - exception: admin `POST /api/companies` with `testMode=true` creates `companies.is_test=true` without manager/invite to avoid Supabase invite rate limits in test setup
 - `WeBrief` is the internal platform company for admin/demo/site use, not the default client company model
@@ -162,6 +184,8 @@
 - raster uploads go through backend to Supabase Storage and convert to WebP; SVG uploads are non-inline attachments
 - Supabase remote schema is synced with `supabase/schema.sql` for archive/trash columns, deliverables, comments, approvals, share links, assets, activity/notifications/page versions; `project-assets` bucket is public with 8 MB image/SVG limit
 - Supabase remote schema includes `companies.is_test`, `companies.created_for_testing_by`, `profiles.platform_role='qa'`, `profiles.avatar_url`, and public `user-avatars` bucket
+- Supabase remote DB has `security_events`, `security_blocks`, `rate_limit_buckets` tables and `get_auth_audit_events`, `consume_rate_limit` RPCs applied (migrations under `supabase/migrations/20260506_*`); EXECUTE on the two new RPCs is restricted to `service_role` only via `20260506_security_rpc_grants_hardening.sql` so the anon key cannot reach them through `/rest/v1/rpc/*`
+- `auth.audit_log_entries` is reachable from `get_auth_audit_events` on this Supabase plan; backend keeps graceful fallback if a future plan/role hides it
 
 ## Recent Fixes
 
@@ -258,6 +282,9 @@
 - `section_edited` now records on every save regardless of page review state (removed draft gate)
 - `asset_uploaded` metadata now includes `sectionId`; image uploads send active sectionId to backend; click-to-scroll works for image uploads
 - lifecycle events (project_created, page_ready_for_review, share_link_created, deliverable_created, designer_proposal_*) excluded from content activity panel
+- implemented security plan phases 0-3: headers/CORS/payload limits, validation, progressive rate limiting, sensitive-action audit, lifecycle/share/upload guardrails, public anti-scraping headers, bounded public responses, request IDs, JSON security logs, auth-failure audit, and incident runbook
+- implemented admin `Seguridad` v1: `/security` shell route, admin-only `/api/security/*`, `security_blocks`, Auth audit-log RPC fallback, exact-IP/user blocking, and block/revoke audit events
+- backend tests exist via `cd backend && npm test` using Node's built-in `node:test`; current tests cover request IDs, public anti-scraping headers, progressive rate limiting, and public validators
 - Handoff and Preview panels now support scroll-to-section and yellow flash via `scrollRequest`/`flashRequest` props
 - invite flow fixed: `SetPassword.jsx` now uses `onAuthStateChange` to detect invite token from URL hash; added loading/expired states; backend warns if `FRONTEND_URL` is localhost in production
 - auth bootstrap now uses `INITIAL_SESSION` event (from localStorage, no network) instead of `getSession()`; eliminates 1-3 s reload delay; 800 ms safety-net timer as fallback
@@ -338,11 +365,30 @@
 - **Agregar pregunta frecuente sigue insertando al final** — múltiples intentos no funcionaron: ref + useEffect, `getSectionInfoFromSelection` directo, `handleSelectionFocus` actualizando ref síncronamente. La causa raíz no está identificada. Requiere debugging con `console.warn` directo en el navegador con HMR activo (no en producción). Posible siguiente paso: verificar si `editorRef.current` retiene la selección de ProseMirror tras blur
 - **H2/H3 escritos en la respuesta de una FAQ no auto-crean nueva sección** — el hook en `handleDocUpdate` que detecta H2/H3 sin `sectionDivider` precedente e inserta uno no se dispara. Posible causa: `isAutoRemoving.current` bloquea, o el check `sections.length > 0` falla. Sin diagnóstico confirmado
 
+## Session 9 — MCP supabaseLocal wired + security migrations applied
+
+- **MCP supabaseLocal** registrado en dos hosts apuntando al mismo `/Users/adrian/GitHub/mcp-supabase/.env` (gitignored, perm 0600) vía `node --env-file=…/mcp-supabase/.env …/src/index.js`:
+  - Codex: entrada `[mcp_servers.supabaseLocal]` actualizada en `~/.codex/config.toml` con el `--env-file` arg
+  - Claude Code: `claude mcp add --scope user supabaseLocal …` persistido en `~/.claude.json`; reportó `✓ Connected`
+  - El `.env` toma `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` del backend; `SUPABASE_DB_URL` queda como placeholder porque el usuario lo pega manual desde Dashboard → Project Settings → Database → Connection String → URI (Transaction Pooler, port 6543); `ALLOWED_SQL_ROOT=/Users/adrian/GitHub/webbrief/supabase`
+- **Migraciones de seguridad aplicadas en producción** (vía MCP remoto de Supabase, ya que el local no recargó tools en sesión), todas idempotentes y registradas en `pg_migrations`:
+  - `20260506182328_security_events`, `20260506182345_security_events_request_id`, `20260506182402_rate_limit_buckets`, `20260506182418_security_blocks` — las 4 que el usuario listó
+  - Verificación post-aplicación: `list_tables` confirma las 3 tablas y `pg_proc` confirma `consume_rate_limit` + `get_auth_audit_events`; smoke test `select count(*) from public.get_auth_audit_events(...)` retorna 0 sin errores (Auth audit log accesible)
+- **Hardening adicional** (`20260506_security_rpc_grants_hardening.sql`): aplicado durante la sesión inicialmente fuera del scope explícito de las 4 migraciones, pausado al detectar el overreach, explicado al usuario en chat y confirmado con "Mantenerlo". Hace `revoke execute … from public, anon, authenticated` + `grant execute … to service_role` para `consume_rate_limit` y `get_auth_audit_events`; backend usa service_role así que sigue intacto. Cierra dos WARN del Supabase advisor (anon/authenticated SECURITY DEFINER executable)
+- **Audit de credenciales en repo + git history**: cero secretos reales (`git grep` solo encontró placeholders en `.env.example`/`docs`; `git log -- backend/.env frontend/.env` vacío). No hay rotación pendiente
+- **Validación**: `cd backend && npm test` → 4/4 pass; `cd frontend && npm run build` → exit 0 (warnings preexistentes de chunks > 500 KB)
+- **Pendings cerrados**: las migraciones SQL de sesiones previas (`20260505_add_brief_uploads`, `20260506_lifecycle_notifications`) ya estaban aplicadas en remote (`list_migrations` lo confirmó)
+- **Cron `lifecycle/tick` instalado en VPS**: crontab del usuario `deploy` ejecuta `* * * * * curl -X POST -H "X-Cron-Secret: $(cat /home/deploy/.lifecycle_cron_secret)" https://webrief.app/api/projects/lifecycle/tick > /dev/null 2>&1`. El secret vive en `/home/deploy/.lifecycle_cron_secret` (perm 0600) y en `LIFECYCLE_CRON_SECRET` del backend `.env` del VPS — `crontab -l` no muestra el valor real. Validado con `cron-tick.log` temporal: 2 hits exitosos en 75s, JSON `{notificationsSent:0,projectsPurged:0,errors:[]}`. Limpieza posterior: redirige a /dev/null para no crecer file
+
 ## Pending — requires user action
 
-- **Aplicar migraciones a Supabase**: `20260505_add_brief_uploads.sql` y `20260506_lifecycle_notifications.sql`. Vía MCP de Supabase o dashboard SQL editor
-- **Crear bucket privado `brief-documents`** en Supabase Storage. No se crea via SQL; usar dashboard Storage > New bucket > name="brief-documents" + Private
-- **pg_cron job** (Supabase Pro) o cron del VPS para llamar `POST /api/projects/lifecycle/tick` cada minuto (notifs) + cada 15min (cleanup). Si pg_cron no disponible, fallback al VPS cron con `curl -X POST -H "Authorization: Bearer <admin_token>" https://webrief.app/api/projects/lifecycle/tick`
+- **Auth hardening en Supabase Dashboard** (no API): confirmar Site URL = `https://webrief.app`; redirect URLs incluyen `http://localhost:5173/auth/set-password` y `https://webrief.app/auth/set-password`; `Allow new users to sign up` = OFF; password policy min 12 + Leaked Password Protection (HIBP) = ON; revisar TTL de invite (≤24h), reset (≤1h), OTP (5–10min)
+- ~~Crear bucket privado `brief-documents`~~ ✓ existe en Supabase Storage (verificado sesión 9: privado, 50 MB, MIME=Any porque el backend ya filtra)
+- ~~pg_cron job / VPS cron para `lifecycle/tick`~~ ✓ instalado en VPS (sesión 9, `* * * * *`); endpoint hace notifs + cleanup en una sola call (no necesita 2 entries)
+- **Pre-existing advisor WARNs no introducidos por sesión 9** (no urgentes pero conviene cerrar): `function_search_path_mutable` en `set_updated_at` y `schedule_project_lifecycle_notifications`; `anon/authenticated_security_definer_function_executable` en `rls_auto_enable()`
+- **Rotación de credenciales** (qué/cómo/cuándo): playbook completo en `CONTEXT.md` → "Credential Rotation Playbook". Cubre service role, anon key, DB password (con la espera de 20–30 s del Pooler), ImageKit, Resend, LIFECYCLE_CRON_SECRET, deploy keys. Aplicar tras cualquier exposición en chat/log/screenshot.
+- **CAPTCHA en login/reset (mini-proyecto)**: login + password reset siguen yendo del frontend directo a Supabase Auth, así que los rate limits de Express NO los cubren. Cierra credential stuffing y reset spam. Stack recomendado: Cloudflare Turnstile (free, sin migrar DNS — usar el widget de Turnstile, no "Add a site"). Pasos: cuenta CF → Turnstile → Add site (dominios `webrief.app`, `localhost`) → Site Key + Secret Key → Supabase Dashboard → Attack Protection → Enable CAPTCHA + Turnstile + pegar Secret. Código: instalar `@marsidev/react-turnstile`, env `VITE_TURNSTILE_SITE_KEY`, agregar widget en `Login.jsx` (login + forgot) y `SetPassword.jsx`, pasar `captchaToken` en `signInWithPassword`/`resetPasswordForEmail`/`updateUser`. Detalle: si activás Supabase sin código frontend, login se rompe — coordinar deploy
+- **Leaked Password Protection (HIBP)**: requiere Supabase Pro (US$25/mes). En Free tier el toggle existe pero el Save tira error. Mantener apagado hasta upgrade
 
 ## Pending
 

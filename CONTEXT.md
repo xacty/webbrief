@@ -5,7 +5,7 @@
   - Read `CONTEXT.min.md` second.
   - Read this file only if more detail is needed.
   - If user explicitly asks to review/read `CONTEXT.md`, treat this file as authoritative expanded context.
-- Updated: 2026-04-26
+- Updated: 2026-05-06
 - Scope: current repo state; use as authoritative project context when user says "review/read CONTEXT.md", unless user says some part is outdated.
 - Goal: optimize for AI consumption; prefer this file over inferring intent from stale code comments.
 
@@ -46,6 +46,7 @@
 - `companies`: admin home for company discovery/filters/pagination.
 - `company-detail`: company workspace with project cards + team sidecard.
 - `users`: admin/manager user management for profiles and company memberships.
+- `security`: admin-only security overview, auth/security events, IP/user activity, and active blocks.
 - `archive`: restore surface for archived companies and projects.
 - `trash`: restore/delete surface for trashed companies and projects.
 - `new-project`: project creation form + suggested structure preview.
@@ -60,6 +61,7 @@
 - `backend.activity`: project activity + notifications.
 - `backend.assets`: Supabase Storage uploads; raster -> WebP, SVG attachment-only.
 - `backend.auth`: Supabase-backed session + invite flow.
+- `backend.security`: request IDs, JSON security logs, headers, CORS, rate limits, validation, security audit, public anti-scraping controls, incident runbook.
 - `backend.db`: Supabase Postgres company/project store.
 
 ## Current Features
@@ -83,6 +85,7 @@
   - backend route `GET /api/auth/me`
   - backend route `POST /api/auth/invite-user`
   - invite flow upserts `profiles` + `company_memberships`; real user base lives in `auth.users` + `profiles` + `company_memberships`
+  - login/reset password still call Supabase Auth directly from the frontend, so Express antiabuse does not cover those calls; use Supabase Auth controls or a backend proxy before claiming full login/reset protection
 - Companies:
   - backend route `GET /api/companies`
   - backend route `GET /api/companies/:id`
@@ -139,6 +142,18 @@
   - managers can invite/edit names/avatars/manage non-manager company roles only inside companies where they are manager
   - company access cannot be deleted from the users panel; change the role or delete the account instead
   - platform roles supported: `admin`, `user`, `qa`; Admin/QA are global roles, while `user` requires active company access
+- Security:
+  - sidebar entry `Seguridad` is visible only to admins
+  - frontend route `/security` loads `SecurityPage` lazily and must not import editor/TipTap bundles
+  - backend routes under `/api/security/*` are admin-only
+  - `GET /api/security/overview` returns 24h/7d KPIs, top IPs, active blocks, critical events, and source warnings
+  - `GET /api/security/events` returns a normalized timeline combining WeBrief `security_events` and Supabase Auth audit logs when available
+  - `GET /api/security/users` summarizes user activity, recent IPs/user agents, failures, last login, and active user blocks
+  - `GET /api/security/ips` summarizes exact IP activity, associated users, failures, last seen, and active IP blocks
+  - `POST /api/security/blocks` creates exact-IP or user blocks; reason is required and expiration is optional
+  - `DELETE /api/security/blocks/:id` revokes active blocks
+  - UI warns when Supabase Auth audit logs or `security_blocks` are unavailable and keeps rendering fallback WeBrief data
+  - do not show tokens, full auth payloads, full brief content, or uploaded file data in the security UI
 - New Project:
   - fields: project name, client name, client email, business type
   - company selector from real companies API
@@ -188,10 +203,149 @@
   - `/api/public/share/:token`
   - `/api/public/share/:token/comments`
   - `/api/public/share/:token/approvals`
+  - `/api/security/overview`
+  - `/api/security/events`
+  - `/api/security/users`
+  - `/api/security/ips`
+  - `/api/security/blocks`
   - `requireAuth` middleware validates Supabase session and loads profile + memberships
+  - `requireAuth` denies active `security_blocks.block_type='user'` entries after identity load
   - Supabase remote schema is synced with `supabase/schema.sql` for archive/trash columns, deliverables, comments, approvals, share links, assets, page versions, activity and notifications
   - Supabase remote schema includes `companies.is_test`, `companies.created_for_testing_by`, `profiles.platform_role='qa'`, `profiles.avatar_url`, and public `user-avatars` bucket
+  - Supabase remote schema includes `security_events`; migration: `supabase/migrations/20260506_security_events.sql`
+  - Supabase remote schema includes `security_blocks` and RPC `get_auth_audit_events`; migration: `supabase/migrations/20260506_security_blocks.sql`
   - Storage bucket `project-assets` is public, limited to 8 MB, and allows JPEG/PNG/WebP/SVG uploads through the backend
+
+## Backend Security
+
+- `backend/src/middleware/security.js` owns security headers, CORS allowlist, request timeout, public anti-scraping headers, error normalization, and in-memory rate limiters.
+- `backend/src/middleware/security.js` also assigns `req.requestId` and response header `X-Request-Id`; clients can pass `X-Request-Id`, otherwise backend generates one.
+- CORS exposes `X-Request-Id` and `X-RateLimit-*` for client-visible diagnostics.
+- CORS allows `FRONTEND_URL` plus optional comma-separated `CORS_ORIGINS`; unknown browser origins return 403.
+- Express disables `X-Powered-By`, trusts one proxy hop for Nginx, and sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Resource-Policy`, plus HSTS in production.
+- `/api/public/*` uses lower payload limits: 256 KB JSON and 64 KB URL-encoded.
+- Rate limits are progressive; repeated violations increase temporary block duration.
+- Default rate limit store is memory (`RATE_LIMIT_STORE=memory`), which assumes current single-process VPS topology.
+- Optional persistent rate limit store uses Supabase/Postgres (`RATE_LIMIT_STORE=supabase`) with `rate_limit_buckets` and RPC `consume_rate_limit`; if the RPC fails, backend logs `rate_limit_store_failed` and falls back to memory.
+- Public antiabuse covers token probing before token validation, public share/brief reads, comments, approvals, brief submissions, and public brief document uploads.
+- Authenticated antiabuse covers invites, share-link create/revoke, sensitive lifecycle/user actions, and authenticated uploads.
+- `/api/public/*` returns `Cache-Control: no-store`, `Pragma: no-cache`, and `X-Robots-Tag: noindex, nofollow, noarchive`.
+- Public share output is capped at 50 pages; public brief output is capped at 80 questions.
+- `backend/src/lib/validation.js` owns compact validators for public tokens, public names/emails/text, safe optional IDs, and brief answers payload size.
+- `backend/src/lib/securityAudit.js` writes non-blocking `security_events` rows for sensitive actions. If the table is missing during partial deploy, the user action continues and the backend logs a warning.
+- `backend/src/lib/securityBlocks.js` checks active exact-IP/user blocks with short cache and fail-open behavior if `security_blocks` is missing or temporarily unavailable.
+- `backend/src/lib/securityLogger.js` writes secret-safe JSON logs for PM2/Nginx correlation. Do not log Authorization headers, tokens, passwords, full brief answers, content HTML, or files.
+- Audited actions include invitations, user/profile/platform-role changes, membership role changes/removals, removal requests, account deletion, share links, brief share links, lifecycle archive/trash/restore/permanent-delete, uploads, and public share/brief mutations.
+- Security block creation/revocation is audited in `security_events`; blocked requests are logged secret-safely and user-block denials are audited.
+- Auth failures are logged/audited as `auth_token_missing`, `auth_token_invalid`, and `auth_validation_failed`.
+- `enforceIpSecurityBlock` runs early for `/api/*` except `/api/health`; exact-IP blocks affect WeBrief backend/public APIs only.
+- User blocks are enforced inside `requireAuth` after Supabase token validation and profile load.
+- `get_auth_audit_events` is a `security definer` RPC that normalizes `auth.audit_log_entries` for backend reads; endpoints continue with warnings if the RPC/table is unavailable.
+- Login/reset still go directly to Supabase Auth, so WeBrief IP blocks cannot block those provider endpoints; use Supabase Auth settings, WAF/Nginx, or a backend auth proxy for total login/reset blocking.
+- Structured logs cover `rate_limit_blocked`, `cors_origin_denied`, `payload_too_large`, `invalid_json`, `upload_rejected`, and `unhandled_request_error`.
+- Lifecycle guardrails: permanent delete requires resource in trash; restore requires archived or trashed state; company archive/trash validates current state and keeps `WeBrief` protected.
+- CAPTCHA is intentionally not enabled by default. Only add challenge if there is actual abuse signal from logs/security events/support; first prefer threshold tuning or Nginx blocks.
+- `docs/WEBRIEF_SECURITY_RUNBOOK.md` contains incident queries, response steps, retention policy, and post-deploy checklist.
+- Retention target: `security_events` 180 days; PM2/Nginx logs at least 30 days with rotation/compression.
+- Backend tests run with `cd backend && npm test`; current `node:test` coverage includes request IDs, public anti-scraping headers, progressive rate limiting, and public validators.
+- Supabase Auth hardening and credential rotation require provider/dashboard access; exact checklist lives in the security runbook.
+
+## Credential Rotation Playbook
+
+When to rotate any credential:
+
+- It was pasted into a chat (LLM transcript, Slack, email, ticket).
+- It appears in any `git log`, file diff, screenshot, or backup that left the local machine.
+- It was shared with a teammate who left, or any third party.
+- A leaked-credential alert (HIBP, GitHub secret scanning) flags it.
+- Suspected abuse in `security_events`, PM2 logs, Nginx logs, Supabase Auth logs, or provider dashboards.
+- Scheduled hygiene: at minimum once a year per credential.
+
+General rules (apply to every rotation):
+
+- Never paste secrets in chat. If it happened, rotate at the end of the session.
+- Never commit `.env` — `backend/.env`, `frontend/.env`, `mcp-supabase/.env` are already gitignored at root and per-repo. Verify with `git status` before commit.
+- Update the local `.env` first, validate the app boots/connects, then update the VPS `.env`.
+- After a VPS `.env` change: `ssh deploy@199.192.22.74` → `cd /var/www/webrief/backend` → edit `.env` → `pm2 restart webrief-backend` → verify `curl https://webrief.app/api/health`.
+- Frontend rotations also need rebuild + redeploy (anon key, Vite envs).
+- Keep a private rotation log (date, credential type, reason) — not in repo.
+
+### Supabase service role key (`SUPABASE_SERVICE_ROLE_KEY`)
+
+Used by backend and `mcp-supabase` to bypass RLS.
+
+1. Supabase Dashboard → Project Settings → API Keys → click reset / regenerate next to `service_role`.
+2. Update `/Users/adrian/GitHub/webbrief/backend/.env` locally.
+3. Update `/Users/adrian/GitHub/mcp-supabase/.env` locally.
+4. SSH a VPS, actualizar `backend/.env`, `pm2 restart webrief-backend`.
+5. Validar: `curl https://webrief.app/api/health` y un endpoint protegido (ej. `/api/auth/me` con bearer token).
+
+### Supabase anon key (`VITE_SUPABASE_ANON_KEY`)
+
+Public-facing key for frontend SDK. Visible in built bundle, but rotation invalidates the old immediately.
+
+1. Supabase Dashboard → Project Settings → API Keys → reset `anon`.
+2. Update `/Users/adrian/GitHub/webbrief/frontend/.env` y `frontend/.env.production` (si lo usás).
+3. Rebuild frontend local: `cd frontend && npm run build`.
+4. Deploy nuevo build al VPS (git push + VPS pull + rebuild en VPS).
+5. Si la anon key vieja sigue en el bundle previo, los clients que tengan cache pueden romper hasta refresh — esperado.
+
+### Supabase database password (rol `postgres`)
+
+Solo afecta conexiones directas a Postgres (CLI psql, MCP supabaseLocal, herramientas de migración). Backend usa service role, NO se ve afectado.
+
+1. Supabase Dashboard → Database → Database Settings → click "Reset database password" → copiar la nueva con el botón Copy.
+2. Actualizar `SUPABASE_DB_URL` en `/Users/adrian/GitHub/mcp-supabase/.env`. Reemplazar la password completa entre `:` y `@` en la cadena. URL-encode si tiene `@#?&+%/`.
+3. **Esperar 20–30 s** antes de probar — el Pooler de Supabase cachea credenciales y rechaza la nueva por unos segundos. Sin esto, el primer intento falla con `password authentication failed for user "postgres"` aunque todo esté correcto.
+4. Validar: `cd /Users/adrian/GitHub/mcp-supabase && node --env-file=.env -e "import('pg').then(({default:{Pool}})=>{const p=new Pool({connectionString:process.env.SUPABASE_DB_URL,ssl:{rejectUnauthorized:false}});p.query('select now()').then(r=>{console.log('OK',r.rows[0]);p.end()}).catch(e=>{console.error('FAIL',e.message);p.end()})})"`.
+5. Reabrir Codex / Claude Code chat para que el MCP `supabaseLocal` recargue el `.env`.
+
+### ImageKit private key (`IMAGEKIT_PRIVATE_KEY`)
+
+Backend SDK para uploads de imagen.
+
+1. ImageKit Dashboard → Developer Options → API Keys → Regenerate private key.
+2. Update `backend/.env` local + VPS.
+3. `pm2 restart webrief-backend`.
+4. Validar subiendo una imagen desde el editor.
+
+### Resend API key
+
+Usada para invite/reset emails.
+
+1. Resend Dashboard → API Keys → "Create API Key" (o "Roll" si la opción existe).
+2. Borrar la vieja después de validar la nueva.
+3. Update `backend/.env` (la variable se llama `RESEND_API_KEY` u otra que el backend lea).
+4. `pm2 restart webrief-backend`.
+5. Validar mandando un invite real.
+
+### `LIFECYCLE_CRON_SECRET` (header `X-Cron-Secret`)
+
+Solo usado por el cron del VPS para autenticar `POST /api/projects/lifecycle/tick`.
+
+1. Generar nueva: `openssl rand -hex 32`.
+2. Update VPS `backend/.env` + `pm2 restart webrief-backend`.
+3. Update VPS crontab (`crontab -e`) para usar el nuevo secret en el header `X-Cron-Secret`.
+4. Validar manualmente: `curl -X POST -H "X-Cron-Secret: <nuevo>" https://webrief.app/api/projects/lifecycle/tick`.
+
+### SSH/deploy keys (GitHub deploy key del VPS)
+
+Si una llave privada se filtró:
+
+1. GitHub → repo Settings → Deploy keys → eliminar la vieja.
+2. SSH al VPS, generar nueva: `ssh-keygen -t ed25519 -f ~/.ssh/webrief_deploy -N ""`.
+3. Pegar pubkey nueva (`~/.ssh/webrief_deploy.pub`) en GitHub deploy keys con permiso de read (o write si el VPS pushea).
+4. Actualizar `~/.ssh/config` del VPS para que el alias use la nueva llave.
+5. Validar: `cd /var/www/webrief && git fetch origin`.
+
+### Si una password se pasó por chat (caso típico)
+
+Resumen exprés:
+
+1. Identificar de qué credencial es (DB? service role? Resend?).
+2. Aplicar el playbook correspondiente arriba.
+3. Anotar en el rotation log: fecha + qué credencial + canal de exposición (ej. "DB password Pooler — Claude Code chat 2026-05-06").
+4. No reusar la misma password para nada más; tratarla como filtrada permanentemente.
 
 ## Editor Invariants
 
