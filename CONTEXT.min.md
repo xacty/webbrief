@@ -393,7 +393,8 @@
 - **Modos read-only**: en Handoff/Preview, los `<span data-comment-id>` ya viven en el HTML guardado y se ven con el mismo CSS automáticamente; panel muestra threads pero `commentsReadOnly = editorMode !== 'brief' || !canWriteContent` desactiva inputs/acciones (solo filtros y click→scroll funcionan).
 - **Aislamiento público**: `backend/src/routes/public.js` ahora aplica `stripCommentMarks(html)` en `serializePublicPage` — regex `<span\b[^>]*\bdata-comment-id\s*=\s*[...]>([\s\S]*?)<\/span>` reemplaza span entero por su contenido. Cliente público de `/share/:token` no ve highlights ni threads; los comentarios son internal-only en v1.
 - **Tests**: 9 tests nuevos en `backend/test/comments.test.js` (isUuid, sanitizeMentions cap+filter+invalid, serializeComment soft-delete + camelCase + null, EDIT_WINDOW_MS); suite total 13/13 verde.
-- **Resend API key configurada** (`RESEND_API_KEY` en `backend/.env`) — smoke test contra `https://api.resend.com/emails` pasó (recibe `id` UUID). VPS aún no actualizado.
+- **Resend API key configurada** (`RESEND_API_KEY` en `backend/.env` local + VPS) — smoke test contra `https://api.resend.com/emails` pasó (recibe `id` UUID). Deploy a VPS ejecutado: `git pull` + `npm run build` frontend + `pm2 restart webrief-backend`, health `{"status":"ok"}`.
+- **`seo_changed` event granular** agregado al panel de actividad para `page` y `document` (FAQ no usa SEO por página): `PUT /api/projects/:id/pages` lee `seo_metadata` previo en la SELECT y, post-upsert, computa diff via `diffSeoMetadata(prev, next)` (helper en `backend/src/lib/projectAccess.js`) sobre `titleTag`/`metaDescription`/`urlSlug`. Si hay cambios, llama `recordSeoChangedActivities({projectId, currentUser, seoEvents})` que sigue el mismo patrón de dedup que `recordSectionEditActivities`: matchea unread `(actor, pageId, sectionId='__seo__')` y mergea, acumulando `metadata.history[]` cap 50 con `previousValues`/`nextValues` por entry. Frontend `sectionActivity` filter extendido a incluir `seo_changed`; virtual `__seo__` ordena al tope (-1 antes que `__document__` que es 0); `groupedSectionActivity` muestra label "SEO metadata"; `navigateToSection('__seo__')` expande SEO tray + `setScrollRequest({type:'seo'})` reusando el handler existente. `formatActivityChangeTypes` mapea `seo_title_changed`/`seo_description_changed`/`seo_slug_changed` a "Cambió title tag" / "Cambió meta description" / "Cambió URL slug". 6 tests nuevos `backend/test/seo-diff.test.js` (suite total 19/19 verde). Deployed a VPS.
 
 ## Pending — requires user action
 
@@ -408,7 +409,6 @@
 ## Pending
 
 - richer deliverables UI beyond compact editor panel
-- SEO changes (`seo_changed` event) as granular activity for page + article projects
 - document-type activity (article has no sections — needs global change tracking or single-section treatment)
 - FAQ activity: verify each Q+A section tracked correctly
 - Plan ejecutable para separar Supabase Dev vs Prod (free tier) en `docs/WEBRIEF_DEV_DB_PLAN.md`; ~1.5–2h, 10 fases. Hasta ejecutarlo, no probar SQL destructivo/schema changes contra Prod sin haber validado en algún sandbox primero.

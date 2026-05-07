@@ -700,7 +700,27 @@ Resumen exprés:
 
 **Pending follow-ups**:
 - Verify end-to-end in browser preview (DB + email both wired now; never tested in actual browser session, code is unproven for real interactions).
-- VPS deploy (post-context-update commit + push + ssh git-pull + restart).
+- ~~VPS deploy~~ ✓ deployed (commit `9ce056c`).
+
+## Completed (2026-05-07) — `seo_changed` granular activity event
+
+**Scope**: SEO metadata edits (`titleTag`, `metaDescription`, `urlSlug`) per page now emit a granular `seo_changed` activity event so the right-side activity panel shows them alongside `section_edited` and `asset_uploaded`. Applies to project types `page` and `document`; FAQ pages don't surface SEO in the UI so naturally no event fires.
+
+**Backend** (`backend/src/lib/projectAccess.js` + `backend/src/routes/projects.js`):
+- New helper `diffSeoMetadata(previous, next)` returns `{ changes:[seo_title_changed|seo_description_changed|seo_slug_changed], previousValues, nextValues }`. Treats missing/empty as equivalent (no false positives when adding the column to legacy pages).
+- New helper `recordSeoChangedActivities({ projectId, currentUser, seoEvents })` mirrors `recordSectionEditActivities`: dedups unread rows by `(actor_user_id, metadata.pageId, metadata.sectionId='__seo__')`, accumulates `metadata.history[]` cap 50 (each entry stores `changeTypes`, `actorLabel`, `at`, `previousValues`, `nextValues`).
+- `PUT /api/projects/:id/pages` extended: existing-pages SELECT now pulls `seo_metadata` (when `projectPageSeoMetadataColumnAvailable`); after upsert, iterates request pages, computes diff vs `previousSeoByPageId`, calls `recordSeoChangedActivities` if any changes. Gated by `projectPageSeoMetadataColumnAvailable` — graceful no-op if the column is missing during partial deploy.
+
+**Frontend** (`frontend/src/pages/ProjectEditor.jsx`):
+- `sectionActivity` filter extended to include `eventType === 'seo_changed'` and `metadata.sectionId === '__seo__'`. Sort ordinal: `__seo__` → -1 (top), `__document__` → 0, real sections → docIndex (1+). So SEO activity always appears above section activity in the panel.
+- `groupedSectionActivity` `sectionName` resolution: when `sectionId === '__seo__'` use `metadata.sectionName || 'SEO metadata'`.
+- `navigateToSection('__seo__', ...)` short-circuits the section-divider scroll path: `setSeoExpanded(true)` then `setScrollRequest({ type:'seo', requestId })`. The existing `scrollRequest.type === 'seo'` handler in EditorPanel (and HandoffPanel, PreviewPanel) already knows how to scroll to `[data-seo-tray]`.
+- `formatActivityChangeTypes` map extended with `seo_title_changed: 'Cambió title tag'`, `seo_description_changed: 'Cambió meta description'`, `seo_slug_changed: 'Cambió URL slug'`.
+- `HistoryTabPanel` left untouched — it filters strictly to `section_edited` for content snapshot diffs; SEO history lives in the activity card's "Ver detalle" expansion via the same shared `metadata.history[]` reader.
+
+**Tests** (`backend/test/seo-diff.test.js`, 6 new): empty diff when nothing changed, single-field detection, multi-field, missing/empty equivalence, empty-to-non-empty as change, ignores unknown fields. Suite total 19/19 green.
+
+**Deployed**: commit `5fc0e28` pushed and pulled on VPS, frontend rebuilt, PM2 restarted, health check `{"status":"ok"}`.
 
 ## Pending
 
