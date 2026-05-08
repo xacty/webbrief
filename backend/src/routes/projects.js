@@ -1192,6 +1192,72 @@ router.put('/:id/pages', async (req, res) => {
       })
     }
 
+    // Auto-resolver comments cuyo anchor (data-comment-id) ya no figura en el
+    // HTML guardado. Mantiene la fila en DB resuelta y emite un activity event
+    // `comment_orphaned` con el snippet original para que se pueda rastrear
+    // desde el historial — el feedback no se pierde aunque el texto se borre.
+    try {
+      const { data: openRoots, error: rootsError } = await supabaseAdmin
+        .from('project_comments')
+        .select('id, page_id, anchor_snippet, body, author_name, actor_user_id')
+        .eq('project_id', project.id)
+        .is('parent_comment_id', null)
+        .is('deleted_at', null)
+        .is('resolved_at', null)
+      if (!rootsError && Array.isArray(openRoots) && openRoots.length > 0) {
+        const idsByPage = new Map()
+        for (const page of payload) {
+          const html = String(page.content_html || '')
+          const ids = new Set(
+            [...html.matchAll(/data-comment-id\s*=\s*["']([^"']+)["']/g)].map((m) => m[1])
+          )
+          idsByPage.set(page.id, ids)
+        }
+        const orphans = openRoots.filter((root) => {
+          if (!root.page_id) return false
+          if (!idsByPage.has(root.page_id)) return false
+          return !idsByPage.get(root.page_id).has(root.id)
+        })
+        const timestamp = new Date().toISOString()
+        for (const orphan of orphans) {
+          const { error: resolveError } = await supabaseAdmin
+            .from('project_comments')
+            .update({
+              resolved_at: timestamp,
+              resolved_by_user_id: req.currentUser?.id || null,
+              status: 'resolved',
+            })
+            .eq('id', orphan.id)
+          if (resolveError) {
+            console.warn('[orphan-resolve] update failed:', resolveError.message)
+            continue
+          }
+          const targetPage = payload.find((p) => p.id === orphan.page_id)
+          await logProjectActivity({
+            projectId: project.id,
+            currentUser: req.currentUser,
+            eventType: 'comment_orphaned',
+            subjectType: 'comment',
+            subjectId: orphan.id,
+            title: 'Comentario auto-resuelto (texto eliminado)',
+            description: orphan.anchor_snippet || (orphan.body || '').slice(0, 120),
+            metadata: {
+              commentId: orphan.id,
+              pageId: orphan.page_id,
+              pageName: targetPage?.name || '',
+              anchorSnippet: orphan.anchor_snippet || '',
+              originalBody: orphan.body || '',
+              originalAuthor: orphan.author_name || '',
+              originalActorId: orphan.actor_user_id || null,
+              reason: 'orphaned',
+            },
+          })
+        }
+      }
+    } catch (orphanError) {
+      console.warn('[orphan-resolve] threw:', orphanError.message)
+    }
+
     // SEO diff: para page/document, detectamos cambios en seo_metadata por página
     // y emitimos `seo_changed` granular, scopeado al virtual section __seo__.
     // FAQs no usan SEO por página en la UI, así que naturalmente la diff queda vacía.

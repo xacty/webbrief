@@ -1997,6 +1997,9 @@ function buildDocumentActivityEvents(previousPages, nextPayload) {
       changeTypes: [...changes],
       previousIndex: null,
       nextIndex: 0,
+      // Snapshot del HTML completo para que la pestaña Historial pueda mostrar
+      // diffs entre versiones de docs lineales (sin sectionDivider).
+      sectionHtml: nextHtml || '',
     })
   })
 
@@ -2950,7 +2953,10 @@ export default function ProjectEditor() {
         reviewRequestedBy: page.reviewRequestedBy || null,
       }
     })
-    const sectionEvents = projectType === 'page'
+    // FAQ usa el mismo modelo de sectionDivider que page → reusamos el builder
+    // por sección (eventos granulares por FAQ). Document es lineal → builder
+    // a nivel documento con sectionId virtual __document__.
+    const sectionEvents = (projectType === 'page' || projectType === 'faq')
       ? buildSectionActivityEvents(pages, payload)
       : buildDocumentActivityEvents(pages, payload)
 
@@ -8932,41 +8938,52 @@ function HistoryTabPanel({ activity = [], sections = [], activePageId = '', proj
   const entries = useMemo(() => {
     const flat = []
     activity.forEach((item) => {
-      if (item.eventType !== 'section_edited') return
-      if (!item.metadata?.sectionId) return
-      // Filtrar por página activa si el item tiene pageId
-      if (item.metadata.pageId && activePageId && item.metadata.pageId !== activePageId) return
-      const sectionId = item.metadata.sectionId
-      const sectionName = sectionNameById.get(sectionId)
-        || item.metadata.sectionName
-        || 'Sección'
-      const history = Array.isArray(item.metadata?.history) ? item.metadata.history : []
-      // history is ordered most-recent first per backend; iterate to compute htmlBefore/htmlAfter pairs
-      history.forEach((entry, index) => {
-        const previous = history[index + 1]
-        flat.push({
-          key: `${item.id}-${entry.at || index}`,
-          sectionId,
-          sectionName,
-          changeTypes: entry.changeTypes || [],
-          actorLabel: entry.actorLabel || item.actorLabel,
-          at: entry.at || item.createdAt,
-          htmlAfter: typeof entry.htmlAfter === 'string' ? entry.htmlAfter : '',
-          htmlBefore: typeof previous?.htmlAfter === 'string' ? previous.htmlAfter : '',
-          isLegacy: typeof entry.htmlAfter !== 'string',
+      // section_edited: snapshots por sección con diff (page/faq) o por documento (document)
+      if (item.eventType === 'section_edited') {
+        if (!item.metadata?.sectionId) return
+        if (item.metadata.pageId && activePageId && item.metadata.pageId !== activePageId) return
+        const sectionId = item.metadata.sectionId
+        const sectionName = sectionNameById.get(sectionId)
+          || item.metadata.sectionName
+          || (sectionId === '__document__' ? 'Documento' : 'Sección')
+        const history = Array.isArray(item.metadata?.history) ? item.metadata.history : []
+        history.forEach((entry, index) => {
+          const previous = history[index + 1]
+          flat.push({
+            kind: 'edit',
+            key: `${item.id}-${entry.at || index}`,
+            sectionId,
+            sectionName,
+            changeTypes: entry.changeTypes || [],
+            actorLabel: entry.actorLabel || item.actorLabel,
+            at: entry.at || item.createdAt,
+            htmlAfter: typeof entry.htmlAfter === 'string' ? entry.htmlAfter : '',
+            htmlBefore: typeof previous?.htmlAfter === 'string' ? previous.htmlAfter : '',
+            isLegacy: typeof entry.htmlAfter !== 'string',
+          })
         })
-      })
+        return
+      }
+
+      // comment_orphaned: comentario auto-resuelto por borrado del texto anclado.
+      // Lo mostramos en historial con el snippet original + body para que el
+      // feedback no se pierda aunque el ancla ya no exista en el documento.
+      if (item.eventType === 'comment_orphaned') {
+        if (item.metadata?.pageId && activePageId && item.metadata.pageId !== activePageId) return
+        flat.push({
+          kind: 'orphan',
+          key: `orphan-${item.id}`,
+          sectionName: item.metadata?.pageName || 'Página',
+          actorLabel: item.metadata?.originalAuthor || item.actorLabel,
+          at: item.createdAt,
+          anchorSnippet: item.metadata?.anchorSnippet || '',
+          originalBody: item.metadata?.originalBody || '',
+        })
+        return
+      }
     })
     return flat.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
   }, [activity, activePageId, sectionNameById])
-
-  if (projectType !== 'page') {
-    return (
-      <p className={panelStyles.historyEmpty}>
-        El historial está disponible solo en proyectos de Página web por ahora.
-      </p>
-    )
-  }
 
   if (entries.length === 0) {
     return (
@@ -8978,34 +8995,61 @@ function HistoryTabPanel({ activity = [], sections = [], activePageId = '', proj
 
   return (
     <ul className={panelStyles.historyList}>
-      {entries.map((entry) => (
-        <li key={entry.key} className={panelStyles.historyItem}>
-          <div className={panelStyles.historyItemHeader}>
-            <span className={panelStyles.historyItemSection}>{entry.sectionName}</span>
-            <span className={panelStyles.historyItemTime}>
-              {entry.actorLabel} · {formatPanelDate(entry.at)}
-            </span>
-          </div>
-          {entry.changeTypes.length > 0 && (
-            <span className={panelStyles.historyItemChanges}>
-              {formatActivityChangeTypes(entry.changeTypes)}
-            </span>
-          )}
-          <div className={panelStyles.historyItemActions}>
-            {entry.isLegacy ? (
-              <span className={panelStyles.historyItemChanges}>Versión legacy (sin diff disponible)</span>
-            ) : (
-              <button
-                type="button"
-                className={panelStyles.historyDiffBtn}
-                onClick={() => onShowDiff?.(entry)}
-              >
-                Ver cambios
-              </button>
+      {entries.map((entry) => {
+        if (entry.kind === 'orphan') {
+          return (
+            <li key={entry.key} className={panelStyles.historyItem}>
+              <div className={panelStyles.historyItemHeader}>
+                <span className={panelStyles.historyItemSection}>{entry.sectionName}</span>
+                <span className={panelStyles.historyItemTime}>
+                  {entry.actorLabel} · {formatPanelDate(entry.at)}
+                </span>
+              </div>
+              <span className={panelStyles.historyItemChanges}>
+                Comentario auto-resuelto (texto anclado eliminado)
+              </span>
+              {entry.anchorSnippet && (
+                <p className={panelStyles.historyItemChanges} style={{ fontStyle: 'italic', opacity: 0.85 }}>
+                  “{entry.anchorSnippet}”
+                </p>
+              )}
+              {entry.originalBody && (
+                <p className={panelStyles.historyItemChanges} style={{ marginTop: 4 }}>
+                  {entry.originalBody}
+                </p>
+              )}
+            </li>
+          )
+        }
+        return (
+          <li key={entry.key} className={panelStyles.historyItem}>
+            <div className={panelStyles.historyItemHeader}>
+              <span className={panelStyles.historyItemSection}>{entry.sectionName}</span>
+              <span className={panelStyles.historyItemTime}>
+                {entry.actorLabel} · {formatPanelDate(entry.at)}
+              </span>
+            </div>
+            {entry.changeTypes.length > 0 && (
+              <span className={panelStyles.historyItemChanges}>
+                {formatActivityChangeTypes(entry.changeTypes)}
+              </span>
             )}
-          </div>
-        </li>
-      ))}
+            <div className={panelStyles.historyItemActions}>
+              {entry.isLegacy ? (
+                <span className={panelStyles.historyItemChanges}>Versión legacy (sin diff disponible)</span>
+              ) : (
+                <button
+                  type="button"
+                  className={panelStyles.historyDiffBtn}
+                  onClick={() => onShowDiff?.(entry)}
+                >
+                  Ver cambios
+                </button>
+              )}
+            </div>
+          </li>
+        )
+      })}
     </ul>
   )
 }
