@@ -4,6 +4,7 @@ import styles from './CommentsUI.module.css'
 import marginStyles from './CommentMarginCards.module.css'
 import MentionsAutocomplete, {
   detectMentionQuery,
+  filterMembers,
   filterMentionsByBody,
   insertMention,
 } from './MentionsAutocomplete'
@@ -156,8 +157,17 @@ function ReplyComposer({ onSubmit, currentUser, members = [], disabled }) {
   const [value, setValue] = useState('')
   const [mentionUserIds, setMentionUserIds] = useState([])
   const [mentionQuery, setMentionQuery] = useState(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const textareaRef = useRef(null)
+
+  const mentionItems = useMemo(
+    () => filterMembers(members, mentionQuery?.query || ''),
+    [members, mentionQuery?.query],
+  )
+
+  // Reset selección al cambiar la query
+  useEffect(() => { setMentionIndex(0) }, [mentionQuery?.query])
 
   useEffect(() => {
     if (active) textareaRef.current?.focus()
@@ -214,6 +224,30 @@ function ReplyComposer({ onSubmit, currentUser, members = [], disabled }) {
   }
 
   function handleKey(event) {
+    // Mention dropdown abierto y con items: hijack ↓↑ Enter Tab Esc
+    if (mentionItems.length > 0 && mentionQuery) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setMentionIndex((i) => Math.min(i + 1, mentionItems.length - 1))
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setMentionIndex((i) => Math.max(i - 1, 0))
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault()
+        const selected = mentionItems[mentionIndex] || mentionItems[0]
+        if (selected) handleMentionSelect(selected)
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMentionQuery(null)
+        return
+      }
+    }
     if (event.key === 'Escape') {
       event.preventDefault()
       handleCancel()
@@ -281,8 +315,8 @@ function ReplyComposer({ onSubmit, currentUser, members = [], disabled }) {
       </div>
       {mentionsAnchor && (
         <MentionsAutocomplete
-          candidates={members}
-          query={mentionQuery?.query || ''}
+          items={mentionItems}
+          selectedIndex={mentionIndex}
           onSelect={handleMentionSelect}
           anchorPoint={mentionsAnchor}
         />

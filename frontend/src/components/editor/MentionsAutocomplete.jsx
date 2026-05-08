@@ -1,10 +1,14 @@
-import { useMemo } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import styles from './CommentsUI.module.css'
 
 function getInitials(name) {
   if (!name) return '?'
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
+}
+
+function cx(...parts) {
+  return parts.filter(Boolean).join(' ')
 }
 
 // Detecta si el cursor está dentro de un token @... y devuelve la query.
@@ -15,6 +19,19 @@ export function detectMentionQuery(text, cursor) {
   const match = before.match(/(?:^|\s)@([\w.\-]*)$/)
   if (!match) return null
   return { startIdx: cursor - match[1].length - 1, query: match[1] }
+}
+
+// Filtra miembros por query. Requiere al menos 1 caracter para mostrar resultados
+// (estándar UX: tipear `@` solo no abre el dropdown; recién con `@a` aparece).
+export function filterMembers(candidates, query, { minLength = 1, max = 8 } = {}) {
+  const q = (query || '').trim().toLowerCase()
+  if (q.length < minLength) return []
+  return (candidates || [])
+    .filter((c) => {
+      const name = (c.fullName || c.email || '').toLowerCase()
+      return name.includes(q)
+    })
+    .slice(0, max)
 }
 
 // Inserta una mención en el texto reemplazando el token @query parcial.
@@ -30,7 +47,6 @@ export function insertMention({ text, mentionQuery, profile, textareaSelectionSt
 }
 
 // Filtra los IDs de mentions a los nombres que sigan presentes en el body.
-// Útil al submit: si el usuario borró el "@Nombre" del texto, no lo notificamos.
 export function filterMentionsByBody(mentionUserIds, body, members) {
   return (mentionUserIds || []).filter((id) => {
     const profile = members.find((m) => m.id === id)
@@ -40,30 +56,32 @@ export function filterMentionsByBody(mentionUserIds, body, members) {
   })
 }
 
-export default function MentionsAutocomplete({ candidates, query, onSelect, anchorPoint }) {
-  const filtered = useMemo(() => {
-    const q = (query || '').trim().toLowerCase()
-    if (!q) return (candidates || []).slice(0, 8)
-    return (candidates || [])
-      .filter((c) => {
-        const name = (c.fullName || c.email || '').toLowerCase()
-        return name.includes(q)
-      })
-      .slice(0, 8)
-  }, [candidates, query])
+export default function MentionsAutocomplete({ items, selectedIndex = 0, onSelect, anchorPoint }) {
+  const containerRef = useRef(null)
 
-  if (!filtered.length) return null
+  // Mantiene el item seleccionado dentro de viewport del dropdown.
+  useEffect(() => {
+    if (!containerRef.current) return
+    const active = containerRef.current.querySelector(`[data-mention-index="${selectedIndex}"]`)
+    if (active && typeof active.scrollIntoView === 'function') {
+      active.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedIndex])
+
+  if (!items?.length) return null
 
   const style = { left: anchorPoint.left, top: anchorPoint.top }
   return createPortal(
-    <div className={styles.mentionsDropdown} style={style}>
-      {filtered.map((profile) => {
+    <div ref={containerRef} className={styles.mentionsDropdown} style={style}>
+      {items.map((profile, idx) => {
         const name = profile.fullName || profile.email || 'Usuario'
+        const isActive = idx === selectedIndex
         return (
           <button
             key={profile.id}
             type="button"
-            className={styles.mentionItem}
+            data-mention-index={idx}
+            className={cx(styles.mentionItem, isActive && styles.mentionItemActive)}
             onMouseDown={(e) => { e.preventDefault(); onSelect(profile) }}
           >
             <span

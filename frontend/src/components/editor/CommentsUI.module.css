@@ -377,9 +377,12 @@
   color: #212222;
 }
 
-.mentionItem:hover,
-.mentionItemActive {
+.mentionItem:hover {
   background: #f0f4f9;
+}
+
+.mentionItemActive {
+  background: #e8f0fe;
 }
 
 .mentionAvatar {

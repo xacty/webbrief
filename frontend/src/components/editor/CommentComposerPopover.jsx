@@ -4,6 +4,7 @@ import { Send } from 'lucide-react'
 import styles from './CommentsUI.module.css'
 import MentionsAutocomplete, {
   detectMentionQuery,
+  filterMembers,
   filterMentionsByBody,
   insertMention,
 } from './MentionsAutocomplete'
@@ -35,8 +36,16 @@ export default function CommentComposerPopover({
   const [body, setBody] = useState(initialBody)
   const [mentionUserIds, setMentionUserIds] = useState(initialMentions)
   const [mentionQuery, setMentionQuery] = useState(null) // { startIdx, query }
+  const [mentionIndex, setMentionIndex] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const textareaRef = useRef(null)
+
+  const mentionItems = useMemo(
+    () => filterMembers(members, mentionQuery?.query || ''),
+    [members, mentionQuery?.query],
+  )
+
+  useEffect(() => { setMentionIndex(0) }, [mentionQuery?.query])
 
   useEffect(() => {
     if (open) {
@@ -94,6 +103,29 @@ export default function CommentComposerPopover({
   }
 
   function handleKey(event) {
+    if (mentionItems.length > 0 && mentionQuery) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setMentionIndex((i) => Math.min(i + 1, mentionItems.length - 1))
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setMentionIndex((i) => Math.max(i - 1, 0))
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault()
+        const selected = mentionItems[mentionIndex] || mentionItems[0]
+        if (selected) handleMentionSelect(selected)
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMentionQuery(null)
+        return
+      }
+    }
     if (event.key === 'Escape') {
       event.preventDefault()
       onCancel?.()
@@ -144,8 +176,8 @@ export default function CommentComposerPopover({
       </div>
       {mentionsAnchor && (
         <MentionsAutocomplete
-          candidates={members}
-          query={mentionQuery?.query || ''}
+          items={mentionItems}
+          selectedIndex={mentionIndex}
           onSelect={handleMentionSelect}
           anchorPoint={mentionsAnchor}
         />
