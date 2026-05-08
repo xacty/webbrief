@@ -6741,9 +6741,9 @@ function EditorPanel({
   }, [activeCommentId, editor])
 
   // ¿Hay comments visibles (no resueltos, no huérfanos) en la página activa? Si sí,
-  // agregamos padding-right al scroll area para reservar la "gutter" donde flotan
-  // las cards. Sin esto, los activity bells de la columna derecha de la canvas se
-  // solapan con las cards.
+  // intentamos reservar gutter a la derecha para las cards. Pero solo si el viewport
+  // tiene espacio suficiente — sino los escondemos (estilo Google Docs) para no
+  // estrujar el canvas debajo de su mínimo legible.
   const hasMarginComments = useMemo(() => {
     if (!Array.isArray(commentThreads)) return false
     return commentThreads.some((thread) => {
@@ -6752,6 +6752,22 @@ function EditorPanel({
       return true
     })
   }, [commentThreads, commentLiveIds])
+
+  // Threshold: canvas min 500 + labels col ~42 + activity col 42 + paddings ~30 +
+  // cards gutter 300 = ~914. Bajamos a 900 para algo más permisivo.
+  const CARDS_VISIBILITY_THRESHOLD = 900
+  const [scrollAreaWidth, setScrollAreaWidth] = useState(0)
+  useEffect(() => {
+    const el = scrollAreaRef.current
+    if (!el) return
+    const measure = () => setScrollAreaWidth(el.getBoundingClientRect().width)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const cardsFitInViewport = scrollAreaWidth >= CARDS_VISIBILITY_THRESHOLD
+  const showMarginCards = hasMarginComments && cardsFitInViewport
 
   // Right-click context menu (Google Docs–style). Defiere al TableRightClickMenu en tablas.
   //
@@ -7146,7 +7162,7 @@ function EditorPanel({
         ref={scrollAreaRef}
         className={cx(
           styles.editorScrollArea,
-          hasMarginComments && styles.editorScrollAreaWithMargin,
+          showMarginCards && styles.editorScrollAreaWithMargin,
         )}
       >
         {projectType !== 'faq' && (
@@ -7202,23 +7218,25 @@ function EditorPanel({
             onMarkerClick={onActivityMarkerClick}
           />
         </div>
-        <CommentMarginCards
-          scrollAreaRef={scrollAreaRef}
-          threads={commentThreads}
-          profiles={commentProfiles}
-          members={commentMembersList}
-          currentUser={commentCurrentUser}
-          activeCommentId={activeCommentId}
-          liveCommentIds={commentLiveIds}
-          onSelectThread={onSelectCommentThread}
-          onReply={onReplyComment}
-          onResolve={onResolveComment}
-          onReopen={onReopenComment}
-          onEdit={onEditComment}
-          onDelete={onDeleteComment}
-          onCopyLink={onCopyCommentLink}
-          readOnly={commentReadOnly}
-        />
+        {showMarginCards && (
+          <CommentMarginCards
+            scrollAreaRef={scrollAreaRef}
+            threads={commentThreads}
+            profiles={commentProfiles}
+            members={commentMembersList}
+            currentUser={commentCurrentUser}
+            activeCommentId={activeCommentId}
+            liveCommentIds={commentLiveIds}
+            onSelectThread={onSelectCommentThread}
+            onReply={onReplyComment}
+            onResolve={onResolveComment}
+            onReopen={onReopenComment}
+            onEdit={onEditComment}
+            onDelete={onDeleteComment}
+            onCopyLink={onCopyCommentLink}
+            readOnly={commentReadOnly}
+          />
+        )}
       </div>
       <EditorContextMenu
         open={Boolean(contextMenuPos)}
