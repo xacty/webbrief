@@ -819,18 +819,21 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .historyItemSection {
   color: #2a2a2a;
   font-size: 13px;
   font-weight: 600;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .historyItemTime {
   color: #94a3b8;
   font-size: 11px;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 .historyItemChanges {

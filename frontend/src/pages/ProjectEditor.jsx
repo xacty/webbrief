@@ -592,8 +592,9 @@ const AlignShortcuts = Extension.create({
     return {
       'Mod-Shift-l': () => this.editor.chain().focus().setTextAlign('left').run(),
       'Mod-Shift-e': () => this.editor.chain().focus().setTextAlign('center').run(),
-      'Mod-Shift-r': () => this.editor.chain().focus().setTextAlign('right').run(),
-      'Mod-Shift-j': () => this.editor.chain().focus().setTextAlign('justify').run(),
+      // Mod-Shift-r y Mod-Shift-j NO se bindean: chocan con hard-refresh y
+      // DevTools del browser. El usuario alinea derecha/justify desde la
+      // toolbar. Browser shortcuts > editor shortcuts cuando se solapan.
     }
   },
 })
@@ -3782,6 +3783,36 @@ export default function ProjectEditor() {
       setPanelError(error.message || 'No se pudo renombrar el proyecto')
     }
   }
+
+  // ── Undo/redo globales: si el editor no tiene foco (clicks en toolbar,
+  // panels, etc.), Cmd+Z / Cmd+Shift+Z igual deshacen/rehacen. No hijackeamos
+  // si el usuario está escribiendo en un input/textarea o en otro contenteditable
+  // (composer de comentarios, mention input, etc.) — esos tienen su propio
+  // undo stack del browser.
+  useEffect(() => {
+    function handleShortcut(e) {
+      const editor = editorRef.current
+      if (!editor) return
+      const isUndo = (e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && !e.shiftKey
+      const isRedo = (
+        ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey)
+        || ((e.key === 'y' || e.key === 'Y') && (e.metaKey || e.ctrlKey))
+      )
+      if (!isUndo && !isRedo) return
+      if (editor.isFocused) return // TipTap keymap ya maneja
+      const active = document.activeElement
+      if (active && active !== document.body) {
+        const tag = active.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return
+        if (active.isContentEditable && !editor.view.dom.contains(active)) return
+      }
+      e.preventDefault()
+      if (isRedo) editor.commands.redo()
+      else editor.commands.undo()
+    }
+    document.addEventListener('keydown', handleShortcut)
+    return () => document.removeEventListener('keydown', handleShortcut)
+  }, [])
 
   // ── Click delegation para highlights de comentarios en cualquier modo ──
   useEffect(() => {
