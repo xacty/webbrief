@@ -130,7 +130,7 @@ function CommentMenu({ open, anchorRect, onClose, items }) {
   )
 }
 
-function CommentEntry({
+export function CommentEntry({
   comment,
   profilesById,
   currentUserId,
@@ -207,7 +207,7 @@ function CommentEntry({
   )
 }
 
-function ReplyComposer({ onSubmit, currentUser, members = [], disabled }) {
+export function ReplyComposer({ onSubmit, currentUser, members = [], disabled }) {
   const [active, setActive] = useState(false)
   const [value, setValue] = useState('')
   const [mentionUserIds, setMentionUserIds] = useState([])

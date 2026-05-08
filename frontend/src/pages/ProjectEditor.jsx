@@ -22,6 +22,7 @@ import { CommentMark, findCommentRange, getCommentIdsInDoc } from '../extensions
 import { FakeSelection } from '../extensions/FakeSelection'
 import CommentComposerPopover from '../components/editor/CommentComposerPopover'
 import CommentMarginCards from '../components/editor/CommentMarginCards'
+import CommentInlinePopover from '../components/editor/CommentInlinePopover'
 import EditorContextMenu from '../components/editor/EditorContextMenu'
 import {
   fetchComments,
@@ -7238,6 +7239,31 @@ function EditorPanel({
           />
         )}
       </div>
+      {/* Cuando las margin cards no caben en el viewport pero el usuario clickeó
+          un highlight, mostramos el thread en un popover flotante para que pueda
+          seguir leyendo/respondiendo sin perder el contexto del texto. */}
+      {!showMarginCards && activeCommentId && (() => {
+        const thread = commentThreads.find((t) => t.root.id === activeCommentId)
+        if (!thread) return null
+        return (
+          <CommentInlinePopover
+            editor={editor}
+            commentId={activeCommentId}
+            thread={thread}
+            profiles={commentProfiles}
+            members={commentMembersList}
+            currentUser={commentCurrentUser}
+            readOnly={commentReadOnly}
+            onClose={() => onSelectCommentThread?.(null)}
+            onReply={onReplyComment}
+            onResolve={onResolveComment}
+            onReopen={onReopenComment}
+            onEdit={onEditComment}
+            onDelete={onDeleteComment}
+            onCopyLink={onCopyCommentLink}
+          />
+        )
+      })()}
       <EditorContextMenu
         open={Boolean(contextMenuPos)}
         position={contextMenuPos || { x: 0, y: 0 }}
