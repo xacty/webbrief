@@ -2,6 +2,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, MoreHorizontal, RotateCcw, Send, Trash2, Pencil, Link as LinkIcon } from 'lucide-react'
 import styles from './CommentsUI.module.css'
 import marginStyles from './CommentMarginCards.module.css'
+import MentionsAutocomplete, {
+  detectMentionQuery,
+  filterMentionsByBody,
+  insertMention,
+} from './MentionsAutocomplete'
 
 const EDIT_WINDOW_MS = 15 * 60 * 1000
 const CARD_GAP = 12
@@ -84,6 +89,7 @@ function CommentEntry({
   onDelete,
   onCopyLink,
   showMenu = true,
+  trailing = null,
 }) {
   const profile = profilesById.get(comment.actorUserId)
   const isAuthor = comment.actorUserId === currentUserId
@@ -113,18 +119,21 @@ function CommentEntry({
           <span className={marginStyles.entryAuthor}>{profile?.fullName || comment.authorName}</span>
           <span className={marginStyles.entryTime}>{formatRelativeTime(comment.createdAt)}</span>
           {comment.editedAt && <span className={marginStyles.entryEdited}>(editado)</span>}
-          {showMenu && items.length > 0 && (
-            <button
-              ref={dotsRef}
-              type="button"
-              className={marginStyles.dotsBtn}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => { e.stopPropagation(); openMenu() }}
-              aria-label="Más opciones"
-            >
-              <MoreHorizontal size={14} />
-            </button>
-          )}
+          <div className={marginStyles.headerTrailing}>
+            {trailing}
+            {showMenu && items.length > 0 && (
+              <button
+                ref={dotsRef}
+                type="button"
+                className={marginStyles.dotsBtn}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => { e.stopPropagation(); openMenu() }}
+                aria-label="Más opciones"
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            )}
+          </div>
         </div>
         {comment.deletedAt ? (
           <p className={marginStyles.entryDeleted}>(comentario eliminado)</p>
@@ -142,9 +151,11 @@ function CommentEntry({
   )
 }
 
-function ReplyComposer({ onSubmit, currentUser, disabled }) {
+function ReplyComposer({ onSubmit, currentUser, members = [], disabled }) {
   const [active, setActive] = useState(false)
   const [value, setValue] = useState('')
+  const [mentionUserIds, setMentionUserIds] = useState([])
+  const [mentionQuery, setMentionQuery] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const textareaRef = useRef(null)
 
@@ -155,10 +166,13 @@ function ReplyComposer({ onSubmit, currentUser, disabled }) {
   async function handleSubmit() {
     const trimmed = value.trim()
     if (!trimmed || submitting || disabled) return
+    const presentMentions = filterMentionsByBody(mentionUserIds, value, members)
     setSubmitting(true)
     try {
-      await onSubmit(trimmed)
+      await onSubmit(trimmed, presentMentions)
       setValue('')
+      setMentionUserIds([])
+      setMentionQuery(null)
       setActive(false)
     } finally {
       setSubmitting(false)
@@ -168,7 +182,35 @@ function ReplyComposer({ onSubmit, currentUser, disabled }) {
   function handleCancel(e) {
     e?.stopPropagation()
     setValue('')
+    setMentionUserIds([])
+    setMentionQuery(null)
     setActive(false)
+  }
+
+  function handleChange(event) {
+    const next = event.target.value
+    setValue(next)
+    const cursor = event.target.selectionStart || 0
+    setMentionQuery(detectMentionQuery(next, cursor))
+  }
+
+  function handleMentionSelect(profile) {
+    if (!mentionQuery || !textareaRef.current) return
+    const ta = textareaRef.current
+    const result = insertMention({
+      text: value,
+      mentionQuery,
+      profile,
+      textareaSelectionStart: ta.selectionStart || mentionQuery.startIdx,
+    })
+    if (!result) return
+    setValue(result.next)
+    setMentionQuery(null)
+    setMentionUserIds((prev) => (prev.includes(profile.id) ? prev : [...prev, profile.id]))
+    window.requestAnimationFrame(() => {
+      ta.focus()
+      ta.setSelectionRange(result.cursor, result.cursor)
+    })
   }
 
   function handleKey(event) {
@@ -196,6 +238,13 @@ function ReplyComposer({ onSubmit, currentUser, disabled }) {
     )
   }
 
+  const mentionsAnchor = mentionQuery && textareaRef.current
+    ? (() => {
+        const rect = textareaRef.current.getBoundingClientRect()
+        return { left: rect.left + 8, top: rect.bottom + 4 }
+      })()
+    : null
+
   return (
     <div className={marginStyles.replyComposer} onClick={(e) => e.stopPropagation()}>
       <div className={marginStyles.replyComposerHeader}>
@@ -207,7 +256,7 @@ function ReplyComposer({ onSubmit, currentUser, disabled }) {
         className={marginStyles.replyTextarea}
         placeholder="Comentario o @menciona miembros"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={handleChange}
         onKeyDown={handleKey}
         disabled={disabled || submitting}
         rows={2}
@@ -230,6 +279,14 @@ function ReplyComposer({ onSubmit, currentUser, disabled }) {
           Responder
         </button>
       </div>
+      {mentionsAnchor && (
+        <MentionsAutocomplete
+          candidates={members}
+          query={mentionQuery?.query || ''}
+          onSelect={handleMentionSelect}
+          anchorPoint={mentionsAnchor}
+        />
+      )}
     </div>
   )
 }
@@ -238,6 +295,7 @@ function MarginCard({
   thread,
   profilesById,
   currentUser,
+  members = [],
   isExpanded,
   onActivate,
   onReply,
@@ -265,6 +323,32 @@ function MarginCard({
   const showReplies = isExpanded || replyCount === 0
   const hiddenRepliesCount = !isExpanded ? replyCount : 0
 
+  const resolveTrailing = !readOnly && isExpanded
+    ? (isResolved ? (
+        <button
+          type="button"
+          className={marginStyles.iconChip}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => { e.stopPropagation(); onReopen(root.id) }}
+          data-wb-tooltip="Reabrir"
+          aria-label="Reabrir"
+        >
+          <RotateCcw size={14} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={marginStyles.iconChip}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => { e.stopPropagation(); onResolve(root.id) }}
+          data-wb-tooltip="Resolver"
+          aria-label="Resolver"
+        >
+          <CheckCircle2 size={14} />
+        </button>
+      ))
+    : null
+
   return (
     <div
       ref={cardRef}
@@ -277,34 +361,6 @@ function MarginCard({
       data-thread-id={root.id}
       onClick={() => onActivate?.(root.id)}
     >
-      {isExpanded && !readOnly && (
-        <div className={marginStyles.cardTopActions}>
-          {isResolved ? (
-            <button
-              type="button"
-              className={marginStyles.iconChip}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => { e.stopPropagation(); onReopen(root.id) }}
-              data-wb-tooltip="Reabrir"
-              aria-label="Reabrir"
-            >
-              <RotateCcw size={14} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={marginStyles.iconChip}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => { e.stopPropagation(); onResolve(root.id) }}
-              data-wb-tooltip="Resolver"
-              aria-label="Resolver"
-            >
-              <CheckCircle2 size={14} />
-            </button>
-          )}
-        </div>
-      )}
-
       <CommentEntry
         comment={root}
         profilesById={profilesById}
@@ -314,6 +370,7 @@ function MarginCard({
         onDelete={onDelete}
         onCopyLink={onCopyLink}
         showMenu={!readOnly}
+        trailing={resolveTrailing}
       />
 
       {showReplies && thread.replies.map((reply) => (
@@ -338,8 +395,9 @@ function MarginCard({
 
       {isExpanded && !readOnly && (
         <ReplyComposer
-          onSubmit={(body) => onReply(root.id, body)}
+          onSubmit={(body, mentions) => onReply(root.id, body, mentions)}
           currentUser={currentUser}
+          members={members}
           disabled={isResolved}
         />
       )}
@@ -351,6 +409,7 @@ export default function CommentMarginCards({
   scrollAreaRef,
   threads = [],
   profiles = [],
+  members = [],
   currentUser,
   activeCommentId = null,
   liveCommentIds = null,
@@ -473,6 +532,7 @@ export default function CommentMarginCards({
           thread={entry.thread}
           profilesById={profilesById}
           currentUser={currentUser}
+          members={members}
           isExpanded={activeCommentId === entry.thread.root.id}
           onActivate={onSelectThread}
           onReply={onReply}

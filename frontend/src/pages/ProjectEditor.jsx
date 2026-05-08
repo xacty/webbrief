@@ -3936,9 +3936,9 @@ export default function ProjectEditor() {
     setComposerState(null)
   }
 
-  async function handleReplyComment(rootId, body) {
+  async function handleReplyComment(rootId, body, mentions = []) {
     try {
-      const reply = await replyComment(projectId, rootId, { body, mentions: [] })
+      const reply = await replyComment(projectId, rootId, { body, mentions })
       if (reply) setComments((prev) => [...prev, reply])
     } catch (error) {
       window.alert(error.message || 'No se pudo enviar la respuesta')
@@ -4285,6 +4285,7 @@ export default function ProjectEditor() {
             onEditComment={handleEditComment}
             onDeleteComment={handleDeleteComment}
             onCopyCommentLink={handleCopyCommentLink}
+            commentMembersList={commentMembers}
           />
         )}
 
@@ -6493,6 +6494,7 @@ function EditorPanel({
   onEditComment,
   onDeleteComment,
   onCopyCommentLink,
+  commentMembersList = [],
 }) {
   const wrapperRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -7185,6 +7187,7 @@ function EditorPanel({
           scrollAreaRef={scrollAreaRef}
           threads={commentThreads}
           profiles={commentProfiles}
+          members={commentMembersList}
           currentUser={commentCurrentUser}
           activeCommentId={activeCommentId}
           liveCommentIds={commentLiveIds}

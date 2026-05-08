@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, X } from 'lucide-react'
+import { Send } from 'lucide-react'
 import styles from './CommentsUI.module.css'
+import MentionsAutocomplete, {
+  detectMentionQuery,
+  filterMentionsByBody,
+  insertMention,
+} from './MentionsAutocomplete'
 
 const POPOVER_WIDTH = 320
 const POPOVER_OFFSET_Y = 8
@@ -14,53 +19,6 @@ function clampToViewport(left, top) {
     left: Math.max(margin, Math.min(left, maxLeft)),
     top: Math.max(margin, Math.min(top, maxTop)),
   }
-}
-
-function getInitials(name) {
-  if (!name) return '?'
-  return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
-}
-
-function MentionsAutocomplete({ candidates, query, onSelect, anchorPoint }) {
-  const filtered = useMemo(() => {
-    const q = (query || '').trim().toLowerCase()
-    if (!q) return candidates.slice(0, 8)
-    return candidates
-      .filter((c) => {
-        const name = (c.fullName || c.email || '').toLowerCase()
-        return name.includes(q)
-      })
-      .slice(0, 8)
-  }, [candidates, query])
-
-  if (!filtered.length) return null
-
-  const style = { left: anchorPoint.left, top: anchorPoint.top }
-  return createPortal(
-    <div className={styles.mentionsDropdown} style={style}>
-      {filtered.map((profile) => {
-        const name = profile.fullName || profile.email || 'Usuario'
-        return (
-          <button
-            key={profile.id}
-            type="button"
-            className={styles.mentionItem}
-            onMouseDown={(e) => { e.preventDefault(); onSelect(profile) }}
-          >
-            <span
-              className={styles.mentionAvatar}
-              style={profile.avatarUrl ? { backgroundImage: `url(${profile.avatarUrl})` } : undefined}
-            >
-              {profile.avatarUrl ? '' : getInitials(name)}
-            </span>
-            <span>{name}</span>
-            {profile.email && <span className={styles.mentionEmail}>{profile.email}</span>}
-          </button>
-        )
-      })}
-    </div>,
-    document.body,
-  )
 }
 
 export default function CommentComposerPopover({
@@ -101,41 +59,32 @@ export default function CommentComposerPopover({
     const value = event.target.value
     setBody(value)
     const cursor = event.target.selectionStart || 0
-    const before = value.slice(0, cursor)
-    const match = before.match(/(?:^|\s)@([\w.\-]*)$/)
-    if (match) {
-      setMentionQuery({ startIdx: cursor - match[1].length - 1, query: match[1] })
-    } else {
-      setMentionQuery(null)
-    }
+    setMentionQuery(detectMentionQuery(value, cursor))
   }
 
   function handleMentionSelect(profile) {
     if (!mentionQuery || !textareaRef.current) return
     const ta = textareaRef.current
-    const before = body.slice(0, mentionQuery.startIdx)
-    const after = body.slice(ta.selectionStart || mentionQuery.startIdx)
-    const insertion = `@${profile.fullName || profile.email || 'usuario'} `
-    const next = before + insertion + after
-    setBody(next)
+    const result = insertMention({
+      text: body,
+      mentionQuery,
+      profile,
+      textareaSelectionStart: ta.selectionStart || mentionQuery.startIdx,
+    })
+    if (!result) return
+    setBody(result.next)
     setMentionQuery(null)
     setMentionUserIds((prev) => (prev.includes(profile.id) ? prev : [...prev, profile.id]))
     window.requestAnimationFrame(() => {
-      const cursor = (before + insertion).length
       ta.focus()
-      ta.setSelectionRange(cursor, cursor)
+      ta.setSelectionRange(result.cursor, result.cursor)
     })
   }
 
   async function handleSubmit() {
     const trimmed = body.trim()
     if (!trimmed || submitting) return
-    const presentMentions = mentionUserIds.filter((id) => {
-      const profile = members.find((m) => m.id === id)
-      const name = profile?.fullName || profile?.email
-      if (!name) return false
-      return body.includes(`@${name}`)
-    })
+    const presentMentions = filterMentionsByBody(mentionUserIds, body, members)
     setSubmitting(true)
     try {
       await onSubmit({ body: trimmed, mentions: presentMentions })
