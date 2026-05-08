@@ -19,6 +19,7 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Fragment } from '@tiptap/pm/model'
 import { CommentMark, findCommentRange, getCommentIdsInDoc } from '../extensions/CommentMark'
+import { FakeSelection } from '../extensions/FakeSelection'
 import CommentComposerPopover from '../components/editor/CommentComposerPopover'
 import CommentMarginCards from '../components/editor/CommentMarginCards'
 import EditorContextMenu from '../components/editor/EditorContextMenu'
@@ -4023,6 +4024,49 @@ export default function ProjectEditor() {
     }
   }
 
+  function handleCopyCommentLink(comment) {
+    if (!projectId) return
+    // Si el comentario es una réplica, linkeamos al root del thread (mejor UX,
+    // así abrir el link muestra el thread completo).
+    const targetId = comment?.parentCommentId || comment?.id
+    if (!targetId) return
+    const url = `${window.location.origin}/project/${projectId}/editor?commentId=${encodeURIComponent(targetId)}`
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          setPanelNotice('Link copiado al portapapeles')
+          window.setTimeout(() => setPanelNotice(''), 2200)
+        }).catch(() => window.prompt('Copiá el link:', url))
+      } else {
+        window.prompt('Copiá el link:', url)
+      }
+    } catch {
+      window.prompt('Copiá el link:', url)
+    }
+  }
+
+  // Si la URL trae ?commentId=<id>, abrir ese thread cuando los comentarios cargan.
+  useEffect(() => {
+    if (!projectId || comments.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const id = params.get('commentId')
+    if (!id) return
+    const target = comments.find((c) => c.id === id || c.parentCommentId === id)
+    if (!target) return
+    const rootId = target.parentCommentId || target.id
+    // Navegar a la página del thread si hay otra activa
+    if (target.pageId && target.pageId !== activePageId) {
+      const targetPage = pages.find((p) => p.id === target.pageId)
+      if (targetPage) setActivePageId(targetPage.id)
+    }
+    window.setTimeout(() => handleSelectThread(rootId), 300)
+    // Limpiar el query param para que sucesivos refreshes no vuelvan a abrirlo.
+    const url = new URL(window.location.href)
+    url.searchParams.delete('commentId')
+    window.history.replaceState({}, '', url.toString())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comments, projectId])
+
   if (loadingProject) {
     return <div className={styles.loadingState}>Cargando proyecto...</div>
   }
@@ -4240,6 +4284,7 @@ export default function ProjectEditor() {
             onReopenComment={handleReopenComment}
             onEditComment={handleEditComment}
             onDeleteComment={handleDeleteComment}
+            onCopyCommentLink={handleCopyCommentLink}
           />
         )}
 
@@ -6447,6 +6492,7 @@ function EditorPanel({
   onReopenComment,
   onEditComment,
   onDeleteComment,
+  onCopyCommentLink,
 }) {
   const wrapperRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -6528,6 +6574,7 @@ function EditorPanel({
       GoogleDocsHeadingShortcuts,
       AlignShortcuts,
       CommentMark,
+      FakeSelection,
     ],
     content: initialContent,
     editable: canWriteContent,
@@ -6746,6 +6793,11 @@ function EditorPanel({
         : snap
       setContextMenuSelection(usable)
       setContextMenuPos({ x: e.clientX, y: e.clientY })
+      // Pinta el rango como "fake selection" gris para que el usuario siga viendo
+      // qué texto va a actuar el menú (la DOM selection nativa ya se limpió).
+      if (!usable.empty) {
+        editor.commands.setFakeSelection({ from: usable.from, to: usable.to })
+      }
     }
 
     document.addEventListener('mousedown', handleMouseDownPreCapture, true)
@@ -7142,6 +7194,7 @@ function EditorPanel({
           onReopen={onReopenComment}
           onEdit={onEditComment}
           onDelete={onDeleteComment}
+          onCopyLink={onCopyCommentLink}
           readOnly={commentReadOnly}
         />
       </div>
@@ -7151,7 +7204,10 @@ function EditorPanel({
         editor={editor}
         canComment={canComment}
         onAddComment={onAddComment}
-        onClose={() => setContextMenuPos(null)}
+        onClose={() => {
+          setContextMenuPos(null)
+          editor?.commands.clearFakeSelection?.()
+        }}
         selectionSnapshot={contextMenuSelection}
       />
     </div>

@@ -1718,6 +1718,13 @@
   font-weight: 500;
 }
 
+/* FakeSelection — highlight gris superpuesto cuando se abre el right-click menu;
+   mantiene la indicación visual del rango aunque el browser limpie la DOM selection. */
+:global(.wb-fake-selection) {
+  background: rgba(160, 168, 180, 0.42);
+  border-radius: 1px;
+}
+
 /* CommentMark — highlight Google Docs–style sobre el rango anclado.
    Aplica en editor, Handoff y Preview mientras el HTML guardado contenga
    los <span data-comment-id>. La ruta pública strippea estos spans. */

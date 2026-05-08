@@ -1,5 +1,5 @@
-/* CommentMarginCards — Google Docs–style floating cards en el margen derecho del canvas.
-   Live dentro del scroll area del editor (siguen al texto al hacer scroll). */
+/* CommentMarginCards — Google Docs–style cards en el margen derecho del canvas.
+   Idle: solo contenido, mínimo. Active: + reply composer + acciones. */
 
 .cardsLayer {
   position: absolute;
@@ -17,16 +17,19 @@
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
-  padding: 10px 12px;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  padding: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   pointer-events: auto;
   cursor: pointer;
-  transition: top 180ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  transition: top 180ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .card:hover {
   border-color: #d1d5db;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
 .cardActive {
@@ -45,20 +48,275 @@
   opacity: 0.85;
 }
 
-.entryActions {
+.cardTopActions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
   display: flex;
   gap: 4px;
-  margin-top: 4px;
+  z-index: 2;
 }
 
-.threadActions {
-  display: flex;
+.iconChip {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6b7280;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  padding-top: 6px;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.iconChip:hover {
+  background: #f0f4f9;
+  color: #0070d6;
+}
+
+/* Comment entry */
+.entry {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  position: relative;
+}
+
+.entry + .entry {
+  padding-top: 8px;
   border-top: 1px solid #f3f4f6;
 }
 
-/* Asegurar que el centerPanel tenga "espacio" a la derecha del canvas para que las cards
-   no se solapen con el contenido editable. Aplicar via rule global en ProjectEditor. */
+.entryBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.entryHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.entryAuthor {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: #212222;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entryTime {
+  font-size: 11px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.entryEdited {
+  font-size: 11px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.entryText {
+  font-size: 13px;
+  color: #212222;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+}
+
+.entryDeleted {
+  font-size: 12.5px;
+  color: #9ca3af;
+  font-style: italic;
+  margin: 0;
+}
+
+.dotsBtn {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.entry:hover .dotsBtn,
+.dotsBtn:focus-visible {
+  opacity: 1;
+}
+
+.dotsBtn:hover {
+  background: #f0f4f9;
+  color: #212222;
+}
+
+/* Reply trigger (idle compact button shown when active card has no composer open yet) */
+.replyTrigger {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: #9ca3af;
+  cursor: text;
+  font-family: inherit;
+}
+
+.replyTrigger:hover {
+  border-color: #c7daff;
+  color: #6b7280;
+}
+
+.replyTrigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Reply composer (expanded) */
+.replyComposer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid #c7daff;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+}
+
+.replyComposerHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.replyComposerName {
+  font-size: 12px;
+  font-weight: 600;
+  color: #212222;
+}
+
+.replyTextarea {
+  width: 100%;
+  min-height: 50px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  border: none;
+  outline: none;
+  padding: 4px 0;
+  background: transparent;
+  color: #212222;
+}
+
+.replyComposerActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #4b5563;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cancelBtn:hover {
+  background: #f0f4f9;
+}
+
+.cancelBtn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submitBtn {
+  background: #0088ff;
+  border: 1px solid #0088ff;
+  color: #ffffff;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.submitBtn:hover:not([disabled]) {
+  background: #0070d6;
+  border-color: #0070d6;
+}
+
+.submitBtn[disabled] {
+  background: #93c5fd;
+  border-color: #93c5fd;
+  cursor: not-allowed;
+}
+
+/* Replies hidden badge (shown in idle) */
+.repliesBadge {
+  font-size: 11.5px;
+  color: #6b7280;
+  padding-left: 34px; /* align with entry body */
+}
+
+/* ⋮ menu dropdown */
+.commentMenu {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  padding: 4px;
+  min-width: 180px;
+  z-index: 1500;
+}
+
+.commentMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  color: #212222;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.commentMenuItem:hover {
+  background: #f0f4f9;
+}
+
+.commentMenuItemDanger {
+  color: #dc2626;
+}
+
+.commentMenuItemDanger:hover {
+  background: #fef2f2;
+}

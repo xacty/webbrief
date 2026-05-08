@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, MoreHorizontal, RotateCcw, Send, Trash2, Pencil } from 'lucide-react'
+import { CheckCircle2, MoreHorizontal, RotateCcw, Send, Trash2, Pencil, Link as LinkIcon } from 'lucide-react'
 import styles from './CommentsUI.module.css'
 import marginStyles from './CommentMarginCards.module.css'
 
@@ -25,7 +25,7 @@ function getInitials(name) {
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
 }
 
-function Avatar({ profile, fallbackName, size = 28 }) {
+function Avatar({ profile, fallbackName, size = 26 }) {
   const name = profile?.fullName || profile?.email || fallbackName || ''
   const url = profile?.avatarUrl
   const style = { width: size, height: size, fontSize: Math.round(size * 0.4) }
@@ -37,6 +37,44 @@ function Avatar({ profile, fallbackName, size = 28 }) {
   )
 }
 
+function CommentMenu({ open, anchorRect, onClose, items }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    function down(e) { if (!ref.current?.contains(e.target)) onClose?.() }
+    function esc(e) { if (e.key === 'Escape') onClose?.() }
+    document.addEventListener('mousedown', down)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', down)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open, onClose])
+  if (!open || !anchorRect) return null
+  const style = {
+    position: 'fixed',
+    top: anchorRect.bottom + 4,
+    left: Math.max(8, Math.min(window.innerWidth - 180, anchorRect.right - 160)),
+    zIndex: 1500,
+  }
+  return (
+    <div ref={ref} className={marginStyles.commentMenu} style={style} role="menu">
+      {items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          className={cx(marginStyles.commentMenuItem, item.danger && marginStyles.commentMenuItemDanger)}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => { e.stopPropagation(); item.onSelect(); onClose?.() }}
+        >
+          {item.icon ? <item.icon size={13} /> : null}
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function CommentEntry({
   comment,
   profilesById,
@@ -44,62 +82,75 @@ function CommentEntry({
   isAdmin,
   onEdit,
   onDelete,
-  showActions = true,
-  compact = false,
+  onCopyLink,
+  showMenu = true,
 }) {
   const profile = profilesById.get(comment.actorUserId)
   const isAuthor = comment.actorUserId === currentUserId
   const ageMs = Date.now() - new Date(comment.createdAt).getTime()
   const canEdit = isAuthor && ageMs < EDIT_WINDOW_MS && !comment.deletedAt
   const canDelete = (isAuthor || isAdmin) && !comment.deletedAt
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuRect, setMenuRect] = useState(null)
+  const dotsRef = useRef(null)
+
+  const items = []
+  if (canEdit) items.push({ label: 'Editar', icon: Pencil, onSelect: () => onEdit?.(comment) })
+  if (canDelete) items.push({ label: 'Eliminar', icon: Trash2, danger: true, onSelect: () => onDelete?.(comment) })
+  if (onCopyLink) items.push({ label: 'Copiar link al comentario', icon: LinkIcon, onSelect: () => onCopyLink(comment) })
+
+  function openMenu() {
+    if (!dotsRef.current) return
+    setMenuRect(dotsRef.current.getBoundingClientRect())
+    setMenuOpen(true)
+  }
 
   return (
-    <div className={styles.commentItem} style={compact ? { padding: '2px 0' } : undefined}>
-      <Avatar profile={profile} fallbackName={comment.authorName} size={compact ? 22 : 28} />
-      <div className={styles.commentBody}>
-        <div className={styles.commentMeta}>
-          <span className={styles.commentAuthor}>{profile?.fullName || comment.authorName}</span>
-          <span className={styles.commentTime}>{formatRelativeTime(comment.createdAt)}</span>
-          {comment.editedAt && <span className={styles.commentEdited}>(editado)</span>}
+    <div className={marginStyles.entry}>
+      <Avatar profile={profile} fallbackName={comment.authorName} size={26} />
+      <div className={marginStyles.entryBody}>
+        <div className={marginStyles.entryHeader}>
+          <span className={marginStyles.entryAuthor}>{profile?.fullName || comment.authorName}</span>
+          <span className={marginStyles.entryTime}>{formatRelativeTime(comment.createdAt)}</span>
+          {comment.editedAt && <span className={marginStyles.entryEdited}>(editado)</span>}
+          {showMenu && items.length > 0 && (
+            <button
+              ref={dotsRef}
+              type="button"
+              className={marginStyles.dotsBtn}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); openMenu() }}
+              aria-label="Más opciones"
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          )}
         </div>
         {comment.deletedAt ? (
-          <p className={styles.commentDeleted}>(comentario eliminado)</p>
+          <p className={marginStyles.entryDeleted}>(comentario eliminado)</p>
         ) : (
-          <p className={styles.commentText}>{comment.body}</p>
-        )}
-        {showActions && (canEdit || canDelete) && (
-          <div className={marginStyles.entryActions}>
-            {canEdit && (
-              <button
-                type="button"
-                className={styles.actionBtn}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => { e.stopPropagation(); onEdit?.(comment) }}
-              >
-                <Pencil size={11} /> Editar
-              </button>
-            )}
-            {canDelete && (
-              <button
-                type="button"
-                className={cx(styles.actionBtn, styles.actionBtnDanger)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => { e.stopPropagation(); onDelete?.(comment) }}
-              >
-                <Trash2 size={11} /> Eliminar
-              </button>
-            )}
-          </div>
+          <p className={marginStyles.entryText}>{comment.body}</p>
         )}
       </div>
+      <CommentMenu
+        open={menuOpen}
+        anchorRect={menuRect}
+        onClose={() => setMenuOpen(false)}
+        items={items}
+      />
     </div>
   )
 }
 
-function ReplyForm({ onSubmit, disabled }) {
+function ReplyComposer({ onSubmit, currentUser, disabled }) {
+  const [active, setActive] = useState(false)
   const [value, setValue] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const textareaRef = useRef(null)
+
+  useEffect(() => {
+    if (active) textareaRef.current?.focus()
+  }, [active])
 
   async function handleSubmit() {
     const trimmed = value.trim()
@@ -108,40 +159,75 @@ function ReplyForm({ onSubmit, disabled }) {
     try {
       await onSubmit(trimmed)
       setValue('')
+      setActive(false)
     } finally {
       setSubmitting(false)
     }
   }
 
+  function handleCancel(e) {
+    e?.stopPropagation()
+    setValue('')
+    setActive(false)
+  }
+
   function handleKey(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      handleCancel()
+      return
+    }
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault()
       handleSubmit()
     }
   }
 
+  if (!active) {
+    return (
+      <button
+        type="button"
+        className={marginStyles.replyTrigger}
+        onClick={(e) => { e.stopPropagation(); setActive(true) }}
+        disabled={disabled}
+      >
+        Responder…
+      </button>
+    )
+  }
+
   return (
-    <div className={styles.replyForm} onClick={(e) => e.stopPropagation()}>
+    <div className={marginStyles.replyComposer} onClick={(e) => e.stopPropagation()}>
+      <div className={marginStyles.replyComposerHeader}>
+        <Avatar profile={currentUser ? { fullName: currentUser.fullName, avatarUrl: currentUser.avatarUrl } : null} fallbackName={currentUser?.fullName || currentUser?.email || ''} size={22} />
+        <span className={marginStyles.replyComposerName}>{currentUser?.fullName || currentUser?.email || 'Tú'}</span>
+      </div>
       <textarea
         ref={textareaRef}
-        className={styles.replyTextarea}
-        placeholder="Responder…"
+        className={marginStyles.replyTextarea}
+        placeholder="Comentario o @menciona miembros"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKey}
         disabled={disabled || submitting}
         rows={2}
       />
-      <div className={styles.replyTextareaActions}>
+      <div className={marginStyles.replyComposerActions}>
         <button
           type="button"
-          className={cx(styles.iconBtn, styles.iconBtnPrimary)}
-          onMouseDown={(e) => e.preventDefault()}
+          className={marginStyles.cancelBtn}
+          onClick={handleCancel}
+          disabled={submitting}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          className={marginStyles.submitBtn}
           onClick={handleSubmit}
           disabled={!value.trim() || submitting || disabled}
-          aria-label="Enviar"
         >
-          <Send size={14} />
+          Responder
         </button>
       </div>
     </div>
@@ -159,6 +245,7 @@ function MarginCard({
   onReopen,
   onEdit,
   onDelete,
+  onCopyLink,
   readOnly,
   position,
   setMeasuredHeight,
@@ -174,6 +261,10 @@ function MarginCard({
     setMeasuredHeight?.(thread.root.id, h)
   })
 
+  const replyCount = thread.replies.length
+  const showReplies = isExpanded || replyCount === 0
+  const hiddenRepliesCount = !isExpanded ? replyCount : 0
+
   return (
     <div
       ref={cardRef}
@@ -186,65 +277,71 @@ function MarginCard({
       data-thread-id={root.id}
       onClick={() => onActivate?.(root.id)}
     >
-      {!isExpanded ? (
+      {isExpanded && !readOnly && (
+        <div className={marginStyles.cardTopActions}>
+          {isResolved ? (
+            <button
+              type="button"
+              className={marginStyles.iconChip}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); onReopen(root.id) }}
+              data-wb-tooltip="Reabrir"
+              aria-label="Reabrir"
+            >
+              <RotateCcw size={14} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={marginStyles.iconChip}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => { e.stopPropagation(); onResolve(root.id) }}
+              data-wb-tooltip="Resolver"
+              aria-label="Resolver"
+            >
+              <CheckCircle2 size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      <CommentEntry
+        comment={root}
+        profilesById={profilesById}
+        currentUserId={currentUser?.id}
+        isAdmin={isAdmin}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onCopyLink={onCopyLink}
+        showMenu={!readOnly}
+      />
+
+      {showReplies && thread.replies.map((reply) => (
         <CommentEntry
-          comment={root}
+          key={reply.id}
+          comment={reply}
           profilesById={profilesById}
           currentUserId={currentUser?.id}
           isAdmin={isAdmin}
-          showActions={false}
-          compact
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onCopyLink={onCopyLink}
+          showMenu={!readOnly}
         />
-      ) : (
-        <>
-          <CommentEntry
-            comment={root}
-            profilesById={profilesById}
-            currentUserId={currentUser?.id}
-            isAdmin={isAdmin}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            showActions={!readOnly}
-          />
-          {thread.replies.map((reply) => (
-            <CommentEntry
-              key={reply.id}
-              comment={reply}
-              profilesById={profilesById}
-              currentUserId={currentUser?.id}
-              isAdmin={isAdmin}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              showActions={!readOnly}
-            />
-          ))}
-          {!readOnly && (
-            <ReplyForm onSubmit={(body) => onReply(root.id, body)} disabled={isResolved} />
-          )}
-          {!readOnly && (
-            <div className={marginStyles.threadActions}>
-              {isResolved ? (
-                <button
-                  type="button"
-                  className={cx(styles.actionBtn, styles.actionBtnPrimary)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => { e.stopPropagation(); onReopen(root.id) }}
-                >
-                  <RotateCcw size={12} /> Reabrir
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={cx(styles.actionBtn, styles.actionBtnPrimary)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => { e.stopPropagation(); onResolve(root.id) }}
-                >
-                  <CheckCircle2 size={12} /> Resolver
-                </button>
-              )}
-            </div>
-          )}
-        </>
+      ))}
+
+      {!isExpanded && hiddenRepliesCount > 0 && (
+        <div className={marginStyles.repliesBadge}>
+          {hiddenRepliesCount} {hiddenRepliesCount === 1 ? 'respuesta' : 'respuestas'}
+        </div>
+      )}
+
+      {isExpanded && !readOnly && (
+        <ReplyComposer
+          onSubmit={(body) => onReply(root.id, body)}
+          currentUser={currentUser}
+          disabled={isResolved}
+        />
       )}
     </div>
   )
@@ -263,25 +360,23 @@ export default function CommentMarginCards({
   onReopen,
   onEdit,
   onDelete,
+  onCopyLink,
   readOnly = false,
   showResolved = false,
 }) {
   const profilesById = useMemo(() => new Map((profiles || []).map((p) => [p.id, p])), [profiles])
   const [anchorTops, setAnchorTops] = useState(new Map())
   const [cardHeights, setCardHeights] = useState(new Map())
-  const [, forceTick] = useState(0)
 
   const visibleThreads = useMemo(() => {
     return threads.filter((thread) => {
       const isResolved = Boolean(thread.root.resolvedAt)
       if (!showResolved && isResolved) return false
-      // skip orphans (anchor not in current doc)
       if (liveCommentIds && !liveCommentIds.has(thread.root.id)) return false
       return true
     })
   }, [threads, showResolved, liveCommentIds])
 
-  // Measure anchor positions: re-run on scroll, resize, threads change, editor mutations.
   useLayoutEffect(() => {
     const scrollEl = scrollAreaRef?.current
     if (!scrollEl) return
@@ -310,7 +405,6 @@ export default function CommentMarginCards({
     scrollEl.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', onResize)
 
-    // MutationObserver to re-measure when editor DOM changes (typing, mark add/remove)
     const observer = new MutationObserver(() => measure())
     observer.observe(scrollEl, { childList: true, subtree: true, characterData: true })
 
@@ -321,8 +415,6 @@ export default function CommentMarginCards({
     }
   }, [scrollAreaRef, visibleThreads])
 
-  // Resolve overlaps: greedy top-down layout pass.
-  // Active card prefers its natural top; others stack below the previous card.
   const layout = useMemo(() => {
     const positioned = []
     const sorted = visibleThreads
@@ -336,7 +428,6 @@ export default function CommentMarginCards({
 
     let cursor = -Infinity
     for (const entry of sorted) {
-      const isActive = entry.thread.root.id === activeCommentId
       const desired = entry.anchorTop
       const top = Math.max(desired, cursor)
       positioned.push({ ...entry, top })
@@ -344,24 +435,17 @@ export default function CommentMarginCards({
     }
 
     if (activeCommentId) {
-      // If active card was pushed too far from its anchor, shift everything to align it.
       const active = positioned.find((entry) => entry.thread.root.id === activeCommentId)
       if (active && active.top !== active.anchorTop) {
         const delta = active.anchorTop - active.top
-        // shift later cards up if delta < 0 (active wants to go higher)
         if (delta !== 0) {
           for (const entry of positioned) {
             entry.top = entry.top + delta
           }
-          // re-resolve overlaps top-down again from active onwards
-          const idx = positioned.findIndex((e) => e.thread.root.id === activeCommentId)
-          if (idx >= 0) {
-            for (let i = 0; i < positioned.length; i++) {
-              if (i === 0) continue
-              const prev = positioned[i - 1]
-              const minTop = prev.top + prev.height + CARD_GAP
-              if (positioned[i].top < minTop) positioned[i].top = minTop
-            }
+          for (let i = 1; i < positioned.length; i++) {
+            const prev = positioned[i - 1]
+            const minTop = prev.top + prev.height + CARD_GAP
+            if (positioned[i].top < minTop) positioned[i].top = minTop
           }
         }
       }
@@ -396,6 +480,7 @@ export default function CommentMarginCards({
           onReopen={onReopen}
           onEdit={onEdit}
           onDelete={onDelete}
+          onCopyLink={onCopyLink}
           readOnly={readOnly}
           position={entry.top}
           setMeasuredHeight={handleSetMeasuredHeight}
