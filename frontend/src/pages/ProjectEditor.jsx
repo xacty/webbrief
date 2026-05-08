@@ -6690,18 +6690,48 @@ function EditorPanel({
     targets.forEach((el) => el.setAttribute('data-wb-active', 'true'))
   }, [activeCommentId, editor])
 
-  // Right-click context menu (Google Docs–style). El mousedown de button=2 ya está
-  // bloqueado por editorProps.handleDOMEvents.mousedown más arriba, así que la selección
-  // no se mueve al hacer right-click. Acá solo intercepto contextmenu para abrir el menú
-  // custom, defiriendo al TableRightClickMenu cuando el click es en una tabla.
-  // Capturo un snapshot de la selección en el momento exacto del contextmenu — el menú
-  // usa este snapshot (y restaura via setTextSelection antes de cada comando) para que
-  // cortar/copiar/comentar funcionen aun si la selección se perdiera por algún edge case.
+  // Right-click context menu (Google Docs–style). Defiere al TableRightClickMenu en tablas.
+  //
+  // Problema sutil: en un contenteditable el browser mismo (no solo ProseMirror) ajusta
+  // la DOM selection al hacer right-click. ProseMirror escucha `selectionchange` y
+  // sincroniza su state interno desde la DOM selection. Por eso bloquear el mousedown
+  // (via editorProps.handleDOMEvents.mousedown o stopPropagation) no alcanza — el
+  // browser ya limpió la selección antes de que el contextmenu fire.
+  //
+  // Solución: trackear la selección estable continuamente con `selectionUpdate`. Cuando
+  // mousedown con button=2 entra en capture phase (antes que cualquier otra cosa), tomo
+  // un snapshot de esa selección estable. El contextmenu usa ese snapshot — ya está
+  // capturado antes de que el browser/PM puedan limpiarlo.
+  //
+  // El menú restaura la selección con setTextSelection antes de cada comando.
   const [contextMenuPos, setContextMenuPos] = useState(null)
   const [contextMenuSelection, setContextMenuSelection] = useState({ from: 0, to: 0, empty: true })
+  const stableSelectionRef = useRef({ from: 0, to: 0, empty: true })
+  const rightClickSnapshotRef = useRef({ from: 0, to: 0, empty: true })
+  useEffect(() => {
+    if (!editor) return
+    const handler = () => {
+      const { from, to, empty } = editor.state.selection
+      stableSelectionRef.current = { from, to, empty }
+    }
+    handler() // seed
+    editor.on('selectionUpdate', handler)
+    return () => editor.off('selectionUpdate', handler)
+  }, [editor])
   useEffect(() => {
     if (!editor) return
     const editorDom = editor.view.dom
+
+    function handleMouseDownPreCapture(e) {
+      // Capture phase, very early. Before browser/PM can mutate the selection.
+      if (e.button !== 2) return
+      if (!(e.target instanceof Node)) return
+      if (!editorDom.contains(e.target)) return
+      const target = e.target instanceof Element ? e.target : e.target.parentElement
+      if (target?.closest('table')) return // table flow
+      // Snapshot the last known stable selection so the contextmenu can use it.
+      rightClickSnapshotRef.current = { ...stableSelectionRef.current }
+    }
 
     function handleContextMenu(e) {
       const target = e.target
@@ -6709,13 +6739,23 @@ function EditorPanel({
       if (!editorDom.contains(target)) return
       if (target.closest('table')) return // delegate to TableRightClickMenu
       e.preventDefault()
-      const { from, to, empty } = editor.state.selection
-      setContextMenuSelection({ from, to, empty })
+      // Use the pre-captured snapshot (taken at mousedown, before any clearing).
+      // Fallback to current state if for some reason the snapshot wasn't captured.
+      const live = editor.state.selection
+      const snap = rightClickSnapshotRef.current
+      const usable = snap.empty && !live.empty
+        ? { from: live.from, to: live.to, empty: false }
+        : snap
+      setContextMenuSelection(usable)
       setContextMenuPos({ x: e.clientX, y: e.clientY })
     }
 
+    document.addEventListener('mousedown', handleMouseDownPreCapture, true)
     document.addEventListener('contextmenu', handleContextMenu)
-    return () => document.removeEventListener('contextmenu', handleContextMenu)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDownPreCapture, true)
+      document.removeEventListener('contextmenu', handleContextMenu)
+    }
   }, [editor])
 
   useEffect(() => {
