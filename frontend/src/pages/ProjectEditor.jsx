@@ -6740,6 +6740,19 @@ function EditorPanel({
     targets.forEach((el) => el.setAttribute('data-wb-active', 'true'))
   }, [activeCommentId, editor])
 
+  // ¿Hay comments visibles (no resueltos, no huérfanos) en la página activa? Si sí,
+  // agregamos padding-right al scroll area para reservar la "gutter" donde flotan
+  // las cards. Sin esto, los activity bells de la columna derecha de la canvas se
+  // solapan con las cards.
+  const hasMarginComments = useMemo(() => {
+    if (!Array.isArray(commentThreads)) return false
+    return commentThreads.some((thread) => {
+      if (thread?.root?.resolvedAt) return false
+      if (commentLiveIds && !commentLiveIds.has(thread.root.id)) return false
+      return true
+    })
+  }, [commentThreads, commentLiveIds])
+
   // Right-click context menu (Google Docs–style). Defiere al TableRightClickMenu en tablas.
   //
   // Problema sutil: en un contenteditable el browser mismo (no solo ProseMirror) ajusta
@@ -7129,7 +7142,13 @@ function EditorPanel({
       {projectType === 'document' && (
         null
       )}
-      <div ref={scrollAreaRef} className={styles.editorScrollArea}>
+      <div
+        ref={scrollAreaRef}
+        className={cx(
+          styles.editorScrollArea,
+          hasMarginComments && styles.editorScrollAreaWithMargin,
+        )}
+      >
         {projectType !== 'faq' && (
           <div className={seoRulesStyles.topTrayRow} data-seo-tray="">
             <div className={seoRulesStyles.topTraySpacer} />

@@ -859,6 +859,14 @@
   overflow-y: auto;
   scrollbar-gutter: stable;
   padding: 10px;
+  transition: padding-right 200ms ease;
+}
+
+/* Cuando hay comments anclados visibles, reservamos ~300px de gutter a la
+   derecha para que las cards floten sin solaparse con los activity bells
+   de la columna derecha del canvas. */
+.editorScrollAreaWithMargin {
+  padding-right: 300px;
 }
 
 .canvasAddSectionWrap {
