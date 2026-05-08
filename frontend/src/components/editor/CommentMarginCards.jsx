@@ -31,6 +31,55 @@ function getInitials(name) {
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
 }
 
+// Convierte @Nombre en <a href="mailto:..."> cuando el nombre matchea un mencionado real.
+// Solo linkea menciones que figuren en `comment.mentions` (IDs validados server-side).
+// Si no hay match (p.ej. perfil ya no está disponible o no se mencionó realmente),
+// queda como texto plano para evitar generar links a cualquier `@palabra` casual.
+function renderMentionedBody({ body, mentions, profilesById }) {
+  if (!body) return body
+  if (!Array.isArray(mentions) || mentions.length === 0) return body
+
+  const candidates = mentions
+    .map((id) => profilesById.get(id))
+    .filter(Boolean)
+    .map((p) => ({ name: p.fullName || p.email || 'Usuario', email: p.email || '', profile: p }))
+
+  if (candidates.length === 0) return body
+
+  // Ordenar por longitud desc para matchear "Juan Pérez" antes que "Juan".
+  candidates.sort((a, b) => b.name.length - a.name.length)
+
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = candidates.map((c) => escape(c.name)).join('|')
+  const regex = new RegExp(`@(${pattern})`, 'g')
+
+  const out = []
+  let lastIdx = 0
+  let match
+  let key = 0
+  while ((match = regex.exec(body)) !== null) {
+    if (match.index > lastIdx) out.push(body.slice(lastIdx, match.index))
+    const c = candidates.find((cand) => cand.name === match[1])
+    if (c && c.email) {
+      out.push(
+        <a
+          key={`m-${key++}`}
+          href={`mailto:${c.email}`}
+          className={marginStyles.mentionLink}
+          onClick={(e) => e.stopPropagation()}
+        >
+          @{c.name}
+        </a>,
+      )
+    } else {
+      out.push(`@${match[1]}`)
+    }
+    lastIdx = match.index + match[0].length
+  }
+  if (lastIdx < body.length) out.push(body.slice(lastIdx))
+  return out
+}
+
 function Avatar({ profile, fallbackName, size = 26 }) {
   const name = profile?.fullName || profile?.email || fallbackName || ''
   const url = profile?.avatarUrl
@@ -139,7 +188,13 @@ function CommentEntry({
         {comment.deletedAt ? (
           <p className={marginStyles.entryDeleted}>(comentario eliminado)</p>
         ) : (
-          <p className={marginStyles.entryText}>{comment.body}</p>
+          <p className={marginStyles.entryText}>
+            {renderMentionedBody({
+              body: comment.body,
+              mentions: comment.mentions,
+              profilesById,
+            })}
+          </p>
         )}
       </div>
       <CommentMenu

@@ -47,15 +47,25 @@ export default function CommentComposerPopover({
 
   useEffect(() => { setMentionIndex(0) }, [mentionQuery?.query])
 
+  // Solo seedeamos al transicionar de cerrado → abierto. Sin esto, cualquier
+  // re-render del padre (ej. autosave) que pase un nuevo `[]` literal para
+  // initialMentions reseteaba el body y las menciones que el usuario estaba
+  // escribiendo. Leemos los valores actuales via refs para evitar ese disparo.
+  const initialBodyRef = useRef(initialBody)
+  const initialMentionsRef = useRef(initialMentions)
+  useEffect(() => {
+    initialBodyRef.current = initialBody
+    initialMentionsRef.current = initialMentions
+  })
   useEffect(() => {
     if (open) {
-      setBody(initialBody)
-      setMentionUserIds(initialMentions)
+      setBody(initialBodyRef.current || '')
+      setMentionUserIds(initialMentionsRef.current || [])
       setMentionQuery(null)
       const id = window.setTimeout(() => textareaRef.current?.focus(), 30)
       return () => window.clearTimeout(id)
     }
-  }, [open, initialBody, initialMentions])
+  }, [open])
 
   const position = useMemo(() => {
     if (!anchorRect) return null
