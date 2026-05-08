@@ -582,22 +582,9 @@ const GoogleDocsHeadingShortcuts = Extension.create({
 })
 
 // Atajos de alineación estilo Google Docs: Mod-Shift-L/E/R/J.
-// Al retornar true desde un handler, ProseMirror llama preventDefault() en el
-// evento, evitando el hard-refresh (Cmd+Shift+R) del browser cuando el editor
-// tiene foco.
-const AlignShortcuts = Extension.create({
-  name: 'alignShortcuts',
-  priority: 200,
-  addKeyboardShortcuts() {
-    return {
-      'Mod-Shift-l': () => this.editor.chain().focus().setTextAlign('left').run(),
-      'Mod-Shift-e': () => this.editor.chain().focus().setTextAlign('center').run(),
-      // Mod-Shift-r y Mod-Shift-j NO se bindean: chocan con hard-refresh y
-      // DevTools del browser. El usuario alinea derecha/justify desde la
-      // toolbar. Browser shortcuts > editor shortcuts cuando se solapan.
-    }
-  },
-})
+// Los shortcuts de alineación están sobre la extensión TextAlign mediante
+// .extend() en su uso (ver useEditor.extensions). Mantenemos solo Mod-Shift-l
+// y Mod-Shift-e; r y j chocan con hard-refresh y DevTools del browser.
 
 const BLOCK_SPACING_PRESETS = {
   single: { label: 'Simple', lineHeight: '1.2', marginBottom: '0.45em' },
@@ -6603,7 +6590,18 @@ function EditorPanel({
       TextStyle,
       Color,
       Highlight.configure({ multicolor: true }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      TextAlign.extend({
+        // El extension oficial bindea Mod-Shift-l/e/r/j. Sobrescribimos para
+        // dejar solo l (left) y e (center). r y j chocan con hard-refresh y
+        // DevTools del browser; el usuario alinea derecha/justify desde la
+        // toolbar.
+        addKeyboardShortcuts() {
+          return {
+            'Mod-Shift-l': () => this.editor.chain().focus().setTextAlign('left').run(),
+            'Mod-Shift-e': () => this.editor.chain().focus().setTextAlign('center').run(),
+          }
+        },
+      }).configure({ types: ['heading', 'paragraph'] }),
       TextBlockLayoutExtension,
       Table.configure({ resizable: true }),
       TableRow,
@@ -6612,7 +6610,6 @@ function EditorPanel({
       SectionDividerNode,
       CtaButtonNode,
       GoogleDocsHeadingShortcuts,
-      AlignShortcuts,
       CommentMark,
       FakeSelection,
     ],
