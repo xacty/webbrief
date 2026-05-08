@@ -6713,6 +6713,7 @@ function EditorPanel({
     const handler = () => {
       const { from, to, empty } = editor.state.selection
       stableSelectionRef.current = { from, to, empty }
+      console.log('[wb-debug] selectionUpdate', { from, to, empty })
     }
     handler() // seed
     editor.on('selectionUpdate', handler)
@@ -6723,29 +6724,42 @@ function EditorPanel({
     const editorDom = editor.view.dom
 
     function handleMouseDownPreCapture(e) {
-      // Capture phase, very early. Before browser/PM can mutate the selection.
+      console.log('[wb-debug] mousedown capture', {
+        button: e.button,
+        targetTag: e.target?.tagName,
+        targetIsNode: e.target instanceof Node,
+        editorContains: editorDom.contains(e.target),
+      })
       if (e.button !== 2) return
       if (!(e.target instanceof Node)) return
       if (!editorDom.contains(e.target)) return
       const target = e.target instanceof Element ? e.target : e.target.parentElement
       if (target?.closest('table')) return // table flow
-      // Snapshot the last known stable selection so the contextmenu can use it.
       rightClickSnapshotRef.current = { ...stableSelectionRef.current }
+      console.log('[wb-debug] snapshot taken', rightClickSnapshotRef.current)
     }
 
     function handleContextMenu(e) {
+      console.log('[wb-debug] contextmenu fired', {
+        targetTag: e.target?.tagName,
+        targetIsHTMLElement: e.target instanceof HTMLElement,
+        editorContains: editorDom.contains(e.target),
+      })
       const target = e.target
       if (!(target instanceof HTMLElement)) return
       if (!editorDom.contains(target)) return
       if (target.closest('table')) return // delegate to TableRightClickMenu
       e.preventDefault()
-      // Use the pre-captured snapshot (taken at mousedown, before any clearing).
-      // Fallback to current state if for some reason the snapshot wasn't captured.
       const live = editor.state.selection
       const snap = rightClickSnapshotRef.current
+      console.log('[wb-debug] contextmenu state', {
+        live: { from: live.from, to: live.to, empty: live.empty },
+        snap,
+      })
       const usable = snap.empty && !live.empty
         ? { from: live.from, to: live.to, empty: false }
         : snap
+      console.log('[wb-debug] usable selection passed to menu', usable)
       setContextMenuSelection(usable)
       setContextMenuPos({ x: e.clientX, y: e.clientY })
     }
