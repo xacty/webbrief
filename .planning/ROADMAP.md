@@ -14,9 +14,9 @@ Refactor sistemático del sistema visual de WeBrief contra el framework Refactor
 
 **Milestone Goal:** Sistema visual unificado con tokens completos, componentes reutilizables y score ≥ 8.5/10 en Refactoring UI sobre todas las áreas (admin, auth, editor, públicas), sin regresiones funcionales.
 
-- [ ] **Phase 1: Design Tokens Foundation** - Extender `tokens.css` con scales completas (spacing, typography, shadows, radius, z-index) y paleta 50-900
-- [ ] **Phase 2: Shared UI Components** - Crear `components/ui/` con Button, Input, Select, Modal, Card, Badge
-- [ ] **Phase 3: Admin & Auth Migration** - Migrar Companies, Users, Archive, Trash, Security, NewProject, Settings, Login, SetPassword
+- [x] **Phase 1: Design Tokens Foundation** - Extender `tokens.css` con scales completas (spacing, typography, shadows, radius, z-index) y paleta 50-900
+- [x] **Phase 2: Shared UI Components** - Crear `components/ui/` con Button, Input, Select, Modal, Card, Badge
+- [x] **Phase 3: Admin & Auth Migration** - Migrar Companies, Users, Archive, Trash, Security, NewProject, Settings, Login, SetPassword
 - [ ] **Phase 4: Editor Unification** - Eliminar paleta paralela del editor; unificar navbar, toolbar, panels, canvas, modales con tokens
 - [ ] **Phase 5: Public Pages & Verification** - Migrar Share, Brief; auditar score final; verificar golden paths con preview tools
 
@@ -64,11 +64,11 @@ Refactor sistemático del sistema visual de WeBrief contra el framework Refactor
   5. Manual QA pasa: invitar usuario, crear empresa, archivar, restaurar, login, reset password — sin regresiones
 
 **Plans**: 5 plans
-  - [ ] 03-01-PLAN.md — Cohort 1 (Auth pair): Login + SetPassword + AuthPage.module.css → shared Button/Input/Card/Badge
-  - [ ] 03-02-PLAN.md — Cohort 2 (Standalone forms): AccountSettingsPage (extend pilot) + NewProject → shared Button/Input/Select/Modal/Card/Badge
-  - [ ] 03-03-PLAN.md — Cohort 3 (Companies stack): CompaniesPage (4 modals) + CompanyPage (3 modals) → shared primitives
-  - [ ] 03-04-PLAN.md — Cohort 4 (Complex tables): UsersPage + TrashPage + SecurityPage; UsersPage expandable-row CSS preserved per exception
-  - [ ] 03-05-PLAN.md — Cohort 5 (Shell): AppShell tokens; sidebar 248px as `--wb-shell-sidebar-width`; sticky z-index → token; full golden-path QA checkpoint
+  - [x] 03-01-PLAN.md — Cohort 1 (Auth pair): Login + SetPassword + AuthPage.module.css → shared Button/Input/Card/Badge
+  - [x] 03-02-PLAN.md — Cohort 2 (Standalone forms): AccountSettingsPage (extend pilot) + NewProject → shared Button/Input/Select/Modal/Card/Badge
+  - [x] 03-03-PLAN.md — Cohort 3 (Companies stack): CompaniesPage (4 modals) + CompanyPage (3 modals) → shared primitives
+  - [x] 03-04-PLAN.md — Cohort 4 (Complex tables): UsersPage + TrashPage + SecurityPage; UsersPage expandable-row CSS preserved per exception
+  - [x] 03-05-PLAN.md — Cohort 5 (Shell): AppShell tokens; sidebar 248px as `--wb-shell-sidebar-width`; sticky z-index → token; full golden-path QA checkpoint
 
 **UI hint**: yes
 
@@ -109,8 +109,8 @@ Refactor sistemático del sistema visual de WeBrief contra el framework Refactor
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Design Tokens Foundation | v1.0 | 0/TBD | Not started | - |
-| 2. Shared UI Components | v1.0 | 0/TBD | Not started | - |
-| 3. Admin & Auth Migration | v1.0 | 0/TBD | Not started | - |
+| 1. Design Tokens Foundation | v1.0 | 3/3 | Complete | 2026-05-08 |
+| 2. Shared UI Components | v1.0 | 5/5 | Complete | 2026-05-09 |
+| 3. Admin & Auth Migration | v1.0 | 5/5 | Complete | 2026-05-09 |
 | 4. Editor Unification | v1.0 | 0/TBD | Not started | - |
 | 5. Public Pages & Verification | v1.0 | 0/TBD | Not started | - |
