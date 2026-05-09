@@ -84,6 +84,7 @@ const Input = forwardRef(function Input(
           </span>
         )}
         <input
+          {...rest}
           ref={ref}
           id={inputId}
           type={effectiveType}
@@ -93,7 +94,6 @@ const Input = forwardRef(function Input(
           aria-invalid={errorFlag ? 'true' : undefined}
           aria-describedby={helperId}
           className={styles.input}
-          {...rest}
         />
         {isPassword && (
           <button
