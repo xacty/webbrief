@@ -1,0 +1,50 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  padding: var(--wb-space-1) var(--wb-space-2);
+  border-radius: var(--wb-radius-full);
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  line-height: var(--wb-leading-normal);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* Size modifiers — md is the base; sm tightens vertical padding */
+.size_md {
+  /* base — no overrides needed */
+}
+
+.size_sm {
+  /* sm: 2px per UI-SPEC §Badge geometry */
+  padding: 2px var(--wb-space-2);
+}
+
+/* Variant modifiers — colors locked by UI-SPEC §Color per-variant token map */
+.variant_neutral {
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-700);
+}
+
+.variant_success {
+  background: var(--wb-color-success-100);
+  color: var(--wb-color-success-700);
+}
+
+.variant_warning {
+  background: var(--wb-color-warning-100);
+  color: var(--wb-color-warning-700);
+}
+
+.variant_danger {
+  background: var(--wb-color-danger-100);
+  color: var(--wb-color-danger-700);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
