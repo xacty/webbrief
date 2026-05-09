@@ -41,6 +41,7 @@ export default function Modal({
   open,
   onClose,
   title,
+  ariaLabel,
   size = 'md',
   closeOnEscape = true,
   closeOnBackdrop = true,
@@ -56,6 +57,23 @@ export default function Modal({
   const cardRef = useRef(null);
   const previousActiveRef = useRef(null);
   const downOnOverlayRef = useRef(false);
+  const warnedNoLabelRef = useRef(false);
+
+  // Dev-only warning: a dialog with neither title nor aria-label has no
+  // accessible name. Mirrors the icon-only Button warning pattern.
+  if (
+    open &&
+    !title &&
+    !ariaLabel &&
+    !warnedNoLabelRef.current &&
+    typeof console !== 'undefined' &&
+    console.warn
+  ) {
+    console.warn(
+      '[Modal] Provide `title` or `ariaLabel` so the dialog has an accessible name'
+    );
+    warnedNoLabelRef.current = true;
+  }
 
   // Body-scroll lock with refcount
   useEffect(() => {
@@ -66,11 +84,26 @@ export default function Modal({
     };
   }, [open]);
 
-  // Initial focus + focus restore
+  // Effect 1: save & restore previously active element ONLY on open toggle.
+  // Decoupled from initialFocusRef so a parent re-render with a new ref
+  // identity does not corrupt previousActiveRef mid-modal.
   useLayoutEffect(() => {
     if (!open) return undefined;
     previousActiveRef.current =
       typeof document !== 'undefined' ? document.activeElement : null;
+    return () => {
+      const prev = previousActiveRef.current;
+      if (prev && typeof prev.focus === 'function') {
+        prev.focus();
+      }
+    };
+  }, [open]);
+
+  // Effect 2: initial focus inside the modal. Re-runs if initialFocusRef
+  // identity changes; cleanup only cancels the deferred frame, never
+  // touches previousActiveRef.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
 
     // Defer focus to next frame so the portal/card has rendered
     const raf =
@@ -96,10 +129,6 @@ export default function Modal({
         window.cancelAnimationFrame(raf);
       } else if (typeof clearTimeout === 'function') {
         clearTimeout(raf);
-      }
-      const prev = previousActiveRef.current;
-      if (prev && typeof prev.focus === 'function') {
-        prev.focus();
       }
     };
   }, [open, initialFocusRef]);
@@ -163,6 +192,7 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
+        aria-label={!title ? ariaLabel : undefined}
         aria-describedby={ariaDescribedBy}
         tabIndex={-1}
         className={cn(styles.card, styles[`size_${size}`], className)}
