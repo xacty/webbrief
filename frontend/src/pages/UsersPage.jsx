@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { Camera, ChevronDown, ChevronRight, Download, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, Download, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { getCompanyRole, getInviteRoleOptions, isAdmin } from '../lib/roleCapabilities'
@@ -11,6 +11,7 @@ import {
   getPlatformRoleLabel,
   isGlobalPlatformRole,
 } from '../../../shared/userRoles.js'
+import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
 import styles from './UsersPage.module.css'
 
 const PAGE_SIZE = 10
@@ -46,10 +47,10 @@ function platformRoleLabel(role) {
   return getPlatformRoleLabel(role)
 }
 
-function platformRoleClass(role) {
-  if (role === 'admin') return styles.adminBadge
-  if (role === 'qa') return styles.qaBadge
-  return styles.userBadge
+function platformRoleBadgeVariant(role) {
+  if (role === 'admin') return 'primary'
+  if (role === 'qa') return 'success'
+  return 'neutral'
 }
 
 function userInitials(user) {
@@ -485,154 +486,129 @@ export default function UsersPage() {
         </div>
 
         {canInviteUsers && canManageUsers && (companies.length > 0 || isAdminUser) && (
-          <button className={styles.primaryButton} onClick={() => setInviteOpen(true)}>
-            <Plus className={styles.buttonIcon} aria-hidden="true" />
+          <Button variant="primary" icon={<Plus size={16} />} onClick={() => setInviteOpen(true)}>
             Agregar usuario
-          </button>
+          </Button>
         )}
       </header>
 
       {inviteOpen && (
-        <section className={styles.panel}>
+        <Card padding="md" shadow="sm" radius="lg" className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
               <h2 className={styles.panelTitle}>Agregar usuario</h2>
               <p className={styles.panelText}>Invita una cuenta nueva o asigna un usuario existente a una empresa.</p>
             </div>
-            <button className={styles.iconButton} onClick={() => setInviteOpen(false)} aria-label="Cerrar">
-              <X aria-hidden="true" />
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => setInviteOpen(false)} aria-label="Cerrar">
+              ×
+            </Button>
           </div>
 
           <form className={styles.inviteGrid} onSubmit={handleInvite}>
-            <label className={styles.fieldWrap}>
-              <span className={styles.fieldLabel}>Nombre</span>
-              <input
-                className={styles.input}
-                type="text"
-                value={inviteForm.fullName}
-                onChange={(event) => setInviteForm((current) => ({ ...current, fullName: event.target.value }))}
-                placeholder="Nombre completo"
-              />
-            </label>
+            <Input
+              label="Nombre"
+              type="text"
+              value={inviteForm.fullName}
+              onChange={(event) => setInviteForm((current) => ({ ...current, fullName: event.target.value }))}
+              placeholder="Nombre completo"
+            />
 
-            <label className={styles.fieldWrap}>
-              <span className={styles.fieldLabel}>Email</span>
-              <input
-                className={styles.input}
-                type="email"
-                value={inviteForm.email}
-                onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))}
-                placeholder="email@empresa.com"
-                required
-              />
-            </label>
+            <Input
+              label="Email"
+              type="email"
+              value={inviteForm.email}
+              onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))}
+              placeholder="email@empresa.com"
+              required
+            />
 
             {isAdminUser && (
-              <label className={styles.fieldWrap}>
-                <span className={styles.fieldLabel}>Rol plataforma</span>
-                <select
-                  className={styles.select}
-                  value={inviteForm.platformRole}
-                  onChange={(event) => setInviteForm((current) => ({ ...current, platformRole: event.target.value }))}
-                >
-                  {PLATFORM_ROLE_ORDER.map((role) => (
-                    <option key={role} value={role}>{platformRoleLabel(role)}</option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                label="Rol plataforma"
+                value={inviteForm.platformRole}
+                onChange={(event) => setInviteForm((current) => ({ ...current, platformRole: event.target.value }))}
+              >
+                {PLATFORM_ROLE_ORDER.map((role) => (
+                  <option key={role} value={role}>{platformRoleLabel(role)}</option>
+                ))}
+              </Select>
             )}
 
             {inviteNeedsCompany ? (
               <>
-                <label className={styles.fieldWrap}>
-                  <span className={styles.fieldLabel}>Empresa</span>
-                  <select
-                    className={styles.select}
-                    value={inviteForm.companyId}
-                    onChange={(event) => setInviteForm((current) => ({ ...current, companyId: event.target.value }))}
-                    required={inviteNeedsCompany}
-                  >
-                    {companies.map((company) => (
-                      <option key={company.id} value={company.id}>
-                        {company.name}{company.isInternal ? ' · Interna' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label="Empresa"
+                  value={inviteForm.companyId}
+                  onChange={(event) => setInviteForm((current) => ({ ...current, companyId: event.target.value }))}
+                  required={inviteNeedsCompany}
+                >
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}{company.isInternal ? ' · Interna' : ''}
+                    </option>
+                  ))}
+                </Select>
 
-                <label className={styles.fieldWrap}>
-                  <span className={styles.fieldLabel}>Rol en empresa</span>
-                  <select
-                    className={styles.select}
-                    value={inviteForm.role}
-                    onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))}
-                  >
-                    {inviteRoleOptions.map((role) => (
-                      <option key={role} value={role}>{roleLabel(role)}</option>
-                    ))}
-                  </select>
-                </label>
+                <Select
+                  label="Rol en empresa"
+                  value={inviteForm.role}
+                  onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))}
+                >
+                  {inviteRoleOptions.map((role) => (
+                    <option key={role} value={role}>{roleLabel(role)}</option>
+                  ))}
+                </Select>
               </>
             ) : (
               <p className={`${styles.formNote} ${styles.inviteFormNote}`}>Admin y QA usan acceso global, sin rol por empresa.</p>
             )}
 
             <div className={`${styles.formActions} ${styles.inviteFormActions}`}>
-              <button className={styles.tertiaryButton} type="button" onClick={() => setInviteOpen(false)}>
+              <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}>
                 Cancelar
-              </button>
-              <button className={styles.primaryButton} type="submit" disabled={busyKey === 'invite'}>
+              </Button>
+              <Button type="submit" variant="primary" disabled={busyKey === 'invite'} loading={busyKey === 'invite'}>
                 {busyKey === 'invite' ? 'Agregando...' : 'Agregar usuario'}
-              </button>
+              </Button>
             </div>
           </form>
-        </section>
+        </Card>
       )}
 
       <section className={styles.toolbar}>
-        <div className={styles.searchWrap}>
-          <label className={styles.fieldLabel} htmlFor="users-search">Buscar</label>
-          <input
-            id="users-search"
-            className={styles.input}
-            type="search"
-            placeholder="Nombre, email, empresa o rol"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </div>
+        <Input
+          id="users-search"
+          label="Buscar"
+          type="search"
+          placeholder="Nombre, email, empresa o rol"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
 
-        <div className={styles.filterWrap}>
-          <label className={styles.fieldLabel} htmlFor="users-company-filter">Empresa</label>
-          <select
-            id="users-company-filter"
-            className={styles.select}
-            value={companyFilter}
-            onChange={(event) => setCompanyFilter(event.target.value)}
-          >
-            <option value="all">Todas</option>
-            {companies.map((company) => (
-              <option key={company.id} value={company.id}>
-                {company.name}{company.isInternal ? ' · Interna' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Select
+          id="users-company-filter"
+          label="Empresa"
+          value={companyFilter}
+          onChange={(event) => setCompanyFilter(event.target.value)}
+        >
+          <option value="all">Todas</option>
+          {companies.map((company) => (
+            <option key={company.id} value={company.id}>
+              {company.name}{company.isInternal ? ' · Interna' : ''}
+            </option>
+          ))}
+        </Select>
 
-        <div className={styles.filterWrap}>
-          <label className={styles.fieldLabel} htmlFor="users-sort">Ordenar</label>
-          <select
-            id="users-sort"
-            className={styles.select}
-            value={sortBy}
-            onChange={(event) => setSortBy(event.target.value)}
-          >
-            <option value="name">Por nombre</option>
-            <option value="recent">Recientes</option>
-            <option value="company">Por empresa</option>
-          </select>
-        </div>
+        <Select
+          id="users-sort"
+          label="Ordenar"
+          value={sortBy}
+          onChange={(event) => setSortBy(event.target.value)}
+        >
+          <option value="name">Por nombre</option>
+          <option value="recent">Recientes</option>
+          <option value="company">Por empresa</option>
+        </Select>
       </section>
 
       <section className={styles.sectionHeader}>
@@ -681,15 +657,16 @@ export default function UsersPage() {
                     <tr className={expanded ? styles.userRowExpanded : undefined}>
                       <td>
                         <div className={styles.userCell}>
-                          <button
-                            className={styles.expandButton}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            icon={expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                             onClick={() => setExpandedUserId(expanded ? '' : user.id)}
                             aria-expanded={expanded}
                             aria-controls={`user-access-${user.id}`}
                             aria-label={expanded ? 'Ocultar accesos' : 'Ver accesos'}
-                          >
-                            {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
-                          </button>
+                          />
                           <UserAvatar user={user} />
                           <span className={styles.identity}>
                             <strong>{user.fullName || 'Sin nombre'}</strong>
@@ -700,27 +677,30 @@ export default function UsersPage() {
 
                       {isAdminUser && (
                         <td>
-                          <span className={platformRoleClass(user.platformRole)}>
+                          <Badge variant={platformRoleBadgeVariant(user.platformRole)} size="sm">
                             {platformRoleLabel(user.platformRole)}
-                          </span>
+                          </Badge>
                         </td>
                       )}
 
                       <td>
                         {hasGlobalAccess ? (
-                          <span className={styles.globalPill}>{platformRoleLabel(user.platformRole)} global</span>
+                          <Badge variant="success" size="sm">{platformRoleLabel(user.platformRole)} global</Badge>
                         ) : userCompanies.length === 0 ? (
                           <span className={styles.mutedText}>Sin empresas</span>
                         ) : (
                           <div className={styles.companyPills}>
                             {visibleCompanies.map((company) => (
-                              <span key={`${user.id}-${company.companyId}-pill`} className={styles.companyPill}>
-                                <span>{company.companyName}</span>
-                                <small>{roleLabel(company.role)}</small>
-                              </span>
+                              <Badge
+                                key={`${user.id}-${company.companyId}-pill`}
+                                variant="neutral"
+                                size="sm"
+                              >
+                                {company.companyName} · {roleLabel(company.role)}
+                              </Badge>
                             ))}
                             {hiddenCompanyCount > 0 && (
-                              <span className={styles.countPill}>+{hiddenCompanyCount}</span>
+                              <Badge variant="neutral" size="sm">+{hiddenCompanyCount}</Badge>
                             )}
                           </div>
                         )}
@@ -731,20 +711,27 @@ export default function UsersPage() {
                       <td>
                         <div className={styles.rowActions}>
                           {canEditUser(user) && (
-                            <button className={styles.rowActionButton} onClick={() => openEditUser(user)} title="Editar usuario" aria-label="Editar usuario">
-                              <Pencil aria-hidden="true" />
-                            </button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              icon={<Pencil size={16} />}
+                              onClick={() => openEditUser(user)}
+                              title="Editar usuario"
+                              aria-label="Editar usuario"
+                            />
                           )}
                           {isAdminUser && user.id !== currentUser?.id && (
-                            <button
-                              className={styles.rowDangerButton}
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="sm"
+                              icon={<Trash2 size={16} />}
                               onClick={() => handleDeleteUser(user)}
                               disabled={busyKey === `delete:${user.id}`}
                               title="Borrar usuario"
                               aria-label="Borrar usuario"
-                            >
-                              <Trash2 aria-hidden="true" />
-                            </button>
+                            />
                           )}
                         </div>
                       </td>
@@ -756,9 +743,9 @@ export default function UsersPage() {
                           <div id={`user-access-${user.id}`} className={styles.assignmentPanel}>
                             {hasGlobalAccess ? (
                               <div className={styles.globalAccessNotice}>
-                                <span className={platformRoleClass(user.platformRole)}>
+                                <Badge variant={platformRoleBadgeVariant(user.platformRole)} size="sm">
                                   {platformRoleLabel(user.platformRole)}
-                                </span>
+                                </Badge>
                                 <p>Este rol usa acceso global y no requiere rol por empresa.</p>
                               </div>
                             ) : (
@@ -788,38 +775,41 @@ export default function UsersPage() {
 
                                           {manageable ? (
                                             <div className={styles.membershipActions}>
-                                              <select
-                                                className={styles.roleSelect}
+                                              <Select
                                                 value={company.role}
                                                 onChange={(event) => handleMembershipRoleChange(user.id, company.companyId, event.target.value)}
                                                 disabled={membershipBusy || removeBusy}
+                                                fullWidth={false}
+                                                className={styles.roleSelectWrap}
                                               >
                                                 {membershipRoleOptions(company).map((role) => (
                                                   <option key={role} value={role}>{roleLabel(role)}</option>
                                                 ))}
-                                              </select>
-                                              <button
+                                              </Select>
+                                              <Button
                                                 type="button"
-                                                className={styles.rowDangerButton}
+                                                variant="danger"
+                                                size="sm"
+                                                icon={<Trash2 size={16} />}
                                                 onClick={() => handleRemoveMembership(user.id, company.companyId)}
                                                 disabled={membershipBusy || removeBusy}
                                                 title="Quitar acceso"
                                                 aria-label="Quitar acceso"
-                                              >
-                                                <Trash2 aria-hidden="true" />
-                                              </button>
+                                              />
                                             </div>
                                           ) : requestable ? (
-                                            <button
+                                            <Button
                                               type="button"
-                                              className={styles.secondaryButton}
+                                              variant="secondary"
+                                              size="sm"
                                               onClick={() => handleRequestRemoval(user.id, company.companyId)}
                                               disabled={requestBusy}
+                                              loading={requestBusy}
                                             >
                                               {requestBusy ? 'Enviando...' : 'Solicitar baja'}
-                                            </button>
+                                            </Button>
                                           ) : (
-                                            <span className={styles.membershipBadge}>{roleLabel(company.role)}</span>
+                                            <Badge variant="neutral" size="sm">{roleLabel(company.role)}</Badge>
                                           )}
                                         </div>
                                       )
@@ -846,177 +836,169 @@ export default function UsersPage() {
         </p>
 
         <div className={styles.paginationActions}>
-          <button
-            className={styles.paginationButton}
-            onClick={() => setPage((currentValue) => Math.max(1, currentValue - 1))}
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
             disabled={currentPage === 1}
+            onClick={() => setPage((currentValue) => Math.max(1, currentValue - 1))}
           >
             Anterior
-          </button>
-          <button
-            className={styles.paginationButton}
-            onClick={() => setPage((currentValue) => Math.min(pageCount, currentValue + 1))}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
             disabled={currentPage === pageCount}
+            onClick={() => setPage((currentValue) => Math.min(pageCount, currentValue + 1))}
           >
             Siguiente
-          </button>
+          </Button>
         </div>
       </footer>
 
-      {editingUser && (() => {
-        const editTargetCompanies = editingUser.companies || []
-        const effectivePlatformRole = isAdminUser ? editForm.platformRole : (editingUser.platformRole || 'user')
-        const editTargetIsGlobal = isGlobalPlatformRole(effectivePlatformRole)
-        const hasManageableMembership = editTargetCompanies.some((company) => canManageMembership(company))
-        const showCompanyRolesSection = !editTargetIsGlobal && editTargetCompanies.length > 0 && (isAdminUser || hasManageableMembership)
-        const modalSubtitle = isAdminUser
-          ? 'Actualiza identidad, email, rol de plataforma y roles por empresa.'
-          : hasManageableMembership
-            ? 'Actualiza el nombre y los roles por empresa.'
-            : 'Actualiza el nombre visible del usuario.'
+      <Modal
+        open={Boolean(editingUser)}
+        onClose={closeEditUser}
+        title="Editar usuario"
+        size="lg"
+        ariaDescribedBy="edit-user-description"
+      >
+        {editingUser && (() => {
+          const editTargetCompanies = editingUser.companies || []
+          const effectivePlatformRole = isAdminUser ? editForm.platformRole : (editingUser.platformRole || 'user')
+          const editTargetIsGlobal = isGlobalPlatformRole(effectivePlatformRole)
+          const hasManageableMembership = editTargetCompanies.some((company) => canManageMembership(company))
+          const showCompanyRolesSection = !editTargetIsGlobal && editTargetCompanies.length > 0 && (isAdminUser || hasManageableMembership)
+          const modalSubtitle = isAdminUser
+            ? 'Actualiza identidad, email, rol de plataforma y roles por empresa.'
+            : hasManageableMembership
+              ? 'Actualiza el nombre y los roles por empresa.'
+              : 'Actualiza el nombre visible del usuario.'
 
-        return (
-        <div className={styles.modalBackdrop}>
-          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-user-title">
-            <div className={styles.panelHeader}>
-              <div>
-                <h2 id="edit-user-title" className={styles.panelTitle}>Editar usuario</h2>
-                <p className={styles.panelText}>{modalSubtitle}</p>
-              </div>
-              <button className={styles.iconButton} onClick={closeEditUser} aria-label="Cerrar">
-                <X aria-hidden="true" />
-              </button>
-            </div>
+          return (
+            <>
+              <p id="edit-user-description" className={styles.panelText}>{modalSubtitle}</p>
 
-            <form className={styles.modalForm} onSubmit={handleEditUser}>
-              <div className={styles.avatarEditor}>
-                <span className={styles.avatarPreview}>
-                  {avatarPreview ? (
-                    <img className={styles.avatarImage} src={avatarPreview} alt="" />
-                  ) : (
-                    <span className={styles.avatarInitials}>{userInitials(editingUser)}</span>
-                  )}
-                </span>
-                <div className={styles.avatarActionGroup}>
-                  <label className={styles.avatarUploadButton}>
-                    <Camera className={styles.buttonIcon} aria-hidden="true" />
-                    Cambiar imagen
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={handleAvatarFileChange}
-                    />
-                  </label>
-                  {editingUser?.avatarUrl && (
-                    <>
-                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(editingUser.id, 'original')}>
-                        <Download className={styles.buttonIcon} aria-hidden="true" />
-                        Original
-                      </button>
-                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(editingUser.id, 'web')}>
-                        <Download className={styles.buttonIcon} aria-hidden="true" />
-                        WebP
-                      </button>
-                    </>
-                  )}
+              <form className={styles.modalForm} onSubmit={handleEditUser}>
+                <div className={styles.avatarEditor}>
+                  <span className={styles.avatarPreview}>
+                    {avatarPreview ? (
+                      <img className={styles.avatarImage} src={avatarPreview} alt="" />
+                    ) : (
+                      <span className={styles.avatarInitials}>{userInitials(editingUser)}</span>
+                    )}
+                  </span>
+                  <div className={styles.avatarActionGroup}>
+                    <label className={styles.fileInputLabel}>
+                      <Camera size={16} aria-hidden="true" />
+                      <span>Cambiar imagen</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={handleAvatarFileChange}
+                      />
+                    </label>
+                    {editingUser?.avatarUrl && (
+                      <>
+                        <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(editingUser.id, 'original')}>
+                          Original
+                        </Button>
+                        <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(editingUser.id, 'web')}>
+                          WebP
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <label className={styles.fieldWrap}>
-                <span className={styles.fieldLabel}>Nombre</span>
-                <input
-                  className={styles.input}
+                <Input
+                  label="Nombre"
                   type="text"
                   value={editForm.fullName}
                   onChange={(event) => setEditForm((current) => ({ ...current, fullName: event.target.value }))}
                   placeholder="Nombre completo"
                 />
-              </label>
 
-              {isAdminUser && (
-                <>
-                  <label className={styles.fieldWrap}>
-                    <span className={styles.fieldLabel}>Email</span>
-                    <input
-                      className={styles.input}
+                {isAdminUser && (
+                  <>
+                    <Input
+                      label="Email"
                       type="email"
                       value={editForm.email}
                       onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
                       required
                     />
-                  </label>
 
-                  <label className={styles.fieldWrap}>
-                    <span className={styles.fieldLabel}>Rol plataforma</span>
-                    <select
-                      className={styles.select}
+                    <Select
+                      label="Rol plataforma"
                       value={editForm.platformRole}
                       onChange={(event) => setEditForm((current) => ({ ...current, platformRole: event.target.value }))}
                     >
                       {PLATFORM_ROLE_ORDER.map((role) => (
                         <option key={role} value={role}>{platformRoleLabel(role)}</option>
                       ))}
-                    </select>
-                  </label>
+                    </Select>
 
-                  {editForm.platformRole !== 'user' && (
-                    <p className={styles.formNote}>Admin y QA usan acceso global, sin rol por empresa.</p>
-                  )}
-                </>
-              )}
+                    {editForm.platformRole !== 'user' && (
+                      <p className={styles.formNote}>Admin y QA usan acceso global, sin rol por empresa.</p>
+                    )}
+                  </>
+                )}
 
-              {showCompanyRolesSection && (
-                <div className={styles.membershipSection}>
-                  <p className={styles.membershipTitle}>Roles por empresa</p>
-                  <div className={styles.membershipList}>
-                    {editTargetCompanies.map((company) => {
-                      const manageable = canManageMembership(company)
-                      const currentRole = editForm.companyRoles?.[company.companyId] ?? company.role
-                      return (
-                        <div key={`${editingUser.id}-edit-${company.companyId}`} className={styles.membershipRow}>
-                          <div>
-                            <p className={styles.membershipCompany}>{company.companyName}</p>
-                            <p className={styles.membershipMeta}>/{company.companySlug}</p>
+                {showCompanyRolesSection && (
+                  <div className={styles.membershipSection}>
+                    <p className={styles.membershipTitle}>Roles por empresa</p>
+                    <div className={styles.membershipList}>
+                      {editTargetCompanies.map((company) => {
+                        const manageable = canManageMembership(company)
+                        const currentRole = editForm.companyRoles?.[company.companyId] ?? company.role
+                        return (
+                          <div key={`${editingUser.id}-edit-${company.companyId}`} className={styles.membershipRow}>
+                            <div>
+                              <p className={styles.membershipCompany}>{company.companyName}</p>
+                              <p className={styles.membershipMeta}>/{company.companySlug}</p>
+                            </div>
+                            {manageable ? (
+                              <Select
+                                value={currentRole}
+                                onChange={(event) => {
+                                  const nextRole = event.target.value
+                                  setEditForm((current) => ({
+                                    ...current,
+                                    companyRoles: { ...current.companyRoles, [company.companyId]: nextRole },
+                                  }))
+                                }}
+                                fullWidth={false}
+                                className={styles.roleSelectWrap}
+                              >
+                                {membershipRoleOptions(company).map((role) => (
+                                  <option key={role} value={role}>{roleLabel(role)}</option>
+                                ))}
+                              </Select>
+                            ) : (
+                              <Badge variant="neutral" size="sm">{roleLabel(company.role)}</Badge>
+                            )}
                           </div>
-                          {manageable ? (
-                            <select
-                              className={styles.roleSelect}
-                              value={currentRole}
-                              onChange={(event) => {
-                                const nextRole = event.target.value
-                                setEditForm((current) => ({
-                                  ...current,
-                                  companyRoles: { ...current.companyRoles, [company.companyId]: nextRole },
-                                }))
-                              }}
-                            >
-                              {membershipRoleOptions(company).map((role) => (
-                                <option key={role} value={role}>{roleLabel(role)}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className={styles.membershipBadge}>{roleLabel(company.role)}</span>
-                          )}
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className={styles.formActions}>
-                <button className={styles.tertiaryButton} type="button" onClick={closeEditUser}>
-                  Cancelar
-                </button>
-                <button className={styles.primaryButton} type="submit" disabled={busyKey === `edit:${editingUser.id}`}>
-                  {busyKey === `edit:${editingUser.id}` ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )
-      })()}
+                <div className={styles.formActions}>
+                  <Button type="button" variant="ghost" onClick={closeEditUser}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" variant="primary" disabled={busyKey === `edit:${editingUser.id}`} loading={busyKey === `edit:${editingUser.id}`}>
+                    {busyKey === `edit:${editingUser.id}` ? 'Guardando...' : 'Guardar cambios'}
+                  </Button>
+                </div>
+              </form>
+            </>
+          )
+        })()}
+      </Modal>
     </div>
   )
 }

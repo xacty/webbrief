@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Ban, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { apiFetch } from '../lib/api'
+import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
 import styles from './SecurityPage.module.css'
 
 const DATE_OPTIONS = [
@@ -111,6 +112,10 @@ export default function SecurityPage() {
     setBlockExpiresAt('')
   }
 
+  function closeBlockModal() {
+    setBlockModal(null)
+  }
+
   async function submitBlock(event) {
     event.preventDefault()
     if (!blockModal || !blockReason.trim()) return
@@ -161,10 +166,16 @@ export default function SecurityPage() {
             El bloqueo IP aplica al backend de WeBrief; Supabase Auth directo requiere hardening separado.
           </p>
         </div>
-        <button className={styles.secondaryButton} type="button" onClick={loadSecurity} disabled={loading}>
-          <RefreshCw size={16} />
+        <Button
+          variant="secondary"
+          size="md"
+          icon={<RefreshCw size={16} />}
+          type="button"
+          onClick={loadSecurity}
+          disabled={loading}
+        >
           Actualizar
-        </button>
+        </Button>
       </header>
 
       {warnings.length > 0 && (
@@ -189,22 +200,26 @@ export default function SecurityPage() {
       </section>
 
       <section className={styles.filters}>
-        <label>
-          Rango
-          <select value={days} onChange={(event) => setDays(event.target.value)}>
-            {DATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-        <label>
-          Resultado
-          <select value={outcome} onChange={(event) => setOutcome(event.target.value)}>
-            {OUTCOME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-        <label>
-          Acción
-          <input value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} placeholder="login, blocked, invalid..." />
-        </label>
+        <Select
+          label="Rango"
+          value={days}
+          onChange={(event) => setDays(event.target.value)}
+        >
+          {DATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </Select>
+        <Select
+          label="Resultado"
+          value={outcome}
+          onChange={(event) => setOutcome(event.target.value)}
+        >
+          {OUTCOME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </Select>
+        <Input
+          label="Acción"
+          value={actionFilter}
+          onChange={(event) => setActionFilter(event.target.value)}
+          placeholder="login, blocked, invalid..."
+        />
       </section>
 
       <section className={styles.gridTwo}>
@@ -228,16 +243,16 @@ export default function SecurityPage() {
                     <td>{formatDate(user.lastLoginAt)}</td>
                     <td>{user.ips?.join(', ') || 'Sin IP'}</td>
                     <td>{user.failureCount || 0}</td>
-                    <td>{user.block ? <span className={styles.badgeDanger}>Bloqueado</span> : <span className={styles.badgeOk}>Activo</span>}</td>
+                    <td>{user.block ? <Badge variant="danger" size="sm">Bloqueado</Badge> : <Badge variant="success" size="sm">Activo</Badge>}</td>
                     <td>
                       {user.block ? (
-                        <button className={styles.textButton} onClick={() => revokeBlock(user.block.id)} disabled={busy === `revoke:${user.block.id}`}>
+                        <Button variant="ghost" size="sm" onClick={() => revokeBlock(user.block.id)} disabled={busy === `revoke:${user.block.id}`}>
                           Desbloquear
-                        </button>
+                        </Button>
                       ) : (
-                        <button className={styles.textButton} onClick={() => openBlockModal({ blockType: 'user', userId: user.userId, label: user.email })} disabled={!user.userId}>
+                        <Button variant="ghost" size="sm" onClick={() => openBlockModal({ blockType: 'user', userId: user.userId, label: user.email })} disabled={!user.userId}>
                           Bloquear
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -267,16 +282,16 @@ export default function SecurityPage() {
                     <td>{ip.eventCount} · {ip.failureCount} fallos</td>
                     <td>{ip.users?.map((user) => user.email || user.userId).filter(Boolean).join(', ') || 'Sin usuario'}</td>
                     <td>{formatDate(ip.lastSeenAt)}</td>
-                    <td>{ip.block ? <span className={styles.badgeDanger}>Bloqueada</span> : <span className={styles.badgeOk}>Activa</span>}</td>
+                    <td>{ip.block ? <Badge variant="danger" size="sm">Bloqueada</Badge> : <Badge variant="success" size="sm">Activa</Badge>}</td>
                     <td>
                       {ip.block ? (
-                        <button className={styles.textButton} onClick={() => revokeBlock(ip.block.id)} disabled={busy === `revoke:${ip.block.id}`}>
+                        <Button variant="ghost" size="sm" onClick={() => revokeBlock(ip.block.id)} disabled={busy === `revoke:${ip.block.id}`}>
                           Desbloquear
-                        </button>
+                        </Button>
                       ) : (
-                        <button className={styles.textButton} onClick={() => openBlockModal({ blockType: 'ip', ipAddress: ip.ipAddress, label: ip.ipAddress })}>
+                        <Button variant="ghost" size="sm" onClick={() => openBlockModal({ blockType: 'ip', ipAddress: ip.ipAddress, label: ip.ipAddress })}>
                           Bloquear
-                        </button>
+                        </Button>
                       )}
                     </td>
                   </tr>
@@ -297,8 +312,8 @@ export default function SecurityPage() {
               <div>
                 <div className={styles.eventTitle}>
                   <strong>{event.action}</strong>
-                  <span className={event.outcome === 'success' ? styles.badgeOk : styles.badgeDanger}>{outcomeLabel(event.outcome)}</span>
-                  <span className={styles.sourceBadge}>{sourceLabel(event.source)}</span>
+                  <Badge variant={event.outcome === 'success' ? 'success' : 'danger'} size="sm">{outcomeLabel(event.outcome)}</Badge>
+                  <Badge variant="neutral" size="sm">{sourceLabel(event.source)}</Badge>
                 </div>
                 <p className={styles.eventMeta}>
                   {formatDate(event.createdAt)} · {event.actorEmail || event.actorUserId || event.ipAddress || 'Sin actor'} · {event.ipAddress || 'Sin IP'}
@@ -311,42 +326,55 @@ export default function SecurityPage() {
         </div>
       </Panel>
 
-      {blockModal && (
-        <div className={styles.modalBackdrop}>
-          <form className={styles.modal} onSubmit={submitBlock}>
-            <h2>{blockModal.blockType === 'ip' ? 'Bloquear IP' : 'Bloquear usuario'}</h2>
+      <Modal
+        open={Boolean(blockModal)}
+        onClose={closeBlockModal}
+        title={blockModal?.blockType === 'ip' ? 'Bloquear IP' : 'Bloquear usuario'}
+        size="md"
+      >
+        {blockModal && (
+          <form className={styles.modalForm} onSubmit={submitBlock}>
             <p>Destino: <strong>{blockModal.label || blockModal.ipAddress || blockModal.userId}</strong></p>
-            <label>
-              Razón
-              <textarea value={blockReason} onChange={(event) => setBlockReason(event.target.value)} required />
+            <label className={styles.fieldGroup}>
+              <span className={styles.fieldLabel}>Razón</span>
+              <textarea
+                className={styles.textarea}
+                value={blockReason}
+                onChange={(event) => setBlockReason(event.target.value)}
+                required
+              />
             </label>
-            <label>
-              Expira en
-              <input type="datetime-local" value={blockExpiresAt} onChange={(event) => setBlockExpiresAt(event.target.value)} />
-            </label>
+            <Input
+              label="Expira en"
+              type="datetime-local"
+              value={blockExpiresAt}
+              onChange={(event) => setBlockExpiresAt(event.target.value)}
+            />
             <div className={styles.modalActions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setBlockModal(null)}>Cancelar</button>
-              <button type="submit" className={styles.dangerButton} disabled={busy === 'block' || !blockReason.trim()}>Bloquear</button>
+              <Button type="button" variant="secondary" onClick={closeBlockModal}>Cancelar</Button>
+              <Button type="submit" variant="danger" disabled={busy === 'block' || !blockReason.trim()} loading={busy === 'block'}>
+                Bloquear
+              </Button>
             </div>
           </form>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   )
 }
 
 function KpiCard({ label, value, tone = 'normal' }) {
   return (
-    <div className={`${styles.kpiCard} ${tone === 'danger' ? styles.kpiDanger : ''}`}>
+    <Card padding="md" shadow="sm" radius="md" className={`${styles.kpiCard} ${tone === 'danger' ? styles.kpiDanger : ''}`}>
       <span>{label}</span>
       <strong>{value}</strong>
-    </div>
+    </Card>
   )
 }
 
 function Panel({ title, meta, children }) {
   return (
-    <section className={styles.panel}>
+    <Card as="section" padding="md" shadow="sm" radius="lg" className={styles.panel}>
       <div className={styles.panelHeader}>
         <div>
           <h2 className={styles.panelTitle}>{title}</h2>
@@ -354,6 +382,6 @@ function Panel({ title, meta, children }) {
         </div>
       </div>
       {children}
-    </section>
+    </Card>
   )
 }
