@@ -435,8 +435,8 @@ export default function CompanyPage() {
                             <Button
                               type="button"
                               variant="danger"
-                              size="md"
-                              icon={<Trash2 size={16} />}
+                              size="sm"
+                              icon={<Trash2 size={14} />}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleProjectTrash(project.id)
@@ -447,8 +447,8 @@ export default function CompanyPage() {
                             <Button
                               type="button"
                               variant="secondary"
-                              size="md"
-                              icon={<Archive size={16} />}
+                              size="sm"
+                              icon={<Archive size={14} />}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleProjectArchive(project.id)
@@ -459,8 +459,8 @@ export default function CompanyPage() {
                             <Button
                               type="button"
                               variant="secondary"
-                              size="md"
-                              icon={<Copy size={16} />}
+                              size="sm"
+                              icon={<Copy size={14} />}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleProjectDuplicate(project.id)
@@ -473,8 +473,8 @@ export default function CompanyPage() {
                         <Button
                           type="button"
                           variant="primary"
-                          size="md"
-                          icon={<ArrowRight size={16} />}
+                          size="sm"
+                          icon={<ArrowRight size={14} />}
                           iconPosition="right"
                           onClick={(event) => {
                             event.stopPropagation()
