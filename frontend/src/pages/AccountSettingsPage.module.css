@@ -40,7 +40,7 @@
 
 .settingsNav {
   position: sticky;
-  top: 24px;
+  top: var(--wb-space-6); /* was 24px — exact match */
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -109,7 +109,7 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--wb-space-4); /* was 16px — exact match */
 }
 
 .avatarEditor {
@@ -218,8 +218,8 @@
 
 .fieldHint {
   margin: 0;
-  color: var(--wb-text-muted);
-  font-size: 12px;
+  color: var(--wb-color-neutral-500); /* same as var(--wb-text-muted), now consumes canonical token */
+  font-size: var(--wb-text-xs); /* was 12px — exact match */
   line-height: 1.45;
 }
 
