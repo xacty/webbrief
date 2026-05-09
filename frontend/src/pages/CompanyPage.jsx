@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Copy, Pencil, Trash2, X } from 'lucide-react'
+import { Archive, ArrowRight, Copy, Pencil, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -16,6 +16,7 @@ import {
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
+import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -332,9 +333,9 @@ export default function CompanyPage() {
   return (
     <div className={styles.page}>
       <div className={styles.breadcrumbs}>
-        <button className={styles.backButton} onClick={() => navigate('/companies')}>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/companies')}>
           ← Empresas
-        </button>
+        </Button>
       </div>
 
       {loading && <p className={styles.info}>Cargando empresa...</p>}
@@ -346,7 +347,7 @@ export default function CompanyPage() {
             <div>
               <div className={styles.titleRow}>
                 <h1 className={styles.title}>{company.name}</h1>
-                {company.isInternal && <span className={styles.internalBadge}>Interna</span>}
+                {company.isInternal && <Badge variant="neutral" size="sm">Interna</Badge>}
               </div>
               <p className={styles.subtitle}>
                 Workspace operativo de la empresa. Aquí viven sus proyectos y su equipo.
@@ -355,20 +356,20 @@ export default function CompanyPage() {
           </header>
 
           <section className={styles.summary}>
-            <article className={styles.summaryCard}>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
               <span className={styles.summaryLabel}>Tu rol</span>
               <strong className={styles.summaryValue}>
                 {getCompanyRoleLabel(currentUser, company.membershipRole)}
               </strong>
-            </article>
-            <article className={styles.summaryCard}>
+            </Card>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
               <span className={styles.summaryLabel}>Proyectos</span>
               <strong className={styles.summaryValue}>{company.projectCount}</strong>
-            </article>
-            <article className={styles.summaryCard}>
+            </Card>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
               <span className={styles.summaryLabel}>Equipo</span>
               <strong className={styles.summaryValue}>{company.memberCount}</strong>
-            </article>
+            </Card>
           </section>
 
           <div className={styles.workspaceGrid}>
@@ -382,12 +383,13 @@ export default function CompanyPage() {
                 </div>
 
                 {canCreateProjects && (
-                  <button
-                    className={styles.primaryButton}
+                  <Button
+                    variant="primary"
+                    icon={<Plus size={16} />}
                     onClick={() => navigate(`/new-project?companyId=${companyId}`)}
                   >
-                    + Nuevo proyecto
-                  </button>
+                    Nuevo proyecto
+                  </Button>
                 )}
               </div>
 
@@ -430,51 +432,58 @@ export default function CompanyPage() {
                       <div className={styles.projectActions}>
                         {canManageProjects && (
                           <>
-                            <button
-                              className={styles.trashIconButton}
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="md"
+                              icon={<Trash2 size={16} />}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleProjectTrash(project.id)
                               }}
                               title="Enviar a papelera"
                               aria-label={`Enviar ${project.name} a papelera`}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                            <button
-                              className={styles.archiveActionButton}
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="md"
+                              icon={<Archive size={16} />}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleProjectArchive(project.id)
                               }}
                               title="Archivar proyecto"
                               aria-label={`Archivar ${project.name}`}
-                            >
-                              <Archive size={16} />
-                            </button>
-                            <button
-                              className={styles.archiveActionButton}
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="md"
+                              icon={<Copy size={16} />}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleProjectDuplicate(project.id)
                               }}
                               title="Duplicar proyecto"
                               aria-label={`Duplicar ${project.name}`}
-                            >
-                              <Copy size={16} />
-                            </button>
+                            />
                           </>
                         )}
-                        <button
-                          className={styles.openProjectButton}
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="md"
+                          icon={<ArrowRight size={16} />}
+                          iconPosition="right"
                           onClick={(event) => {
                             event.stopPropagation()
                             openProject(project.id)
                           }}
+                          className={styles.openProjectButton}
                         >
-                          <span>Abrir</span>
-                          <ArrowRight aria-hidden="true" />
-                        </button>
+                          Abrir
+                        </Button>
                       </div>
                     </article>
                   ))}
@@ -482,7 +491,7 @@ export default function CompanyPage() {
               )}
             </section>
 
-            <aside className={styles.teamCard}>
+            <Card as="aside" padding="md" shadow="sm" radius="md" className={styles.teamCard}>
               <div className={styles.sectionHeader}>
                 <div>
                   <h2 className={styles.sectionTitle}>Equipo</h2>
@@ -494,23 +503,20 @@ export default function CompanyPage() {
 
               {canInvite ? (
                 <form className={styles.inviteForm} onSubmit={handleInvite}>
-                  <input
-                    className={styles.input}
+                  <Input
                     type="text"
                     placeholder="Nombre completo"
                     value={inviteName}
                     onChange={(e) => setInviteName(e.target.value)}
                   />
-                  <input
-                    className={styles.input}
+                  <Input
                     type="email"
                     placeholder="email@empresa.com"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     required
                   />
-                  <select
-                    className={styles.input}
+                  <Select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value)}
                   >
@@ -519,10 +525,10 @@ export default function CompanyPage() {
                         {roleLabel(role)}
                       </option>
                     ))}
-                  </select>
-                  <button className={styles.primaryButton} type="submit" disabled={inviting}>
+                  </Select>
+                  <Button type="submit" variant="primary" disabled={inviting} loading={inviting} fullWidth>
                     {inviting ? 'Enviando...' : 'Invitar usuario'}
-                  </button>
+                  </Button>
                 </form>
               ) : (
                 <div className={styles.inlineNotice}>
@@ -535,7 +541,7 @@ export default function CompanyPage() {
               <div className={styles.membersSection}>
                 <div className={styles.membersHeader}>
                   <h3 className={styles.membersTitle}>Miembros</h3>
-                  <span className={styles.membersCount}>{members.length}</span>
+                  <Badge variant="neutral" size="sm">{members.length}</Badge>
                 </div>
 
                 {members.length === 0 ? (
@@ -559,15 +565,15 @@ export default function CompanyPage() {
                           </div>
 
                           {memberManageable && (
-                            <button
+                            <Button
                               type="button"
-                              className={styles.editMemberButton}
+                              variant="ghost"
+                              size="sm"
+                              icon={<Pencil size={16} />}
                               onClick={() => openEditMember(member)}
                               title="Editar miembro"
                               aria-label="Editar miembro"
-                            >
-                              <Pencil aria-hidden="true" />
-                            </button>
+                            />
                           )}
                         </article>
                       )
@@ -575,69 +581,59 @@ export default function CompanyPage() {
                   </div>
                 )}
               </div>
-            </aside>
+            </Card>
           </div>
         </>
       )}
 
-      {editingMember && (
-        <div className={styles.modalBackdrop} onClick={(e) => { if (e.target === e.currentTarget) closeEditMember() }}>
-          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-member-title">
-            <div className={styles.modalHeader}>
-              <div>
-                <h2 id="edit-member-title" className={styles.modalTitle}>Editar miembro</h2>
-                <p className={styles.modalSubtitle}>
-                  {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
-                </p>
-              </div>
-              <button type="button" className={styles.modalClose} onClick={closeEditMember} aria-label="Cerrar">
-                <X aria-hidden="true" />
-              </button>
+      <Modal
+        open={Boolean(editingMember)}
+        onClose={closeEditMember}
+        title="Editar miembro"
+        size="md"
+        ariaDescribedBy="edit-member-description"
+      >
+        <p id="edit-member-description" className={styles.modalSubtitle}>
+          {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
+        </p>
+
+        {editingMember && (
+          <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
+            <Input
+              label="Nombre"
+              type="text"
+              value={editForm.fullName}
+              onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
+              placeholder="Nombre completo"
+            />
+
+            <Select
+              label={`Rol en ${company?.name || 'empresa'}`}
+              value={editForm.role}
+              onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
+            >
+              {getMemberRoleOptions(editingMember).map((role) => (
+                <option key={role} value={role}>{roleLabel(role)}</option>
+              ))}
+            </Select>
+
+            <p className={styles.fieldHint}>
+              Email: {editingMember.email || 'Sin email'}
+            </p>
+
+            {editError && <p className={styles.modalError}>{editError}</p>}
+
+            <div className={styles.modalActions}>
+              <Button type="button" variant="secondary" onClick={closeEditMember}>
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary" disabled={editBusy} loading={editBusy}>
+                {editBusy ? 'Guardando...' : 'Guardar cambios'}
+              </Button>
             </div>
-
-            <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
-              <label className={styles.fieldGroup}>
-                <span className={styles.fieldLabel}>Nombre</span>
-                <input
-                  className={styles.input}
-                  type="text"
-                  value={editForm.fullName}
-                  onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
-                  placeholder="Nombre completo"
-                />
-              </label>
-
-              <label className={styles.fieldGroup}>
-                <span className={styles.fieldLabel}>Rol en {company?.name || 'empresa'}</span>
-                <select
-                  className={styles.input}
-                  value={editForm.role}
-                  onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
-                >
-                  {getMemberRoleOptions(editingMember).map((role) => (
-                    <option key={role} value={role}>{roleLabel(role)}</option>
-                  ))}
-                </select>
-              </label>
-
-              <p className={styles.fieldHint}>
-                Email: {editingMember.email || 'Sin email'}
-              </p>
-
-              {editError && <p className={styles.modalError}>{editError}</p>}
-
-              <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={closeEditMember}>
-                  Cancelar
-                </button>
-                <button type="submit" className={styles.primaryButton} disabled={editBusy}>
-                  {editBusy ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )}
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }

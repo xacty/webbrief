@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, ArrowRight, Trash2 } from 'lucide-react'
+import { Archive, ArrowRight, Trash2, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin } from '../lib/roleCapabilities'
+import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
 import styles from './CompaniesPage.module.css'
 
 const PAGE_SIZE = 8
@@ -49,6 +50,12 @@ function formatDate(isoDate) {
     month: 'short',
     year: 'numeric',
   })
+}
+
+function companyTypeBadge(company) {
+  if (company.isInternal) return { variant: 'neutral', label: 'Interna' }
+  if (company.isTest) return { variant: 'success', label: 'Prueba' }
+  return { variant: 'primary', label: 'Cliente' }
 }
 
 export default function CompaniesPage() {
@@ -220,32 +227,26 @@ export default function CompaniesPage() {
       </header>
 
       <section className={styles.toolbar}>
-        <div className={styles.searchWrap}>
-          <label className={styles.fieldLabel} htmlFor="company-search">Buscar</label>
-          <input
-            id="company-search"
-            className={styles.input}
-            type="search"
-            placeholder="Buscar por nombre"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
+        <Input
+          id="company-search"
+          label="Buscar"
+          type="search"
+          placeholder="Buscar por nombre"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
 
-        <div className={styles.filterWrap}>
-          <label className={styles.fieldLabel} htmlFor="company-filter">Tipo</label>
-          <select
-            id="company-filter"
-            className={styles.select}
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="all">Todas</option>
-            <option value="clients">Clientes</option>
-            <option value="test">Pruebas</option>
-            <option value="internal">Internas</option>
-          </select>
-        </div>
+        <Select
+          id="company-filter"
+          label="Tipo"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
+          <option value="all">Todas</option>
+          <option value="clients">Clientes</option>
+          <option value="test">Pruebas</option>
+          <option value="internal">Internas</option>
+        </Select>
       </section>
 
       <section className={styles.sectionHeader}>
@@ -257,9 +258,9 @@ export default function CompaniesPage() {
         </div>
 
         {canCreateCompanies && (
-          <button className={styles.primaryButton} onClick={openModal}>
-            + Nueva empresa
-          </button>
+          <Button variant="primary" icon={<Plus size={16} />} onClick={openModal}>
+            Nueva empresa
+          </Button>
         )}
       </section>
 
@@ -276,67 +277,71 @@ export default function CompaniesPage() {
 
       {!loading && !error && paginatedCompanies.length > 0 && (
         <div className={styles.cardsGrid}>
-          {paginatedCompanies.map((company) => (
-            <article
-              key={company.id}
-              className={styles.companyCard}
-            >
-              <div className={styles.cardHeader}>
-                <h3 className={styles.companyName}>{company.name}</h3>
-                <span className={company.isInternal ? styles.internalBadge : company.isTest ? styles.testBadge : styles.clientBadge}>
-                  {company.isInternal ? 'Interna' : company.isTest ? 'Prueba' : 'Cliente'}
-                </span>
-              </div>
-
-              <div className={styles.cardStats}>
-                <div className={styles.statItem}>
-                  <span className={styles.statValue}>{company.projectCount}</span>
-                  <span className={styles.statLabel}>Proyectos</span>
+          {paginatedCompanies.map((company) => {
+            const badge = companyTypeBadge(company)
+            return (
+              <Card key={company.id} padding="md" shadow="sm" radius="md" className={styles.companyCard}>
+                <div className={styles.cardHeader}>
+                  <h3 className={styles.companyName}>{company.name}</h3>
+                  <Badge variant={badge.variant} size="sm">{badge.label}</Badge>
                 </div>
-                <div className={styles.statItem}>
-                  <span className={styles.statValue}>{company.memberCount}</span>
-                  <span className={styles.statLabel}>Equipo</span>
+
+                <div className={styles.cardStats}>
+                  <div className={styles.statItem}>
+                    <span className={styles.statValue}>{company.projectCount}</span>
+                    <span className={styles.statLabel}>Proyectos</span>
+                  </div>
+                  <div className={styles.statItem}>
+                    <span className={styles.statValue}>{company.memberCount}</span>
+                    <span className={styles.statLabel}>Equipo</span>
+                  </div>
                 </div>
-              </div>
 
-              <p className={styles.activityLine}>
-                <span>Última actividad</span>
-                <time>{formatDate(company.lastActivity)}</time>
-              </p>
+                <p className={styles.activityLine}>
+                  <span>Última actividad</span>
+                  <time>{formatDate(company.lastActivity)}</time>
+                </p>
 
-              <div className={styles.cardActions}>
-                {(isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal && (
-                  <>
-                    <button
-                      className={styles.cardDangerButton}
-                      onClick={(event) => handleCompanyTrash(event, company.id)}
-                      aria-label={`Enviar ${company.name} a papelera`}
-                      title="Papelera"
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </button>
-                    <button
-                      className={styles.cardIconButton}
-                      onClick={(event) => handleCompanyArchive(event, company.id)}
-                      aria-label={`Archivar ${company.name}`}
-                      title="Archivar"
-                    >
-                      <Archive aria-hidden="true" />
-                    </button>
-                  </>
-                )}
-                <button
-                  className={styles.cardOpenButton}
-                  onClick={() => openCompany(company.id)}
-                  aria-label={`Abrir workspace de ${company.name}`}
-                  title={`Abrir workspace de ${company.name}`}
-                >
-                  <span>Abrir</span>
-                  <ArrowRight aria-hidden="true" />
-                </button>
-              </div>
-            </article>
-          ))}
+                <div className={styles.cardActions}>
+                  {(isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="md"
+                        icon={<Trash2 size={16} />}
+                        aria-label={`Enviar ${company.name} a papelera`}
+                        title="Papelera"
+                        onClick={(event) => handleCompanyTrash(event, company.id)}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        icon={<Archive size={16} />}
+                        aria-label={`Archivar ${company.name}`}
+                        title="Archivar"
+                        onClick={(event) => handleCompanyArchive(event, company.id)}
+                      />
+                    </>
+                  )}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    icon={<ArrowRight size={16} />}
+                    iconPosition="right"
+                    aria-label={`Abrir workspace de ${company.name}`}
+                    title={`Abrir workspace de ${company.name}`}
+                    onClick={() => openCompany(company.id)}
+                    className={styles.cardOpenButton}
+                  >
+                    Abrir
+                  </Button>
+                </div>
+              </Card>
+            )
+          })}
         </div>
       )}
 
@@ -346,100 +351,91 @@ export default function CompaniesPage() {
         </p>
 
         <div className={styles.paginationActions}>
-          <button
-            className={styles.paginationButton}
-            onClick={() => setPage((currentValue) => Math.max(1, currentValue - 1))}
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
             disabled={currentPage === 1}
+            onClick={() => setPage((currentValue) => Math.max(1, currentValue - 1))}
           >
             Anterior
-          </button>
-          <button
-            className={styles.paginationButton}
-            onClick={() => setPage((currentValue) => Math.min(pageCount, currentValue + 1))}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
             disabled={currentPage === pageCount}
+            onClick={() => setPage((currentValue) => Math.min(pageCount, currentValue + 1))}
           >
             Siguiente
-          </button>
+          </Button>
         </div>
       </footer>
 
-      {modalOpen && (
-        <div className={styles.modalOverlay} onClick={closeModal}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <h3 className={styles.modalTitle}>Nueva empresa</h3>
-                <p className={styles.modalText}>
-                  {testMode
-                    ? 'Crea una empresa de prueba sin invitación inicial.'
-                    : 'Crea la empresa cliente junto a su manager inicial. La empresa no quedará creada si no se puede asignar ese usuario.'}
-                </p>
-              </div>
-              <button className={styles.modalClose} onClick={closeModal}>×</button>
-            </div>
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        title="Nueva empresa"
+        size="md"
+        ariaDescribedBy="new-company-description"
+      >
+        <p id="new-company-description" className={styles.modalText}>
+          {testMode
+            ? 'Crea una empresa de prueba sin invitación inicial.'
+            : 'Crea la empresa cliente junto a su manager inicial. La empresa no quedará creada si no se puede asignar ese usuario.'}
+        </p>
 
-            <form className={styles.modalForm} onSubmit={handleCreateCompany}>
-              <div className={styles.modalField}>
-                <label className={styles.fieldLabel} htmlFor="new-company-name">Empresa</label>
-                <input
-                  id="new-company-name"
-                  className={styles.input}
-                  type="text"
-                  placeholder="Ej: Nettronik"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  required={!testMode}
-                  autoFocus
-                />
-              </div>
+        <form className={styles.modalForm} onSubmit={handleCreateCompany}>
+          <Input
+            id="new-company-name"
+            label="Empresa"
+            type="text"
+            placeholder="Ej: Nettronik"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            required={!testMode}
+            autoFocus
+          />
 
-              <label className={styles.checkboxRow}>
-                <input
-                  type="checkbox"
-                  checked={testMode}
-                  onChange={(event) => setTestMode(event.target.checked)}
-                />
-                <span>Empresa de prueba</span>
-              </label>
+          <label className={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={testMode}
+              onChange={(event) => setTestMode(event.target.checked)}
+            />
+            <span>Empresa de prueba</span>
+          </label>
 
-              {!testMode && (
-                <>
-                  <div className={styles.modalField}>
-                    <label className={styles.fieldLabel} htmlFor="new-manager-name">Manager</label>
-                    <input
-                      id="new-manager-name"
-                      className={styles.input}
-                      type="text"
-                      placeholder="Nombre completo"
-                      value={managerName}
-                      onChange={(e) => setManagerName(e.target.value)}
-                    />
-                  </div>
+          {!testMode && (
+            <>
+              <Input
+                id="new-manager-name"
+                label="Manager"
+                type="text"
+                placeholder="Nombre completo"
+                value={managerName}
+                onChange={(e) => setManagerName(e.target.value)}
+              />
 
-                  <div className={styles.modalField}>
-                    <label className={styles.fieldLabel} htmlFor="new-manager-email">Email del manager</label>
-                    <input
-                      id="new-manager-email"
-                      className={styles.input}
-                      type="email"
-                      placeholder="manager@empresa.com"
-                      value={managerEmail}
-                      onChange={(e) => setManagerEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                </>
-              )}
+              <Input
+                id="new-manager-email"
+                label="Email del manager"
+                type="email"
+                placeholder="manager@empresa.com"
+                value={managerEmail}
+                onChange={(e) => setManagerEmail(e.target.value)}
+                required
+              />
+            </>
+          )}
 
-              <button className={styles.primaryButton} type="submit" disabled={creatingCompany}>
-                {creatingCompany ? 'Creando...' : 'Crear empresa'}
-              </button>
-            </form>
+          <Button type="submit" variant="primary" disabled={creatingCompany} loading={creatingCompany} fullWidth>
+            {creatingCompany ? 'Creando...' : 'Crear empresa'}
+          </Button>
+        </form>
 
-            {companyFeedback && <p className={styles.error}>{companyFeedback}</p>}
-          </div>
-        </div>
-      )}
+        {companyFeedback && <p className={styles.error}>{companyFeedback}</p>}
+      </Modal>
     </div>
   )
 }
