@@ -1,4 +1,72 @@
 :root {
+  /* ============================================================
+     Color palette — shades 50-900
+     Decisions: .planning/intel/decisions.md (Color)
+     - Grays: cool-tinted (slate family)
+     - Primary base: #091223 at -900 (preserves --wb-primary)
+     - Body text on white: use --wb-color-neutral-700 or darker (WCAG AA 4.5:1)
+     ============================================================ */
+
+  /* Neutrals (cool / slate) */
+  --wb-color-neutral-50:  #f8fafc;
+  --wb-color-neutral-100: #f1f5f9;
+  --wb-color-neutral-200: #e2e8f0;
+  --wb-color-neutral-300: #cbd5e1;
+  --wb-color-neutral-400: #94a3b8;
+  --wb-color-neutral-500: #64748b; /* AA large only on white: 4.6:1 */
+  --wb-color-neutral-600: #475569; /* AA on white: 6.9:1 */
+  --wb-color-neutral-700: #334155; /* AA on white: 9.4:1 — body text safe */
+  --wb-color-neutral-800: #1e293b;
+  --wb-color-neutral-900: #0f172a;
+
+  /* Primary (cool blue, base = #091223) */
+  --wb-color-primary-50:  #f1f5f9;
+  --wb-color-primary-100: #e2e8f0;
+  --wb-color-primary-200: #cbd5e1;
+  --wb-color-primary-300: #94a3b8;
+  --wb-color-primary-400: #475569;
+  --wb-color-primary-500: #1e293b;
+  --wb-color-primary-600: #111827;
+  --wb-color-primary-700: #0b1220;
+  --wb-color-primary-800: #0a111e;
+  --wb-color-primary-900: #091223; /* current --wb-primary */
+
+  /* Success (green) */
+  --wb-color-success-50:  #f0fdf4;
+  --wb-color-success-100: #dcfce7;
+  --wb-color-success-200: #bbf7d0;
+  --wb-color-success-300: #86efac;
+  --wb-color-success-400: #4ade80;
+  --wb-color-success-500: #22c55e;
+  --wb-color-success-600: #16a34a;
+  --wb-color-success-700: #15803d; /* AA on white: 4.5:1 — text safe */
+  --wb-color-success-800: #166534;
+  --wb-color-success-900: #14532d;
+
+  /* Danger (red) */
+  --wb-color-danger-50:  #fef2f2;
+  --wb-color-danger-100: #fee2e2;
+  --wb-color-danger-200: #fecaca;
+  --wb-color-danger-300: #fca5a5;
+  --wb-color-danger-400: #f87171;
+  --wb-color-danger-500: #ef4444;
+  --wb-color-danger-600: #dc2626; /* current --wb-danger */
+  --wb-color-danger-700: #b91c1c;
+  --wb-color-danger-800: #991b1b;
+  --wb-color-danger-900: #7f1d1d;
+
+  /* Warning (amber) */
+  --wb-color-warning-50:  #fffbeb;
+  --wb-color-warning-100: #fef3c7;
+  --wb-color-warning-200: #fde68a;
+  --wb-color-warning-300: #fcd34d;
+  --wb-color-warning-400: #fbbf24;
+  --wb-color-warning-500: #f59e0b; /* per decisions.md */
+  --wb-color-warning-600: #d97706;
+  --wb-color-warning-700: #b45309;
+  --wb-color-warning-800: #92400e;
+  --wb-color-warning-900: #78350f;
+
   --wb-bg: #f8fafc;
   --wb-surface: #ffffff;
   --wb-surface-muted: #f1f5f9;
