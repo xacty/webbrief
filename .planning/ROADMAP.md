@@ -85,15 +85,15 @@ Refactor sistemático del sistema visual de WeBrief contra el framework Refactor
   6. QA visual pasa: Brief mode → Handoff (designer/dev audiences) → Preview, comments crear/editar/resolver, mode switching, page switching
 
 **Plans**: 9 plans
-  - [ ] 04-01-PLAN.md — Step 1: Add 14 editor sub-tokens to `tokens.css` (`--wb-editor-*` / `--wb-tooltip-*` / `--wb-comment-*` / `--wb-section-*`); zero consumer change
-  - [ ] 04-02-PLAN.md — Step 2: Block-by-block migration of `ProjectEditor.module.css` (1769 lines, ~200 hex literals) → tokens; checkpoint visual QA
-  - [ ] 04-03-PLAN.md — Step 3: Migrate Nav/Toolbar/Panels/SeoRules CSS modules to tokens; checkpoint visual QA
-  - [ ] 04-04-PLAN.md — Step 4: Migrate `components/editor/*.module.css` (CommentMarginCards, CommentsUI, EditorContextMenu) to tokens; checkpoint visual QA
-  - [ ] 04-05-PLAN.md — Step 5: Delete dead `shareLinkModal*` CSS rules (deviation: live share UI is `ShareLinkPanel`, not a modal)
-  - [ ] 04-06-PLAN.md — Step 6: Migrate `exportModal` (image export, single + bulk) to shared `<Modal>`; chrome CSS removed; checkpoint visual QA
-  - [ ] 04-07-PLAN.md — Step 7: Tokenize all numeric `z-index` declarations across 8 editor CSS modules → `var(--wb-z-*)`; `EditorContextMenu` uses `calc(var(--wb-z-popover) + 1)`; checkpoint stacking QA
-  - [ ] 04-08-PLAN.md — Step 8: Migrate `BriefProjectEditor.{jsx,module.css}` colors + z-index; modal swap if any; checkpoint visual QA
-  - [ ] 04-09-PLAN.md — Step 9: Final QA matrix (16 scenarios + 16 invariants + 6 ROADMAP success criteria); automated gates + manual checkpoint
+  - [x] 04-01-PLAN.md — Step 1: Add 14 editor sub-tokens to `tokens.css` (`--wb-editor-*` / `--wb-tooltip-*` / `--wb-comment-*` / `--wb-section-*`); zero consumer change
+  - [x] 04-02-PLAN.md — Step 2: Block-by-block migration of `ProjectEditor.module.css` (1769 lines, ~200 hex literals) → tokens; checkpoint visual QA
+  - [x] 04-03-PLAN.md — Step 3: Migrate Nav/Toolbar/Panels/SeoRules CSS modules to tokens; checkpoint visual QA
+  - [x] 04-04-PLAN.md — Step 4: Migrate `components/editor/*.module.css` (CommentMarginCards, CommentsUI, EditorContextMenu) to tokens; checkpoint visual QA
+  - [x] 04-05-PLAN.md — Step 5: Delete dead `shareLinkModal*` CSS rules (deviation: live share UI is `ShareLinkPanel`, not a modal)
+  - [x] 04-06-PLAN.md — Step 6: Migrate `exportModal` (image export, single + bulk) to shared `<Modal>`; chrome CSS removed; checkpoint visual QA
+  - [x] 04-07-PLAN.md — Step 7: Tokenize all numeric `z-index` declarations across 8 editor CSS modules → `var(--wb-z-*)`; `EditorContextMenu` uses `calc(var(--wb-z-popover) + 1)`; checkpoint stacking QA
+  - [x] 04-08-PLAN.md — Step 8: Migrate `BriefProjectEditor.{jsx,module.css}` colors + z-index; modal swap if any; checkpoint visual QA
+  - [x] 04-09-PLAN.md — Step 9: Final QA matrix (16 scenarios + 16 invariants + 6 ROADMAP success criteria); automated gates + manual checkpoint
 
 **UI hint**: yes
 
