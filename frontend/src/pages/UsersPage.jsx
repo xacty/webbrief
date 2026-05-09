@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, ChevronDown, ChevronRight, Download, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
@@ -113,45 +113,36 @@ export default function UsersPage() {
   const canInviteUsers = inviteRoleOptions.length > 0 || isAdminUser
   const inviteNeedsCompany = !isAdminUser || inviteForm.platformRole === 'user'
 
+  // Unmount-lifecycle guard for loadUsers (called by mount effect + post-mutation
+  // handlers like handleInvite/handleEditUser/etc). Without this, fast unmount
+  // during a pending request would call setState on an unmounted component.
+  const aliveRef = useRef(true)
+
+  useEffect(() => () => {
+    aliveRef.current = false
+  }, [])
+
   async function loadUsers() {
     try {
       setLoading(true)
       const data = await apiFetch('/api/users')
+      if (!aliveRef.current) return
       setUsers(data.users || [])
       setCompanies(data.companies || [])
       setError('')
     } catch (err) {
+      if (!aliveRef.current) return
       setError(err.message || 'No se pudieron cargar los usuarios')
     } finally {
-      setLoading(false)
+      if (aliveRef.current) setLoading(false)
     }
   }
 
   useEffect(() => {
-    let active = true
-
-    async function loadInitialUsers() {
-      try {
-        setLoading(true)
-        const data = await apiFetch('/api/users')
-        if (!active) return
-
-        setUsers(data.users || [])
-        setCompanies(data.companies || [])
-        setError('')
-      } catch (err) {
-        if (!active) return
-        setError(err.message || 'No se pudieron cargar los usuarios')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-
-    loadInitialUsers()
-
-    return () => {
-      active = false
-    }
+    loadUsers()
+    // aliveRef is set to false by the unmount-cleanup effect above; loadUsers
+    // already short-circuits all setState calls when aliveRef.current is false.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
