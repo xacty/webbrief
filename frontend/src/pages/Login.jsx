@@ -45,7 +45,7 @@ export default function Login() {
 
       if (resetError) throw resetError
 
-      setFeedback('Si el email existe, Supabase enviará un enlace para crear una nueva contraseña.')
+      setFeedback('Si el email existe, recibirás un enlace para crear una nueva contraseña.')
     } catch (err) {
       setError(err.message || 'No se pudo enviar el enlace de recuperación')
     } finally {
