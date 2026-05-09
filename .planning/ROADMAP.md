@@ -63,7 +63,12 @@ Refactor sistemático del sistema visual de WeBrief contra el framework Refactor
   4. Cero hardcoded colors (`#xxx`) en estos archivos — sólo tokens
   5. Manual QA pasa: invitar usuario, crear empresa, archivar, restaurar, login, reset password — sin regresiones
 
-**Plans**: TBD — definidos en plan-phase
+**Plans**: 5 plans
+  - [ ] 03-01-PLAN.md — Cohort 1 (Auth pair): Login + SetPassword + AuthPage.module.css → shared Button/Input/Card/Badge
+  - [ ] 03-02-PLAN.md — Cohort 2 (Standalone forms): AccountSettingsPage (extend pilot) + NewProject → shared Button/Input/Select/Modal/Card/Badge
+  - [ ] 03-03-PLAN.md — Cohort 3 (Companies stack): CompaniesPage (4 modals) + CompanyPage (3 modals) → shared primitives
+  - [ ] 03-04-PLAN.md — Cohort 4 (Complex tables): UsersPage + TrashPage + SecurityPage; UsersPage expandable-row CSS preserved per exception
+  - [ ] 03-05-PLAN.md — Cohort 5 (Shell): AppShell tokens; sidebar 248px as `--wb-shell-sidebar-width`; sticky z-index → token; full golden-path QA checkpoint
 
 **UI hint**: yes
 
