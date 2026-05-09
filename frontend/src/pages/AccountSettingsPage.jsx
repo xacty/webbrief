@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Camera, Download, Eye, EyeOff, KeyRound, Save } from 'lucide-react'
+import { Bell, Camera, Download, KeyRound, Save } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { supabase } from '../lib/supabase'
@@ -7,6 +7,7 @@ import {
   getCompanyRoleLabel,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
+import { Button, Input, Card } from '../components/ui'
 import styles from './AccountSettingsPage.module.css'
 
 function roleLabel(role) {
@@ -50,9 +51,6 @@ export default function AccountSettingsPage() {
   const [profileError, setProfileError] = useState('')
   const [passwordMessage, setPasswordMessage] = useState('')
   const [passwordError, setPasswordError] = useState('')
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
-  const [showNewPassword, setShowNewPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const memberships = currentUser?.memberships || []
   const profileDirty = useMemo(() => (
@@ -184,7 +182,7 @@ export default function AccountSettingsPage() {
         </nav>
 
         <div className={styles.sections}>
-          <section id="profile" className={styles.panel}>
+          <Card as="section" id="profile" padding="md" shadow="sm" radius="lg" className={styles.panel}>
             <div className={styles.panelHeader}>
               <div>
                 <h2 className={styles.panelTitle}>Perfil</h2>
@@ -202,9 +200,9 @@ export default function AccountSettingsPage() {
                   )}
                 </span>
                 <div className={styles.avatarActionGroup}>
-                  <label className={styles.secondaryButton}>
-                    <Camera className={styles.buttonIcon} aria-hidden="true" />
-                    Cambiar foto
+                  <label className={styles.fileInputLabel}>
+                    <Camera size={16} aria-hidden="true" />
+                    <span>Cambiar foto</span>
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -213,46 +211,50 @@ export default function AccountSettingsPage() {
                   </label>
                   {currentUser?.avatarUrl && (
                     <>
-                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(currentUser.id, 'original')}>
-                        <Download className={styles.buttonIcon} aria-hidden="true" />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        icon={<Download size={16} />}
+                        onClick={() => downloadAvatarExport(currentUser.id, 'original')}
+                      >
                         Original
-                      </button>
-                      <button type="button" className={styles.avatarSecondaryAction} onClick={() => downloadAvatarExport(currentUser.id, 'web')}>
-                        <Download className={styles.buttonIcon} aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        icon={<Download size={16} />}
+                        onClick={() => downloadAvatarExport(currentUser.id, 'web')}
+                      >
                         WebP
-                      </button>
+                      </Button>
                     </>
                   )}
                 </div>
               </div>
 
               <div className={styles.fieldGrid}>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel} htmlFor="account-full-name">Nombre</label>
-                  <input
-                    id="account-full-name"
-                    className={styles.input}
-                    type="text"
-                    value={profileForm.fullName}
-                    onChange={(event) => {
-                      setProfileForm({ fullName: event.target.value })
-                      setProfileMessage('')
-                      setProfileError('')
-                    }}
-                  />
-                </div>
+                <Input
+                  id="account-full-name"
+                  label="Nombre"
+                  type="text"
+                  value={profileForm.fullName}
+                  onChange={(event) => {
+                    setProfileForm({ fullName: event.target.value })
+                    setProfileMessage('')
+                    setProfileError('')
+                  }}
+                />
 
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel} htmlFor="account-email">Email</label>
-                  <input
-                    id="account-email"
-                    className={styles.input}
-                    type="email"
-                    value={currentUser?.email || ''}
-                    readOnly
-                  />
-                  <p className={styles.fieldHint}>El cambio de email queda reservado para administradores.</p>
-                </div>
+                <Input
+                  id="account-email"
+                  label="Email"
+                  type="email"
+                  value={currentUser?.email || ''}
+                  readOnly
+                  helperText="El cambio de email queda reservado para administradores."
+                />
               </div>
 
               <div className={styles.metaGrid}>
@@ -281,15 +283,20 @@ export default function AccountSettingsPage() {
               {profileMessage && <p className={styles.success} role="status" aria-live="polite">{profileMessage}</p>}
 
               <div className={styles.actions}>
-                <button className={styles.primaryButton} type="submit" disabled={!profileDirty || busyKey === 'profile'}>
-                  <Save className={styles.buttonIcon} aria-hidden="true" />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  icon={<Save size={16} />}
+                  disabled={!profileDirty || busyKey === 'profile'}
+                  loading={busyKey === 'profile'}
+                >
                   {busyKey === 'profile' ? 'Guardando...' : 'Guardar perfil'}
-                </button>
+                </Button>
               </div>
             </form>
-          </section>
+          </Card>
 
-          <section id="security" className={styles.panel}>
+          <Card as="section" id="security" padding="md" shadow="sm" radius="lg" className={styles.panel}>
             <div className={styles.panelHeader}>
               <div>
                 <h2 className={styles.panelTitle}>Seguridad</h2>
@@ -300,96 +307,62 @@ export default function AccountSettingsPage() {
 
             <form className={styles.form} onSubmit={handlePasswordSubmit}>
               <div className={styles.fieldGrid}>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel} htmlFor="current-password">Contraseña actual</label>
-                  <div className={styles.passwordWrap}>
-                    <input
-                      id="current-password"
-                      className={styles.input}
-                      type={showCurrentPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      value={passwordForm.currentPassword}
-                      onChange={(event) => setPasswordForm((current) => ({
-                        ...current,
-                        currentPassword: event.target.value,
-                      }))}
-                      required
-                    />
-                    <button
-                      type="button"
-                      className={styles.eyeBtn}
-                      aria-label={showCurrentPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                      onClick={() => setShowCurrentPassword((v) => !v)}
-                    >
-                      {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel} htmlFor="new-account-password">Nueva contraseña</label>
-                  <div className={styles.passwordWrap}>
-                    <input
-                      id="new-account-password"
-                      className={styles.input}
-                      type={showNewPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      value={passwordForm.newPassword}
-                      onChange={(event) => setPasswordForm((current) => ({
-                        ...current,
-                        newPassword: event.target.value,
-                      }))}
-                      required
-                    />
-                    <button
-                      type="button"
-                      className={styles.eyeBtn}
-                      aria-label={showNewPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                      onClick={() => setShowNewPassword((v) => !v)}
-                    >
-                      {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.fieldLabel} htmlFor="confirm-account-password">Confirmar nueva contraseña</label>
-                  <div className={styles.passwordWrap}>
-                    <input
-                      id="confirm-account-password"
-                      className={styles.input}
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      value={passwordForm.confirmPassword}
-                      onChange={(event) => setPasswordForm((current) => ({
-                        ...current,
-                        confirmPassword: event.target.value,
-                      }))}
-                      required
-                    />
-                    <button
-                      type="button"
-                      className={styles.eyeBtn}
-                      aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                      onClick={() => setShowConfirmPassword((v) => !v)}
-                    >
-                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
+                <Input
+                  id="current-password"
+                  label="Contraseña actual"
+                  type="password"
+                  autoComplete="current-password"
+                  value={passwordForm.currentPassword}
+                  onChange={(event) => setPasswordForm((current) => ({
+                    ...current,
+                    currentPassword: event.target.value,
+                  }))}
+                  required
+                />
+                <Input
+                  id="new-account-password"
+                  label="Nueva contraseña"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordForm.newPassword}
+                  onChange={(event) => setPasswordForm((current) => ({
+                    ...current,
+                    newPassword: event.target.value,
+                  }))}
+                  required
+                />
+                <Input
+                  id="confirm-account-password"
+                  label="Confirmar nueva contraseña"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(event) => setPasswordForm((current) => ({
+                    ...current,
+                    confirmPassword: event.target.value,
+                  }))}
+                  required
+                />
               </div>
 
               {passwordError && <p className={styles.error} role="alert">{passwordError}</p>}
               {passwordMessage && <p className={styles.success} role="status" aria-live="polite">{passwordMessage}</p>}
 
               <div className={styles.actions}>
-                <button className={styles.primaryButton} type="submit" disabled={busyKey === 'password'}>
-                  <KeyRound className={styles.buttonIcon} aria-hidden="true" />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  icon={<KeyRound size={16} />}
+                  disabled={busyKey === 'password'}
+                  loading={busyKey === 'password'}
+                >
                   {busyKey === 'password' ? 'Actualizando...' : 'Cambiar contraseña'}
-                </button>
+                </Button>
               </div>
             </form>
-          </section>
+          </Card>
 
-          <section id="notifications" className={styles.panel}>
+          <Card as="section" id="notifications" padding="md" shadow="sm" radius="lg" className={styles.panel}>
             <div className={styles.panelHeader}>
               <div>
                 <h2 className={styles.panelTitle}>Notificaciones</h2>
@@ -400,7 +373,7 @@ export default function AccountSettingsPage() {
             <div className={styles.emptyState}>
               Las preferencias de notificaciones se pueden sumar acá cuando definamos los tipos de aviso.
             </div>
-          </section>
+          </Card>
         </div>
       </div>
     </div>
