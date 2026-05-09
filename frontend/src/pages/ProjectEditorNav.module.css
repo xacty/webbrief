@@ -295,7 +295,7 @@
 }
 
 .navSaveBtn:hover:not(.navSaveBtnDisabled) {
-  background: var(--wb-color-primary-900);
+  background: var(--wb-primary-hover);
 }
 
 .navSaveBtnDisabled {
