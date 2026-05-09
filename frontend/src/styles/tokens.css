@@ -179,4 +179,44 @@
   --wb-radius-md: 14px;
   --wb-radius-lg: 18px;
   --wb-content-width: 1180px;
+
+  /* ============================================================
+     Editor sub-tokens (Phase 4)
+     Decisions: .planning/intel/decisions.md (Editor)
+     UI-SPEC:   .planning/phases/04-editor-unification/04-UI-SPEC.md (Editor Sub-Tokens)
+     Scope:     consumed exclusively by frontend/src/pages/ProjectEditor*,
+                frontend/src/pages/BriefProjectEditor*, and
+                frontend/src/components/editor/*. The rest of the app
+                must NOT reference --wb-editor-* / --wb-tooltip-* /
+                --wb-comment-* / --wb-section-*.
+     Goal:      eliminate the parallel dark palette hardcoded across the
+                editor (`#212222 / #2a2a2a / #d9d9d9 / #1d4ed8 / #2563eb`)
+                while preserving the dark editor look exactly.
+     ============================================================ */
+
+  /* Editor surfaces (dark chrome) */
+  --wb-editor-bg:               #212222; /* navbar / toolbar / floating bar / dark dropdowns */
+  --wb-editor-surface:          #2a2a2a; /* one step lighter; toolbar segments, dropdown items, dark text on light */
+  --wb-editor-surface-elevated: #1a1a1a; /* slightly darker than --wb-editor-bg; elevated dark popovers (image/table context menu) */
+
+  /* Editor borders */
+  --wb-editor-border:           #d9d9d9; /* light-mode border inside editor canvas (between sections, around cards, light dropdowns on dark chrome) */
+  --wb-editor-border-strong:    #b8b8b8; /* hover/active border on light editor controls */
+
+  /* Editor text */
+  --wb-editor-text-on-dark:        #ffffff; /* white text on dark chrome */
+  --wb-editor-text-on-dark-muted:  #aaaaaa; /* muted/disabled text on dark chrome (collapses #888/#999/#aaa/#bdc1c6/#c7c7c7/#d0d0d0) */
+  --wb-editor-text:                #2a2a2a; /* dark text on light editor surfaces (sections panel labels, type labels) */
+
+  /* Floating tooltip (Google-Docs style — must stay this exact hex) */
+  --wb-tooltip-bg:                 #3c4043;
+  --wb-tooltip-text:               #ffffff;
+
+  /* Comments (highlight on <span data-comment-id>) */
+  --wb-comment-highlight:          rgba(254, 240, 138, 0.5); /* matches existing #fef08a at ~50% alpha */
+  --wb-comment-highlight-active:   rgba(254, 240, 138, 0.9);
+  --wb-comment-highlight-resolved: transparent;
+
+  /* Section flash animation (re-uses base.css @keyframes wb-section-flash) */
+  --wb-section-flash:              rgba(254, 240, 138, 0.6);
 }
