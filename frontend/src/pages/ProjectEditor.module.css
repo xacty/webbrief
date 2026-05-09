@@ -1335,60 +1335,23 @@
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.2);
 }
 
-.exportModalOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(15, 23, 42, 0.32);
-  backdrop-filter: blur(8px);
-}
+/* exportModal* chrome rules (.exportModalOverlay, .exportModal,
+   .exportModalHeader, .exportModalEyebrow, .exportModalTitle,
+   .exportModalClose) removed 2026-05-09 (plan 04-06) — chrome
+   delegated to shared <Modal> primitive (frontend/src/components/ui/Modal.jsx).
+   Body-scroll lock, focus trap, Escape, overlay-click, X button all
+   handled by Modal. .exportModalForm (form layout) preserved below
+   because it's consumed inside the new Modal body. */
 
-.exportModal {
-  width: min(560px, 100%);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
-}
-
-.exportModalHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px 22px 14px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.exportModalEyebrow {
-  margin: 0 0 4px;
-  color: var(--wb-color-neutral-500);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.exportModalTitle {
-  margin: 0;
-  color: var(--wb-color-primary-600);
-  font-size: 20px;
-  line-height: 1.1;
-}
-
-.exportModalClose {
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  border-radius: 999px;
-  background: var(--wb-surface);
-  color: var(--wb-color-neutral-500);
-  cursor: pointer;
+.exportEyebrow {
+  display: inline-block;
+  margin-bottom: var(--wb-space-2);
+  padding: var(--wb-space-1) var(--wb-space-2);
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-700);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  border-radius: var(--wb-radius-full);
 }
 
 .exportModalForm {
