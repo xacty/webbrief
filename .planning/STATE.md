@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: UI System Refactor
-status: completed
-stopped_at: Phase 5 UI-SPEC approved
-last_updated: "2026-05-09T05:39:46.778Z"
-last_activity: 2026-05-09 -- Phase 05 marked complete
+status: shipped
+shipped_at: "2026-05-09"
+last_updated: "2026-05-09"
+last_activity: 2026-05-09 -- v1.0 milestone archived
 progress:
   total_phases: 5
   completed_phases: 5
   total_plans: 27
-  completed_plans: 28
+  completed_plans: 27
   percent: 100
 ---
 
@@ -18,68 +18,66 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-08)
+See: .planning/PROJECT.md (updated 2026-05-09)
 
 **Core value:** Cliente, manager, editor, designer y dev colaboran sobre el mismo brief sin ambigüedad
-**Current focus:** Phase 05 — public-pages-verification
+**Current focus:** Planning next milestone (v1.1 — pending definition via `/gsd-new-milestone`)
 
 ## Current Position
 
-Phase: 05 — COMPLETE
-Plan: 1 of 5
-Status: Phase 05 complete
-Last activity: 2026-05-09 -- Phase 05 marked complete
+Milestone: v1.0 — **SHIPPED** 2026-05-09
+Status: Archived; awaiting v1.1 definition
+Branch: `refactor/ui-system` (worktree) — pending merge to `main` per user decision
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
-**Velocity:**
+**Velocity (v1.0):**
 
-- Total plans completed: 9
-- Average duration: —
-- Total execution time: —
+- Total plans completed: 27
+- Total phases: 5
+- Timeline: 2026-05-08 → 2026-05-09 (~5 hours active work)
+- Commits: ~75 atomic on `refactor/ui-system`
 
-**By Phase:**
+**By Phase (v1.0):**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 04 | 9 | - | - |
-
-**Recent Trend:**
-
-- Last 5 plans: —
-- Trend: —
-
-*Updated after each plan completion*
+| Phase | Plans | Completed |
+|-------|-------|-----------|
+| 01 — Design Tokens Foundation | 3/3 | 2026-05-08 |
+| 02 — Shared UI Components | 5/5 | 2026-05-09 |
+| 03 — Admin & Auth Migration | 5/5 | 2026-05-09 |
+| 04 — Editor Unification | 9/9 | 2026-05-09 |
+| 05 — Public Pages & Verification | 5/5 | 2026-05-09 |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
 
-- Bootstrap: Refactor en branch aislada `refactor/ui-system` con worktree dedicado
-- Bootstrap: Skip ingest completo; bootstrap mínimo enfocado al refactor
-- Bootstrap: Stack se mantiene CSS Modules + variables CSS (no migración a Tailwind)
+### Pending Todos (deferred to v1.1)
 
-### Pending Todos
-
-None yet.
+- `001-fix-ui-spacing-editor.md` — Spacing 7.5/10 (vs 9.0 min)
+- `002-fix-ui-typography-editor.md` — Typography 7.5/10 (vs 9.0 min)
+- `003-fix-ui-color-editor.md` — Color 7.8/10 (vs 9.0 min)
 
 ### Blockers/Concerns
 
-None yet.
+None.
 
 ## Deferred Items
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| ui_followup | TODO 001 — editor CSS spacing | Pending v1.1 | 2026-05-09 |
+| ui_followup | TODO 002 — editor CSS typography | Pending v1.1 | 2026-05-09 |
+| ui_followup | TODO 003 — editor CSS color | Pending v1.1 | 2026-05-09 |
+| process | After-state screenshots (preview MCP cwd-incompatible) | User capture post-merge | 2026-05-09 |
+| process | Path D `/share/:token` Exportar PDF print-preview manual smoke | User confirm post-merge | 2026-05-09 |
 
 ## Session Continuity
 
-Last session: 2026-05-09T04:43:39.458Z
-Stopped at: Phase 5 UI-SPEC approved
-Resume file: .planning/phases/05-public-pages-verification/05-UI-SPEC.md
+Last session: 2026-05-09 — v1.0 milestone archived
+Stopped at: Milestone v1.0 complete
+Next: Define v1.1 via `/gsd-new-milestone` (or address TODOs first)
