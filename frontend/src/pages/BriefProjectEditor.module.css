@@ -20,8 +20,8 @@
   padding: 0 24px;
   height: 70px;
   background: #f0f0f0;
-  border-bottom: 1px solid #212222;
-  z-index: 100;
+  border-bottom: 1px solid var(--wb-editor-bg);
+  z-index: var(--wb-z-sticky);
 }
 
 .backBtn {
@@ -32,9 +32,9 @@
   justify-content: center;
   flex-shrink: 0;
   padding: 0;
-  color: #2a2a2a;
-  background: #fff;
-  border: 1px solid #d9d9d9;
+  color: var(--wb-editor-text);
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-editor-border);
   border-radius: 999px;
   cursor: pointer;
   transition: background 120ms, border-color 120ms;
@@ -42,7 +42,7 @@
 
 .backBtn:hover {
   background: #f0f4f9;
-  border-color: #c7c7c7;
+  border-color: var(--wb-editor-text-on-dark-muted);
 }
 
 .navbarCenter {
@@ -56,7 +56,7 @@
 .navbarProjectName {
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--wb-color-neutral-900);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -67,7 +67,7 @@
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 700;
-  color: #212222;
+  color: var(--wb-editor-bg);
   background: #f0f4f9;
   border-radius: 20px;
 }
@@ -81,18 +81,18 @@
 
 .navbarDirty {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
 }
 
 .navbarSaved {
   font-size: 12px;
-  color: #16a34a;
+  color: var(--wb-color-success-600);
   font-weight: 600;
 }
 
 .navbarError {
   font-size: 12px;
-  color: #dc2626;
+  color: var(--wb-color-danger-600);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -104,8 +104,8 @@
   font-size: 13px;
   font-weight: 700;
   font-family: inherit;
-  color: #fff;
-  background: #212222;
+  color: var(--wb-editor-text-on-dark);
+  background: var(--wb-editor-bg);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -151,8 +151,8 @@
   flex-shrink: 0;
   overflow-y: auto;
   padding: 20px 20px 40px;
-  border-left: 1px solid #e2e8f0;
-  background: #fff;
+  border-left: 1px solid var(--wb-color-neutral-200);
+  background: var(--wb-surface);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -163,7 +163,7 @@
   margin: 0 0 14px;
   font-size: 13px;
   font-weight: 700;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   display: flex;
@@ -179,15 +179,15 @@
   height: 20px;
   font-size: 11px;
   font-weight: 700;
-  color: #212222;
+  color: var(--wb-editor-bg);
   background: #f0f4f9;
   border-radius: 50%;
 }
 
 /* ── Meta card ── */
 .metaCard {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 14px;
   padding: 22px 24px;
 }
@@ -207,7 +207,7 @@
 .metaFieldLabel {
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--wb-color-neutral-600);
 }
 
 .metaInput {
@@ -215,26 +215,26 @@
   font-size: 15px;
   font-weight: 600;
   font-family: inherit;
-  color: #0f172a;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  color: var(--wb-color-neutral-900);
+  background: var(--wb-color-neutral-50);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 8px;
   outline: none;
   transition: border-color 0.15s;
 }
 
 .metaInput:focus {
-  border-color: #212222;
-  background: #fff;
+  border-color: var(--wb-editor-bg);
+  background: var(--wb-surface);
 }
 
 .metaTextarea {
   padding: 9px 12px;
   font-size: 14px;
   font-family: inherit;
-  color: #334155;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  color: var(--wb-color-neutral-700);
+  background: var(--wb-color-neutral-50);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 8px;
   outline: none;
   resize: vertical;
@@ -242,8 +242,8 @@
 }
 
 .metaTextarea:focus {
-  border-color: #212222;
-  background: #fff;
+  border-color: var(--wb-editor-bg);
+  background: var(--wb-surface);
 }
 
 /* ── Questions section ── */
@@ -260,10 +260,10 @@
 .emptyQuestions {
   text-align: center;
   padding: 32px 20px;
-  background: #fff;
-  border: 1px dashed #cbd5e1;
+  background: var(--wb-surface);
+  border: 1px dashed var(--wb-color-neutral-300);
   border-radius: 12px;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   font-size: 14px;
   margin-bottom: 14px;
 }
@@ -277,16 +277,16 @@
 
 /* ── Question card ── */
 .questionCard {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 12px;
   padding: 14px 16px;
 }
 
 .questionCardSection {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  border-left: 3px solid #212222;
+  background: var(--wb-color-neutral-50);
+  border-color: var(--wb-color-neutral-300);
+  border-left: 3px solid var(--wb-editor-bg);
 }
 
 .questionCardTop {
@@ -305,8 +305,8 @@
   justify-content: center;
   font-size: 11px;
   font-weight: 700;
-  color: #94a3b8;
-  background: #f1f5f9;
+  color: var(--wb-color-neutral-400);
+  background: var(--wb-color-neutral-100);
   border-radius: 50%;
 }
 
@@ -316,9 +316,9 @@
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
-  color: #475569;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  color: var(--wb-color-neutral-600);
+  background: var(--wb-color-neutral-50);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 7px;
   outline: none;
   cursor: pointer;
@@ -337,7 +337,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -346,8 +346,8 @@
 }
 
 .iconBtn:hover:not(:disabled) {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-900);
 }
 
 .iconBtn:disabled {
@@ -356,8 +356,8 @@
 }
 
 .iconBtnDestructive:hover:not(:disabled) {
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--wb-color-danger-50);
+  color: var(--wb-color-danger-600);
 }
 
 /* ── Question fields ── */
@@ -372,8 +372,8 @@
   padding: 8px 11px;
   font-size: 14px;
   font-family: inherit;
-  color: #0f172a;
-  background: #f8fafc;
+  color: var(--wb-color-neutral-900);
+  background: var(--wb-color-neutral-50);
   border: 1px solid #e8eef5;
   border-radius: 7px;
   outline: none;
@@ -382,8 +382,8 @@
 }
 
 .fieldInput:focus {
-  border-color: #212222;
-  background: #fff;
+  border-color: var(--wb-editor-bg);
+  background: var(--wb-surface);
 }
 
 .requiredToggle {
@@ -391,7 +391,7 @@
   align-items: center;
   gap: 7px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   cursor: pointer;
   user-select: none;
 }
@@ -399,7 +399,7 @@
 .requiredToggle input {
   width: 15px;
   height: 15px;
-  accent-color: #212222;
+  accent-color: var(--wb-editor-bg);
   cursor: pointer;
 }
 
@@ -413,7 +413,7 @@
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
 }
 
 .optionsTextarea {
@@ -421,8 +421,8 @@
   padding: 8px 11px;
   font-size: 13px;
   font-family: inherit;
-  color: #334155;
-  background: #f8fafc;
+  color: var(--wb-color-neutral-700);
+  background: var(--wb-color-neutral-50);
   border: 1px solid #e8eef5;
   border-radius: 7px;
   outline: none;
@@ -432,8 +432,8 @@
 }
 
 .optionsTextarea:focus {
-  border-color: #212222;
-  background: #fff;
+  border-color: var(--wb-editor-bg);
+  background: var(--wb-surface);
 }
 
 /* ── Add row ── */
@@ -449,16 +449,16 @@
   font-size: 13px;
   font-weight: 700;
   font-family: inherit;
-  color: #212222;
+  color: var(--wb-editor-bg);
   background: #f0f4f9;
-  border: 1px dashed #a5b4fc;
+  border: 1px dashed var(--wb-color-primary-200);
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .addBtn:hover {
-  background: #e0e7ff;
+  background: var(--wb-color-primary-100);
 }
 
 .typePicker {
@@ -467,8 +467,8 @@
   gap: 7px;
   align-items: center;
   padding: 10px 14px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 10px;
 }
 
@@ -477,18 +477,18 @@
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
-  color: #475569;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  color: var(--wb-color-neutral-600);
+  background: var(--wb-color-neutral-100);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 7px;
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 
 .typePickerBtn:hover {
-  background: #212222;
-  color: #fff;
-  border-color: #212222;
+  background: var(--wb-editor-bg);
+  color: var(--wb-editor-text-on-dark);
+  border-color: var(--wb-editor-bg);
 }
 
 .typePickerCancel {
@@ -497,7 +497,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -507,14 +507,14 @@
 }
 
 .typePickerCancel:hover {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-600);
 }
 
 /* ── Side cards ── */
 .sideCard {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 12px;
   padding: 18px;
   display: flex;
@@ -526,7 +526,7 @@
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--wb-color-neutral-900);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -535,14 +535,14 @@
 .sideNote {
   margin: 0;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   line-height: 1.5;
 }
 
 .sideError {
   margin: 0;
   font-size: 12px;
-  color: #dc2626;
+  color: var(--wb-color-danger-600);
 }
 
 /* ── Share panel ── */
@@ -551,8 +551,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--wb-color-neutral-50);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 8px;
   min-width: 0;
 }
@@ -560,7 +560,7 @@
 .linkText {
   flex: 1;
   font-size: 12px;
-  color: #212222;
+  color: var(--wb-editor-bg);
   word-break: break-all;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -574,7 +574,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  color: #475569;
+  color: var(--wb-color-neutral-600);
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -583,13 +583,13 @@
 }
 
 .copyBtn:hover {
-  background: #e2e8f0;
+  background: var(--wb-color-neutral-200);
 }
 
 .copiedBadge {
   font-size: 13px;
   font-weight: 700;
-  color: #16a34a;
+  color: var(--wb-color-success-600);
 }
 
 .generateBtn {
@@ -597,8 +597,8 @@
   font-size: 13px;
   font-weight: 700;
   font-family: inherit;
-  color: #fff;
-  background: #212222;
+  color: var(--wb-editor-text-on-dark);
+  background: var(--wb-editor-bg);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -619,9 +619,9 @@
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
-  color: #dc2626;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  color: var(--wb-color-danger-600);
+  background: var(--wb-color-danger-50);
+  border: 1px solid var(--wb-color-danger-200);
   border-radius: 8px;
   cursor: pointer;
   align-self: flex-start;
@@ -629,7 +629,7 @@
 }
 
 .revokeBtn:hover:not(:disabled) {
-  background: #fee2e2;
+  background: var(--wb-color-danger-100);
 }
 
 .revokeBtn:disabled {
@@ -642,9 +642,9 @@
   padding: 8px 11px;
   font-size: 13px;
   font-family: inherit;
-  color: #0f172a;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  color: var(--wb-color-neutral-900);
+  background: var(--wb-color-neutral-50);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 8px;
   outline: none;
   box-sizing: border-box;
@@ -652,8 +652,8 @@
 }
 
 .templateInput:focus {
-  border-color: #212222;
-  background: #fff;
+  border-color: var(--wb-editor-bg);
+  background: var(--wb-surface);
 }
 
 /* ── Responses panel ── */
@@ -664,7 +664,7 @@
 }
 
 .responseItem {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 9px;
   overflow: hidden;
 }
@@ -676,7 +676,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 10px 12px;
-  background: #f8fafc;
+  background: var(--wb-color-neutral-50);
   border: none;
   cursor: pointer;
   text-align: left;
@@ -684,7 +684,7 @@
 }
 
 .responseHeader:hover {
-  background: #f1f5f9;
+  background: var(--wb-color-neutral-100);
 }
 
 .responseHeaderInfo {
@@ -697,7 +697,7 @@
 .responseName {
   font-size: 13px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--wb-color-neutral-900);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -705,7 +705,7 @@
 
 .responseEmail {
   font-size: 11px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -716,18 +716,18 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
 }
 
 .responseDate {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
 }
 
 .responseBody {
   padding: 12px;
-  background: #fff;
-  border-top: 1px solid #e2e8f0;
+  background: var(--wb-surface);
+  border-top: 1px solid var(--wb-color-neutral-200);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -743,13 +743,13 @@
   margin: 0;
   font-size: 11px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   line-height: 1.4;
 }
 
 .responseValue {
   margin: 0;
   font-size: 13px;
-  color: #0f172a;
+  color: var(--wb-color-neutral-900);
   line-height: 1.5;
 }
