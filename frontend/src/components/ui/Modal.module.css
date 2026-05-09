@@ -1,0 +1,130 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  /* matches --wb-color-neutral-900 at 0.36 alpha; literal because css var() does not expand inside rgba() */
+  background: rgba(15, 23, 42, 0.36);
+  z-index: var(--wb-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wb-space-12);
+  animation: wbModalFadeIn 150ms ease;
+}
+
+@keyframes wbModalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.card {
+  position: relative;
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-xl);
+  border-radius: var(--wb-radius-4);
+  max-height: calc(100vh - var(--wb-space-12));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: wbModalCardIn 150ms ease;
+}
+
+@keyframes wbModalCardIn {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* widths locked by UI-SPEC §4 Modal */
+.size_sm {
+  width: 100%;
+  max-width: 400px;
+}
+
+.size_md {
+  width: 100%;
+  max-width: 500px;
+}
+
+.size_lg {
+  width: 100%;
+  max-width: 720px;
+}
+
+.size_full {
+  width: 100%;
+  max-width: calc(100vw - calc(var(--wb-space-12) * 2));
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wb-space-4);
+  padding: var(--wb-space-8) var(--wb-space-6) var(--wb-space-4);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--wb-text-lg);
+  font-weight: var(--wb-weight-semibold);
+  line-height: var(--wb-leading-xl);
+  color: var(--wb-color-neutral-800);
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wb-space-8);
+  height: var(--wb-space-8);
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-color-neutral-600);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.closeButton:hover {
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-800);
+}
+
+.closeButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.body {
+  padding: var(--wb-space-4) var(--wb-space-6) var(--wb-space-6);
+  overflow-y: auto;
+  color: var(--wb-color-neutral-700);
+  font-size: var(--wb-text-base);
+  line-height: var(--wb-leading-base);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-4) var(--wb-space-6);
+  border-top: 1px solid var(--wb-border);
+  background: var(--wb-color-neutral-50);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .card {
+    animation: none;
+  }
+}
