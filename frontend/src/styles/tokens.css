@@ -67,18 +67,21 @@
   --wb-color-warning-800: #92400e;
   --wb-color-warning-900: #78350f;
 
-  --wb-bg: #f8fafc;
-  --wb-surface: #ffffff;
-  --wb-surface-muted: #f1f5f9;
-  --wb-border: #dbe3f0;
-  --wb-border-strong: #c7d2e5;
-  --wb-text: #091223;
-  --wb-text-muted: #64748b;
-  --wb-primary: #091223;
-  --wb-primary-hover: #1e293b;
-  --wb-primary-soft: #e2e8f0;
-  --wb-success: #0f766e;
-  --wb-danger: #dc2626;
+  /* Legacy aliases — preserve current computed values for back-compat.
+     Plans 02-05 of this milestone will gradually migrate consumers
+     to the new --wb-color-* tokens; do NOT remove these aliases yet. */
+  --wb-bg: var(--wb-color-neutral-50);            /* was #f8fafc */
+  --wb-surface: #ffffff;                          /* no canonical needed */
+  --wb-surface-muted: var(--wb-color-neutral-100);/* was #f1f5f9 */
+  --wb-border: #dbe3f0;                           /* keep literal — between 200 and 300 */
+  --wb-border-strong: #c7d2e5;                    /* keep literal */
+  --wb-text: var(--wb-color-primary-900);         /* was #091223 */
+  --wb-text-muted: var(--wb-color-neutral-500);   /* was #64748b */
+  --wb-primary: var(--wb-color-primary-900);      /* was #091223 */
+  --wb-primary-hover: var(--wb-color-primary-500);/* was #1e293b */
+  --wb-primary-soft: var(--wb-color-neutral-200); /* was #e2e8f0 */
+  --wb-success: #0f766e;                          /* keep literal — Phase 1 preserves teal accent */
+  --wb-danger: var(--wb-color-danger-600);        /* was #dc2626 */
   --wb-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
   --wb-shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.18);
   --wb-radius-sm: 10px;
