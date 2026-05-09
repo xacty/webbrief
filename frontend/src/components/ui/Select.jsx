@@ -61,6 +61,7 @@ const Select = forwardRef(function Select(
         </label>
       )}
       <select
+        {...rest}
         ref={ref}
         id={selectId}
         name={name}
@@ -73,7 +74,6 @@ const Select = forwardRef(function Select(
         aria-invalid={errorFlag ? 'true' : undefined}
         aria-describedby={helperId}
         className={styles.select}
-        {...rest}
       >
         {placeholder !== undefined && (
           <option value="" disabled hidden>
