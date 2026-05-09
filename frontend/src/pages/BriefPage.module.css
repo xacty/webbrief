@@ -4,8 +4,9 @@
 
 .page {
   min-height: 100vh;
-  background: #f4f7fb;
-  padding: 40px 16px 80px;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  padding: var(--wb-space-12) var(--wb-space-4) var(--wb-space-16);
 }
 
 .container {
@@ -15,56 +16,56 @@
 
 /* ── Header ── */
 .formHeader {
-  margin-bottom: 28px;
+  margin-bottom: var(--wb-space-7, var(--wb-space-6));
 }
 
 .formTitle {
-  margin: 0 0 10px;
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.2;
-  color: #091223;
+  margin: 0 0 var(--wb-space-2);
+  font-size: var(--wb-text-3xl);
+  font-weight: var(--wb-weight-bold);
+  line-height: var(--wb-leading-3xl);
+  color: var(--wb-color-primary-900);
 }
 
 .formDescription {
-  margin: 0 0 12px;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #475569;
+  margin: 0 0 var(--wb-space-3);
+  font-size: var(--wb-text-base);
+  line-height: var(--wb-leading-normal);
+  color: var(--wb-color-neutral-600);
 }
 
 .requiredNote {
   margin: 0;
-  font-size: 13px;
-  color: #94a3b8;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-regular);
+  color: var(--wb-color-neutral-500);
 }
 
 /* ── Form ── */
 .form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--wb-space-5);
 }
 
 /* ── Identity card ── */
+/* Surface (bg/border/radius/shadow) provided by <Card>; only layout here. */
 .identityCard {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 24px;
+  /* layout-only; Card prop padding handles spacing */
 }
 
 .identityTitle {
-  margin: 0 0 16px;
-  font-size: 15px;
-  font-weight: 700;
-  color: #091223;
+  margin: 0 0 var(--wb-space-3);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-bold);
+  line-height: var(--wb-leading-normal);
+  color: var(--wb-color-primary-900);
 }
 
 .identityGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--wb-space-4);
 }
 
 @media (max-width: 560px) {
@@ -77,90 +78,128 @@
 .questionsList {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--wb-space-3);
 }
 
 /* ── Section header ── */
 .sectionHeader {
-  padding: 10px 0 4px;
-  border-bottom: 2px solid #e2e8f0;
-  margin-top: 8px;
+  padding: var(--wb-space-2) 0 var(--wb-space-1);
+  border-bottom: 2px solid var(--wb-color-neutral-200);
+  margin-top: var(--wb-space-2);
 }
 
 .sectionHeaderTitle {
   margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  color: #0f172a;
+  font-size: var(--wb-text-lg);
+  font-weight: var(--wb-weight-bold);
+  color: var(--wb-color-neutral-900);
 }
 
 /* ── Field group ── */
+/* fieldGroup keeps its own surface chrome (does NOT wrap a Card) since each
+   question card is rendered inline; tokenized below. */
 .fieldGroup {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 18px 20px;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-color-neutral-200);
+  border-radius: var(--wb-radius-3);
+  padding: var(--wb-space-4) var(--wb-space-5);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--wb-space-2);
 }
 
 .questionLabel {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-  line-height: 1.4;
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-color-neutral-800);
+  line-height: var(--wb-leading-normal);
 }
 
 .required {
-  color: #ef4444;
+  color: var(--wb-color-danger-500);
 }
 
 .hint {
   margin: 0;
-  font-size: 13px;
-  color: #64748b;
-  line-height: 1.5;
+  font-size: var(--wb-text-xs);
+  color: var(--wb-color-neutral-500);
+  line-height: var(--wb-leading-normal);
 }
 
-/* ── Inputs ── */
-.input {
-  width: 100%;
-  padding: 9px 12px;
-  font-size: 14px;
-  font-family: inherit;
-  color: #0f172a;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  outline: none;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
+.uploadError {
+  margin: 0;
+  font-size: var(--wb-text-xs);
+  color: var(--wb-color-danger-600);
+  line-height: var(--wb-leading-normal);
 }
 
-.input:focus {
-  border-color: #212222;
-  background: #fff;
-}
-
+/* ── Native textarea (Phase 2 has no textarea primitive) ── */
 .textarea {
   width: 100%;
-  padding: 9px 12px;
-  font-size: 14px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  font-size: var(--wb-text-sm);
   font-family: inherit;
-  color: #0f172a;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  color: var(--wb-text);
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   outline: none;
   box-sizing: border-box;
   resize: vertical;
-  transition: border-color 0.15s;
+  line-height: var(--wb-leading-normal);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .textarea:focus {
-  border-color: #212222;
-  background: #fff;
+  border-color: var(--wb-color-primary-900);
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+/* ── Native file input (Phase 2 has no file primitive) ── */
+.fileInput {
+  margin-top: var(--wb-space-2);
+  font-family: inherit;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-700);
+}
+
+/* ── FileUploadField list (formerly inline styles) ── */
+.fileList {
+  list-style: none;
+  padding: 0;
+  margin: var(--wb-space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-1);
+}
+
+.fileItem {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-700);
+}
+
+.fileName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kbSize {
+  color: var(--wb-color-neutral-400);
+  font-size: var(--wb-text-xs);
+}
+
+/* removeFile overrides Phase 2 ghost color to danger — minimal scope */
+.removeFile {
+  color: var(--wb-color-danger-600);
+}
+
+.removeFile:hover {
+  color: var(--wb-color-danger-700);
 }
 
 /* ── Fieldset (choice groups) ── */
@@ -170,31 +209,31 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--wb-space-2);
 }
 
 .optionsList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--wb-space-2);
+  margin-top: var(--wb-space-1);
 }
 
 .optionLabel {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--wb-space-2);
   cursor: pointer;
-  font-size: 14px;
-  color: #1e293b;
-  line-height: 1.4;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-800);
+  line-height: var(--wb-leading-normal);
 }
 
 .optionInput {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  accent-color: #212222;
+  accent-color: var(--wb-color-primary-900);
   cursor: pointer;
 }
 
@@ -202,106 +241,79 @@
 .submitRow {
   display: flex;
   justify-content: flex-end;
-  padding-top: 4px;
-}
-
-.submitButton {
-  padding: 11px 28px;
-  font-size: 15px;
-  font-weight: 700;
-  font-family: inherit;
-  color: #fff;
-  background: #212222;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
-}
-
-.submitButton:hover:not(:disabled) {
-  background: #000;
-}
-
-.submitButton:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
+  padding-top: var(--wb-space-1);
 }
 
 .submitError {
   margin: 0;
-  font-size: 14px;
-  color: #dc2626;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 10px 14px;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-danger-600);
+  background: var(--wb-color-danger-50);
+  border: 1px solid var(--wb-color-danger-200);
+  border-radius: var(--wb-radius-2);
+  padding: var(--wb-space-2) var(--wb-space-3);
 }
 
 /* ── Loading ── */
 .loadingText {
   text-align: center;
-  padding: 60px 0;
-  color: #64748b;
-  font-size: 15px;
+  padding: var(--wb-space-12) 0;
+  color: var(--wb-color-neutral-500);
+  font-size: var(--wb-text-base);
 }
 
 /* ── Error state ── */
+/* Surface from <Card>; only layout here. */
 .errorState {
   text-align: center;
-  padding: 60px 20px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
 }
 
 .errorTitle {
-  margin: 0 0 10px;
-  font-size: 22px;
-  font-weight: 700;
-  color: #0f172a;
+  margin: 0 0 var(--wb-space-2);
+  font-size: var(--wb-text-2xl);
+  font-weight: var(--wb-weight-bold);
+  line-height: var(--wb-leading-2xl);
+  color: var(--wb-color-neutral-900);
 }
 
 .errorText {
   margin: 0;
-  font-size: 15px;
-  color: #64748b;
+  font-size: var(--wb-text-base);
+  color: var(--wb-color-neutral-500);
 }
 
 /* ── Success state ── */
+/* Surface from <Card>; only layout here. */
 .successState {
   text-align: center;
-  padding: 64px 24px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
 }
 
 .successIcon {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: #dcfce7;
-  color: #16a34a;
+  background: var(--wb-color-success-100);
+  color: var(--wb-color-success-700);
   font-size: 26px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 20px;
+  margin: 0 auto var(--wb-space-5);
 }
 
 .successTitle {
-  margin: 0 0 12px;
-  font-size: 24px;
-  font-weight: 700;
-  color: #0f172a;
+  margin: 0 0 var(--wb-space-3);
+  font-size: var(--wb-text-2xl);
+  font-weight: var(--wb-weight-bold);
+  line-height: var(--wb-leading-2xl);
+  color: var(--wb-color-neutral-900);
 }
 
 .successText {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.6;
-  color: #475569;
-  max-width: 480px;
   margin: 0 auto;
+  font-size: var(--wb-text-base);
+  line-height: var(--wb-leading-normal);
+  color: var(--wb-color-neutral-600);
+  max-width: 480px;
 }
