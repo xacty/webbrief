@@ -337,7 +337,7 @@
   border-radius: 6px;
   background: var(--wb-surface);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  z-index: 100;
+  z-index: var(--wb-z-sticky);
 }
 
 .menuItem {

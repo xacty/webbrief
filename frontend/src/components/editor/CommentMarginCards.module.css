@@ -7,7 +7,7 @@
   right: 8px;
   width: 280px;
   pointer-events: none;
-  z-index: 6;
+  z-index: var(--wb-z-sticky);
 }
 
 .card {
@@ -36,13 +36,13 @@
   border-color: var(--wb-color-warning-500);
   box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18), 0 0 0 1px var(--wb-color-warning-200);
   cursor: default;
-  z-index: 8;
+  z-index: var(--wb-z-sticky);
 }
 
 .inlinePopover {
   /* Override absolute → fixed (set inline). Sombra más fuerte para flotar
      visiblemente sobre el canvas. */
-  z-index: 1100;
+  z-index: var(--wb-z-popover);
   box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18), 0 0 0 1px var(--wb-color-warning-200);
   padding-top: 32px; /* deja espacio para el close button arriba */
 }
@@ -61,7 +61,7 @@
   color: var(--wb-color-neutral-500);
   border-radius: 6px;
   cursor: pointer;
-  z-index: 2;
+  z-index: var(--wb-z-base);
 }
 
 .popoverCloseBtn:hover {
@@ -84,7 +84,7 @@
   right: 8px;
   display: flex;
   gap: 4px;
-  z-index: 2;
+  z-index: var(--wb-z-base);
 }
 
 .iconChip {
@@ -339,7 +339,7 @@
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
   padding: 4px;
   min-width: 180px;
-  z-index: 1500;
+  z-index: var(--wb-z-popover);
 }
 
 .commentMenuItem {

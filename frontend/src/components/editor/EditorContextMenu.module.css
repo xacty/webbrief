@@ -1,6 +1,6 @@
 .menu {
   position: fixed;
-  z-index: 1500;
+  z-index: calc(var(--wb-z-popover) + 1); /* +1 above popover so EditorContextMenu sits above margin comment cards */
   background: var(--wb-surface);
   border: 1px solid var(--wb-border);
   border-radius: 8px;
@@ -96,5 +96,5 @@
   border-radius: 8px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
   padding: 4px;
-  z-index: 1600;
+  z-index: calc(var(--wb-z-popover) + 2); /* +2 above popover so submenu sits above its parent EditorContextMenu */
 }

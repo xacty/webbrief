@@ -280,7 +280,7 @@
 /* Composer popover */
 .composer {
   position: absolute;
-  z-index: 1100;
+  z-index: var(--wb-z-popover);
   background: var(--wb-surface);
   border: 1px solid var(--wb-border);
   border-radius: 12px;
@@ -353,7 +353,7 @@
 /* Mentions dropdown */
 .mentionsDropdown {
   position: absolute;
-  z-index: 1200;
+  z-index: var(--wb-z-popover); /* mentions dropdown — popover tier (below tooltip 1200) */
   background: var(--wb-surface);
   border: 1px solid var(--wb-border);
   border-radius: 8px;

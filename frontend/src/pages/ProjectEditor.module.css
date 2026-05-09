@@ -193,7 +193,7 @@
 
 .imageContextMenu {
   position: fixed;
-  z-index: 500;
+  z-index: var(--wb-z-popover);
   width: max-content;
   min-width: 0;
   max-width: 220px;
@@ -245,7 +245,7 @@
 .confirmOverlay {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--wb-z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -308,7 +308,7 @@
   position: fixed;
   left: 50%;
   bottom: 22px;
-  z-index: 120;
+  z-index: var(--wb-z-sticky);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -409,7 +409,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: var(--wb-z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -621,7 +621,7 @@
   position: absolute;
   top: var(--type-label-top, 0px);
   left: 4px;
-  z-index: 20;
+  z-index: var(--wb-z-sticky);
 }
 
 .typeLabelBtn {
@@ -650,7 +650,7 @@
   position: absolute;
   top: 0;
   left: 34px;
-  z-index: 50;
+  z-index: var(--wb-z-sticky);
   min-width: 110px;
   overflow: hidden;
   border: 1px solid var(--wb-editor-border);
@@ -675,7 +675,7 @@
   position: fixed;
   left: var(--tooltip-x, 0px);
   top: var(--tooltip-y, 0px);
-  z-index: 1400;
+  z-index: var(--wb-z-tooltip);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -730,7 +730,7 @@
   color: #c2410c;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  z-index: 20;
+  z-index: var(--wb-z-sticky);
 }
 
 .activityMarkerBtnActive {
@@ -763,7 +763,7 @@
   position: absolute;
   top: var(--table-menu-top, 0px);
   left: var(--table-menu-left, 0px);
-  z-index: 300;
+  z-index: var(--wb-z-popover);
   min-width: 180px;
   padding: 4px 0;
   border-radius: 8px;
@@ -811,7 +811,7 @@
   cursor: pointer;
   opacity: 0.6;
   transition: opacity 0.15s, background-color 0.15s;
-  z-index: 10;
+  z-index: var(--wb-z-sticky);
 }
 
 .tableInlineBtnCol {
@@ -860,7 +860,7 @@
   top: var(--canvas-add-top, 0px);
   left: 0;
   right: 0;
-  z-index: 20;
+  z-index: var(--wb-z-sticky);
   display: flex;
   justify-content: center;
   pointer-events: none;

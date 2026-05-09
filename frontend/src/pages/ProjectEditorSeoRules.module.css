@@ -1,6 +1,6 @@
 .topTrayRow {
   position: relative;
-  z-index: 1;
+  z-index: var(--wb-z-base);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -35,7 +35,7 @@
 
 .editorCanvas {
   position: relative;
-  z-index: 2;
+  z-index: var(--wb-z-base);
   flex: 1;
   min-width: 500px;
   max-width: 800px;
@@ -52,7 +52,7 @@
 
 .seoPanel {
   position: relative;
-  z-index: 20;
+  z-index: var(--wb-z-sticky);
   flex-shrink: 0;
   background: #f8f8f8;
 }
@@ -174,7 +174,7 @@
 
 .rulesDock {
   position: relative;
-  z-index: 70;
+  z-index: var(--wb-z-sticky);
   width: 100%;
   margin-top: auto;
   padding-top: 16px;

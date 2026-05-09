@@ -8,7 +8,7 @@
    pending dedicated palette decision. */
 .toolbar {
   position: relative;
-  z-index: 120;
+  z-index: var(--wb-z-sticky);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -43,7 +43,7 @@
   border-radius: 8px;
   background: var(--wb-surface);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: 80;
+  z-index: var(--wb-z-sticky);
 }
 
 .dropdownBlock {
@@ -211,7 +211,7 @@
   border-radius: 12px;
   background: var(--wb-surface);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: 120;
+  z-index: var(--wb-z-sticky);
 }
 
 .tablePickerLabel {

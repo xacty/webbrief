@@ -189,7 +189,7 @@
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   padding: 4px 0;
-  z-index: 100;
+  z-index: var(--wb-z-sticky);
   min-width: 130px;
 }
 
@@ -360,7 +360,7 @@
   border: 1px solid var(--wb-border, var(--wb-color-neutral-200));
   border-radius: var(--wb-radius-lg, 12px);
   box-shadow: var(--wb-shadow-lg, 0 12px 32px rgba(15, 23, 42, 0.12));
-  z-index: 1000;
+  z-index: var(--wb-z-popover);
   overflow: hidden;
 }
 
@@ -499,7 +499,7 @@
   border: 1px solid var(--wb-color-neutral-200);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
-  z-index: 1000;
+  z-index: var(--wb-z-popover);
   display: flex;
   flex-direction: column;
   gap: 8px;
