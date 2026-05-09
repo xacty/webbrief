@@ -84,7 +84,16 @@ Refactor sistemático del sistema visual de WeBrief contra el framework Refactor
   5. Invariantes del editor preservadas (ver CONTEXT.min.md `## Editor Invariants` y `## Keep Stable`): sections panel sin flicker, document-structure intacto, handoff copy-safe, comments anchoring funcional
   6. QA visual pasa: Brief mode → Handoff (designer/dev audiences) → Preview, comments crear/editar/resolver, mode switching, page switching
 
-**Plans**: TBD — definidos en plan-phase
+**Plans**: 9 plans
+  - [ ] 04-01-PLAN.md — Step 1: Add 14 editor sub-tokens to `tokens.css` (`--wb-editor-*` / `--wb-tooltip-*` / `--wb-comment-*` / `--wb-section-*`); zero consumer change
+  - [ ] 04-02-PLAN.md — Step 2: Block-by-block migration of `ProjectEditor.module.css` (1769 lines, ~200 hex literals) → tokens; checkpoint visual QA
+  - [ ] 04-03-PLAN.md — Step 3: Migrate Nav/Toolbar/Panels/SeoRules CSS modules to tokens; checkpoint visual QA
+  - [ ] 04-04-PLAN.md — Step 4: Migrate `components/editor/*.module.css` (CommentMarginCards, CommentsUI, EditorContextMenu) to tokens; checkpoint visual QA
+  - [ ] 04-05-PLAN.md — Step 5: Delete dead `shareLinkModal*` CSS rules (deviation: live share UI is `ShareLinkPanel`, not a modal)
+  - [ ] 04-06-PLAN.md — Step 6: Migrate `exportModal` (image export, single + bulk) to shared `<Modal>`; chrome CSS removed; checkpoint visual QA
+  - [ ] 04-07-PLAN.md — Step 7: Tokenize all numeric `z-index` declarations across 8 editor CSS modules → `var(--wb-z-*)`; `EditorContextMenu` uses `calc(var(--wb-z-popover) + 1)`; checkpoint stacking QA
+  - [ ] 04-08-PLAN.md — Step 8: Migrate `BriefProjectEditor.{jsx,module.css}` colors + z-index; modal swap if any; checkpoint visual QA
+  - [ ] 04-09-PLAN.md — Step 9: Final QA matrix (16 scenarios + 16 invariants + 6 ROADMAP success criteria); automated gates + manual checkpoint
 
 **UI hint**: yes
 
@@ -112,5 +121,5 @@ Refactor sistemático del sistema visual de WeBrief contra el framework Refactor
 | 1. Design Tokens Foundation | v1.0 | 3/3 | Complete | 2026-05-08 |
 | 2. Shared UI Components | v1.0 | 5/5 | Complete | 2026-05-09 |
 | 3. Admin & Auth Migration | v1.0 | 5/5 | Complete | 2026-05-09 |
-| 4. Editor Unification | v1.0 | 0/TBD | Not started | - |
+| 4. Editor Unification | v1.0 | 0/9 | Not started | - |
 | 5. Public Pages & Verification | v1.0 | 0/TBD | Not started | - |
