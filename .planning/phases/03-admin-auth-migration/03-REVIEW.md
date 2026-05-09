@@ -29,6 +29,11 @@ findings:
   info: 3
   total: 5
 status: issues_found
+fix_status: applied
+fix_report: 03-REVIEW-FIX.md
+fix_scope: critical_warning
+warnings_remaining: 0
+info_remaining: 3
 ---
 
 # Phase 3: Code Review Report
