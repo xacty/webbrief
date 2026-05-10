@@ -154,6 +154,17 @@
   border: 1px solid var(--wb-border);
   cursor: pointer;
   z-index: var(--wb-z-base);
+  /* Hidden by default; revealed on hover/focus, while in select mode, or
+   * while this card is selected. Keeps the resting card visually clean. */
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.projectCard:hover .projectSelectLabel,
+.projectCard:focus-within .projectSelectLabel,
+.projectCardSelected .projectSelectLabel,
+.projectCardInSelectMode .projectSelectLabel {
+  opacity: 1;
 }
 
 .projectSelectCheckbox {
