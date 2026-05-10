@@ -74,7 +74,14 @@ export default function CompaniesPage() {
   const [testMode, setTestMode] = useState(false)
   const [companyFeedback, setCompanyFeedback] = useState('')
   const [creatingCompany, setCreatingCompany] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [feedbackNotice, setFeedbackNotice] = useState('')
   const canCreateCompanies = isAdmin(currentUser)
+  const canManageAnyCompany = useMemo(
+    () => isAdmin(currentUser) || companies.some((company) => company.membershipRole === 'manager'),
+    [currentUser, companies]
+  )
 
   useEffect(() => {
     let active = true
@@ -122,6 +129,108 @@ export default function CompaniesPage() {
   useEffect(() => {
     setPage(1)
   }, [query, typeFilter])
+
+  // ESC clears multiselect; do not consume ESC when no selection is active so
+  // other components (modals, kebab menus) keep their own ESC handling.
+  useEffect(() => {
+    if (selectedIds.size === 0) return undefined
+    function onKeyDown(event) {
+      if (event.key !== 'Escape') return
+      // Avoid stealing ESC from open modals (Modal primitive listens too)
+      if (modalOpen) return
+      event.stopPropagation()
+      clearSelection()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [selectedIds, modalOpen])
+
+  function showFeedback(message) {
+    setFeedbackNotice(message)
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => setFeedbackNotice(''), 4000)
+    }
+  }
+
+  function isCompanySelectable(company) {
+    if (!company || company.isInternal) return false
+    return isAdmin(currentUser) || company.membershipRole === 'manager'
+  }
+
+  function toggleSelected(companyId) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(companyId)) next.delete(companyId)
+      else next.add(companyId)
+      return next
+    })
+  }
+
+  function selectAllCompanies() {
+    setSelectedIds(new Set(filteredCompanies.filter(isCompanySelectable).map((company) => company.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  async function handleBulkArchive() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Archivar ${ids.length} empresa(s)? Podrás restaurarlas desde Archivados.`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/companies/bulk/archive', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const archived = Number(result?.archived || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextCompanies = companies.filter((company) => !selectedIds.has(company.id))
+      setCompanies(nextCompanies)
+      writeCompaniesCache(nextCompanies)
+      clearCompanyDetailCaches()
+      clearSelection()
+      setError('')
+      showFeedback(failed > 0
+        ? `${archived} empresa(s) archivada(s); ${failed} no procesada(s)`
+        : `${archived} empresa(s) archivada(s)`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron archivar las empresas')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function handleBulkTrash() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Enviar ${ids.length} empresa(s) a papelera por 30 días?`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/companies/bulk/trash', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const trashed = Number(result?.trashed || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextCompanies = companies.filter((company) => !selectedIds.has(company.id))
+      setCompanies(nextCompanies)
+      writeCompaniesCache(nextCompanies)
+      clearCompanyDetailCaches()
+      clearSelection()
+      setError('')
+      showFeedback(failed > 0
+        ? `${trashed} empresa(s) en papelera; ${failed} no procesada(s)`
+        : `${trashed} empresa(s) en papelera`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron enviar a papelera')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   const pageCount = Math.max(1, Math.ceil(filteredCompanies.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -262,6 +371,71 @@ export default function CompaniesPage() {
         )}
       </section>
 
+      {canManageAnyCompany && selectedIds.size > 0 && (
+        <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
+          <div className={styles.bulkInfo}>
+            <strong>{selectedIds.size} empresa{selectedIds.size === 1 ? '' : 's'} seleccionada{selectedIds.size === 1 ? '' : 's'}</strong>
+            {(() => {
+              const selectableTotal = filteredCompanies.filter(isCompanySelectable).length
+              return selectedIds.size < selectableTotal ? (
+                <button
+                  type="button"
+                  className={styles.bulkLink}
+                  onClick={selectAllCompanies}
+                >
+                  Seleccionar todas ({selectableTotal})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.bulkLink}
+                  onClick={clearSelection}
+                >
+                  Deseleccionar todas
+                </button>
+              )
+            })()}
+          </div>
+          <div className={styles.bulkActions}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={<Archive size={14} />}
+              onClick={handleBulkArchive}
+              disabled={bulkBusy}
+            >
+              Archivar
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              icon={<Trash2 size={14} />}
+              onClick={handleBulkTrash}
+              disabled={bulkBusy}
+            >
+              Enviar a papelera
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearSelection}
+              disabled={bulkBusy}
+            >
+              Cancelar ({selectedIds.size})
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {feedbackNotice && (
+        <div className={styles.feedbackNotice} role="status">
+          {feedbackNotice}
+        </div>
+      )}
+
       {loading && <p className={styles.info}>Cargando empresas...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
       {!loading && !error && paginatedCompanies.length === 0 && (
@@ -277,9 +451,35 @@ export default function CompaniesPage() {
         <div className={styles.cardsGrid}>
           {paginatedCompanies.map((company) => {
             const badge = companyTypeBadge(company)
+            const selectable = isCompanySelectable(company)
+            const isSelected = selectedIds.has(company.id)
+            const cardClassName = isSelected
+              ? `${styles.companyCard} ${styles.companyCardSelected}`
+              : styles.companyCard
             return (
-              <Card key={company.id} padding="md" shadow="sm" radius="md" className={styles.companyCard}>
-                <div className={styles.cardHeader}>
+              <Card
+                key={company.id}
+                padding="md"
+                shadow="sm"
+                radius="md"
+                className={cardClassName}
+                aria-selected={isSelected ? 'true' : undefined}
+              >
+                {selectable && (
+                  <label
+                    className={styles.companySelectLabel}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      className={styles.companySelectCheckbox}
+                      checked={isSelected}
+                      onChange={() => toggleSelected(company.id)}
+                      aria-label={isSelected ? `Deseleccionar ${company.name}` : `Seleccionar ${company.name}`}
+                    />
+                  </label>
+                )}
+                <div className={selectable ? `${styles.cardHeader} ${styles.cardHeaderWithSelect}` : styles.cardHeader}>
                   <h3 className={styles.companyName}>{company.name}</h3>
                   <Badge variant={badge.variant} size="sm">{badge.label}</Badge>
                 </div>
