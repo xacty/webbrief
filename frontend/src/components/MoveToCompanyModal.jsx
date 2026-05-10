@@ -100,7 +100,7 @@ export default function MoveToCompanyModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Mover a otra empresa"
+      title="Mover de empresa"
       size="md"
       ariaDescribedBy="move-modal-description"
       footer={
