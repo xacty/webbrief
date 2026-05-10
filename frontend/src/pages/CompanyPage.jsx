@@ -452,6 +452,7 @@ export default function CompanyPage() {
 
   function handleProjectKeyDown(event, projectId) {
     if (event.target.closest?.('button')) return
+    if (event.target.closest?.('input, label, [role="menu"]')) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       openProject(projectId)
