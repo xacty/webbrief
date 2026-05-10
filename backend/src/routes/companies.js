@@ -542,6 +542,91 @@ router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Bulk trash — POST /api/companies/bulk/trash { ids: string[] }
+// Same pattern as /bulk/archive: per-id permission, partial 207, plus 30-day
+// retention scheduling. Declared before /:id/trash for the same reason.
+// ---------------------------------------------------------------------------
+router.post('/bulk/trash', rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de empresas' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 empresas por operación' })
+
+    let trashed = 0
+    const failed = []
+
+    for (const companyId of ids) {
+      try {
+        if (!canManageCompanyLifecycle(req.currentUser, companyId)) {
+          failed.push({ id: companyId, reason: 'Sin permisos' })
+          continue
+        }
+
+        const { data: company, error: lookupError } = await supabaseAdmin
+          .from('companies')
+          .select('id, slug, archived_at, trashed_at')
+          .eq('id', companyId)
+          .maybeSingle()
+
+        if (lookupError) {
+          failed.push({ id: companyId, reason: lookupError.message || 'Error de búsqueda' })
+          continue
+        }
+        if (!company) {
+          failed.push({ id: companyId, reason: 'Empresa no encontrada' })
+          continue
+        }
+        if (company.slug === 'webrief') {
+          failed.push({ id: companyId, reason: 'La empresa interna WeBrief no se puede enviar a papelera' })
+          continue
+        }
+        if (company.trashed_at) {
+          failed.push({ id: companyId, reason: 'La empresa ya está en papelera' })
+          continue
+        }
+
+        const trashedAt = new Date()
+        const deleteAfter = new Date(trashedAt.getTime() + 30 * 24 * 60 * 60 * 1000)
+        const { error } = await supabaseAdmin
+          .from('companies')
+          .update({
+            trashed_at: trashedAt.toISOString(),
+            delete_after: deleteAfter.toISOString(),
+            deleted_by: req.currentUser.id,
+          })
+          .eq('id', company.id)
+
+        if (error) {
+          failed.push({ id: companyId, reason: error.message || 'Error al enviar a papelera' })
+          continue
+        }
+
+        await logSecurityEvent(req, {
+          action: 'company_trashed',
+          resourceType: 'company',
+          resourceId: company.id,
+          companyId: company.id,
+          metadata: {
+            bulk: true,
+            wasArchived: Boolean(company.archived_at),
+            deleteAfter: deleteAfter.toISOString(),
+          },
+        })
+
+        trashed += 1
+      } catch (perItemError) {
+        failed.push({ id: companyId, reason: perItemError?.message || 'Error inesperado' })
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : (trashed === 0 ? 400 : 207)
+    return res.status(status).json({ trashed, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo enviar a papelera' })
+  }
+})
+
 router.post('/:id/trash', rateLimiters.sensitiveAction, async (req, res) => {
   if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
     return res.status(403).json({ error: 'Tu rol no puede enviar esta empresa a papelera' })
