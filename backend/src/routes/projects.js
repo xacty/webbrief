@@ -2656,6 +2656,84 @@ router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Bulk trash — POST /api/projects/bulk/trash { ids: string[] }
+// Same pattern as /bulk/archive: per-id permission check, partial 207, plus
+// retention scheduling + activity log per project.
+// ---------------------------------------------------------------------------
+router.post('/bulk/trash', rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de proyectos' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 proyectos por operación' })
+
+    let trashed = 0
+    const failed = []
+
+    for (const projectId of ids) {
+      try {
+        const project = await getProjectById(projectId, req.currentUser)
+        if (!project) {
+          failed.push({ id: projectId, reason: 'Proyecto no encontrado' })
+          continue
+        }
+        if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
+          failed.push({ id: projectId, reason: 'Sin permisos' })
+          continue
+        }
+
+        const trashedAt = new Date()
+        const retentionDays = project.project_type === 'brief' ? 15 : 30
+        const deleteAfter = new Date(trashedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000)
+        const { error } = await supabaseAdmin
+          .from('projects')
+          .update({
+            trashed_at: trashedAt.toISOString(),
+            delete_after: deleteAfter.toISOString(),
+            deleted_by: req.currentUser.id,
+          })
+          .eq('id', project.id)
+
+        if (error) {
+          failed.push({ id: projectId, reason: error.message || 'Error al enviar a papelera' })
+          continue
+        }
+
+        await scheduleLifecycleNotifications(project.id, project.project_type, trashedAt.toISOString())
+
+        await logProjectActivity({
+          projectId: project.id,
+          currentUser: req.currentUser,
+          eventType: 'project_trashed',
+          subjectType: 'project',
+          subjectId: project.id,
+          title: 'Proyecto enviado a papelera',
+          description: `Retención de ${retentionDays} días`,
+          metadata: { bulk: true },
+        })
+
+        await logSecurityEvent(req, {
+          action: 'project_trashed',
+          resourceType: 'project',
+          resourceId: project.id,
+          companyId: project.company_id,
+          projectId: project.id,
+          metadata: { bulk: true, retentionDays, deleteAfter: deleteAfter.toISOString() },
+        })
+
+        trashed += 1
+      } catch (perItemError) {
+        failed.push({ id: projectId, reason: perItemError?.message || 'Error inesperado' })
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : (trashed === 0 ? 400 : 207)
+    return res.status(status).json({ trashed, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo enviar a papelera' })
+  }
+})
+
 async function scheduleLifecycleNotifications(projectId, projectType, trashedAt) {
   const { error } = await supabaseAdmin.rpc('schedule_project_lifecycle_notifications', {
     p_project_id: projectId,
