@@ -17,6 +17,7 @@ import {
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
+import MoveToCompanyModal from '../components/MoveToCompanyModal'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -299,6 +300,25 @@ export default function CompanyPage() {
   function openMoveModal(ids) {
     if (!Array.isArray(ids) || ids.length === 0) return
     setMoveModalIds(ids)
+  }
+
+  function closeMoveModal() {
+    setMoveModalIds(null)
+  }
+
+  function handleMoveSuccess({ moved, failed, targetCompany }) {
+    const movedIds = new Set(Array.isArray(moveModalIds) ? moveModalIds : [])
+    const nextProjects = projects.filter((project) => !movedIds.has(project.id))
+    const nextCompany = company ? { ...company, projectCount: nextProjects.length } : company
+    setProjects(nextProjects)
+    setCompany(nextCompany)
+    clearCompaniesCache()
+    if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects: nextProjects, members })
+    if (selectedIds.size > 0) clearSelection()
+
+    const dest = targetCompany?.name ? `Movidos a ${targetCompany.name}` : `${moved} proyecto(s) movidos`
+    const failedCount = Array.isArray(failed) ? failed.length : 0
+    showFeedback(failedCount > 0 ? `${dest} (${failedCount} no procesado(s))` : dest)
   }
 
   function showFeedback(message) {
@@ -832,6 +852,15 @@ export default function CompanyPage() {
           </form>
         )}
       </Modal>
+
+      <MoveToCompanyModal
+        open={Boolean(moveModalIds && moveModalIds.length > 0)}
+        ids={moveModalIds || []}
+        currentCompanyId={companyId}
+        isAdmin={isAdminUser}
+        onClose={closeMoveModal}
+        onSuccess={handleMoveSuccess}
+      />
     </div>
   )
 }
