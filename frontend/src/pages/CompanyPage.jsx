@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Copy, MoveRight, Pencil, Trash2, Plus } from 'lucide-react'
+import { Archive, ArrowRight, Building2, Copy, Pencil, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -559,11 +559,11 @@ export default function CompanyPage() {
                       type="button"
                       variant="secondary"
                       size="sm"
-                      icon={<MoveRight size={14} />}
+                      icon={<Building2 size={14} />}
                       onClick={() => openMoveModal(Array.from(selectedIds))}
                       disabled={bulkBusy}
                     >
-                      Mover a empresa
+                      Mover de empresa
                     </Button>
                     <Button
                       type="button"
@@ -605,13 +605,14 @@ export default function CompanyPage() {
                 <div className={styles.projectGrid}>
                   {projects.map((project) => {
                     const isSelected = selectedIds.has(project.id)
-                    const cardClassName = isSelected
-                      ? `${styles.projectCard} ${styles.projectCardSelected}`
-                      : styles.projectCard
+                    const inSelectMode = selectedIds.size > 0
+                    const cardClassNames = [styles.projectCard]
+                    if (isSelected) cardClassNames.push(styles.projectCardSelected)
+                    if (inSelectMode) cardClassNames.push(styles.projectCardInSelectMode)
                     return (
                     <article
                       key={project.id}
-                      className={cardClassName}
+                      className={cardClassNames.join(' ')}
                       role="button"
                       tabIndex={0}
                       aria-selected={isSelected ? 'true' : undefined}
@@ -632,6 +633,36 @@ export default function CompanyPage() {
                           />
                         </label>
                       )}
+
+                      {canManageProjects && (
+                        <div
+                          className={styles.projectKebab}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <KebabMenu
+                            label={`Más acciones de ${project.name}`}
+                            items={[
+                              {
+                                label: 'Mover de empresa',
+                                icon: <Building2 size={14} />,
+                                onClick: () => openMoveModal([project.id]),
+                              },
+                              {
+                                label: 'Archivar',
+                                icon: <Archive size={14} />,
+                                onClick: () => handleProjectArchive(project.id),
+                              },
+                              {
+                                label: 'Enviar a papelera',
+                                icon: <Trash2 size={14} />,
+                                destructive: true,
+                                onClick: () => handleProjectTrash(project.id),
+                              },
+                            ]}
+                          />
+                        </div>
+                      )}
+
                       <div className={styles.projectTop}>
                         <div>
                           <h3 className={styles.projectName}>{project.name}</h3>
@@ -652,41 +683,20 @@ export default function CompanyPage() {
 
                       <div className={styles.projectActions}>
                         {canManageProjects && (
-                          <>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              icon={<Copy size={14} />}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectDuplicate(project.id)
-                              }}
-                              title="Duplicar proyecto"
-                              aria-label={`Duplicar ${project.name}`}
-                            />
-                            <KebabMenu
-                              label={`Más acciones de ${project.name}`}
-                              items={[
-                                {
-                                  label: 'Mover a otra empresa',
-                                  icon: <MoveRight size={14} />,
-                                  onClick: () => openMoveModal([project.id]),
-                                },
-                                {
-                                  label: 'Archivar',
-                                  icon: <Archive size={14} />,
-                                  onClick: () => handleProjectArchive(project.id),
-                                },
-                                {
-                                  label: 'Enviar a papelera',
-                                  icon: <Trash2 size={14} />,
-                                  destructive: true,
-                                  onClick: () => handleProjectTrash(project.id),
-                                },
-                              ]}
-                            />
-                          </>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            icon={<Copy size={14} />}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              handleProjectDuplicate(project.id)
+                            }}
+                            title="Duplicar proyecto"
+                            aria-label={`Duplicar ${project.name}`}
+                          >
+                            Duplicar
+                          </Button>
                         )}
                         <Button
                           type="button"
@@ -698,7 +708,6 @@ export default function CompanyPage() {
                             event.stopPropagation()
                             openProject(project.id)
                           }}
-                          className={styles.openProjectButton}
                         >
                           Abrir
                         </Button>
