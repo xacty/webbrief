@@ -2734,6 +2734,94 @@ router.post('/bulk/trash', rateLimiters.sensitiveAction, async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Bulk move-company — POST /api/projects/bulk/move-company
+// body: { ids: string[], target_company_id: string }
+// Per id requires manager/editor (or admin) on BOTH source AND target company.
+// Logs `project_moved` with metadata { from_company_id, to_company_id }.
+// ---------------------------------------------------------------------------
+router.post('/bulk/move-company', rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    const targetCompanyId = req.body?.target_company_id ? String(req.body.target_company_id) : ''
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de proyectos' })
+    if (!targetCompanyId) return res.status(400).json({ error: 'Falta empresa destino' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 proyectos por operación' })
+
+    if (!canManageProjectLifecycle(req.currentUser, targetCompanyId)) {
+      return res.status(403).json({ error: 'Sin permisos sobre la empresa destino' })
+    }
+
+    let moved = 0
+    const failed = []
+
+    for (const projectId of ids) {
+      try {
+        const project = await getProjectById(projectId, req.currentUser)
+        if (!project) {
+          failed.push({ id: projectId, reason: 'Proyecto no encontrado' })
+          continue
+        }
+        if (project.company_id === targetCompanyId) {
+          failed.push({ id: projectId, reason: 'Ya pertenece a esa empresa' })
+          continue
+        }
+        if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
+          failed.push({ id: projectId, reason: 'Sin permisos en empresa origen' })
+          continue
+        }
+
+        const fromCompanyId = project.company_id
+        const { error } = await supabaseAdmin
+          .from('projects')
+          .update({ company_id: targetCompanyId })
+          .eq('id', project.id)
+
+        if (error) {
+          failed.push({ id: projectId, reason: error.message || 'Error al mover' })
+          continue
+        }
+
+        await logProjectActivity({
+          projectId: project.id,
+          currentUser: req.currentUser,
+          eventType: 'project_moved',
+          subjectType: 'project',
+          subjectId: project.id,
+          title: 'Proyecto movido a otra empresa',
+          metadata: {
+            bulk: true,
+            from_company_id: fromCompanyId,
+            to_company_id: targetCompanyId,
+          },
+        })
+
+        await logSecurityEvent(req, {
+          action: 'project_moved',
+          resourceType: 'project',
+          resourceId: project.id,
+          companyId: targetCompanyId,
+          projectId: project.id,
+          metadata: {
+            bulk: true,
+            from_company_id: fromCompanyId,
+            to_company_id: targetCompanyId,
+          },
+        })
+
+        moved += 1
+      } catch (perItemError) {
+        failed.push({ id: projectId, reason: perItemError?.message || 'Error inesperado' })
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : (moved === 0 ? 400 : 207)
+    return res.status(status).json({ moved, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo mover los proyectos' })
+  }
+})
+
 async function scheduleLifecycleNotifications(projectId, projectType, trashedAt) {
   const { error } = await supabaseAdmin.rpc('schedule_project_lifecycle_notifications', {
     p_project_id: projectId,
