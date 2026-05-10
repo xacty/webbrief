@@ -112,6 +112,15 @@
   accent-color: var(--wb-color-primary-500);
 }
 
+/* Kebab is always visible (per-card management entry point); position it
+ * at the top-right opposite the checkbox. */
+.companyKebab {
+  position: absolute;
+  top: var(--wb-space-3);
+  right: var(--wb-space-3);
+  z-index: var(--wb-z-base);
+}
+
 .bulkToolbar {
   position: sticky;
   top: var(--wb-space-3);
@@ -171,16 +180,15 @@
 
 .cardHeader {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: flex-start;
-  gap: var(--wb-space-3);
+  gap: var(--wb-space-2);
   min-width: 0;
-}
-
-/* Reserve space at the top-left for the multiselect checkbox so the company
- * name does not overlap it. Applied only when the card is selectable. */
-.cardHeaderWithSelect {
+  /* Reserve room for the absolute checkbox (left) and kebab (right). The
+   * badge is positioned below the name (sub-label) instead of fighting the
+   * kebab in the top-right corner. */
   padding-left: var(--wb-space-7);
+  padding-right: var(--wb-space-7);
 }
 
 .companyName {
@@ -344,8 +352,7 @@
     align-items: stretch;
   }
 
-  .sectionHeader,
-  .cardHeader {
+  .sectionHeader {
     flex-direction: column;
     align-items: stretch;
   }

@@ -452,17 +452,19 @@ export default function CompaniesPage() {
           {paginatedCompanies.map((company) => {
             const badge = companyTypeBadge(company)
             const selectable = isCompanySelectable(company)
+            const showKebab = (isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal
             const isSelected = selectedIds.has(company.id)
-            const cardClassName = isSelected
-              ? `${styles.companyCard} ${styles.companyCardSelected}`
-              : styles.companyCard
+            const inSelectMode = selectedIds.size > 0
+            const cardClassNames = [styles.companyCard]
+            if (isSelected) cardClassNames.push(styles.companyCardSelected)
+            if (inSelectMode) cardClassNames.push(styles.companyCardInSelectMode)
             return (
               <Card
                 key={company.id}
                 padding="md"
                 shadow="sm"
                 radius="md"
-                className={cardClassName}
+                className={cardClassNames.join(' ')}
                 aria-selected={isSelected ? 'true' : undefined}
               >
                 {selectable && (
@@ -479,7 +481,32 @@ export default function CompaniesPage() {
                     />
                   </label>
                 )}
-                <div className={selectable ? `${styles.cardHeader} ${styles.cardHeaderWithSelect}` : styles.cardHeader}>
+
+                {showKebab && (
+                  <div
+                    className={styles.companyKebab}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <KebabMenu
+                      label={`Más acciones de ${company.name}`}
+                      items={[
+                        {
+                          label: 'Archivar',
+                          icon: <Archive size={14} />,
+                          onClick: () => handleCompanyArchive(company.id),
+                        },
+                        {
+                          label: 'Enviar a papelera',
+                          icon: <Trash2 size={14} />,
+                          destructive: true,
+                          onClick: () => handleCompanyTrash(company.id),
+                        },
+                      ]}
+                    />
+                  </div>
+                )}
+
+                <div className={styles.cardHeader}>
                   <h3 className={styles.companyName}>{company.name}</h3>
                   <Badge variant={badge.variant} size="sm">{badge.label}</Badge>
                 </div>
@@ -501,24 +528,6 @@ export default function CompaniesPage() {
                 </p>
 
                 <div className={styles.cardActions}>
-                  {(isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal && (
-                    <KebabMenu
-                      label={`Más acciones de ${company.name}`}
-                      items={[
-                        {
-                          label: 'Archivar',
-                          icon: <Archive size={14} />,
-                          onClick: () => handleCompanyArchive(company.id),
-                        },
-                        {
-                          label: 'Enviar a papelera',
-                          icon: <Trash2 size={14} />,
-                          destructive: true,
-                          onClick: () => handleCompanyTrash(company.id),
-                        },
-                      ]}
-                    />
-                  )}
                   <Button
                     type="button"
                     variant="primary"
