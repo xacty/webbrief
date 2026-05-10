@@ -2546,6 +2546,77 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
   }
 })
 
+// ---------------------------------------------------------------------------
+// Bulk archive — POST /api/projects/bulk/archive { ids: string[] }
+// Must be declared before `/:id/archive` so Express does not interpret
+// `bulk` as an `:id`. Permission validation is per-project (manager/editor
+// of that company OR platform admin). Partial success returns 207
+// Multi-Status with `archived` count and a `failed` array.
+// ---------------------------------------------------------------------------
+router.post('/bulk/archive', rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de proyectos' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 proyectos por operación' })
+
+    let archived = 0
+    const failed = []
+    const timestamp = new Date().toISOString()
+
+    for (const projectId of ids) {
+      try {
+        const project = await getProjectById(projectId, req.currentUser)
+        if (!project) {
+          failed.push({ id: projectId, reason: 'Proyecto no encontrado' })
+          continue
+        }
+        if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
+          failed.push({ id: projectId, reason: 'Sin permisos' })
+          continue
+        }
+
+        const { error } = await supabaseAdmin
+          .from('projects')
+          .update({ archived_at: timestamp, archived_by: req.currentUser.id })
+          .eq('id', project.id)
+
+        if (error) {
+          failed.push({ id: projectId, reason: error.message || 'Error al archivar' })
+          continue
+        }
+
+        await logProjectActivity({
+          projectId: project.id,
+          currentUser: req.currentUser,
+          eventType: 'project_archived',
+          subjectType: 'project',
+          subjectId: project.id,
+          title: 'Proyecto archivado',
+          metadata: { bulk: true },
+        })
+
+        await logSecurityEvent(req, {
+          action: 'project_archived',
+          resourceType: 'project',
+          resourceId: project.id,
+          companyId: project.company_id,
+          projectId: project.id,
+          metadata: { bulk: true },
+        })
+
+        archived += 1
+      } catch (perItemError) {
+        failed.push({ id: projectId, reason: perItemError?.message || 'Error inesperado' })
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : (archived === 0 ? 400 : 207)
+    return res.status(status).json({ archived, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo archivar los proyectos' })
+  }
+})
+
 router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
