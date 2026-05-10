@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin } from '../lib/roleCapabilities'
-import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
+import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
 import styles from './CompaniesPage.module.css'
 
 const PAGE_SIZE = 8
@@ -182,8 +182,7 @@ export default function CompaniesPage() {
     navigate(`/companies/${companyId}`)
   }
 
-  async function handleCompanyArchive(event, companyId) {
-    event.stopPropagation()
+  async function handleCompanyArchive(companyId) {
     if (!window.confirm('¿Archivar esta empresa? Podrás restaurarla desde Archivados.')) return
 
     try {
@@ -198,8 +197,7 @@ export default function CompaniesPage() {
     }
   }
 
-  async function handleCompanyTrash(event, companyId) {
-    event.stopPropagation()
+  async function handleCompanyTrash(companyId) {
     if (!window.confirm('¿Enviar esta empresa a papelera por 30 días?')) return
 
     try {
@@ -304,26 +302,22 @@ export default function CompaniesPage() {
 
                 <div className={styles.cardActions}>
                   {(isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal && (
-                    <>
-                      <Button
-                        type="button"
-                        variant="danger"
-                        size="md"
-                        icon={<Trash2 size={16} />}
-                        aria-label={`Enviar ${company.name} a papelera`}
-                        title="Papelera"
-                        onClick={(event) => handleCompanyTrash(event, company.id)}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="md"
-                        icon={<Archive size={16} />}
-                        aria-label={`Archivar ${company.name}`}
-                        title="Archivar"
-                        onClick={(event) => handleCompanyArchive(event, company.id)}
-                      />
-                    </>
+                    <KebabMenu
+                      label={`Más acciones de ${company.name}`}
+                      items={[
+                        {
+                          label: 'Archivar',
+                          icon: <Archive size={14} />,
+                          onClick: () => handleCompanyArchive(company.id),
+                        },
+                        {
+                          label: 'Enviar a papelera',
+                          icon: <Trash2 size={14} />,
+                          destructive: true,
+                          onClick: () => handleCompanyTrash(company.id),
+                        },
+                      ]}
+                    />
                   )}
                   <Button
                     type="button"
