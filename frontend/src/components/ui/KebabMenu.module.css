@@ -1,0 +1,122 @@
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Trigger — ghost icon button matching shared Button ghost variant. */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-color-neutral-700);
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  -webkit-appearance: none;
+  font-family: var(--wb-font-sans);
+}
+
+.trigger:not(:disabled):hover {
+  background: var(--wb-color-neutral-100);
+}
+
+.trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trigger_sm {
+  width: var(--wb-space-8);   /* 32 px */
+  height: var(--wb-space-8);
+  padding: 0;
+}
+
+.trigger_md {
+  width: calc(var(--wb-space-8) + var(--wb-space-2)); /* 40 px */
+  height: calc(var(--wb-space-8) + var(--wb-space-2));
+  padding: 0;
+}
+
+/* Dropdown menu */
+.menu {
+  position: absolute;
+  top: calc(100% + var(--wb-space-1));
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--wb-space-1);
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-md);
+  z-index: var(--wb-z-dropdown);
+}
+
+.align_end {
+  right: 0;
+}
+
+.align_start {
+  left: 0;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-2) var(--wb-space-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  color: var(--wb-text);
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-sm);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.item:not(:disabled):hover {
+  background: var(--wb-color-neutral-100);
+}
+
+.item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.item_destructive {
+  color: var(--wb-color-danger-600);
+}
+
+.item_destructive:not(:disabled):hover {
+  background: var(--wb-color-danger-50);
+  color: var(--wb-color-danger-700);
+}
+
+.item_disabled,
+.item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.itemIcon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  color: inherit;
+}
+
+.itemLabel {
+  display: inline-flex;
+  align-items: center;
+}
