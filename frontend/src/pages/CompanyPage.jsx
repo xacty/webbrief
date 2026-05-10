@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Copy, Pencil, Trash2, Plus } from 'lucide-react'
+import { Archive, ArrowRight, Copy, MoveRight, Pencil, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -16,7 +16,7 @@ import {
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
-import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
+import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -99,6 +99,7 @@ export default function CompanyPage() {
   const [editForm, setEditForm] = useState({ fullName: '', role: 'editor' })
   const [editError, setEditError] = useState('')
   const [editBusy, setEditBusy] = useState(false)
+  const [moveModalIds, setMoveModalIds] = useState(null)
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
@@ -275,6 +276,11 @@ export default function CompanyPage() {
     navigate(`/project/${projectId}/editor`)
   }
 
+  function openMoveModal(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return
+    setMoveModalIds(ids)
+  }
+
   async function handleProjectDuplicate(projectId) {
     try {
       const data = await apiFetch(`/api/projects/${projectId}/duplicate`, { method: 'POST' })
@@ -434,30 +440,6 @@ export default function CompanyPage() {
                           <>
                             <Button
                               type="button"
-                              variant="danger"
-                              size="sm"
-                              icon={<Trash2 size={14} />}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectTrash(project.id)
-                              }}
-                              title="Enviar a papelera"
-                              aria-label={`Enviar ${project.name} a papelera`}
-                            />
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              icon={<Archive size={14} />}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectArchive(project.id)
-                              }}
-                              title="Archivar proyecto"
-                              aria-label={`Archivar ${project.name}`}
-                            />
-                            <Button
-                              type="button"
                               variant="secondary"
                               size="sm"
                               icon={<Copy size={14} />}
@@ -467,6 +449,27 @@ export default function CompanyPage() {
                               }}
                               title="Duplicar proyecto"
                               aria-label={`Duplicar ${project.name}`}
+                            />
+                            <KebabMenu
+                              label={`Más acciones de ${project.name}`}
+                              items={[
+                                {
+                                  label: 'Mover a otra empresa',
+                                  icon: <MoveRight size={14} />,
+                                  onClick: () => openMoveModal([project.id]),
+                                },
+                                {
+                                  label: 'Archivar',
+                                  icon: <Archive size={14} />,
+                                  onClick: () => handleProjectArchive(project.id),
+                                },
+                                {
+                                  label: 'Enviar a papelera',
+                                  icon: <Trash2 size={14} />,
+                                  destructive: true,
+                                  onClick: () => handleProjectTrash(project.id),
+                                },
+                              ]}
                             />
                           </>
                         )}
