@@ -1,5 +1,4 @@
 .root {
-  position: relative;
   display: inline-flex;
 }
 
@@ -44,10 +43,12 @@
   padding: 0;
 }
 
-/* Dropdown menu */
+/* Dropdown menu — rendered via portal in document.body so it escapes any
+ * ancestor stacking context (e.g. cards that use `transform` on hover).
+ * Position is computed in JS from the trigger rect; `top`/`left`/`right`
+ * are applied as inline styles. */
 .menu {
-  position: absolute;
-  top: calc(100% + var(--wb-space-1));
+  position: fixed;
   min-width: 200px;
   display: flex;
   flex-direction: column;
@@ -56,15 +57,7 @@
   border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-2);
   box-shadow: var(--wb-shadow-md);
-  z-index: var(--wb-z-dropdown);
-}
-
-.align_end {
-  right: 0;
-}
-
-.align_start {
-  left: 0;
+  z-index: var(--wb-z-popover);
 }
 
 .item {

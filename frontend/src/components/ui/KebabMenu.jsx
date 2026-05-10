@@ -1,4 +1,5 @@
-import React, { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from 'react'
+import React, { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MoreVertical } from 'lucide-react'
 import cn from './cn.js'
 import styles from './KebabMenu.module.css'
@@ -7,8 +8,11 @@ import styles from './KebabMenu.module.css'
  * KebabMenu — shared dropdown of actions triggered by a vertical "kebab" icon button.
  *
  * Trigger: ghost icon button (size sm = 32px) with MoreVertical icon (14 px).
- * Dropdown: opens on click, aligned to the right of the trigger; closes on
- * click-outside, ESC, or after invoking an item action.
+ * Dropdown: portal to document.body so it escapes any ancestor stacking context
+ * (e.g. cards with `transform: translateY(-2px)` on hover that otherwise clip
+ * the menu under adjacent siblings). Position is computed from the trigger's
+ * `getBoundingClientRect()` and recomputed on `scroll` (capture) + `resize`
+ * while the menu is open.
  *
  * Items API:
  *   { label, icon, onClick, destructive?, disabled? }
@@ -33,7 +37,7 @@ const KebabMenu = forwardRef(function KebabMenu(
   ref
 ) {
   const [open, setOpen] = useState(false)
-  const containerRef = useRef(null)
+  const [position, setPosition] = useState(null)
   const triggerRef = useRef(null)
   const menuRef = useRef(null)
   const menuId = useId()
@@ -53,14 +57,51 @@ const KebabMenu = forwardRef(function KebabMenu(
     if (typeof onOpenChange === 'function') onOpenChange(open)
   }, [open, onOpenChange])
 
-  // Click-outside + ESC
+  // Compute fixed-position coordinates for the portal-rendered dropdown
+  // based on the trigger button's viewport rect. `align="end"` aligns the
+  // menu's right edge with the trigger's right edge; `align="start"` aligns
+  // the left edges. Returns null if the trigger is not yet mounted.
+  const computePosition = useCallback(() => {
+    const node = triggerRef.current
+    if (!node) return null
+    const rect = node.getBoundingClientRect()
+    return {
+      top: rect.bottom + 4, // var(--wb-space-1) ~ 4px gap
+      left: rect.left,
+      right: typeof window !== 'undefined' ? window.innerWidth - rect.right : 0,
+      width: rect.width,
+    }
+  }, [])
+
+  // Sync position when opening, then on scroll (any ancestor) + resize.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null)
+      return undefined
+    }
+    function update() {
+      const next = computePosition()
+      if (next) setPosition(next)
+    }
+    update()
+    // Capture-phase scroll catches scrolls in any ancestor scrollable.
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [open, computePosition])
+
+  // Click-outside (excluding trigger and menu) + ESC.
   useEffect(() => {
     if (!open) return undefined
 
     function onDocMouseDown(event) {
-      const root = containerRef.current
-      if (!root) return
-      if (root.contains(event.target)) return
+      const trigger = triggerRef.current
+      const menu = menuRef.current
+      if (trigger && trigger.contains(event.target)) return
+      if (menu && menu.contains(event.target)) return
       setOpen(false)
     }
 
@@ -95,9 +136,16 @@ const KebabMenu = forwardRef(function KebabMenu(
     if (typeof item?.onClick === 'function') item.onClick(event)
   }
 
+  // Stop propagation at the trigger wrapper so parent click handlers
+  // (e.g. card-as-button openProject) do not fire.
+  const menuStyle = position
+    ? align === 'end'
+      ? { top: position.top, right: position.right }
+      : { top: position.top, left: position.left }
+    : null
+
   return (
     <div
-      ref={containerRef}
       className={cn(styles.root, className)}
       onClick={(e) => e.stopPropagation()}
     >
@@ -116,13 +164,16 @@ const KebabMenu = forwardRef(function KebabMenu(
         <MoreVertical size={14} aria-hidden="true" />
       </button>
 
-      {open && (
+      {open && menuStyle && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
           id={menuId}
           role="menu"
           aria-label={label}
-          className={cn(styles.menu, styles[`align_${align}`], menuClassName)}
+          className={cn(styles.menu, menuClassName)}
+          style={menuStyle}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           {items.map((item, index) => {
             if (!item) return null
@@ -149,7 +200,8 @@ const KebabMenu = forwardRef(function KebabMenu(
               </button>
             )
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
