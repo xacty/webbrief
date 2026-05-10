@@ -100,6 +100,9 @@ export default function CompanyPage() {
   const [editError, setEditError] = useState('')
   const [editBusy, setEditBusy] = useState(false)
   const [moveModalIds, setMoveModalIds] = useState(null)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [feedbackNotice, setFeedbackNotice] = useState('')
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
@@ -170,6 +173,23 @@ export default function CompanyPage() {
     setInviteFeedback('')
     setInviteRole((current) => (inviteRoles.includes(current) ? current : inviteRoles[0] || 'editor'))
   }, [currentUser, companyId, inviteRoles])
+
+  // ESC clears multiselect; do not consume ESC when no selection is active
+  // so other components (modals, kebab menus) keep their own ESC handling.
+  useEffect(() => {
+    if (selectedIds.size === 0) return undefined
+    function onKeyDown(event) {
+      if (event.key !== 'Escape') return
+      // Avoid stealing ESC from open modals (Modal primitive listens too)
+      if (moveModalIds || editingMember) return
+      event.stopPropagation()
+      clearSelection()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [selectedIds, moveModalIds, editingMember])
 
   async function handleInvite(e) {
     e.preventDefault()
@@ -279,6 +299,88 @@ export default function CompanyPage() {
   function openMoveModal(ids) {
     if (!Array.isArray(ids) || ids.length === 0) return
     setMoveModalIds(ids)
+  }
+
+  function showFeedback(message) {
+    setFeedbackNotice(message)
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => setFeedbackNotice(''), 4000)
+    }
+  }
+
+  function toggleSelected(projectId) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+  }
+
+  function selectAllProjects() {
+    setSelectedIds(new Set(projects.map((project) => project.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  async function handleBulkArchive() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Archivar ${ids.length} proyecto(s)? Podrás restaurarlos desde Archivados.`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/projects/bulk/archive', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const archived = Number(result?.archived || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextProjects = projects.filter((project) => !selectedIds.has(project.id))
+      const nextCompany = company ? { ...company, projectCount: nextProjects.length } : company
+      setProjects(nextProjects)
+      setCompany(nextCompany)
+      clearCompaniesCache()
+      if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects: nextProjects, members })
+      clearSelection()
+      showFeedback(failed > 0
+        ? `${archived} proyecto(s) archivado(s); ${failed} no procesado(s)`
+        : `${archived} proyecto(s) archivado(s)`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron archivar los proyectos')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function handleBulkTrash() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Enviar ${ids.length} proyecto(s) a papelera?`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/projects/bulk/trash', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const trashed = Number(result?.trashed || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextProjects = projects.filter((project) => !selectedIds.has(project.id))
+      const nextCompany = company ? { ...company, projectCount: nextProjects.length } : company
+      setProjects(nextProjects)
+      setCompany(nextCompany)
+      clearCompaniesCache()
+      if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects: nextProjects, members })
+      clearSelection()
+      showFeedback(failed > 0
+        ? `${trashed} proyecto(s) enviados a papelera; ${failed} no procesado(s)`
+        : `${trashed} proyecto(s) enviados a papelera`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron enviar a papelera')
+    } finally {
+      setBulkBusy(false)
+    }
   }
 
   async function handleProjectDuplicate(projectId) {
@@ -399,6 +501,78 @@ export default function CompanyPage() {
                 )}
               </div>
 
+              {canManageProjects && selectedIds.size > 0 && (
+                <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
+                  <div className={styles.bulkInfo}>
+                    <strong>{selectedIds.size} proyecto{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}</strong>
+                    {selectedIds.size < projects.length ? (
+                      <button
+                        type="button"
+                        className={styles.bulkLink}
+                        onClick={selectAllProjects}
+                      >
+                        Seleccionar todos ({projects.length})
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.bulkLink}
+                        onClick={clearSelection}
+                      >
+                        Deseleccionar todos
+                      </button>
+                    )}
+                  </div>
+                  <div className={styles.bulkActions}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={<Archive size={14} />}
+                      onClick={handleBulkArchive}
+                      disabled={bulkBusy}
+                    >
+                      Archivar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={<MoveRight size={14} />}
+                      onClick={() => openMoveModal(Array.from(selectedIds))}
+                      disabled={bulkBusy}
+                    >
+                      Mover a empresa
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 size={14} />}
+                      onClick={handleBulkTrash}
+                      disabled={bulkBusy}
+                    >
+                      Enviar a papelera
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearSelection}
+                      disabled={bulkBusy}
+                    >
+                      Cancelar ({selectedIds.size})
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {feedbackNotice && (
+                <div className={styles.feedbackNotice} role="status">
+                  {feedbackNotice}
+                </div>
+              )}
+
               {projects.length === 0 ? (
                 <div className={styles.emptyState}>
                   <p className={styles.emptyTitle}>Todavía no hay proyectos en esta empresa.</p>
@@ -408,15 +582,35 @@ export default function CompanyPage() {
                 </div>
               ) : (
                 <div className={styles.projectGrid}>
-                  {projects.map((project) => (
+                  {projects.map((project) => {
+                    const isSelected = selectedIds.has(project.id)
+                    const cardClassName = isSelected
+                      ? `${styles.projectCard} ${styles.projectCardSelected}`
+                      : styles.projectCard
+                    return (
                     <article
                       key={project.id}
-                      className={styles.projectCard}
+                      className={cardClassName}
                       role="button"
                       tabIndex={0}
+                      aria-selected={isSelected ? 'true' : undefined}
                       onClick={() => openProject(project.id)}
                       onKeyDown={(event) => handleProjectKeyDown(event, project.id)}
                     >
+                      {canManageProjects && (
+                        <label
+                          className={styles.projectSelectLabel}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            className={styles.projectSelectCheckbox}
+                            checked={isSelected}
+                            onChange={() => toggleSelected(project.id)}
+                            aria-label={isSelected ? `Deseleccionar ${project.name}` : `Seleccionar ${project.name}`}
+                          />
+                        </label>
+                      )}
                       <div className={styles.projectTop}>
                         <div>
                           <h3 className={styles.projectName}>{project.name}</h3>
@@ -489,7 +683,8 @@ export default function CompanyPage() {
                         </Button>
                       </div>
                     </article>
-                  ))}
+                  )
+                  })}
                 </div>
               )}
             </section>
