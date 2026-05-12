@@ -28,6 +28,7 @@ const KebabMenu = forwardRef(function KebabMenu(
     label = 'Más acciones',
     triggerSize = 'sm',
     align = 'end',
+    placement,
     className,
     menuClassName,
     onOpenChange,
@@ -36,6 +37,10 @@ const KebabMenu = forwardRef(function KebabMenu(
   },
   ref
 ) {
+  // Resolve placement: explicit `placement` wins; otherwise derive from
+  // legacy `align` prop (bottom-end | bottom-start) for backwards compat.
+  const resolvedPlacement = placement
+    || (align === 'start' ? 'bottom-start' : 'bottom-end')
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState(null)
   const triggerRef = useRef(null)
@@ -58,20 +63,31 @@ const KebabMenu = forwardRef(function KebabMenu(
   }, [open, onOpenChange])
 
   // Compute fixed-position coordinates for the portal-rendered dropdown
-  // based on the trigger button's viewport rect. `align="end"` aligns the
-  // menu's right edge with the trigger's right edge; `align="start"` aligns
-  // the left edges. Returns null if the trigger is not yet mounted.
+  // based on the trigger button's viewport rect. `placement` chooses one of
+  // `bottom-end` (default), `bottom-start`, `top-start`, `top-end`.
+  //
+  // Vertical: `bottom-*` puts the menu under the trigger (`top: rect.bottom + 4`);
+  // `top-*` puts the menu above the trigger (`bottom: viewport.height - rect.top + 4`),
+  // using CSS `bottom` so the menu stays anchored as it grows upward.
+  // Horizontal: `*-end` aligns right edges; `*-start` aligns left edges.
   const computePosition = useCallback(() => {
     const node = triggerRef.current
     if (!node) return null
     const rect = node.getBoundingClientRect()
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 0
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 0
     return {
-      top: rect.bottom + 4, // var(--wb-space-1) ~ 4px gap
-      left: rect.left,
-      right: typeof window !== 'undefined' ? window.innerWidth - rect.right : 0,
-      width: rect.width,
+      placement: resolvedPlacement,
+      rect: {
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        right: rect.right,
+        width: rect.width,
+      },
+      viewport: { width: vw, height: vh },
     }
-  }, [])
+  }, [resolvedPlacement])
 
   // Sync position when opening, then on scroll (any ancestor) + resize.
   useLayoutEffect(() => {
@@ -138,11 +154,21 @@ const KebabMenu = forwardRef(function KebabMenu(
 
   // Stop propagation at the trigger wrapper so parent click handlers
   // (e.g. card-as-button openProject) do not fire.
-  const menuStyle = position
-    ? align === 'end'
-      ? { top: position.top, right: position.right }
-      : { top: position.top, left: position.left }
-    : null
+  // Resolve fixed-position style from the structured `position` payload.
+  // Bottom placements anchor via `top`; top placements anchor via `bottom`
+  // (so the menu grows upward without shifting after layout).
+  let menuStyle = null
+  if (position) {
+    const { placement: p, rect, viewport } = position
+    const gap = 4 // ~var(--wb-space-1)
+    const vertical = p.startsWith('top')
+      ? { bottom: viewport.height - rect.top + gap }
+      : { top: rect.bottom + gap }
+    const horizontal = p.endsWith('end')
+      ? { right: viewport.width - rect.right }
+      : { left: rect.left }
+    menuStyle = { ...vertical, ...horizontal }
+  }
 
   return (
     <div
