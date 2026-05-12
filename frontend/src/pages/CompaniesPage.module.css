@@ -92,7 +92,7 @@
 .companySelectLabel {
   position: absolute;
   top: var(--wb-space-3);
-  left: var(--wb-space-3);
+  right: var(--wb-space-3);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -121,15 +121,6 @@
   height: 16px;
   cursor: pointer;
   accent-color: var(--wb-color-primary-500);
-}
-
-/* Kebab is always visible (per-card management entry point); position it
- * at the top-right opposite the checkbox. */
-.companyKebab {
-  position: absolute;
-  top: var(--wb-space-3);
-  right: var(--wb-space-3);
-  z-index: var(--wb-z-base);
 }
 
 .bulkToolbar {
@@ -195,10 +186,9 @@
   align-items: flex-start;
   gap: var(--wb-space-2);
   min-width: 0;
-  /* Reserve room for the absolute checkbox (left) and kebab (right). The
-   * badge is positioned below the name (sub-label) instead of fighting the
-   * kebab in the top-right corner. */
-  padding-left: var(--wb-space-7);
+  /* Reserve room for the absolute checkbox at top-right (32 px + gap) so
+   * the company name never collides with it. Kebab now lives in the
+   * action row below — no left-padding needed. */
   padding-right: var(--wb-space-7);
 }
 
@@ -264,17 +254,26 @@
 }
 
 .cardActions {
+  /* Primary action (Abrir) at the left; kebab pinned to the bottom-right
+   * via `margin-left: auto`. If there is no kebab (no manage perms) the
+   * Abrir button stays left-aligned. */
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--wb-space-2);
   margin-top: auto;
   padding-top: var(--wb-space-3);
   border-top: 1px solid var(--wb-border);
 }
 
-.cardOpenButton {
-  width: 132px;
+.companyActionsButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+}
+
+.companyActionsKebab {
+  display: inline-flex;
+  margin-left: auto;
 }
 
 .emptyState {

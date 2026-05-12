@@ -291,6 +291,26 @@ export default function CompaniesPage() {
     navigate(`/companies/${companyId}`)
   }
 
+  // In select-mode (≥1 selected), clicking/Enter on the card toggles its
+  // selection instead of opening the company. Explicit buttons (Abrir,
+  // kebab) still perform their action via stopPropagation.
+  function handleCompanyActivate(companyId, selectable) {
+    if (selectedIds.size > 0) {
+      if (selectable) toggleSelected(companyId)
+    } else {
+      openCompany(companyId)
+    }
+  }
+
+  function handleCompanyKeyDown(event, companyId, selectable) {
+    if (event.target.closest?.('button')) return
+    if (event.target.closest?.('input, label, [role="menu"]')) return
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleCompanyActivate(companyId, selectable)
+    }
+  }
+
   async function handleCompanyArchive(companyId) {
     if (!window.confirm('¿Archivar esta empresa? Podrás restaurarla desde Archivados.')) return
 
@@ -466,6 +486,10 @@ export default function CompaniesPage() {
                 radius="md"
                 className={cardClassNames.join(' ')}
                 aria-selected={isSelected ? 'true' : undefined}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleCompanyActivate(company.id, selectable)}
+                onKeyDown={(event) => handleCompanyKeyDown(event, company.id, selectable)}
               >
                 {selectable && (
                   <label
@@ -480,30 +504,6 @@ export default function CompaniesPage() {
                       aria-label={isSelected ? `Deseleccionar ${company.name}` : `Seleccionar ${company.name}`}
                     />
                   </label>
-                )}
-
-                {showKebab && (
-                  <div
-                    className={styles.companyKebab}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <KebabMenu
-                      label={`Más acciones de ${company.name}`}
-                      items={[
-                        {
-                          label: 'Archivar',
-                          icon: <Archive size={14} />,
-                          onClick: () => handleCompanyArchive(company.id),
-                        },
-                        {
-                          label: 'Enviar a papelera',
-                          icon: <Trash2 size={14} />,
-                          destructive: true,
-                          onClick: () => handleCompanyTrash(company.id),
-                        },
-                      ]}
-                    />
-                  </div>
                 )}
 
                 <div className={styles.cardHeader}>
@@ -528,19 +528,47 @@ export default function CompaniesPage() {
                 </p>
 
                 <div className={styles.cardActions}>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="md"
-                    icon={<ArrowRight size={16} />}
-                    iconPosition="right"
-                    aria-label={`Abrir workspace de ${company.name}`}
-                    title={`Abrir workspace de ${company.name}`}
-                    onClick={() => openCompany(company.id)}
-                    className={styles.cardOpenButton}
-                  >
-                    Abrir
-                  </Button>
+                  <div className={styles.companyActionsButtons}>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      icon={<ArrowRight size={14} />}
+                      iconPosition="right"
+                      aria-label={`Abrir workspace de ${company.name}`}
+                      title={`Abrir workspace de ${company.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        openCompany(company.id)
+                      }}
+                    >
+                      Abrir
+                    </Button>
+                  </div>
+                  {showKebab && (
+                    <div
+                      className={styles.companyActionsKebab}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <KebabMenu
+                        label={`Más acciones de ${company.name}`}
+                        placement="top-end"
+                        items={[
+                          {
+                            label: 'Archivar',
+                            icon: <Archive size={14} />,
+                            onClick: () => handleCompanyArchive(company.id),
+                          },
+                          {
+                            label: 'Enviar a papelera',
+                            icon: <Trash2 size={14} />,
+                            destructive: true,
+                            onClick: () => handleCompanyTrash(company.id),
+                          },
+                        ]}
+                      />
+                    </div>
+                  )}
                 </div>
               </Card>
             )
