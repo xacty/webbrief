@@ -282,9 +282,9 @@
 }
 
 .projectActions {
-  /* Kebab anchored at bottom-left; primary action cluster (Duplicar + Abrir)
-   * pinned to the right via inner flex group with `margin-left: auto`. If
-   * there is no kebab (no manage perms) the buttons still sit on the right. */
+  /* Primary action cluster (Abrir + Duplicar) at the left; kebab pinned
+   * to the bottom-right via `margin-left: auto`. If there is no kebab
+   * (no manage perms) the buttons stay left-aligned. */
   display: flex;
   align-items: center;
   gap: var(--wb-space-2);
@@ -293,14 +293,14 @@
   border-top: 1px solid var(--wb-border);
 }
 
-.projectActionsKebab {
-  display: inline-flex;
-}
-
 .projectActionsButtons {
   display: inline-flex;
   align-items: center;
   gap: var(--wb-space-2);
+}
+
+.projectActionsKebab {
+  display: inline-flex;
   margin-left: auto;
 }
 

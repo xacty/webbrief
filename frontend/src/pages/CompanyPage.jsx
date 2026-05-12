@@ -450,12 +450,23 @@ export default function CompanyPage() {
     }
   }
 
+  // In select-mode (≥1 selected), clicking/Enter on the card toggles its
+  // selection instead of opening the project. Explicit buttons (Abrir,
+  // Duplicar, kebab) still perform their action via stopPropagation.
+  function handleProjectActivate(projectId) {
+    if (selectedIds.size > 0) {
+      toggleSelected(projectId)
+    } else {
+      openProject(projectId)
+    }
+  }
+
   function handleProjectKeyDown(event, projectId) {
     if (event.target.closest?.('button')) return
     if (event.target.closest?.('input, label, [role="menu"]')) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      openProject(projectId)
+      handleProjectActivate(projectId)
     }
   }
 
@@ -616,7 +627,7 @@ export default function CompanyPage() {
                       role="button"
                       tabIndex={0}
                       aria-selected={isSelected ? 'true' : undefined}
-                      onClick={() => openProject(project.id)}
+                      onClick={() => handleProjectActivate(project.id)}
                       onKeyDown={(event) => handleProjectKeyDown(event, project.id)}
                     >
                       {canManageProjects && (
@@ -653,6 +664,35 @@ export default function CompanyPage() {
                       </div>
 
                       <div className={styles.projectActions}>
+                        <div className={styles.projectActionsButtons}>
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            icon={<ArrowRight size={14} />}
+                            iconPosition="right"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              openProject(project.id)
+                            }}
+                          >
+                            Abrir
+                          </Button>
+                          {canManageProjects && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              icon={<Copy size={14} />}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleProjectDuplicate(project.id)
+                              }}
+                              title="Duplicar proyecto"
+                              aria-label={`Duplicar ${project.name}`}
+                            />
+                          )}
+                        </div>
                         {canManageProjects && (
                           <div
                             className={styles.projectActionsKebab}
@@ -660,7 +700,7 @@ export default function CompanyPage() {
                           >
                             <KebabMenu
                               label={`Más acciones de ${project.name}`}
-                              placement="top-start"
+                              placement="top-end"
                               items={[
                                 {
                                   label: 'Mover de empresa',
@@ -682,35 +722,6 @@ export default function CompanyPage() {
                             />
                           </div>
                         )}
-                        <div className={styles.projectActionsButtons}>
-                          {canManageProjects && (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              icon={<Copy size={14} />}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectDuplicate(project.id)
-                              }}
-                              title="Duplicar proyecto"
-                              aria-label={`Duplicar ${project.name}`}
-                            />
-                          )}
-                          <Button
-                            type="button"
-                            variant="primary"
-                            size="sm"
-                            icon={<ArrowRight size={14} />}
-                            iconPosition="right"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              openProject(project.id)
-                            }}
-                          >
-                            Abrir
-                          </Button>
-                        </div>
                       </div>
                     </article>
                   )
