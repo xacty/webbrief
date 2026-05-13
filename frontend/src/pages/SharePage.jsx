@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Button, Input, Card } from '../components/ui'
 import styles from './SharePage.module.css'
 
 function publicFetch(path, options = {}) {
@@ -143,34 +144,52 @@ export default function SharePage() {
           <h1 className={styles.title}>{project?.name}</h1>
           <p className={styles.subtitle}>{project?.clientName}</p>
         </div>
-        <button className={styles.secondaryButton} onClick={() => window.print()}>
-          Exportar PDF
-        </button>
+        <div className={styles.printHide}>
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => window.print()}
+            aria-label="Exportar a PDF"
+          >
+            Exportar PDF
+          </Button>
+        </div>
       </header>
 
       {!viewer && (
-        <form className={styles.identityCard} onSubmit={handleIdentify}>
-          <h2 className={styles.cardTitle}>Identifícate para comentar o aprobar</h2>
-          <div className={styles.identityGrid}>
-            <label className={styles.field}>
-              Nombre
-              <input value={name} onChange={(event) => setName(event.target.value)} required />
-            </label>
-            <label className={styles.field}>
-              Email
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-            </label>
-          </div>
-          <button className={styles.primaryButton} type="submit">Continuar</button>
-        </form>
+        <Card padding="md" shadow="sm" radius="md" className={styles.identityCard}>
+          <form onSubmit={handleIdentify}>
+            <h2 className={styles.cardTitle}>Identifícate para comentar o aprobar</h2>
+            <div className={styles.identityGrid}>
+              <Input
+                label="Nombre"
+                required
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+              <Input
+                type="email"
+                label="Email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </div>
+            <Button type="submit" variant="primary" size="md">
+              Continuar
+            </Button>
+          </form>
+        </Card>
       )}
 
       {viewer && (
         <>
-          <aside className={styles.feedbackPanel}>
+          <Card padding="md" shadow="sm" radius="md" className={styles.feedbackPanel} as="aside">
             <div>
               <p className={styles.viewerText}>Comentando como {viewer.name} · {viewer.email}</p>
-              <button className={styles.linkButton} onClick={clearViewer}>Cambiar datos</button>
+              <Button variant="ghost" size="sm" type="button" onClick={clearViewer}>
+                Cambiar datos
+              </Button>
             </div>
 
             <form className={styles.feedbackForm} onSubmit={submitComment}>
@@ -178,9 +197,9 @@ export default function SharePage() {
                 Comentario
                 <textarea value={comment} onChange={(event) => setComment(event.target.value)} rows={3} required />
               </label>
-              <button className={styles.secondaryButton} type="submit" disabled={submitting}>
+              <Button type="submit" variant="secondary" size="md" disabled={submitting}>
                 Enviar comentario
-              </button>
+              </Button>
             </form>
 
             <div className={styles.approvalBox}>
@@ -189,17 +208,29 @@ export default function SharePage() {
                 <textarea value={approvalComment} onChange={(event) => setApprovalComment(event.target.value)} rows={2} />
               </label>
               <div className={styles.actions}>
-                <button className={styles.primaryButton} type="button" disabled={submitting} onClick={() => submitApproval('approved')}>
+                <Button
+                  variant="primary"
+                  size="md"
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => submitApproval('approved')}
+                >
                   Aprobar
-                </button>
-                <button className={styles.dangerButton} type="button" disabled={submitting} onClick={() => submitApproval('changes_requested')}>
+                </Button>
+                <Button
+                  variant="danger"
+                  size="md"
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => submitApproval('changes_requested')}
+                >
                   Pedir cambios
-                </button>
+                </Button>
               </div>
             </div>
 
             {feedback && <p className={styles.feedback}>{feedback}</p>}
-          </aside>
+          </Card>
 
           <main className={styles.document}>
             {pages.map((page) => (

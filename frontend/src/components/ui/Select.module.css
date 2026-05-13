@@ -1,0 +1,81 @@
+.field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  font-family: var(--wb-font-sans);
+}
+
+.fullWidth {
+  display: flex;
+  width: 100%;
+}
+
+.label {
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  line-height: var(--wb-leading-sm);
+  color: var(--wb-color-neutral-700);
+}
+
+.required {
+  color: var(--wb-color-danger-600);
+  margin-left: var(--wb-space-1);
+}
+
+/*
+  Chevron contract: base.css owns the global rule for `select:not([multiple])`
+  and paints the chevron via the existing CSS variables. Per UI-SPEC §3 Select,
+  we MUST preserve this. This module deliberately does not set padding-right,
+  the chevron asset, or the appearance reset — those live in base.css.
+*/
+.select {
+  width: 100%;
+  height: calc(var(--wb-space-8) + var(--wb-space-2)); /* 40px per UI-SPEC arithmetic */
+  padding: 0 var(--wb-space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background-color: var(--wb-surface);
+  color: var(--wb-color-neutral-800);
+  font-family: inherit;
+  font-size: var(--wb-text-base);
+  line-height: var(--wb-leading-base);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: var(--wb-border-strong);
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--wb-color-neutral-50);
+}
+
+/* Error state */
+.hasError .select {
+  border-color: var(--wb-color-danger-600);
+}
+
+.hasError .select:focus-visible {
+  box-shadow: 0 0 0 3px var(--wb-color-danger-100);
+}
+
+.helper {
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  line-height: var(--wb-leading-normal);
+  color: var(--wb-color-neutral-600);
+}
+
+.helperError {
+  color: var(--wb-color-danger-700);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select {
+    transition: none;
+  }
+}

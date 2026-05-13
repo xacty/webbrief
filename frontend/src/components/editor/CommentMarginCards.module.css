@@ -7,15 +7,15 @@
   right: 8px;
   width: 280px;
   pointer-events: none;
-  z-index: 6;
+  z-index: var(--wb-z-sticky);
 }
 
 .card {
   position: absolute;
   right: 0;
   width: 280px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border);
   border-radius: 10px;
   padding: 12px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -28,22 +28,22 @@
 }
 
 .card:hover {
-  border-color: #d1d5db;
+  border-color: var(--wb-color-neutral-300);
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
 }
 
 .cardActive {
-  border-color: #f59e0b;
-  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18), 0 0 0 1px #fde68a;
+  border-color: var(--wb-color-warning-500);
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18), 0 0 0 1px var(--wb-color-warning-200);
   cursor: default;
-  z-index: 8;
+  z-index: var(--wb-z-sticky);
 }
 
 .inlinePopover {
   /* Override absolute → fixed (set inline). Sombra más fuerte para flotar
      visiblemente sobre el canvas. */
-  z-index: 1100;
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18), 0 0 0 1px #fde68a;
+  z-index: var(--wb-z-popover);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18), 0 0 0 1px var(--wb-color-warning-200);
   padding-top: 32px; /* deja espacio para el close button arriba */
 }
 
@@ -58,23 +58,23 @@
   justify-content: center;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--wb-color-neutral-500);
   border-radius: 6px;
   cursor: pointer;
-  z-index: 2;
+  z-index: var(--wb-z-base);
 }
 
 .popoverCloseBtn:hover {
   background: #f0f4f9;
-  color: #212222;
+  color: var(--wb-editor-bg);
 }
 
 .cardActive:hover {
-  border-color: #f59e0b;
+  border-color: var(--wb-color-warning-500);
 }
 
 .cardResolved {
-  background: #f9fafb;
+  background: var(--wb-color-neutral-50);
   opacity: 0.85;
 }
 
@@ -84,7 +84,7 @@
   right: 8px;
   display: flex;
   gap: 4px;
-  z-index: 2;
+  z-index: var(--wb-z-base);
 }
 
 .iconChip {
@@ -93,7 +93,7 @@
   border-radius: 4px;
   border: none;
   background: transparent;
-  color: #6b7280;
+  color: var(--wb-color-neutral-500);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -104,7 +104,7 @@
 
 .iconChip:hover {
   background: #f0f4f9;
-  color: #0070d6;
+  color: var(--wb-color-primary-900);
 }
 
 /* Comment entry */
@@ -117,7 +117,7 @@
 
 .entry + .entry {
   padding-top: 8px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--wb-color-neutral-100);
 }
 
 .entryBody {
@@ -136,7 +136,7 @@
 .entryAuthor {
   font-weight: 600;
   font-size: 12.5px;
-  color: #212222;
+  color: var(--wb-editor-bg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -144,19 +144,19 @@
 
 .entryTime {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--wb-color-neutral-400);
   flex-shrink: 0;
 }
 
 .entryEdited {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--wb-color-neutral-400);
   font-style: italic;
 }
 
 .entryText {
   font-size: 13px;
-  color: #212222;
+  color: var(--wb-editor-bg);
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -164,7 +164,7 @@
 }
 
 .mentionLink {
-  color: #1a73e8;
+  color: var(--wb-color-primary-900);
   text-decoration: none;
   font-weight: 500;
 }
@@ -175,7 +175,7 @@
 
 .entryDeleted {
   font-size: 12.5px;
-  color: #9ca3af;
+  color: var(--wb-color-neutral-400);
   font-style: italic;
   margin: 0;
 }
@@ -193,7 +193,7 @@
   height: 22px;
   border: none;
   background: transparent;
-  color: #9ca3af;
+  color: var(--wb-color-neutral-400);
   border-radius: 4px;
   cursor: pointer;
   display: inline-flex;
@@ -211,7 +211,7 @@
 
 .dotsBtn:hover {
   background: #f0f4f9;
-  color: #212222;
+  color: var(--wb-editor-bg);
 }
 
 /* Reply trigger (idle compact button shown when active card has no composer open yet) */
@@ -219,18 +219,18 @@
   width: 100%;
   text-align: left;
   background: transparent;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--wb-border);
   border-radius: 6px;
   padding: 7px 10px;
   font-size: 12.5px;
-  color: #9ca3af;
+  color: var(--wb-color-neutral-400);
   cursor: text;
   font-family: inherit;
 }
 
 .replyTrigger:hover {
-  border-color: #c7daff;
-  color: #6b7280;
+  border-color: var(--wb-color-primary-200);
+  color: var(--wb-color-neutral-500);
 }
 
 .replyTrigger:disabled {
@@ -243,10 +243,10 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: 1px solid #c7daff;
+  border: 1px solid var(--wb-color-primary-200);
   border-radius: 8px;
   padding: 8px;
-  background: #ffffff;
+  background: var(--wb-surface);
 }
 
 .replyComposerHeader {
@@ -258,7 +258,7 @@
 .replyComposerName {
   font-size: 12px;
   font-weight: 600;
-  color: #212222;
+  color: var(--wb-editor-bg);
 }
 
 .replyTextarea {
@@ -272,7 +272,7 @@
   outline: none;
   padding: 4px 0;
   background: transparent;
-  color: #212222;
+  color: var(--wb-editor-bg);
 }
 
 .replyComposerActions {
@@ -284,7 +284,7 @@
 .cancelBtn {
   background: transparent;
   border: 1px solid transparent;
-  color: #4b5563;
+  color: var(--wb-color-neutral-600);
   padding: 5px 12px;
   border-radius: 6px;
   font-size: 12px;
@@ -302,9 +302,9 @@
 }
 
 .submitBtn {
-  background: #0088ff;
-  border: 1px solid #0088ff;
-  color: #ffffff;
+  background: var(--wb-color-primary-900);
+  border: 1px solid var(--wb-color-primary-900);
+  color: var(--wb-surface);
   padding: 5px 14px;
   border-radius: 6px;
   font-size: 12px;
@@ -314,32 +314,32 @@
 }
 
 .submitBtn:hover:not([disabled]) {
-  background: #0070d6;
-  border-color: #0070d6;
+  background: var(--wb-color-primary-900);
+  border-color: var(--wb-color-primary-900);
 }
 
 .submitBtn[disabled] {
-  background: #93c5fd;
-  border-color: #93c5fd;
+  background: var(--wb-color-primary-300);
+  border-color: var(--wb-color-primary-300);
   cursor: not-allowed;
 }
 
 /* Replies hidden badge (shown in idle) */
 .repliesBadge {
   font-size: 11.5px;
-  color: #6b7280;
+  color: var(--wb-color-neutral-500);
   padding-left: 34px; /* align with entry body */
 }
 
 /* ⋮ menu dropdown */
 .commentMenu {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border);
   border-radius: 8px;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
   padding: 4px;
   min-width: 180px;
-  z-index: 1500;
+  z-index: var(--wb-z-popover);
 }
 
 .commentMenuItem {
@@ -352,7 +352,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 12.5px;
-  color: #212222;
+  color: var(--wb-editor-bg);
   cursor: pointer;
   text-align: left;
   font-family: inherit;
@@ -363,9 +363,9 @@
 }
 
 .commentMenuItemDanger {
-  color: #dc2626;
+  color: var(--wb-color-danger-600);
 }
 
 .commentMenuItemDanger:hover {
-  background: #fef2f2;
+  background: var(--wb-color-danger-50);
 }

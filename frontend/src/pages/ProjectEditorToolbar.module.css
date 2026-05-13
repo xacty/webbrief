@@ -1,12 +1,20 @@
+/* Migrated to tokens 2026-05-09 (plan 04-03). NOTE: this file
+   currently implements a LIGHT toolbar (background: var(--wb-surface),
+   border: var(--wb-editor-border)) — UI-SPEC §Color §Dark-chrome
+   prescribes a dark toolbar. The "zero visual regression" invariant
+   takes precedence; UI-SPEC vs. impl discrepancy flagged in
+   04-03-SUMMARY.md for product decision. Off-canon neutrals
+   (#f0f4f9 / #e8f0fe / #d2e3fc / #e0f0ff / #e5e7eb) kept as literals
+   pending dedicated palette decision. */
 .toolbar {
   position: relative;
-  z-index: 120;
+  z-index: var(--wb-z-sticky);
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  background: #fff;
-  border-bottom: 1px solid #d9d9d9;
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-editor-border);
   flex-shrink: 0;
   overflow: visible;
 }
@@ -16,7 +24,7 @@
   height: 20px;
   margin: 0 4px;
   flex-shrink: 0;
-  background: #d9d9d9;
+  background: var(--wb-editor-border);
 }
 
 .menu {
@@ -31,11 +39,11 @@
   left: 0;
   min-width: 160px;
   padding: 6px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--wb-surface);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: 80;
+  z-index: var(--wb-z-sticky);
 }
 
 .dropdownBlock {
@@ -52,7 +60,7 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -80,7 +88,7 @@
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   cursor: pointer;
   font: inherit;
   font-size: 14px;
@@ -116,7 +124,7 @@
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font: inherit;
   font-size: 14px;
   cursor: pointer;
@@ -142,10 +150,10 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 10px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 5px;
-  background: #fff;
-  color: #2a2a2a;
+  background: var(--wb-surface);
+  color: var(--wb-editor-text);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -163,13 +171,13 @@
 }
 
 .textColorSample {
-  border-bottom: 3px solid #2a2a2a;
+  border-bottom: 3px solid var(--wb-editor-text);
   line-height: 1;
   padding-bottom: 1px;
 }
 
 .highlightSample {
-  background: #fef08a;
+  background: var(--wb-color-warning-200);
   border-radius: 3px;
   line-height: 1;
   padding: 2px 4px;
@@ -201,14 +209,14 @@
   padding: 10px;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  background: #fff;
+  background: var(--wb-surface);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: 120;
+  z-index: var(--wb-z-sticky);
 }
 
 .tablePickerLabel {
   margin-bottom: 8px;
-  color: #6b7280;
+  color: var(--wb-color-neutral-500); /* off-canon #6b7280 collapsed to neutral-500 */
   font-size: 12px;
   font-weight: 600;
   text-align: center;
@@ -227,14 +235,14 @@
 .tablePickerCell {
   width: 18px;
   height: 18px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 2px;
-  background: #fff;
+  background: var(--wb-surface);
   cursor: pointer;
   transition: all 0.05s;
 }
 
 .tablePickerCellActive {
-  border-color: #0088ff;
+  border-color: var(--wb-color-primary-900);
   background: #e0f0ff;
 }

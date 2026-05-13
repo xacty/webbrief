@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin } from '../lib/roleCapabilities'
+import { Button, Select, Card, Badge } from '../components/ui'
 import styles from './TrashPage.module.css'
 
 const DATE_FILTERS = [
@@ -240,28 +241,30 @@ export default function TrashPage({ mode = 'trashed' }) {
         </div>
 
         <div className={styles.toolbarActions}>
-          <label className={styles.dateFilter}>
-            <span>Fecha</span>
-            <select value={dateFilter} onChange={(event) => setDateFilter(event.target.value)}>
-              {DATE_FILTERS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label="Fecha"
+            value={dateFilter}
+            onChange={(event) => setDateFilter(event.target.value)}
+            fullWidth={false}
+            className={styles.dateFilterField}
+          >
+            {DATE_FILTERS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </Select>
 
-          <button
-            className={styles.tertiaryButton}
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            icon={<RefreshCw size={16} className={loading ? styles.refreshIconLoading : undefined} />}
             onClick={loadItems}
             disabled={loading}
             aria-label="Actualizar elementos"
             title="Actualizar"
           >
-            <RefreshCw
-              className={loading ? `${styles.refreshIcon} ${styles.refreshIconLoading}` : styles.refreshIcon}
-              aria-hidden="true"
-            />
-            <span>Actualizar</span>
-          </button>
+            Actualizar
+          </Button>
         </div>
       </section>
 
@@ -315,7 +318,7 @@ function TrashGrid({ items, type, mode, busyKey, onRestore, onDelete, canDeleteP
         const dateLabel = mode === 'archived' ? 'Archivado' : 'En papelera'
 
         return (
-          <article key={`${type}-${item.id}`} className={styles.itemCard}>
+          <Card key={`${type}-${item.id}`} padding="md" shadow="sm" radius="md" className={styles.itemCard}>
             <div className={styles.cardTop}>
               <div>
                 <h3 className={styles.itemTitle}>{item.name}</h3>
@@ -323,9 +326,9 @@ function TrashGrid({ items, type, mode, busyKey, onRestore, onDelete, canDeleteP
                   {type === 'project' ? `${item.companyName || 'Sin empresa'} · ${item.client || 'Sin cliente'}` : `/${item.slug}`}
                 </p>
               </div>
-              <span className={mode === 'trashed' ? styles.trashedBadge : styles.archivedBadge}>
+              <Badge variant={mode === 'trashed' ? 'danger' : 'neutral'} size="sm">
                 {mode === 'trashed' ? 'Papelera' : 'Archivado'}
-              </span>
+              </Badge>
             </div>
 
             <div className={styles.metaList}>
@@ -348,24 +351,26 @@ function TrashGrid({ items, type, mode, busyKey, onRestore, onDelete, canDeleteP
             </div>
 
             <div className={styles.actions}>
-              <button
-                className={styles.primaryButton}
+              <Button
+                variant="primary"
                 onClick={() => onRestore(type, item.id)}
                 disabled={restoreBusy || deleteBusy}
+                loading={restoreBusy}
               >
                 {restoreBusy ? 'Restaurando...' : 'Restaurar'}
-              </button>
+              </Button>
               {mode === 'trashed' && canDeletePermanently && (
-                <button
-                  className={styles.dangerButton}
+                <Button
+                  variant="danger"
                   onClick={() => onDelete(type, item.id)}
                   disabled={restoreBusy || deleteBusy}
+                  loading={deleteBusy}
                 >
                   {deleteBusy ? 'Borrando...' : 'Borrar'}
-                </button>
+                </Button>
               )}
             </div>
-          </article>
+          </Card>
         )
       })}
     </div>

@@ -1,10 +1,15 @@
+/* Migrated to tokens 2026-05-09 (plan 04-03). Forbidden-block hex
+   literals (editor parallel palette + Phase-1 canonical hexes) eliminated.
+   Off-canon neutrals kept as literals pending dedicated decision (no
+   Phase-1 exact match). rgb(... / NN%) alpha overlays kept literal per
+   UI-SPEC Color (alpha-on-dark). See 04-03-SUMMARY.md for full mapping. */
 .navbar {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr);
   align-items: center;
   height: 70px;
   background: #f0f0f0;
-  border-bottom: 1px solid #212222;
+  border-bottom: 1px solid var(--wb-editor-bg);
   flex-shrink: 0;
   padding: 0 24px;
 }
@@ -18,7 +23,7 @@
 
 .navLogo {
   font-size: 35px;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   cursor: pointer;
   line-height: 1;
   user-select: none;
@@ -35,10 +40,10 @@
 .navBackBtn {
   width: 32px;
   height: 32px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 999px;
-  background: #fff;
-  color: #2a2a2a;
+  background: var(--wb-surface);
+  color: var(--wb-editor-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -49,7 +54,7 @@
 
 .navBackBtn:hover {
   background: #f0f4f9;
-  border-color: #c7c7c7;
+  border-color: var(--wb-editor-text-on-dark-muted);
 }
 
 .projectNameBtn,
@@ -59,7 +64,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 15px;
   font-weight: 600;
   padding: 7px 9px;
@@ -83,10 +88,10 @@
   min-width: 180px;
   max-width: 280px;
   height: 34px;
-  border: 1px solid #212222;
+  border: 1px solid var(--wb-editor-bg);
   border-radius: 8px;
-  background: #fff;
-  color: #2a2a2a;
+  background: var(--wb-surface);
+  color: var(--wb-editor-text);
   font-size: 15px;
   font-weight: 600;
   padding: 0 9px;
@@ -114,7 +119,7 @@
 }
 
 .navPillWrapperActive {
-  background: #212222;
+  background: var(--wb-editor-bg);
 }
 
 .navPill,
@@ -133,12 +138,12 @@
 }
 
 .navPill {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-weight: 400;
 }
 
 .navPill:hover {
-  color: #1d4ed8;
+  color: var(--wb-color-primary-900);
 }
 
 .navPillActive {
@@ -172,7 +177,7 @@
 }
 
 .navPillMenuBtnInactive {
-  color: #999;
+  color: var(--wb-editor-text-on-dark-muted);
 }
 
 .navPillMenu {
@@ -180,11 +185,11 @@
   top: 100%;
   right: 0;
   margin-top: 4px;
-  background: #fff;
+  background: var(--wb-surface);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   padding: 4px 0;
-  z-index: 100;
+  z-index: var(--wb-z-sticky);
   min-width: 130px;
 }
 
@@ -198,7 +203,7 @@
 }
 
 .navPillMenuItem {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .navPillMenuItem:hover {
@@ -206,11 +211,11 @@
 }
 
 .navPillMenuItemDanger {
-  color: #ef4444;
+  color: var(--wb-color-danger-500);
 }
 
 .navPillMenuItemDanger:hover {
-  background: #fef2f2;
+  background: var(--wb-color-danger-50);
 }
 
 .navPillInput {
@@ -234,7 +239,7 @@
 }
 
 .navPillInputInactive {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .navPillInputTransparent {
@@ -268,7 +273,7 @@
 
 .navSaveStatus {
   min-width: 74px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
   font-weight: 600;
   text-align: right;
@@ -278,8 +283,8 @@
   min-width: 86px;
   height: 34px;
   padding: 0 14px;
-  background: #0088ff;
-  color: #fff;
+  background: var(--wb-color-primary-900);
+  color: var(--wb-editor-text-on-dark);
   border: none;
   border-radius: 9px;
   font-size: 13px;
@@ -290,7 +295,7 @@
 }
 
 .navSaveBtn:hover:not(.navSaveBtnDisabled) {
-  background: #0070d6;
+  background: var(--wb-primary-hover);
 }
 
 .navSaveBtnDisabled {
@@ -329,8 +334,8 @@
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #ef4444;
-  color: #fff;
+  background: var(--wb-color-danger-500);
+  color: var(--wb-editor-text-on-dark);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
@@ -352,10 +357,10 @@
   display: flex;
   flex-direction: column;
   background: var(--wb-surface, #fff);
-  border: 1px solid var(--wb-border, #e2e8f0);
+  border: 1px solid var(--wb-border, var(--wb-color-neutral-200));
   border-radius: var(--wb-radius-lg, 12px);
   box-shadow: var(--wb-shadow-lg, 0 12px 32px rgba(15, 23, 42, 0.12));
-  z-index: 1000;
+  z-index: var(--wb-z-popover);
   overflow: hidden;
 }
 
@@ -364,19 +369,19 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--wb-border, #e2e8f0);
+  border-bottom: 1px solid var(--wb-border, var(--wb-color-neutral-200));
 }
 
 .notifHeaderTitle {
   font-size: 14px;
   font-weight: 600;
-  color: var(--wb-text, #0f172a);
+  color: var(--wb-text, var(--wb-color-neutral-900));
 }
 
 .notifMarkAll {
   border: none;
   background: transparent;
-  color: var(--wb-text-muted, #64748b);
+  color: var(--wb-text-muted, var(--wb-color-neutral-500));
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -385,15 +390,15 @@
 }
 
 .notifMarkAll:hover {
-  color: var(--wb-text, #0f172a);
-  background: var(--wb-bg, #f8fafc);
+  color: var(--wb-text, var(--wb-color-neutral-900));
+  background: var(--wb-bg, var(--wb-color-neutral-50));
 }
 
 .notifEmpty {
   margin: 0;
   padding: 24px 16px;
   text-align: center;
-  color: var(--wb-text-muted, #64748b);
+  color: var(--wb-text-muted, var(--wb-color-neutral-500));
   font-size: 13px;
 }
 
@@ -428,7 +433,7 @@
 }
 
 .notifItemBtn:hover {
-  background: var(--wb-bg, #f8fafc);
+  background: var(--wb-bg, var(--wb-color-neutral-50));
 }
 
 .notifItemUnread .notifItemBtn {
@@ -442,19 +447,19 @@
 .notifTitle {
   font-size: 13px;
   font-weight: 600;
-  color: var(--wb-text, #0f172a);
+  color: var(--wb-text, var(--wb-color-neutral-900));
   line-height: 1.35;
 }
 
 .notifBody {
   font-size: 12px;
-  color: var(--wb-text-muted, #64748b);
+  color: var(--wb-text-muted, var(--wb-color-neutral-500));
   line-height: 1.4;
 }
 
 .notifMeta {
   font-size: 11px;
-  color: var(--wb-text-muted, #94a3b8);
+  color: var(--wb-text-muted, var(--wb-color-neutral-400));
   margin-top: 2px;
 }
 
@@ -469,10 +474,10 @@
   gap: 4px;
   height: 30px;
   padding: 0 8px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 999px;
-  background: #fff;
-  color: #2a2a2a;
+  background: var(--wb-surface);
+  color: var(--wb-editor-text);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -490,18 +495,18 @@
 
 .templatesMenu {
   padding: 12px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 10px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
-  z-index: 1000;
+  z-index: var(--wb-z-popover);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .templatesMenuTitle {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 13px;
   font-weight: 600;
 }
@@ -515,7 +520,7 @@
 .templatesInput {
   height: 32px;
   padding: 0 10px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 6px;
   font-family: inherit;
   font-size: 13px;
@@ -523,15 +528,15 @@
 }
 
 .templatesInput:focus {
-  border-color: #212222;
+  border-color: var(--wb-editor-bg);
 }
 
 .templatesSubmit {
   min-height: 32px;
   border: none;
   border-radius: 6px;
-  background: #212222;
-  color: #fff;
+  background: var(--wb-editor-bg);
+  color: var(--wb-editor-text-on-dark);
   font: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -551,11 +556,11 @@
 .templatesFeedback {
   margin: 0;
   font-size: 11px;
-  color: #16a34a;
+  color: var(--wb-color-success-600);
 }
 
 .templatesHint {
   margin: 0;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Button, Input, Card } from '../components/ui'
 import styles from './BriefPage.module.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
@@ -58,28 +59,36 @@ function FileUploadField({ question, value, onChange, token }) {
     <div className={styles.fieldGroup}>
       <label className={styles.questionLabel}>
         {question.label}
-        {question.required && <span className={styles.required}> *</span>}
+        {question.required && <span className={styles.required} aria-hidden="true"> *</span>}
       </label>
       {question.hint && <p className={styles.hint}>{question.hint}</p>}
       <input
         type="file"
         multiple
+        className={styles.fileInput}
         onChange={(e) => handleFiles(e.target.files)}
         disabled={uploading}
         accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv,image/*"
       />
       {uploading && <p className={styles.hint}>Subiendo…</p>}
-      {uploadError && <p className={styles.hint} style={{ color: '#dc2626' }}>{uploadError}</p>}
+      {uploadError && <p className={styles.uploadError}>{uploadError}</p>}
       {files.length > 0 && (
-        <ul style={{ marginTop: 8, listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <ul className={styles.fileList}>
           {files.map((f) => (
-            <li key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {f.fileName} <span style={{ color: '#94a3b8', fontSize: 11 }}>· {Math.round((f.fileSize || 0) / 1024)} KB</span>
+            <li key={f.id} className={styles.fileItem}>
+              <span className={styles.fileName}>
+                {f.fileName} <span className={styles.kbSize}>· {Math.round((f.fileSize || 0) / 1024)} KB</span>
               </span>
-              <button type="button" onClick={() => removeFile(f.id)} style={{ background: 'transparent', border: 'none', color: '#dc2626', cursor: 'pointer' }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => removeFile(f.id)}
+                aria-label={`Quitar archivo ${f.fileName}`}
+                className={styles.removeFile}
+              >
                 Quitar
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -108,15 +117,15 @@ function QuestionField({ question, value, onChange, token }) {
       <div className={styles.fieldGroup}>
         <label className={styles.questionLabel}>
           {label}
-          {required && <span className={styles.required}> *</span>}
+          {required && <span className={styles.required} aria-hidden="true"> *</span>}
         </label>
         {hint && <p className={styles.hint}>{hint}</p>}
-        <input
-          className={styles.input}
+        <Input
           type="text"
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           required={required}
+          aria-label={label}
         />
       </div>
     )
@@ -127,7 +136,7 @@ function QuestionField({ question, value, onChange, token }) {
       <div className={styles.fieldGroup}>
         <label className={styles.questionLabel}>
           {label}
-          {required && <span className={styles.required}> *</span>}
+          {required && <span className={styles.required} aria-hidden="true"> *</span>}
         </label>
         {hint && <p className={styles.hint}>{hint}</p>}
         <textarea
@@ -135,6 +144,8 @@ function QuestionField({ question, value, onChange, token }) {
           value={value || ''}
           onChange={(e) => onChange(e.target.value)}
           required={required}
+          aria-required={required ? 'true' : undefined}
+          aria-label={label}
           rows={4}
         />
       </div>
@@ -147,7 +158,7 @@ function QuestionField({ question, value, onChange, token }) {
         <fieldset className={styles.fieldset}>
           <legend className={styles.questionLabel}>
             {label}
-            {required && <span className={styles.required}> *</span>}
+            {required && <span className={styles.required} aria-hidden="true"> *</span>}
           </legend>
           {hint && <p className={styles.hint}>{hint}</p>}
           <div className={styles.optionsList}>
@@ -182,7 +193,7 @@ function QuestionField({ question, value, onChange, token }) {
         <fieldset className={styles.fieldset}>
           <legend className={styles.questionLabel}>
             {label}
-            {required && <span className={styles.required}> *</span>}
+            {required && <span className={styles.required} aria-hidden="true"> *</span>}
           </legend>
           {hint && <p className={styles.hint}>{hint}</p>}
           <div className={styles.optionsList}>
@@ -283,10 +294,10 @@ export default function BriefPage() {
     return (
       <div className={styles.page}>
         <div className={styles.container}>
-          <div className={styles.errorState}>
+          <Card padding="lg" shadow="sm" radius="md" className={styles.errorState}>
             <h1 className={styles.errorTitle}>Brief no disponible</h1>
             <p className={styles.errorText}>{error}</p>
-          </div>
+          </Card>
         </div>
       </div>
     )
@@ -296,13 +307,13 @@ export default function BriefPage() {
     return (
       <div className={styles.page}>
         <div className={styles.container}>
-          <div className={styles.successState}>
+          <Card padding="lg" shadow="sm" radius="md" className={styles.successState}>
             <div className={styles.successIcon}>✓</div>
             <h1 className={styles.successTitle}>¡Gracias por completar el brief!</h1>
             <p className={styles.successText}>
               Tu información fue recibida correctamente. El equipo se pondrá en contacto contigo pronto.
             </p>
-          </div>
+          </Card>
         </div>
       </div>
     )
@@ -321,39 +332,29 @@ export default function BriefPage() {
 
         <form className={styles.form} onSubmit={handleSubmit}>
           {/* Respondent identity */}
-          <div className={styles.identityCard}>
+          <Card padding="md" shadow="sm" radius="md" className={styles.identityCard}>
             <h2 className={styles.identityTitle}>Tus datos</h2>
             <div className={styles.identityGrid}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.questionLabel}>
-                  Nombre completo<span className={styles.required}> *</span>
-                </label>
-                <input
-                  className={styles.input}
-                  type="text"
-                  value={respondentName}
-                  onChange={(e) => setRespondentName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  placeholder="Tu nombre"
-                />
-              </div>
-              <div className={styles.fieldGroup}>
-                <label className={styles.questionLabel}>
-                  Correo electrónico<span className={styles.required}> *</span>
-                </label>
-                <input
-                  className={styles.input}
-                  type="email"
-                  value={respondentEmail}
-                  onChange={(e) => setRespondentEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                  placeholder="tu@email.com"
-                />
-              </div>
+              <Input
+                type="text"
+                label="Nombre completo"
+                required
+                placeholder="Tu nombre"
+                value={respondentName}
+                onChange={(e) => setRespondentName(e.target.value)}
+                autoComplete="name"
+              />
+              <Input
+                type="email"
+                label="Correo electrónico"
+                required
+                placeholder="tu@email.com"
+                value={respondentEmail}
+                onChange={(e) => setRespondentEmail(e.target.value)}
+                autoComplete="email"
+              />
             </div>
-          </div>
+          </Card>
 
           {/* Questions */}
           <div className={styles.questionsList}>
@@ -371,13 +372,15 @@ export default function BriefPage() {
           {submitError && <p className={styles.submitError}>{submitError}</p>}
 
           <div className={styles.submitRow}>
-            <button
-              className={styles.submitButton}
+            <Button
               type="submit"
+              variant="primary"
+              size="lg"
               disabled={submitting}
+              loading={submitting}
             >
               {submitting ? 'Enviando...' : 'Enviar brief'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

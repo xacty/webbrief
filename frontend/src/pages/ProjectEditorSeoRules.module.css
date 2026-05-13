@@ -1,6 +1,6 @@
 .topTrayRow {
   position: relative;
-  z-index: 1;
+  z-index: var(--wb-z-base);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -35,13 +35,13 @@
 
 .editorCanvas {
   position: relative;
-  z-index: 2;
+  z-index: var(--wb-z-base);
   flex: 1;
   min-width: 500px;
   max-width: 800px;
   min-height: calc(100vh - 120px);
   background: #f8f8f8;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 4px;
   padding: 60px 50px 1000px;
 }
@@ -52,7 +52,7 @@
 
 .seoPanel {
   position: relative;
-  z-index: 20;
+  z-index: var(--wb-z-sticky);
   flex-shrink: 0;
   background: #f8f8f8;
 }
@@ -64,11 +64,11 @@
   align-items: center;
   gap: 8px;
   padding: 0 18px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-bottom: none;
   border-radius: 14px 14px 0 0;
-  background: #fff;
-  color: #2a2a2a;
+  background: var(--wb-surface);
+  color: var(--wb-editor-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -79,7 +79,7 @@
 
 .seoToggleMeta {
   margin-left: auto;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
   font-weight: 600;
 }
@@ -89,9 +89,9 @@
   flex-direction: column;
   gap: 12px;
   padding: 14px 18px 16px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-bottom: none;
-  background: #fff;
+  background: var(--wb-surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
@@ -111,19 +111,19 @@
 }
 
 .seoLabel {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
   font-weight: 700;
 }
 
 .seoCounter {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 11px;
   font-weight: 600;
 }
 
 .seoCounterAlert {
-  color: #b91c1c;
+  color: var(--wb-color-danger-700);
 }
 
 .seoInput,
@@ -131,9 +131,9 @@
   flex: 1;
   min-width: 0;
   width: 100%;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 8px;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font: inherit;
   font-size: 13px;
 }
@@ -151,7 +151,7 @@
 }
 
 .seoInputAlert {
-  border-color: #ef4444;
+  border-color: var(--wb-color-danger-500);
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.08);
 }
 
@@ -174,7 +174,7 @@
 
 .rulesDock {
   position: relative;
-  z-index: 70;
+  z-index: var(--wb-z-sticky);
   width: 100%;
   margin-top: auto;
   padding-top: 16px;
@@ -203,7 +203,7 @@
 
 .rulesTitle {
   display: block;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -218,12 +218,12 @@
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   cursor: pointer;
 }
 
 .rulesEditButtonActive {
-  border-color: #d9d9d9;
+  border-color: var(--wb-editor-border);
   background: rgba(248, 248, 248, 0.9);
 }
 
@@ -250,13 +250,13 @@
 }
 
 .ruleLabel {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 11px;
   font-weight: 700;
 }
 
 .ruleUnit {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 9px;
   font-weight: 500;
   line-height: 1;
@@ -294,7 +294,7 @@
 }
 
 .ruleProperty {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 10px;
   font-weight: 500;
   line-height: 1;
@@ -307,7 +307,7 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font: inherit;
   font-size: 12px;
   font-weight: 400;
@@ -326,7 +326,7 @@
 }
 
 .ruleStaticNumber {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-weight: 600;
   font-size: 12px;
   line-height: 15px;
@@ -339,7 +339,7 @@
 
 .ruleInputShell:has(.ruleInput) {
   background: rgba(248, 248, 248, 0.75);
-  box-shadow: inset 0 -1px 0 #d9d9d9;
+  box-shadow: inset 0 -1px 0 var(--wb-editor-border);
 }
 
 .ruleControlsSingle .ruleStaticNumber {

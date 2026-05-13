@@ -7,6 +7,7 @@ import {
   getPlatformRoleTitle,
 } from '../../../../shared/userRoles.js'
 import webriefLogo from '../../assets/brand/webrief--logo-v2.svg'
+import { Button, Card } from '../ui'
 import styles from './AppShell.module.css'
 
 function roleLabel(currentUser, canManageUsers) {
@@ -90,14 +91,14 @@ export default function AppShell() {
         </div>
 
         <div className={styles.sidebarFooter}>
-          <div className={styles.profileCard}>
+          <Card padding="sm" shadow="none" radius="md" className={styles.profileCard}>
             <p className={styles.profileName}>
               {currentUser?.fullName || currentUser?.email || 'Cargando usuario'}
             </p>
             <p className={styles.profileRole}>
               {roleLabel(currentUser, canManageUsers)}
             </p>
-          </div>
+          </Card>
 
           <NavLink
             to="/settings"
@@ -109,9 +110,9 @@ export default function AppShell() {
             Ajustes de cuenta
           </NavLink>
 
-          <button className={styles.logoutButton} onClick={handleLogout}>
+          <Button variant="secondary" onClick={handleLogout} fullWidth>
             Cerrar sesión
-          </button>
+          </Button>
 
           <span className={styles.versionBadge}>v{__APP_VERSION__}</span>
         </div>

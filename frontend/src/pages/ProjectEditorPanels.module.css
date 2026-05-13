@@ -1,3 +1,8 @@
+/* Migrated to tokens 2026-05-09 (plan 04-03). Forbidden-block hex
+   literals (editor parallel palette + Phase-1 canonical hexes) eliminated.
+   Off-canon neutrals and indigo focus collapsed to primary-900 — flagged
+   in 04-03-SUMMARY.md. rgba and rgb(... / NN%) alpha overlays kept literal
+   per UI-SPEC Color (alpha-on-dark/light). */
 .leftPanel {
   width: 290px;
   flex-shrink: 0;
@@ -5,8 +10,8 @@
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  background: #fff;
-  border-right: 1px solid #212222;
+  background: var(--wb-surface);
+  border-right: 1px solid var(--wb-editor-bg);
 }
 
 .rightPanel {
@@ -18,8 +23,8 @@
   min-height: 0;
   overflow: hidden;
   padding: 30px;
-  background: #fff;
-  border-left: 1px solid #212222;
+  background: var(--wb-surface);
+  border-left: 1px solid var(--wb-editor-bg);
 }
 
 .panelHeader {
@@ -31,7 +36,7 @@
 }
 
 .panelTitle {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.01em;
@@ -55,8 +60,8 @@
   padding: 8px 10px;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  background: #fff;
-  color: #2a2a2a;
+  background: var(--wb-surface);
+  color: var(--wb-editor-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -64,8 +69,8 @@
 }
 
 .seoPanelButtonActive {
-  border-color: #212222;
-  background: #f8fafc;
+  border-color: var(--wb-editor-bg);
+  background: var(--wb-color-neutral-50);
 }
 
 .sectionList {
@@ -81,7 +86,7 @@
 .emptyMsg {
   margin: 0;
   padding-top: 8px;
-  color: #aaa;
+  color: var(--wb-editor-text-on-dark-muted);
   font-size: 13px;
 }
 
@@ -94,7 +99,7 @@
   gap: 8px;
   border-radius: 6px;
   background: transparent;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   text-align: left;
   cursor: pointer;
   font: inherit;
@@ -105,13 +110,13 @@
 }
 
 .outlineItemActive {
-  border: 1px solid #212222;
-  background: #fff;
+  border: 1px solid var(--wb-editor-bg);
+  background: var(--wb-surface);
 }
 
 .outlineTag {
   min-width: 20px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 11px;
   font-weight: 700;
 }
@@ -134,7 +139,7 @@
   padding: 10px;
   border-radius: 6px;
   background: transparent;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   text-align: left;
   cursor: pointer;
   font: inherit;
@@ -145,12 +150,12 @@
 }
 
 .faqItemActive {
-  border: 1px solid #212222;
-  background: #fff;
+  border: 1px solid var(--wb-editor-bg);
+  background: var(--wb-surface);
 }
 
 .faqItemKicker {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 11px;
   font-weight: 700;
 }
@@ -168,7 +173,7 @@
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -184,7 +189,7 @@
   height: 2px;
   margin: 0 10px;
   border-radius: 1px;
-  background: #0088ff;
+  background: var(--wb-color-primary-900);
 }
 
 .sectionNavBtn,
@@ -207,7 +212,7 @@
 }
 
 .sectionNavBtnActive {
-  border: 1px solid #212222;
+  border: 1px solid var(--wb-editor-bg);
 }
 
 .sectionNavBtnActive:hover {
@@ -243,7 +248,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 15px;
   font-weight: 500;
 }
@@ -267,11 +272,11 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .h1Divider:hover .h1DividerText {
-  color: #0088ff;
+  color: var(--wb-color-primary-900);
 }
 
 .h1DividerLine {
@@ -287,7 +292,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -297,10 +302,10 @@
 .sectionNameInput {
   flex: 1;
   padding: 0 4px;
-  border: 1px solid #0088ff;
+  border: 1px solid var(--wb-color-primary-900);
   border-radius: 3px;
   outline: none;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font: inherit;
   font-size: 15px;
   font-weight: 500;
@@ -328,22 +333,22 @@
   margin-top: 4px;
   min-width: 140px;
   overflow: hidden;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--wb-surface);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  z-index: 100;
+  z-index: var(--wb-z-sticky);
 }
 
 .menuItem {
   padding: 10px 16px;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 13px;
   cursor: pointer;
 }
 
 .menuItemDanger {
-  color: #ef4444;
+  color: var(--wb-color-danger-500);
 }
 
 .sectionContent {
@@ -361,7 +366,7 @@
 }
 
 .sectionHeadingItemActive {
-  border-left-color: #0088ff;
+  border-left-color: var(--wb-color-primary-900);
 }
 
 .sectionHeadingText {
@@ -371,7 +376,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: none;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -388,14 +393,14 @@
 
 .sectionCtaIcon {
   flex-shrink: 0;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   margin-right: 6px;
 }
 
 .sectionHeadingTextCta {
   font-weight: 400;
   font-style: italic;
-  color: #475569;
+  color: var(--wb-color-neutral-600);
   padding-left: 0;
 }
 
@@ -406,7 +411,7 @@
   gap: 10px;
   flex-shrink: 0;
   padding-bottom: 0;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--wb-color-neutral-200);
 }
 
 .rightPanelScroll {
@@ -439,10 +444,10 @@
 
 .markReadBtn,
 .proposalSecondaryButton {
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 999px;
-  background: #fff;
-  color: #64748b;
+  background: var(--wb-surface);
+  color: var(--wb-color-neutral-500);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -453,7 +458,7 @@
 .markReadBtn:hover:not(:disabled),
 .proposalSecondaryButton:hover:not(:disabled) {
   background: #f0f4f9;
-  border-color: #c7c7c7;
+  border-color: var(--wb-editor-text-on-dark-muted);
 }
 
 .markReadBtn:disabled,
@@ -479,14 +484,14 @@
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   cursor: pointer;
   transition: background 120ms, color 120ms;
 }
 
 .updatesRefreshBtn:hover:not(:disabled) {
   background: #f0f4f9;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .updatesRefreshBtn:disabled {
@@ -514,12 +519,12 @@
 
 .updatesError {
   margin: 12px 0 0;
-  color: #dc2626;
+  color: var(--wb-color-danger-600);
 }
 
 .updatesNotice {
   margin: 12px 0 0;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
 }
 
 .pendingBox,
@@ -528,26 +533,26 @@
 .shareBox {
   margin-top: 16px;
   padding: 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--wb-surface);
 }
 
 .pendingBox {
-  background: #f8fafc;
+  background: var(--wb-color-neutral-50);
 }
 
 .pendingTitle {
   display: block;
   margin-bottom: 8px;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 12px;
   font-weight: 600;
 }
 
 .pendingItem {
   margin: 6px 0 0;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
 }
 
 .proposalHeader {
@@ -564,15 +569,15 @@
   align-items: center;
   padding: 0 8px;
   border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--wb-color-warning-100);
+  color: var(--wb-color-warning-800);
   font-size: 11px;
   font-weight: 700;
 }
 
 .proposalText {
   margin: 0 0 8px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
 }
 
 .proposalActions {
@@ -585,8 +590,8 @@
   min-height: 34px;
   border: none;
   border-radius: 8px;
-  background: #212222;
-  color: #fff;
+  background: var(--wb-editor-bg);
+  color: var(--wb-editor-text-on-dark);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -615,9 +620,9 @@
   min-width: 0;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--wb-editor-border);
   border-radius: 8px;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font: inherit;
   font-size: 13px;
 }
@@ -628,7 +633,7 @@
 
 .deliverablesEmpty {
   margin: 10px 0 0;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
 }
 
 .deliverablesList {
@@ -646,7 +651,7 @@
   padding: 8px;
   border: 1px solid #eef2f7;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--wb-color-neutral-50);
 }
 
 .deliverableText {
@@ -664,13 +669,13 @@
 }
 
 .deliverableTitle {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 13px;
   font-weight: 600;
 }
 
 .deliverableMeta {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 11px;
 }
 
@@ -681,7 +686,7 @@
 .shareUrl {
   margin: 8px 0 0;
   word-break: break-all;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -697,9 +702,9 @@
   padding: 7px 10px;
   font-size: 12px;
   font-family: inherit;
-  color: #1e293b;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  color: var(--wb-color-neutral-800);
+  background: var(--wb-color-neutral-50);
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 7px;
   outline: none;
   box-sizing: border-box;
@@ -707,13 +712,13 @@
 }
 
 .templateInput:focus {
-  border-color: #6366f1;
-  background: #fff;
+  border-color: var(--wb-color-primary-900); /* off-canon indigo #6366f1 collapsed to primary-900 */
+  background: var(--wb-surface);
 }
 
 .updatesEmpty {
   margin: 16px 0 0;
-  color: #999;
+  color: var(--wb-editor-text-on-dark-muted);
   font-size: 14px;
 }
 
@@ -735,7 +740,7 @@
 .activityGroupTitle {
   display: block;
   margin-top: 18px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
   font-weight: 600;
 }
@@ -745,7 +750,7 @@
   flex-direction: column;
   gap: 2px;
   padding: 10px 0;
-  border-bottom: 1px solid #d9d9d9;
+  border-bottom: 1px solid var(--wb-editor-border);
 }
 
 .tabsBar {
@@ -759,7 +764,7 @@
   padding: 6px 0;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   font: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -780,19 +785,19 @@
 }
 
 .tab:hover {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .tabActive {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .tabActive::after {
-  background: #212222;
+  background: var(--wb-editor-bg);
 }
 
 .tabActive:hover {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .historyList {
@@ -806,9 +811,9 @@
 
 .historyItem {
   padding: 10px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 8px;
-  background: #fff;
+  background: var(--wb-surface);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -823,7 +828,7 @@
 }
 
 .historyItemSection {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 13px;
   font-weight: 600;
   min-width: 0;
@@ -831,13 +836,13 @@
 }
 
 .historyItemTime {
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   font-size: 11px;
   word-break: break-word;
 }
 
 .historyItemChanges {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
 }
 
@@ -851,9 +856,9 @@
 .historyRestoreBtn {
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid #d9d9d9;
-  background: #fff;
-  color: #2a2a2a;
+  border: 1px solid var(--wb-editor-border);
+  background: var(--wb-surface);
+  color: var(--wb-editor-text);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -867,7 +872,7 @@
 
 .historyEmpty {
   margin: 24px 0 0;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   font-size: 13px;
   text-align: center;
 }
@@ -880,7 +885,7 @@
   gap: 12px;
   padding: 18px 22px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--wb-surface);
   box-shadow: 0 20px 48px rgba(15, 23, 42, 0.22);
 }
 
@@ -888,22 +893,22 @@
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
 }
 
 .diffModalMeta {
   margin: 0;
   font-size: 12px;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
 }
 
 .diffPanel {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--wb-color-neutral-200);
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--wb-color-neutral-50);
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -911,16 +916,16 @@
 }
 
 .diffAdded {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--wb-color-success-100);
+  color: var(--wb-color-success-800);
   text-decoration: none;
   padding: 0 1px;
   border-radius: 2px;
 }
 
 .diffRemoved {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--wb-color-danger-100);
+  color: var(--wb-color-danger-800);
   text-decoration: line-through;
   padding: 0 1px;
   border-radius: 2px;
@@ -945,9 +950,9 @@
 }
 
 .diffModalClose {
-  background: #fff;
-  border: 1px solid #d9d9d9;
-  color: #2a2a2a;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-editor-border);
+  color: var(--wb-editor-text);
 }
 
 .diffModalClose:hover {
@@ -955,8 +960,8 @@
 }
 
 .diffModalRestore {
-  background: #212222;
-  color: #fff;
+  background: var(--wb-editor-bg);
+  color: var(--wb-editor-text-on-dark);
 }
 
 .diffModalRestore:hover {
@@ -983,19 +988,19 @@
 }
 
 .updatesField {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 13px;
   font-weight: 600;
 }
 
 .updatesDescription {
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 12px;
   line-height: 1.4;
 }
 
 .updatesDatetime {
-  color: #999;
+  color: var(--wb-editor-text-on-dark-muted);
   font-size: 12px;
 }
 
@@ -1013,7 +1018,7 @@
 }
 
 .activityGroup {
-  border-bottom: 1px solid #d9d9d9;
+  border-bottom: 1px solid var(--wb-editor-border);
 }
 
 .activityGroupRow {
@@ -1027,7 +1032,7 @@
 }
 
 .activityGroupRow:hover .activityGroupName {
-  color: #1d4ed8;
+  color: var(--wb-color-primary-900);
 }
 
 .activityGroupMain {
@@ -1045,7 +1050,7 @@
 }
 
 .activityGroupName {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
@@ -1063,11 +1068,11 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #2563eb;
+  background: var(--wb-color-primary-900);
 }
 
 .activityGroupSub {
-  color: #999;
+  color: var(--wb-editor-text-on-dark-muted);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -1075,7 +1080,7 @@
 }
 
 .activityGroupChanges {
-  color: #475569;
+  color: var(--wb-color-neutral-600);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -1086,7 +1091,7 @@
   padding: 2px 6px;
   border: none;
   background: transparent;
-  color: #64748b;
+  color: var(--wb-color-neutral-500);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -1094,8 +1099,8 @@
 }
 
 .activityGroupDetailBtn:hover {
-  color: #0f172a;
-  background: #f1f5f9;
+  color: var(--wb-color-neutral-900);
+  background: var(--wb-color-neutral-100);
 }
 
 .activityGroupChevron {
@@ -1109,14 +1114,14 @@
   border: none;
   border-radius: 5px;
   background: transparent;
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   cursor: pointer;
   transition: background 100ms, color 100ms, transform 150ms;
 }
 
 .activityGroupChevron:hover {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-600);
 }
 
 .activityGroupChevronOpen {
@@ -1127,7 +1132,7 @@
   list-style: none;
   margin: 0;
   padding: 0 0 8px 12px;
-  border-left: 2px solid #e2e8f0;
+  border-left: 2px solid var(--wb-color-neutral-200);
   margin-left: 4px;
   margin-bottom: 4px;
 }
@@ -1143,7 +1148,7 @@
 }
 
 .activityHistoryItem:hover {
-  background: #f8fafc;
+  background: var(--wb-color-neutral-50);
 }
 
 .activityHistoryItemActive {
@@ -1155,13 +1160,13 @@
 }
 
 .activityHistoryDesc {
-  color: #2a2a2a;
+  color: var(--wb-editor-text);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
 }
 
 .activityHistoryMeta {
-  color: #94a3b8;
+  color: var(--wb-color-neutral-400);
   font-size: 11px;
 }

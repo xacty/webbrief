@@ -1,0 +1,141 @@
+.field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  font-family: var(--wb-font-sans);
+}
+
+.fullWidth {
+  display: flex;
+  width: 100%;
+}
+
+.label {
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  line-height: var(--wb-leading-sm);
+  color: var(--wb-color-neutral-700);
+}
+
+.required {
+  color: var(--wb-color-danger-600);
+  margin-left: var(--wb-space-1);
+}
+
+.inputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  height: calc(var(--wb-space-8) + var(--wb-space-2)); /* 40px per UI-SPEC arithmetic */
+  padding: 0 var(--wb-space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  color: var(--wb-color-neutral-800);
+  font-family: inherit;
+  font-size: var(--wb-text-base);
+  line-height: var(--wb-leading-base);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.input::placeholder {
+  color: var(--wb-color-neutral-500);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--wb-border-strong);
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--wb-color-neutral-50);
+}
+
+/* Icon wrapper rules — 16px = lucide icon size, per UI-SPEC §Input geometry */
+.icon {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  pointer-events: none;
+  color: var(--wb-color-neutral-500);
+  line-height: 0;
+}
+
+.icon_left {
+  left: var(--wb-space-3);
+}
+
+.icon_right {
+  right: var(--wb-space-3);
+}
+
+.hasIcon_left .input {
+  padding-left: calc(var(--wb-space-2) + 16px + var(--wb-space-2));
+}
+
+.hasIcon_right .input {
+  padding-right: calc(var(--wb-space-2) + 16px + var(--wb-space-2));
+}
+
+/* Password toggle — preserves caret via onMouseDown preventDefault in JSX */
+.passwordToggle {
+  position: absolute;
+  right: var(--wb-space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wb-space-6);
+  height: var(--wb-space-6);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  color: var(--wb-color-neutral-600);
+  cursor: pointer;
+  padding: 0;
+}
+
+.passwordToggle:hover {
+  color: var(--wb-color-neutral-800);
+}
+
+.passwordToggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--wb-color-primary-200);
+}
+
+.hasPasswordToggle .input {
+  padding-right: calc(var(--wb-space-3) + var(--wb-space-6) + var(--wb-space-2));
+}
+
+/* Error state */
+.hasError .input {
+  border-color: var(--wb-color-danger-600);
+}
+
+.hasError .input:focus-visible {
+  box-shadow: 0 0 0 3px var(--wb-color-danger-100);
+}
+
+.helper {
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  line-height: var(--wb-leading-normal);
+  color: var(--wb-color-neutral-600);
+}
+
+.helperError {
+  color: var(--wb-color-danger-700);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .input {
+    transition: none;
+  }
+}

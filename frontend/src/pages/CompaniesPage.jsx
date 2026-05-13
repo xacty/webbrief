@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, ArrowRight, Trash2 } from 'lucide-react'
+import { Archive, ArrowRight, Trash2, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin } from '../lib/roleCapabilities'
+import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
 import styles from './CompaniesPage.module.css'
 
 const PAGE_SIZE = 8
@@ -51,6 +52,12 @@ function formatDate(isoDate) {
   })
 }
 
+function companyTypeBadge(company) {
+  if (company.isInternal) return { variant: 'neutral', label: 'Interna' }
+  if (company.isTest) return { variant: 'success', label: 'Prueba' }
+  return { variant: 'primary', label: 'Cliente' }
+}
+
 export default function CompaniesPage() {
   const navigate = useNavigate()
   const { currentUser } = useAuth()
@@ -67,7 +74,14 @@ export default function CompaniesPage() {
   const [testMode, setTestMode] = useState(false)
   const [companyFeedback, setCompanyFeedback] = useState('')
   const [creatingCompany, setCreatingCompany] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [feedbackNotice, setFeedbackNotice] = useState('')
   const canCreateCompanies = isAdmin(currentUser)
+  const canManageAnyCompany = useMemo(
+    () => isAdmin(currentUser) || companies.some((company) => company.membershipRole === 'manager'),
+    [currentUser, companies]
+  )
 
   useEffect(() => {
     let active = true
@@ -115,6 +129,108 @@ export default function CompaniesPage() {
   useEffect(() => {
     setPage(1)
   }, [query, typeFilter])
+
+  // ESC clears multiselect; do not consume ESC when no selection is active so
+  // other components (modals, kebab menus) keep their own ESC handling.
+  useEffect(() => {
+    if (selectedIds.size === 0) return undefined
+    function onKeyDown(event) {
+      if (event.key !== 'Escape') return
+      // Avoid stealing ESC from open modals (Modal primitive listens too)
+      if (modalOpen) return
+      event.stopPropagation()
+      clearSelection()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [selectedIds, modalOpen])
+
+  function showFeedback(message) {
+    setFeedbackNotice(message)
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => setFeedbackNotice(''), 4000)
+    }
+  }
+
+  function isCompanySelectable(company) {
+    if (!company || company.isInternal) return false
+    return isAdmin(currentUser) || company.membershipRole === 'manager'
+  }
+
+  function toggleSelected(companyId) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(companyId)) next.delete(companyId)
+      else next.add(companyId)
+      return next
+    })
+  }
+
+  function selectAllCompanies() {
+    setSelectedIds(new Set(filteredCompanies.filter(isCompanySelectable).map((company) => company.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  async function handleBulkArchive() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Archivar ${ids.length} empresa(s)? Podrás restaurarlas desde Archivados.`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/companies/bulk/archive', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const archived = Number(result?.archived || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextCompanies = companies.filter((company) => !selectedIds.has(company.id))
+      setCompanies(nextCompanies)
+      writeCompaniesCache(nextCompanies)
+      clearCompanyDetailCaches()
+      clearSelection()
+      setError('')
+      showFeedback(failed > 0
+        ? `${archived} empresa(s) archivada(s); ${failed} no procesada(s)`
+        : `${archived} empresa(s) archivada(s)`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron archivar las empresas')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function handleBulkTrash() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Enviar ${ids.length} empresa(s) a papelera por 30 días?`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/companies/bulk/trash', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const trashed = Number(result?.trashed || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextCompanies = companies.filter((company) => !selectedIds.has(company.id))
+      setCompanies(nextCompanies)
+      writeCompaniesCache(nextCompanies)
+      clearCompanyDetailCaches()
+      clearSelection()
+      setError('')
+      showFeedback(failed > 0
+        ? `${trashed} empresa(s) en papelera; ${failed} no procesada(s)`
+        : `${trashed} empresa(s) en papelera`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron enviar a papelera')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   const pageCount = Math.max(1, Math.ceil(filteredCompanies.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -175,8 +291,27 @@ export default function CompaniesPage() {
     navigate(`/companies/${companyId}`)
   }
 
-  async function handleCompanyArchive(event, companyId) {
-    event.stopPropagation()
+  // In select-mode (≥1 selected), clicking/Enter on the card toggles its
+  // selection instead of opening the company. Explicit buttons (Abrir,
+  // kebab) still perform their action via stopPropagation.
+  function handleCompanyActivate(companyId, selectable) {
+    if (selectedIds.size > 0) {
+      if (selectable) toggleSelected(companyId)
+    } else {
+      openCompany(companyId)
+    }
+  }
+
+  function handleCompanyKeyDown(event, companyId, selectable) {
+    if (event.target.closest?.('button')) return
+    if (event.target.closest?.('input, label, [role="menu"]')) return
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      handleCompanyActivate(companyId, selectable)
+    }
+  }
+
+  async function handleCompanyArchive(companyId) {
     if (!window.confirm('¿Archivar esta empresa? Podrás restaurarla desde Archivados.')) return
 
     try {
@@ -191,8 +326,7 @@ export default function CompaniesPage() {
     }
   }
 
-  async function handleCompanyTrash(event, companyId) {
-    event.stopPropagation()
+  async function handleCompanyTrash(companyId) {
     if (!window.confirm('¿Enviar esta empresa a papelera por 30 días?')) return
 
     try {
@@ -220,32 +354,26 @@ export default function CompaniesPage() {
       </header>
 
       <section className={styles.toolbar}>
-        <div className={styles.searchWrap}>
-          <label className={styles.fieldLabel} htmlFor="company-search">Buscar</label>
-          <input
-            id="company-search"
-            className={styles.input}
-            type="search"
-            placeholder="Buscar por nombre"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
+        <Input
+          id="company-search"
+          label="Buscar"
+          type="search"
+          placeholder="Buscar por nombre"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
 
-        <div className={styles.filterWrap}>
-          <label className={styles.fieldLabel} htmlFor="company-filter">Tipo</label>
-          <select
-            id="company-filter"
-            className={styles.select}
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="all">Todas</option>
-            <option value="clients">Clientes</option>
-            <option value="test">Pruebas</option>
-            <option value="internal">Internas</option>
-          </select>
-        </div>
+        <Select
+          id="company-filter"
+          label="Tipo"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
+          <option value="all">Todas</option>
+          <option value="clients">Clientes</option>
+          <option value="test">Pruebas</option>
+          <option value="internal">Internas</option>
+        </Select>
       </section>
 
       <section className={styles.sectionHeader}>
@@ -257,11 +385,76 @@ export default function CompaniesPage() {
         </div>
 
         {canCreateCompanies && (
-          <button className={styles.primaryButton} onClick={openModal}>
-            + Nueva empresa
-          </button>
+          <Button variant="primary" icon={<Plus size={16} />} onClick={openModal}>
+            Nueva empresa
+          </Button>
         )}
       </section>
+
+      {canManageAnyCompany && selectedIds.size > 0 && (
+        <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
+          <div className={styles.bulkInfo}>
+            <strong>{selectedIds.size} empresa{selectedIds.size === 1 ? '' : 's'} seleccionada{selectedIds.size === 1 ? '' : 's'}</strong>
+            {(() => {
+              const selectableTotal = filteredCompanies.filter(isCompanySelectable).length
+              return selectedIds.size < selectableTotal ? (
+                <button
+                  type="button"
+                  className={styles.bulkLink}
+                  onClick={selectAllCompanies}
+                >
+                  Seleccionar todas ({selectableTotal})
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.bulkLink}
+                  onClick={clearSelection}
+                >
+                  Deseleccionar todas
+                </button>
+              )
+            })()}
+          </div>
+          <div className={styles.bulkActions}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={<Archive size={14} />}
+              onClick={handleBulkArchive}
+              disabled={bulkBusy}
+            >
+              Archivar
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              icon={<Trash2 size={14} />}
+              onClick={handleBulkTrash}
+              disabled={bulkBusy}
+            >
+              Enviar a papelera
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={clearSelection}
+              disabled={bulkBusy}
+            >
+              Cancelar ({selectedIds.size})
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {feedbackNotice && (
+        <div className={styles.feedbackNotice} role="status">
+          {feedbackNotice}
+        </div>
+      )}
 
       {loading && <p className={styles.info}>Cargando empresas...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
@@ -276,67 +469,110 @@ export default function CompaniesPage() {
 
       {!loading && !error && paginatedCompanies.length > 0 && (
         <div className={styles.cardsGrid}>
-          {paginatedCompanies.map((company) => (
-            <article
-              key={company.id}
-              className={styles.companyCard}
-            >
-              <div className={styles.cardHeader}>
-                <h3 className={styles.companyName}>{company.name}</h3>
-                <span className={company.isInternal ? styles.internalBadge : company.isTest ? styles.testBadge : styles.clientBadge}>
-                  {company.isInternal ? 'Interna' : company.isTest ? 'Prueba' : 'Cliente'}
-                </span>
-              </div>
-
-              <div className={styles.cardStats}>
-                <div className={styles.statItem}>
-                  <span className={styles.statValue}>{company.projectCount}</span>
-                  <span className={styles.statLabel}>Proyectos</span>
-                </div>
-                <div className={styles.statItem}>
-                  <span className={styles.statValue}>{company.memberCount}</span>
-                  <span className={styles.statLabel}>Equipo</span>
-                </div>
-              </div>
-
-              <p className={styles.activityLine}>
-                <span>Última actividad</span>
-                <time>{formatDate(company.lastActivity)}</time>
-              </p>
-
-              <div className={styles.cardActions}>
-                {(isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal && (
-                  <>
-                    <button
-                      className={styles.cardDangerButton}
-                      onClick={(event) => handleCompanyTrash(event, company.id)}
-                      aria-label={`Enviar ${company.name} a papelera`}
-                      title="Papelera"
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </button>
-                    <button
-                      className={styles.cardIconButton}
-                      onClick={(event) => handleCompanyArchive(event, company.id)}
-                      aria-label={`Archivar ${company.name}`}
-                      title="Archivar"
-                    >
-                      <Archive aria-hidden="true" />
-                    </button>
-                  </>
+          {paginatedCompanies.map((company) => {
+            const badge = companyTypeBadge(company)
+            const selectable = isCompanySelectable(company)
+            const showKebab = (isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal
+            const isSelected = selectedIds.has(company.id)
+            const inSelectMode = selectedIds.size > 0
+            const cardClassNames = [styles.companyCard]
+            if (isSelected) cardClassNames.push(styles.companyCardSelected)
+            if (inSelectMode) cardClassNames.push(styles.companyCardInSelectMode)
+            return (
+              <Card
+                key={company.id}
+                padding="md"
+                shadow="sm"
+                radius="md"
+                className={cardClassNames.join(' ')}
+                aria-selected={isSelected ? 'true' : undefined}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleCompanyActivate(company.id, selectable)}
+                onKeyDown={(event) => handleCompanyKeyDown(event, company.id, selectable)}
+              >
+                {selectable && (
+                  <label
+                    className={styles.companySelectLabel}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      className={styles.companySelectCheckbox}
+                      checked={isSelected}
+                      onChange={() => toggleSelected(company.id)}
+                      aria-label={isSelected ? `Deseleccionar ${company.name}` : `Seleccionar ${company.name}`}
+                    />
+                  </label>
                 )}
-                <button
-                  className={styles.cardOpenButton}
-                  onClick={() => openCompany(company.id)}
-                  aria-label={`Abrir workspace de ${company.name}`}
-                  title={`Abrir workspace de ${company.name}`}
-                >
-                  <span>Abrir</span>
-                  <ArrowRight aria-hidden="true" />
-                </button>
-              </div>
-            </article>
-          ))}
+
+                <div className={styles.cardHeader}>
+                  <h3 className={styles.companyName}>{company.name}</h3>
+                  <Badge variant={badge.variant} size="sm">{badge.label}</Badge>
+                </div>
+
+                <div className={styles.cardStats}>
+                  <div className={styles.statItem}>
+                    <span className={styles.statValue}>{company.projectCount}</span>
+                    <span className={styles.statLabel}>Proyectos</span>
+                  </div>
+                  <div className={styles.statItem}>
+                    <span className={styles.statValue}>{company.memberCount}</span>
+                    <span className={styles.statLabel}>Equipo</span>
+                  </div>
+                </div>
+
+                <p className={styles.activityLine}>
+                  <span>Última actividad</span>
+                  <time>{formatDate(company.lastActivity)}</time>
+                </p>
+
+                <div className={styles.cardActions}>
+                  <div className={styles.companyActionsButtons}>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      icon={<ArrowRight size={14} />}
+                      iconPosition="right"
+                      aria-label={`Abrir workspace de ${company.name}`}
+                      title={`Abrir workspace de ${company.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        openCompany(company.id)
+                      }}
+                    >
+                      Abrir
+                    </Button>
+                  </div>
+                  {showKebab && (
+                    <div
+                      className={styles.companyActionsKebab}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <KebabMenu
+                        label={`Más acciones de ${company.name}`}
+                        placement="top-end"
+                        items={[
+                          {
+                            label: 'Archivar',
+                            icon: <Archive size={14} />,
+                            onClick: () => handleCompanyArchive(company.id),
+                          },
+                          {
+                            label: 'Enviar a papelera',
+                            icon: <Trash2 size={14} />,
+                            destructive: true,
+                            onClick: () => handleCompanyTrash(company.id),
+                          },
+                        ]}
+                      />
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )
+          })}
         </div>
       )}
 
@@ -346,100 +582,91 @@ export default function CompaniesPage() {
         </p>
 
         <div className={styles.paginationActions}>
-          <button
-            className={styles.paginationButton}
-            onClick={() => setPage((currentValue) => Math.max(1, currentValue - 1))}
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
             disabled={currentPage === 1}
+            onClick={() => setPage((currentValue) => Math.max(1, currentValue - 1))}
           >
             Anterior
-          </button>
-          <button
-            className={styles.paginationButton}
-            onClick={() => setPage((currentValue) => Math.min(pageCount, currentValue + 1))}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
             disabled={currentPage === pageCount}
+            onClick={() => setPage((currentValue) => Math.min(pageCount, currentValue + 1))}
           >
             Siguiente
-          </button>
+          </Button>
         </div>
       </footer>
 
-      {modalOpen && (
-        <div className={styles.modalOverlay} onClick={closeModal}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <div>
-                <h3 className={styles.modalTitle}>Nueva empresa</h3>
-                <p className={styles.modalText}>
-                  {testMode
-                    ? 'Crea una empresa de prueba sin invitación inicial.'
-                    : 'Crea la empresa cliente junto a su manager inicial. La empresa no quedará creada si no se puede asignar ese usuario.'}
-                </p>
-              </div>
-              <button className={styles.modalClose} onClick={closeModal}>×</button>
-            </div>
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        title="Nueva empresa"
+        size="md"
+        ariaDescribedBy="new-company-description"
+      >
+        <p id="new-company-description" className={styles.modalText}>
+          {testMode
+            ? 'Crea una empresa de prueba sin invitación inicial.'
+            : 'Crea la empresa cliente junto a su manager inicial. La empresa no quedará creada si no se puede asignar ese usuario.'}
+        </p>
 
-            <form className={styles.modalForm} onSubmit={handleCreateCompany}>
-              <div className={styles.modalField}>
-                <label className={styles.fieldLabel} htmlFor="new-company-name">Empresa</label>
-                <input
-                  id="new-company-name"
-                  className={styles.input}
-                  type="text"
-                  placeholder="Ej: Nettronik"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  required={!testMode}
-                  autoFocus
-                />
-              </div>
+        <form className={styles.modalForm} onSubmit={handleCreateCompany}>
+          <Input
+            id="new-company-name"
+            label="Empresa"
+            type="text"
+            placeholder="Ej: Nettronik"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            required={!testMode}
+            autoFocus
+          />
 
-              <label className={styles.checkboxRow}>
-                <input
-                  type="checkbox"
-                  checked={testMode}
-                  onChange={(event) => setTestMode(event.target.checked)}
-                />
-                <span>Empresa de prueba</span>
-              </label>
+          <label className={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={testMode}
+              onChange={(event) => setTestMode(event.target.checked)}
+            />
+            <span>Empresa de prueba</span>
+          </label>
 
-              {!testMode && (
-                <>
-                  <div className={styles.modalField}>
-                    <label className={styles.fieldLabel} htmlFor="new-manager-name">Manager</label>
-                    <input
-                      id="new-manager-name"
-                      className={styles.input}
-                      type="text"
-                      placeholder="Nombre completo"
-                      value={managerName}
-                      onChange={(e) => setManagerName(e.target.value)}
-                    />
-                  </div>
+          {!testMode && (
+            <>
+              <Input
+                id="new-manager-name"
+                label="Manager"
+                type="text"
+                placeholder="Nombre completo"
+                value={managerName}
+                onChange={(e) => setManagerName(e.target.value)}
+              />
 
-                  <div className={styles.modalField}>
-                    <label className={styles.fieldLabel} htmlFor="new-manager-email">Email del manager</label>
-                    <input
-                      id="new-manager-email"
-                      className={styles.input}
-                      type="email"
-                      placeholder="manager@empresa.com"
-                      value={managerEmail}
-                      onChange={(e) => setManagerEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                </>
-              )}
+              <Input
+                id="new-manager-email"
+                label="Email del manager"
+                type="email"
+                placeholder="manager@empresa.com"
+                value={managerEmail}
+                onChange={(e) => setManagerEmail(e.target.value)}
+                required
+              />
+            </>
+          )}
 
-              <button className={styles.primaryButton} type="submit" disabled={creatingCompany}>
-                {creatingCompany ? 'Creando...' : 'Crear empresa'}
-              </button>
-            </form>
+          <Button type="submit" variant="primary" disabled={creatingCompany} loading={creatingCompany} fullWidth>
+            {creatingCompany ? 'Creando...' : 'Crear empresa'}
+          </Button>
+        </form>
 
-            {companyFeedback && <p className={styles.error}>{companyFeedback}</p>}
-          </div>
-        </div>
-      )}
+        {companyFeedback && <p className={styles.error}>{companyFeedback}</p>}
+      </Modal>
     </div>
   )
 }

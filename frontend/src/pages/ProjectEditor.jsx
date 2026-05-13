@@ -40,6 +40,7 @@ import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
+import { Modal } from '../components/ui'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -8087,7 +8088,7 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
       if (!(target instanceof Element)) return
       if (target.closest('img[data-handoff-image-key]')) return
       if (target.closest(`.${styles.imageContextMenu}`)) return
-      if (target.closest(`.${styles.exportModal}`)) return
+      if (target.closest('[role="dialog"]')) return
       setSelectedImageKeys([])
       setSelectionAnchorKey(null)
     }
@@ -8535,19 +8536,16 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
         </div>
       )}
 
-      {exportModal && (
-        <div className={styles.exportModalOverlay} onClick={closeImageExport}>
-          <div className={styles.exportModal} onClick={(event) => event.stopPropagation()}>
-            <div className={styles.exportModalHeader}>
-              <div>
-                <p className={styles.exportModalEyebrow}>Exportación de imagen</p>
-                <h3 className={styles.exportModalTitle}>Configurar export</h3>
-              </div>
-              <button type="button" className={styles.exportModalClose} onClick={closeImageExport} aria-label="Cerrar">
-                <X size={16} />
-              </button>
-            </div>
-
+      <Modal
+        open={Boolean(exportModal)}
+        onClose={closeImageExport}
+        title="Configurar export"
+        size="md"
+        showCloseButton={true}
+      >
+        {exportModal && (
+          <>
+            <p className={styles.exportEyebrow}>Exportación de imagen</p>
             <form className={styles.exportModalForm} onSubmit={handleImageExportSubmit}>
               {exportModal.mode === 'bulk' ? (
                 <>
@@ -8653,9 +8651,9 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
                 <button type="submit" className={styles.exportPrimaryBtn}>Exportar imagen</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

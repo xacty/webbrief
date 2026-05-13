@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin } from '../lib/roleCapabilities'
+import { Button, Input, Select, Card, Badge } from '../components/ui'
 import styles from './NewProject.module.css'
 
 const ESTRUCTURAS = {
@@ -256,9 +257,9 @@ export default function NewProject() {
   return (
     <div className={styles.page}>
       <div className={styles.breadcrumbs}>
-        <button className={styles.backButton} onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}>
+        <Button variant="ghost" size="sm" onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}>
           ← Volver
-        </button>
+        </Button>
       </div>
 
       <header className={styles.header}>
@@ -269,128 +270,112 @@ export default function NewProject() {
             Crea el proyecto dentro de una empresa concreta y siembra su estructura inicial según el tipo de contenido.
           </p>
         </div>
+        {selectedCompany && (
+          <Badge variant="primary">{PROJECT_TYPES[projectType].label}</Badge>
+        )}
       </header>
 
       <div className={styles.layout}>
-        <form className={styles.formColumn} onSubmit={handleCreateProject}>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="project-name">Nombre del proyecto</label>
-            <input
-              id="project-name"
-              className={styles.input}
-              type="text"
-              placeholder="Ej: Rediseño web corporativo"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
+        <Card as="form" padding="lg" shadow="sm" radius="lg" onSubmit={handleCreateProject} className={styles.formColumn}>
+          <Input
+            id="project-name"
+            label="Nombre del proyecto"
+            type="text"
+            placeholder="Ej: Rediseño web corporativo"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="project-type">Tipo de proyecto</label>
-            <select
-              id="project-type"
-              className={styles.select}
-              value={projectType}
-              onChange={(e) => {
-                setProjectType(e.target.value)
-                setBusinessType('tabula_rasa')
-                setTemplateId('')
-              }}
-              required
-            >
-              {Object.entries(PROJECT_TYPES).map(([key, value]) => (
-                <option key={key} value={key}>{value.label}</option>
-              ))}
-            </select>
-            <span className={styles.fieldHint}>{PROJECT_TYPES[projectType].description}</span>
-          </div>
+          <Select
+            id="project-type"
+            label="Tipo de proyecto"
+            value={projectType}
+            onChange={(e) => {
+              setProjectType(e.target.value)
+              setBusinessType('tabula_rasa')
+              setTemplateId('')
+            }}
+            required
+            helperText={PROJECT_TYPES[projectType].description}
+          >
+            {Object.entries(PROJECT_TYPES).map(([key, value]) => (
+              <option key={key} value={key}>{value.label}</option>
+            ))}
+          </Select>
 
           {showTemplateSelector && (
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="business-type">Plantilla</label>
-              <select
-                id="business-type"
-                className={styles.select}
-                value={templateId || businessType}
-                onChange={(e) => {
-                  const val = e.target.value
-                  // Check if it's a company template id
-                  const isCompanyTpl = companyTemplates.some((t) => t.id === val)
-                  if (isCompanyTpl) {
-                    setTemplateId(val)
-                  } else {
-                    setTemplateId('')
-                    setBusinessType(val)
-                  }
-                }}
-                required
-              >
-                {projectType === 'brief' ? (
-                  <>
-                    <optgroup label="Plantillas generales">
-                      {Object.entries(BRIEF_TEMPLATES).map(([key, value]) => (
-                        <option key={key} value={key}>{value.label}</option>
+            <Select
+              id="business-type"
+              label="Plantilla"
+              value={templateId || businessType}
+              onChange={(e) => {
+                const val = e.target.value
+                // Check if it's a company template id
+                const isCompanyTpl = companyTemplates.some((t) => t.id === val)
+                if (isCompanyTpl) {
+                  setTemplateId(val)
+                } else {
+                  setTemplateId('')
+                  setBusinessType(val)
+                }
+              }}
+              required
+              helperText={
+                projectType === 'brief' && !templateId
+                  ? (BRIEF_TEMPLATES[businessType]?.description || (selectedCompany ? `Se creará en ${selectedCompany.name}.` : ''))
+                  : (selectedCompany ? `Se creará en ${selectedCompany.name}.` : '')
+              }
+            >
+              {projectType === 'brief' ? (
+                <>
+                  <optgroup label="Plantillas generales">
+                    {Object.entries(BRIEF_TEMPLATES).map(([key, value]) => (
+                      <option key={key} value={key}>{value.label}</option>
+                    ))}
+                  </optgroup>
+                  {companyTemplates.length > 0 && (
+                    <optgroup label="Plantillas de esta empresa">
+                      {companyTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </optgroup>
-                    {companyTemplates.length > 0 && (
-                      <optgroup label="Plantillas de esta empresa">
-                        {companyTemplates.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <optgroup label="Plantillas generales">
-                      {Object.entries(ESTRUCTURAS).map(([key, value]) => (
-                        <option key={key} value={key}>{value.label}</option>
+                  )}
+                </>
+              ) : (
+                <>
+                  <optgroup label="Plantillas generales">
+                    {Object.entries(ESTRUCTURAS).map(([key, value]) => (
+                      <option key={key} value={key}>{value.label}</option>
+                    ))}
+                  </optgroup>
+                  {companyTemplates.length > 0 && (
+                    <optgroup label="Plantillas de esta empresa">
+                      {companyTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </optgroup>
-                    {companyTemplates.length > 0 && (
-                      <optgroup label="Plantillas de esta empresa">
-                        {companyTemplates.map((t) => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </>
-                )}
-              </select>
-              {projectType === 'brief' && !templateId && (
-                <span className={styles.fieldHint}>
-                  {BRIEF_TEMPLATES[businessType]?.description || ''}
-                </span>
+                  )}
+                </>
               )}
-              {selectedCompany && (
-                <span className={styles.fieldHint}>Se creará en {selectedCompany.name}.</span>
-              )}
-            </div>
+            </Select>
           )}
           {!showTemplateSelector && selectedCompany && (
-            <p className={styles.fieldHint} style={{ marginTop: -8 }}>Se creará en {selectedCompany.name}.</p>
+            <p className={styles.fieldHint}>Se creará en {selectedCompany.name}.</p>
           )}
 
           {projectType === 'document' && (
             <div className={styles.field}>
               <label className={styles.label}>Reglas de contenido</label>
-              <div className={styles.preview}>
-                <div className={styles.pagesList}>
-                  <div className={styles.pageBlock}>
-                    <p className={styles.pageName}>Opcional</p>
-                    <div className={styles.sectionList} style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-                      <input className={styles.input} type="number" min="1" placeholder="Title min" value={contentRules.titleTagMinChars || ''} onChange={(e) => updateContentRule('titleTagMinChars', e.target.value)} />
-                      <input className={styles.input} type="number" min="1" placeholder="Title max" value={contentRules.titleTagMaxChars || ''} onChange={(e) => updateContentRule('titleTagMaxChars', e.target.value)} />
-                      <input className={styles.input} type="number" min="1" placeholder="Meta min" value={contentRules.metaDescriptionMinChars || ''} onChange={(e) => updateContentRule('metaDescriptionMinChars', e.target.value)} />
-                      <input className={styles.input} type="number" min="1" placeholder="Meta max" value={contentRules.metaDescriptionMaxChars || ''} onChange={(e) => updateContentRule('metaDescriptionMaxChars', e.target.value)} />
-                      <input className={styles.input} type="number" min="1" placeholder="Slug max palabras" value={contentRules.urlSlugMaxWords || ''} onChange={(e) => updateContentRule('urlSlugMaxWords', e.target.value)} />
-                      <input className={styles.input} type="number" min="1" placeholder="Documento max palabras" value={contentRules.documentMaxWords || ''} onChange={(e) => updateContentRule('documentMaxWords', e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-                <p className={styles.previewNote}>Si lo dejas vacío, el documento se crea sin límites.</p>
+              <div className={styles.rulesGrid}>
+                <Input type="number" min="1" placeholder="Title min" value={contentRules.titleTagMinChars || ''} onChange={(e) => updateContentRule('titleTagMinChars', e.target.value)} />
+                <Input type="number" min="1" placeholder="Title max" value={contentRules.titleTagMaxChars || ''} onChange={(e) => updateContentRule('titleTagMaxChars', e.target.value)} />
+                <Input type="number" min="1" placeholder="Meta min" value={contentRules.metaDescriptionMinChars || ''} onChange={(e) => updateContentRule('metaDescriptionMinChars', e.target.value)} />
+                <Input type="number" min="1" placeholder="Meta max" value={contentRules.metaDescriptionMaxChars || ''} onChange={(e) => updateContentRule('metaDescriptionMaxChars', e.target.value)} />
+                <Input type="number" min="1" placeholder="Slug max palabras" value={contentRules.urlSlugMaxWords || ''} onChange={(e) => updateContentRule('urlSlugMaxWords', e.target.value)} />
+                <Input type="number" min="1" placeholder="Documento max palabras" value={contentRules.documentMaxWords || ''} onChange={(e) => updateContentRule('documentMaxWords', e.target.value)} />
               </div>
+              <p className={styles.fieldHint}>Si lo dejas vacío, el documento se crea sin límites.</p>
             </div>
           )}
 
@@ -399,28 +384,29 @@ export default function NewProject() {
           )}
 
           <div className={styles.actions}>
-            <button
-              className={styles.primaryButton}
+            <Button
               type="submit"
+              variant="primary"
               disabled={submitting || companiesLoading || companies.length === 0 || !canCreateProject}
+              loading={submitting}
             >
               {submitting ? 'Creando...' : 'Crear proyecto'}
-            </button>
-            <button
-              className={styles.secondaryButton}
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => navigate(companyId ? `/companies/${companyId}` : '/companies')}
             >
               Cancelar
-            </button>
+            </Button>
           </div>
 
           {error && <p className={styles.error}>{error}</p>}
-        </form>
+        </Card>
 
         <aside className={styles.previewColumn}>
           {projectType === 'brief' ? (
-            <div className={styles.preview}>
+            <Card padding="lg" shadow="sm" radius="lg" className={styles.preview}>
               <p className={styles.previewTitle}>{PROJECT_TYPES.brief.previewTitle}</p>
               <div className={styles.pagesList}>
                 <div className={styles.pageBlock}>
@@ -467,9 +453,9 @@ export default function NewProject() {
                 </div>
               </div>
               <p className={styles.previewNote}>Podrás editar las preguntas después de crear el proyecto.</p>
-            </div>
+            </Card>
           ) : estructura ? (
-            <div className={styles.preview}>
+            <Card padding="lg" shadow="sm" radius="lg" className={styles.preview}>
               <p className={styles.previewTitle}>
                 {PROJECT_TYPES[projectType].previewTitle} {projectType === 'page' && estructura.label && <>para <strong>{estructura.label}</strong></>}
               </p>
@@ -488,7 +474,7 @@ export default function NewProject() {
               <p className={styles.previewNote}>
                 Podrás editar esta estructura después de crear el proyecto.
               </p>
-            </div>
+            </Card>
           ) : (
             <div className={styles.previewEmpty}>
               <p className={styles.previewEmptyText}>

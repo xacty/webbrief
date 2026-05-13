@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Copy, Pencil, Trash2, X } from 'lucide-react'
+import { Archive, ArrowRight, Building2, Copy, Pencil, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -16,6 +16,8 @@ import {
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
+import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
+import MoveToCompanyModal from '../components/MoveToCompanyModal'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -98,6 +100,10 @@ export default function CompanyPage() {
   const [editForm, setEditForm] = useState({ fullName: '', role: 'editor' })
   const [editError, setEditError] = useState('')
   const [editBusy, setEditBusy] = useState(false)
+  const [moveModalIds, setMoveModalIds] = useState(null)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [feedbackNotice, setFeedbackNotice] = useState('')
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
@@ -168,6 +174,23 @@ export default function CompanyPage() {
     setInviteFeedback('')
     setInviteRole((current) => (inviteRoles.includes(current) ? current : inviteRoles[0] || 'editor'))
   }, [currentUser, companyId, inviteRoles])
+
+  // ESC clears multiselect; do not consume ESC when no selection is active
+  // so other components (modals, kebab menus) keep their own ESC handling.
+  useEffect(() => {
+    if (selectedIds.size === 0) return undefined
+    function onKeyDown(event) {
+      if (event.key !== 'Escape') return
+      // Avoid stealing ESC from open modals (Modal primitive listens too)
+      if (moveModalIds || editingMember) return
+      event.stopPropagation()
+      clearSelection()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [selectedIds, moveModalIds, editingMember])
 
   async function handleInvite(e) {
     e.preventDefault()
@@ -274,6 +297,112 @@ export default function CompanyPage() {
     navigate(`/project/${projectId}/editor`)
   }
 
+  function openMoveModal(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return
+    setMoveModalIds(ids)
+  }
+
+  function closeMoveModal() {
+    setMoveModalIds(null)
+  }
+
+  function handleMoveSuccess({ moved, failed, targetCompany }) {
+    const movedIds = new Set(Array.isArray(moveModalIds) ? moveModalIds : [])
+    const nextProjects = projects.filter((project) => !movedIds.has(project.id))
+    const nextCompany = company ? { ...company, projectCount: nextProjects.length } : company
+    setProjects(nextProjects)
+    setCompany(nextCompany)
+    clearCompaniesCache()
+    if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects: nextProjects, members })
+    if (selectedIds.size > 0) clearSelection()
+
+    const dest = targetCompany?.name ? `Movidos a ${targetCompany.name}` : `${moved} proyecto(s) movidos`
+    const failedCount = Array.isArray(failed) ? failed.length : 0
+    showFeedback(failedCount > 0 ? `${dest} (${failedCount} no procesado(s))` : dest)
+  }
+
+  function showFeedback(message) {
+    setFeedbackNotice(message)
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => setFeedbackNotice(''), 4000)
+    }
+  }
+
+  function toggleSelected(projectId) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(projectId)) next.delete(projectId)
+      else next.add(projectId)
+      return next
+    })
+  }
+
+  function selectAllProjects() {
+    setSelectedIds(new Set(projects.map((project) => project.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  async function handleBulkArchive() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Archivar ${ids.length} proyecto(s)? Podrás restaurarlos desde Archivados.`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/projects/bulk/archive', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const archived = Number(result?.archived || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextProjects = projects.filter((project) => !selectedIds.has(project.id))
+      const nextCompany = company ? { ...company, projectCount: nextProjects.length } : company
+      setProjects(nextProjects)
+      setCompany(nextCompany)
+      clearCompaniesCache()
+      if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects: nextProjects, members })
+      clearSelection()
+      showFeedback(failed > 0
+        ? `${archived} proyecto(s) archivado(s); ${failed} no procesado(s)`
+        : `${archived} proyecto(s) archivado(s)`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron archivar los proyectos')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function handleBulkTrash() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`¿Enviar ${ids.length} proyecto(s) a papelera?`)) return
+    setBulkBusy(true)
+    try {
+      const result = await apiFetch('/api/projects/bulk/trash', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      })
+      const trashed = Number(result?.trashed || 0)
+      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+      const nextProjects = projects.filter((project) => !selectedIds.has(project.id))
+      const nextCompany = company ? { ...company, projectCount: nextProjects.length } : company
+      setProjects(nextProjects)
+      setCompany(nextCompany)
+      clearCompaniesCache()
+      if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects: nextProjects, members })
+      clearSelection()
+      showFeedback(failed > 0
+        ? `${trashed} proyecto(s) enviados a papelera; ${failed} no procesado(s)`
+        : `${trashed} proyecto(s) enviados a papelera`)
+    } catch (err) {
+      setError(err.message || 'No se pudieron enviar a papelera')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   async function handleProjectDuplicate(projectId) {
     try {
       const data = await apiFetch(`/api/projects/${projectId}/duplicate`, { method: 'POST' })
@@ -321,20 +450,32 @@ export default function CompanyPage() {
     }
   }
 
+  // In select-mode (≥1 selected), clicking/Enter on the card toggles its
+  // selection instead of opening the project. Explicit buttons (Abrir,
+  // Duplicar, kebab) still perform their action via stopPropagation.
+  function handleProjectActivate(projectId) {
+    if (selectedIds.size > 0) {
+      toggleSelected(projectId)
+    } else {
+      openProject(projectId)
+    }
+  }
+
   function handleProjectKeyDown(event, projectId) {
     if (event.target.closest?.('button')) return
+    if (event.target.closest?.('input, label, [role="menu"]')) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      openProject(projectId)
+      handleProjectActivate(projectId)
     }
   }
 
   return (
     <div className={styles.page}>
       <div className={styles.breadcrumbs}>
-        <button className={styles.backButton} onClick={() => navigate('/companies')}>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/companies')}>
           ← Empresas
-        </button>
+        </Button>
       </div>
 
       {loading && <p className={styles.info}>Cargando empresa...</p>}
@@ -346,7 +487,7 @@ export default function CompanyPage() {
             <div>
               <div className={styles.titleRow}>
                 <h1 className={styles.title}>{company.name}</h1>
-                {company.isInternal && <span className={styles.internalBadge}>Interna</span>}
+                {company.isInternal && <Badge variant="neutral" size="sm">Interna</Badge>}
               </div>
               <p className={styles.subtitle}>
                 Workspace operativo de la empresa. Aquí viven sus proyectos y su equipo.
@@ -355,20 +496,20 @@ export default function CompanyPage() {
           </header>
 
           <section className={styles.summary}>
-            <article className={styles.summaryCard}>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
               <span className={styles.summaryLabel}>Tu rol</span>
               <strong className={styles.summaryValue}>
                 {getCompanyRoleLabel(currentUser, company.membershipRole)}
               </strong>
-            </article>
-            <article className={styles.summaryCard}>
+            </Card>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
               <span className={styles.summaryLabel}>Proyectos</span>
               <strong className={styles.summaryValue}>{company.projectCount}</strong>
-            </article>
-            <article className={styles.summaryCard}>
+            </Card>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
               <span className={styles.summaryLabel}>Equipo</span>
               <strong className={styles.summaryValue}>{company.memberCount}</strong>
-            </article>
+            </Card>
           </section>
 
           <div className={styles.workspaceGrid}>
@@ -382,14 +523,87 @@ export default function CompanyPage() {
                 </div>
 
                 {canCreateProjects && (
-                  <button
-                    className={styles.primaryButton}
+                  <Button
+                    variant="primary"
+                    icon={<Plus size={16} />}
                     onClick={() => navigate(`/new-project?companyId=${companyId}`)}
                   >
-                    + Nuevo proyecto
-                  </button>
+                    Nuevo proyecto
+                  </Button>
                 )}
               </div>
+
+              {canManageProjects && selectedIds.size > 0 && (
+                <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
+                  <div className={styles.bulkInfo}>
+                    <strong>{selectedIds.size} proyecto{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}</strong>
+                    {selectedIds.size < projects.length ? (
+                      <button
+                        type="button"
+                        className={styles.bulkLink}
+                        onClick={selectAllProjects}
+                      >
+                        Seleccionar todos ({projects.length})
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.bulkLink}
+                        onClick={clearSelection}
+                      >
+                        Deseleccionar todos
+                      </button>
+                    )}
+                  </div>
+                  <div className={styles.bulkActions}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={<Archive size={14} />}
+                      onClick={handleBulkArchive}
+                      disabled={bulkBusy}
+                    >
+                      Archivar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      icon={<Building2 size={14} />}
+                      onClick={() => openMoveModal(Array.from(selectedIds))}
+                      disabled={bulkBusy}
+                    >
+                      Mover de empresa
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 size={14} />}
+                      onClick={handleBulkTrash}
+                      disabled={bulkBusy}
+                    >
+                      Enviar a papelera
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearSelection}
+                      disabled={bulkBusy}
+                    >
+                      Cancelar ({selectedIds.size})
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {feedbackNotice && (
+                <div className={styles.feedbackNotice} role="status">
+                  {feedbackNotice}
+                </div>
+              )}
 
               {projects.length === 0 ? (
                 <div className={styles.emptyState}>
@@ -400,15 +614,37 @@ export default function CompanyPage() {
                 </div>
               ) : (
                 <div className={styles.projectGrid}>
-                  {projects.map((project) => (
+                  {projects.map((project) => {
+                    const isSelected = selectedIds.has(project.id)
+                    const inSelectMode = selectedIds.size > 0
+                    const cardClassNames = [styles.projectCard]
+                    if (isSelected) cardClassNames.push(styles.projectCardSelected)
+                    if (inSelectMode) cardClassNames.push(styles.projectCardInSelectMode)
+                    return (
                     <article
                       key={project.id}
-                      className={styles.projectCard}
+                      className={cardClassNames.join(' ')}
                       role="button"
                       tabIndex={0}
-                      onClick={() => openProject(project.id)}
+                      aria-selected={isSelected ? 'true' : undefined}
+                      onClick={() => handleProjectActivate(project.id)}
                       onKeyDown={(event) => handleProjectKeyDown(event, project.id)}
                     >
+                      {canManageProjects && (
+                        <label
+                          className={styles.projectSelectLabel}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            className={styles.projectSelectCheckbox}
+                            checked={isSelected}
+                            onChange={() => toggleSelected(project.id)}
+                            aria-label={isSelected ? `Deseleccionar ${project.name}` : `Seleccionar ${project.name}`}
+                          />
+                        </label>
+                      )}
+
                       <div className={styles.projectTop}>
                         <div>
                           <h3 className={styles.projectName}>{project.name}</h3>
@@ -428,61 +664,73 @@ export default function CompanyPage() {
                       </div>
 
                       <div className={styles.projectActions}>
-                        {canManageProjects && (
-                          <>
-                            <button
-                              className={styles.trashIconButton}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectTrash(project.id)
-                              }}
-                              title="Enviar a papelera"
-                              aria-label={`Enviar ${project.name} a papelera`}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                            <button
-                              className={styles.archiveActionButton}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectArchive(project.id)
-                              }}
-                              title="Archivar proyecto"
-                              aria-label={`Archivar ${project.name}`}
-                            >
-                              <Archive size={16} />
-                            </button>
-                            <button
-                              className={styles.archiveActionButton}
+                        <div className={styles.projectActionsButtons}>
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            icon={<ArrowRight size={14} />}
+                            iconPosition="right"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              openProject(project.id)
+                            }}
+                          >
+                            Abrir
+                          </Button>
+                          {canManageProjects && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              icon={<Copy size={14} />}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 handleProjectDuplicate(project.id)
                               }}
                               title="Duplicar proyecto"
                               aria-label={`Duplicar ${project.name}`}
-                            >
-                              <Copy size={16} />
-                            </button>
-                          </>
+                            />
+                          )}
+                        </div>
+                        {canManageProjects && (
+                          <div
+                            className={styles.projectActionsKebab}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <KebabMenu
+                              label={`Más acciones de ${project.name}`}
+                              placement="top-end"
+                              items={[
+                                {
+                                  label: 'Mover de empresa',
+                                  icon: <Building2 size={14} />,
+                                  onClick: () => openMoveModal([project.id]),
+                                },
+                                {
+                                  label: 'Archivar',
+                                  icon: <Archive size={14} />,
+                                  onClick: () => handleProjectArchive(project.id),
+                                },
+                                {
+                                  label: 'Enviar a papelera',
+                                  icon: <Trash2 size={14} />,
+                                  destructive: true,
+                                  onClick: () => handleProjectTrash(project.id),
+                                },
+                              ]}
+                            />
+                          </div>
                         )}
-                        <button
-                          className={styles.openProjectButton}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openProject(project.id)
-                          }}
-                        >
-                          <span>Abrir</span>
-                          <ArrowRight aria-hidden="true" />
-                        </button>
                       </div>
                     </article>
-                  ))}
+                  )
+                  })}
                 </div>
               )}
             </section>
 
-            <aside className={styles.teamCard}>
+            <Card as="aside" padding="md" shadow="sm" radius="md" className={styles.teamCard}>
               <div className={styles.sectionHeader}>
                 <div>
                   <h2 className={styles.sectionTitle}>Equipo</h2>
@@ -494,23 +742,20 @@ export default function CompanyPage() {
 
               {canInvite ? (
                 <form className={styles.inviteForm} onSubmit={handleInvite}>
-                  <input
-                    className={styles.input}
+                  <Input
                     type="text"
                     placeholder="Nombre completo"
                     value={inviteName}
                     onChange={(e) => setInviteName(e.target.value)}
                   />
-                  <input
-                    className={styles.input}
+                  <Input
                     type="email"
                     placeholder="email@empresa.com"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     required
                   />
-                  <select
-                    className={styles.input}
+                  <Select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value)}
                   >
@@ -519,10 +764,10 @@ export default function CompanyPage() {
                         {roleLabel(role)}
                       </option>
                     ))}
-                  </select>
-                  <button className={styles.primaryButton} type="submit" disabled={inviting}>
+                  </Select>
+                  <Button type="submit" variant="primary" disabled={inviting} loading={inviting} fullWidth>
                     {inviting ? 'Enviando...' : 'Invitar usuario'}
-                  </button>
+                  </Button>
                 </form>
               ) : (
                 <div className={styles.inlineNotice}>
@@ -535,7 +780,7 @@ export default function CompanyPage() {
               <div className={styles.membersSection}>
                 <div className={styles.membersHeader}>
                   <h3 className={styles.membersTitle}>Miembros</h3>
-                  <span className={styles.membersCount}>{members.length}</span>
+                  <Badge variant="neutral" size="sm">{members.length}</Badge>
                 </div>
 
                 {members.length === 0 ? (
@@ -559,15 +804,15 @@ export default function CompanyPage() {
                           </div>
 
                           {memberManageable && (
-                            <button
+                            <Button
                               type="button"
-                              className={styles.editMemberButton}
+                              variant="ghost"
+                              size="sm"
+                              icon={<Pencil size={16} />}
                               onClick={() => openEditMember(member)}
                               title="Editar miembro"
                               aria-label="Editar miembro"
-                            >
-                              <Pencil aria-hidden="true" />
-                            </button>
+                            />
                           )}
                         </article>
                       )
@@ -575,69 +820,68 @@ export default function CompanyPage() {
                   </div>
                 )}
               </div>
-            </aside>
+            </Card>
           </div>
         </>
       )}
 
-      {editingMember && (
-        <div className={styles.modalBackdrop} onClick={(e) => { if (e.target === e.currentTarget) closeEditMember() }}>
-          <section className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="edit-member-title">
-            <div className={styles.modalHeader}>
-              <div>
-                <h2 id="edit-member-title" className={styles.modalTitle}>Editar miembro</h2>
-                <p className={styles.modalSubtitle}>
-                  {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
-                </p>
-              </div>
-              <button type="button" className={styles.modalClose} onClick={closeEditMember} aria-label="Cerrar">
-                <X aria-hidden="true" />
-              </button>
+      <Modal
+        open={Boolean(editingMember)}
+        onClose={closeEditMember}
+        title="Editar miembro"
+        size="md"
+        ariaDescribedBy="edit-member-description"
+      >
+        <p id="edit-member-description" className={styles.modalSubtitle}>
+          {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
+        </p>
+
+        {editingMember && (
+          <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
+            <Input
+              label="Nombre"
+              type="text"
+              value={editForm.fullName}
+              onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
+              placeholder="Nombre completo"
+            />
+
+            <Select
+              label={`Rol en ${company?.name || 'empresa'}`}
+              value={editForm.role}
+              onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
+            >
+              {getMemberRoleOptions(editingMember).map((role) => (
+                <option key={role} value={role}>{roleLabel(role)}</option>
+              ))}
+            </Select>
+
+            <p className={styles.fieldHint}>
+              Email: {editingMember.email || 'Sin email'}
+            </p>
+
+            {editError && <p className={styles.modalError}>{editError}</p>}
+
+            <div className={styles.modalActions}>
+              <Button type="button" variant="secondary" onClick={closeEditMember}>
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary" disabled={editBusy} loading={editBusy}>
+                {editBusy ? 'Guardando...' : 'Guardar cambios'}
+              </Button>
             </div>
+          </form>
+        )}
+      </Modal>
 
-            <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
-              <label className={styles.fieldGroup}>
-                <span className={styles.fieldLabel}>Nombre</span>
-                <input
-                  className={styles.input}
-                  type="text"
-                  value={editForm.fullName}
-                  onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
-                  placeholder="Nombre completo"
-                />
-              </label>
-
-              <label className={styles.fieldGroup}>
-                <span className={styles.fieldLabel}>Rol en {company?.name || 'empresa'}</span>
-                <select
-                  className={styles.input}
-                  value={editForm.role}
-                  onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
-                >
-                  {getMemberRoleOptions(editingMember).map((role) => (
-                    <option key={role} value={role}>{roleLabel(role)}</option>
-                  ))}
-                </select>
-              </label>
-
-              <p className={styles.fieldHint}>
-                Email: {editingMember.email || 'Sin email'}
-              </p>
-
-              {editError && <p className={styles.modalError}>{editError}</p>}
-
-              <div className={styles.modalActions}>
-                <button type="button" className={styles.secondaryButton} onClick={closeEditMember}>
-                  Cancelar
-                </button>
-                <button type="submit" className={styles.primaryButton} disabled={editBusy}>
-                  {editBusy ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      )}
+      <MoveToCompanyModal
+        open={Boolean(moveModalIds && moveModalIds.length > 0)}
+        ids={moveModalIds || []}
+        currentCompanyId={companyId}
+        isAdmin={isAdminUser}
+        onClose={closeMoveModal}
+        onSuccess={handleMoveSuccess}
+      />
     </div>
   )
 }
