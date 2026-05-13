@@ -5,7 +5,7 @@
       "name": "frontend",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite"],
-      "cwd": "/Users/adrian/GitHub/webbrief/frontend",
+      "cwd": "frontend",
       "port": 5173
     }
   ]

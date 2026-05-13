@@ -8,3 +8,7 @@ dist/
 .DS_Store
 .claude/worktrees/
 .claude/plans/
+.claude/skills/
+# Claude Agent SDK skill installer (local only — not used by VPS)
+.agents/
+skills-lock.json
