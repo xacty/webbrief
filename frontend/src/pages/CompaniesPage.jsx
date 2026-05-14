@@ -77,7 +77,7 @@ export default function CompaniesPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [feedbackNotice, setFeedbackNotice] = useState('')
-  const canCreateCompanies = isAdmin(currentUser)
+  const canCreateCompanies = isAdmin(currentUser) || canCreateTestCompany(currentUser)
   const canManageAnyCompany = useMemo(
     () => isAdmin(currentUser) || companies.some((company) => company.membershipRole === 'manager'),
     [currentUser, companies]

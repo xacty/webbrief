@@ -35,6 +35,8 @@ export function canUseSecurityNav(currentUser) {
   return isAdmin(currentUser)
 }
 
+// realPlatformRole is set during admin role-preview mode; check it first
+// so admin previewing as another role retains the ability to seed test companies.
 export function canCreateTestCompany(currentUser) {
   const platformRole = currentUser?.realPlatformRole || currentUser?.platformRole
   return platformRole === 'admin' || platformRole === 'qa'
