@@ -172,7 +172,7 @@ async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPla
   const actionLink = linkData?.properties?.action_link
   if (!actionLink) throw new Error('No se pudo regenerar el link de invitación')
 
-  await sendInviteEmail({
+  const emailResult = await sendInviteEmail({
     to: normalizedEmail,
     fullName,
     actionLink,
@@ -186,7 +186,7 @@ async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPla
     fullName: fullName || authUser.user_metadata?.full_name || '',
     platformRole: normalizedPlatformRole,
     action: 'reinvited',
-    inviteSent: true,
+    inviteSent: Boolean(emailResult?.sent),
     existingUser: false,
   }
 }
