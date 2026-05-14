@@ -11,6 +11,12 @@
   gap: var(--wb-space-5);
 }
 
+.headerActions {
+  display: flex;
+  gap: var(--wb-space-2);
+  flex-wrap: wrap;
+}
+
 .eyebrow {
   margin: 0 0 var(--wb-space-2);
   color: var(--wb-text-muted);

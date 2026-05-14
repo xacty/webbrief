@@ -21,6 +21,7 @@ const TrashPage = lazy(() => import('./pages/TrashPage'))
 const AccountSettingsPage = lazy(() => import('./pages/AccountSettingsPage'))
 const BriefPage = lazy(() => import('./pages/BriefPage'))
 const SecurityPage = lazy(() => import('./pages/SecurityPage'))
+const SecurityErrorsPage = lazy(() => import('./pages/SecurityErrorsPage'))
 
 const ROLE_PREVIEW_OPTIONS = [
   ...PLATFORM_ROLE_ORDER
@@ -71,6 +72,7 @@ function AppRoutes() {
           <Route path="archive" element={<TrashPage mode="archived" />} />
           <Route path="trash" element={<TrashPage mode="trashed" />} />
           <Route path="security" element={<SecurityPage />} />
+          <Route path="security/errors" element={<SecurityErrorsPage />} />
           <Route path="new-project" element={<NewProject />} />
         </Route>
 

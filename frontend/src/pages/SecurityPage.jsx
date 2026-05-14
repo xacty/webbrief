@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Ban, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AlertTriangle, Ban, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
 import styles from './SecurityPage.module.css'
@@ -55,6 +56,7 @@ const emptyData = {
 }
 
 export default function SecurityPage() {
+  const navigate = useNavigate()
   const [days, setDays] = useState('7')
   const [outcome, setOutcome] = useState('')
   const [actionFilter, setActionFilter] = useState('')
@@ -166,16 +168,27 @@ export default function SecurityPage() {
             El bloqueo IP aplica al backend de WeBrief; Supabase Auth directo requiere hardening separado.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="md"
-          icon={<RefreshCw size={16} />}
-          type="button"
-          onClick={loadSecurity}
-          disabled={loading}
-        >
-          Actualizar
-        </Button>
+        <div className={styles.headerActions}>
+          <Button
+            variant="secondary"
+            size="md"
+            icon={<AlertTriangle size={16} />}
+            type="button"
+            onClick={() => navigate('/security/errors')}
+          >
+            Errores técnicos
+          </Button>
+          <Button
+            variant="secondary"
+            size="md"
+            icon={<RefreshCw size={16} />}
+            type="button"
+            onClick={loadSecurity}
+            disabled={loading}
+          >
+            Actualizar
+          </Button>
+        </div>
       </header>
 
       {warnings.length > 0 && (

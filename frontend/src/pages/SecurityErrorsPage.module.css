@@ -1,0 +1,237 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-5);
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--wb-space-5);
+}
+
+.eyebrow {
+  margin: 0 0 var(--wb-space-2);
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-semibold);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--wb-text-4xl);
+  line-height: var(--wb-leading-tight);
+  color: var(--wb-text);
+}
+
+.subtitle {
+  max-width: 820px;
+  margin: var(--wb-space-3) 0 0;
+  color: var(--wb-text-muted);
+  line-height: var(--wb-leading-relaxed);
+}
+
+.inlineLink {
+  color: var(--wb-color-primary-700);
+  text-decoration: underline;
+}
+
+.inlineLink:hover {
+  color: var(--wb-color-primary-800);
+}
+
+.headerActions {
+  display: flex;
+  gap: var(--wb-space-2);
+  flex-wrap: wrap;
+}
+
+.warningBox,
+.error {
+  display: flex;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-3) var(--wb-space-4);
+  border-radius: var(--wb-radius-md);
+}
+
+.warningBox {
+  border: 1px solid var(--wb-color-warning-300);
+  background: var(--wb-color-warning-50);
+  color: var(--wb-color-warning-700);
+}
+
+.warningBox p {
+  margin: var(--wb-space-1) 0 0;
+}
+
+.error {
+  border: 1px solid var(--wb-color-danger-200);
+  background: var(--wb-color-danger-50);
+  color: var(--wb-danger);
+  margin: 0;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 160px 160px 200px minmax(0, 1fr) auto;
+  gap: var(--wb-space-3);
+  align-items: end;
+}
+
+.loading {
+  margin: 0;
+  color: var(--wb-text-muted);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--wb-border);
+  color: var(--wb-text-muted);
+  text-align: center;
+}
+
+.empty p {
+  margin: 0;
+}
+
+.tableCard {
+  border: 1px solid var(--wb-border);
+  padding: 0;
+}
+
+.tableSurface {
+  overflow-x: auto;
+  border-radius: var(--wb-radius-lg);
+}
+
+.table {
+  width: 100%;
+  min-width: 880px;
+  border-collapse: collapse;
+  font-size: var(--wb-text-sm);
+}
+
+.table th {
+  padding: var(--wb-space-3);
+  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-surface-muted);
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-bold);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--wb-space-3);
+  border-bottom: 1px solid var(--wb-border);
+  vertical-align: top;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.row {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.row:hover,
+.row:focus-visible {
+  background: var(--wb-surface-muted);
+  outline: none;
+}
+
+.timestamp {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--wb-text-muted);
+}
+
+.mono {
+  font-family: var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: var(--wb-text-xs);
+  color: var(--wb-color-neutral-700);
+  word-break: break-all;
+}
+
+.message {
+  word-break: break-word;
+  max-width: 480px;
+  color: var(--wb-text);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-3);
+}
+
+.detail dl {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: var(--wb-space-2) var(--wb-space-4);
+  margin: 0;
+  font-size: var(--wb-text-sm);
+}
+
+.detail dt {
+  color: var(--wb-text-muted);
+  font-weight: var(--wb-weight-medium);
+}
+
+.detail dd {
+  margin: 0;
+  color: var(--wb-text);
+  word-break: break-word;
+}
+
+.detail h3 {
+  font-size: var(--wb-text-sm);
+  margin: var(--wb-space-3) 0 var(--wb-space-1);
+  color: var(--wb-text-muted);
+  font-weight: var(--wb-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pre {
+  margin: 0;
+  background: var(--wb-surface-muted);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-md);
+  padding: var(--wb-space-3);
+  font-size: var(--wb-text-xs);
+  font-family: var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  color: var(--wb-color-neutral-800);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+}
+
+@media (max-width: 1180px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .detail dl {
+    grid-template-columns: 1fr;
+    gap: var(--wb-space-1) 0;
+  }
+}
