@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, ChevronDown, ChevronRight, Download, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, Download, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
-import { getCompanyRole, getInviteRoleOptions, isAdmin } from '../lib/roleCapabilities'
+import { supabase } from '../lib/supabase'
+import { canSendAccess, getCompanyRole, getInviteRoleOptions, isAdmin } from '../lib/roleCapabilities'
 import {
   COMPANY_ROLE_ORDER,
   MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
@@ -423,6 +424,53 @@ export default function UsersPage() {
     }
   }
 
+  async function handleSendAccess(user) {
+    setBusyKey(`send-access:${user.id}`)
+    setError('')
+    setActionMessage('')
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers = new Headers({ 'Content-Type': 'application/json' })
+      if (session?.access_token) {
+        headers.set('Authorization', `Bearer ${session.access_token}`)
+      }
+
+      const response = await fetch(`/api/users/${user.id}/send-access`, {
+        method: 'POST',
+        headers,
+      })
+
+      if (response.status === 429) {
+        const retryAfterHeader = response.headers.get('Retry-After')
+        const seconds = Number(retryAfterHeader) || 900 // default 15 min
+        const minutes = Math.max(1, Math.ceil(seconds / 60))
+        setActionMessage(`Demasiados intentos. Esperá ~${minutes} minutos.`)
+        return
+      }
+
+      const body = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const idHint = body.errorId ? ` (ID: ${body.errorId})` : ''
+        setError(body.error ? `${body.error}${idHint}` : `No se pudo enviar acceso${idHint}`)
+        return
+      }
+
+      const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null
+      const expiresLabel = expiresAt
+        ? expiresAt.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+        : ''
+      const actionLabel = body.action === 'invite_resent' ? 'Invitación reenviada' : 'Email de restablecimiento enviado'
+      const tail = body.emailSent ? `, caduca ${expiresLabel}` : ' (link generado, email no entregado)'
+      setActionMessage(`${actionLabel}${tail}`)
+    } catch (err) {
+      setError(err?.message || 'Error de red enviando acceso')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
   async function handleRemoveMembership(userId, companyId) {
     if (!window.confirm('¿Quitar este acceso de empresa?')) return
 
@@ -701,6 +749,19 @@ export default function UsersPage() {
 
                       <td>
                         <div className={styles.rowActions}>
+                          {canSendAccess(currentUser, user) && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              icon={<Mail size={16} />}
+                              onClick={() => handleSendAccess(user)}
+                              disabled={busyKey === `send-access:${user.id}`}
+                              loading={busyKey === `send-access:${user.id}`}
+                              title="Enviar acceso (invitación o restablecimiento)"
+                              aria-label="Enviar acceso"
+                            />
+                          )}
                           {canEditUser(user) && (
                             <Button
                               type="button"

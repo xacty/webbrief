@@ -64,6 +64,36 @@ export function canManageCompanyLifecycle(currentUser, membershipRole) {
   return isAdmin(currentUser) || membershipRole === 'manager'
 }
 
+// "Enviar acceso" — admin can target any user except self;
+// manager can target users who share at least one company where the actor is manager;
+// QA, editor, content_writer, designer, developer, user → no.
+// Mirrors backend canSendAccess in backend/src/lib/sendAccess.js for symmetric gating.
+export function canSendAccess(currentUser, targetUser) {
+  if (!currentUser || !targetUser) return false
+  if (currentUser.id === targetUser.id) return false
+
+  if (isAdmin(currentUser)) return true
+
+  const platformRole = currentUser.realPlatformRole || currentUser.platformRole
+  if (platformRole === 'qa') return false
+
+  const actorManagerCompanies = new Set(
+    (currentUser.memberships || [])
+      .filter((m) => m.role === 'manager')
+      .map((m) => m.companyId)
+  )
+  if (actorManagerCompanies.size === 0) return false
+
+  const targetCompanies = new Set(
+    (targetUser.companies || []).map((c) => c.companyId).filter(Boolean)
+  )
+
+  for (const cid of actorManagerCompanies) {
+    if (targetCompanies.has(cid)) return true
+  }
+  return false
+}
+
 export function getProjectEditorCapabilities(currentUser, companyId) {
   const companyRole = getCompanyRole(currentUser, companyId)
   const admin = isAdmin(currentUser)
