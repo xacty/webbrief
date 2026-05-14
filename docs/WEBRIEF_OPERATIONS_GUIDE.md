@@ -471,3 +471,35 @@ Plan A delivers:
   logs the manager invite outcome.
 - New shared helper `shared/inviteActions.js` maps decision actions
   to event names and Spanish user-facing messages.
+
+## v1.1 Auth Hardening Deploy (Plan D)
+
+Before pushing Plan D code:
+
+1. Apply the migration `supabase/migrations/20260514_application_errors.sql`
+   via Supabase Studio SQL editor (or `supabase db push` if your local
+   project is linked). Verify the table exists with the 3 indexes.
+2. Confirm RLS is enabled on the table (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`).
+
+After pushing Plan D code:
+
+1. Smoke test the `/security/errors` admin view — should show "Sin errores
+   en los últimos 7 día(s). Todo bien." (empty state).
+2. Trigger an intentional 5xx (e.g., authenticated request to a deleted
+   resource) and verify a row appears with `source='unhandled'`.
+3. Re-test PV-2 from Plan A. The reinvite should still work, AND any
+   Supabase Auth failure (rate limits, etc.) should now appear in
+   `/security/errors` with `source='supabase_auth'` and `error_code`
+   like `over_email_send_rate_limit`.
+
+Plan D delivers:
+- New `application_errors` table for technical/operator diagnostics
+  (separate from `security_events` audit trail).
+- `logApplicationError(req, error, ctx)` helper + `wrapSupabaseAuthCall`
+  wrapper around Supabase Auth admin calls (4 sites wrapped).
+- Catch-all 5xx handler persists unhandled errors and returns `errorId`
+  in 500 responses for trace correlation.
+- Admin-only `/security/errors` view with filters (days, level, source,
+  search) and modal detail with stack trace + metadata.
+- Closes the visibility gap from session 11 — the
+  `over_email_send_rate_limit` cascade would now be visible.

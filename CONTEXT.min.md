@@ -170,8 +170,8 @@
   - `keep`: login contract unless requested; ensureUserProfile case-by-case behavior (A new / B reinvite via generateLink+sendInviteEmail / C update / D upsert); shared/inviteActions.js as single source of truth for action→event mapping and UX messages; granular security_events action names (`invite_sent | invite_resent | invite_skipped_existing_user`); `inviteSent` field reflects actual email delivery, not just the attempt; `authEmails.sendInviteEmail` gated by RESEND_API_KEY (no-op if missing)
   - `watch`: frontend login flow; backend assumes Supabase Custom SMTP (Resend) is configured — without it, all email-auth flows hit Supabase's native ~3-4/h rate limit; `findAuthUserByEmail` paginated lookup caps at 20k users
 - `target=backend.security`
-  - `keep`: fail-closed authz, progressive rate limits, no-store/noindex public routes, non-blocking `security_events` audit writes
-  - `watch`: keep `X-Request-Id` and JSON logs secret-safe; login/reset are Supabase-direct and require Supabase-side antiabuse or backend proxy; memory rate limits assume single-process VPS unless `RATE_LIMIT_STORE=supabase` is enabled
+  - `keep`: fail-closed authz, progressive rate limits, no-store/noindex public routes, non-blocking `security_events` audit writes; `application_errors` table for technical/operator diagnostics (distinct from security_events audit); `wrapSupabaseAuthCall` wraps all Supabase Auth admin calls (inviteUserByEmail, generateLink, updateUserById, deleteUser); catch-all `securityErrorHandler` persists unhandled 5xx with `errorId` in response body for trace correlation
+  - `watch`: keep `X-Request-Id` and JSON logs secret-safe; login/reset are Supabase-direct and require Supabase-side antiabuse or backend proxy; memory rate limits assume single-process VPS unless `RATE_LIMIT_STORE=supabase` is enabled; sanitize metadata before persisting (token/password/authorization keys stripped via SECRET_KEYS set in applicationErrors.js); apply migration `20260514_application_errors.sql` before deploying Plan D code or inserts will fail
 - `target=backend.db`
   - `keep`: company/project/page schema + backend-owned authorization
 - `target=ui.tokens`
@@ -219,6 +219,18 @@
 - `auth.audit_log_entries` is reachable from `get_auth_audit_events` on this Supabase plan; backend keeps graceful fallback if a future plan/role hides it
 
 ## Recent Fixes
+
+### Session 13 (2026-05-14) — Auth hardening Plan D (application errors)
+
+- Plan D shipped on branch `feat/auth-hardening-plan-d`: new `application_errors` table (migration `20260514_application_errors.sql`) for technical/operator diagnostics, separate from `security_events`. Schema: id, created_at, level, source, request_id, route, method, user_id, error_code, error_message, stack_trace, metadata. Indexed on created_at DESC, (level, source), and request_id. RLS enabled (service-role-only reads).
+- `backend/src/lib/applicationErrors.js` exports `logApplicationError(req, error, ctx)` (best-effort persist, never throws) and `wrapSupabaseAuthCall({ operation, operationName, req, args, persist })` (wraps Supabase Auth calls — captures BOTH throws AND `{ data, error }` returns; attaches `applicationErrorId` to rethrown errors for trace correlation in 500 responses).
+- 4 Supabase Auth call sites wrapped: `inviteUserByEmail` (ensureUserProfile Case A), `generateLink:invite` (handleReinvite), `updateUserById` (PATCH /api/users/:id), `deleteUser` (DELETE /api/users/:id). `ensureUserProfile`/`inviteUserToCompany`/`handleReinvite` now accept optional `req` parameter for context. Backward-compat preserved via `req = null` defaults. `findAuthUserByEmailPaginated` intentionally NOT wrapped (test-injection API would break; failures propagate to wrapped callers).
+- `securityErrorHandler` made async; persists unhandled 5xx errors with `source='unhandled'`; reuses `error.applicationErrorId` from `wrapSupabaseAuthCall` to avoid double-persistence; 500 response body now includes `errorId` so operators can grep `application_errors` directly.
+- New admin-only routes `GET /api/security/errors` (paginated; filters days/level/source/search; returns warning when migration unapplied) and `GET /api/security/errors/:id` (full row including stack_trace).
+- New admin-only frontend sub-route `/security/errors` (lazy-loaded; component `SecurityErrorsPage.jsx`). Table with timestamp/level/source/route/code/message + modal detail with stack trace + metadata. Empty state + warning banner for unapplied migration. Cross-link with `/security` (button in both directions).
+- 12 new tests in `backend/test/application-errors.test.js` (8 for `buildApplicationErrorRow`/`sanitizeErrorMetadata`, 4 for `wrapSupabaseAuthCall`). Full backend suite: 53/53 pass.
+- Required pre-deploy: apply migration `20260514_application_errors.sql` on Supabase before pushing code; otherwise inserts will silently fail (handler returns null) and the `/security/errors` view will show the migration-unapplied warning.
+- Closes session-11 visibility gap: the `over_email_send_rate_limit` cascade (contact@avinovapower.com case — 5 user IDs across 4h) would now be visible in `/security/errors` with `source='supabase_auth'`, `error_code='over_email_send_rate_limit'`, and full request context.
 
 ### Session 12 (2026-05-13) — Auth hardening Plan A
 
