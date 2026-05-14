@@ -167,8 +167,8 @@
 - `target=share`
   - `keep`: public token route with email gate, comments, approvals/change requests
 - `target=backend.auth`
-  - `keep`: login contract unless requested
-  - `watch`: frontend login flow
+  - `keep`: login contract unless requested; ensureUserProfile case-by-case behavior (A new / B reinvite via generateLink+sendInviteEmail / C update / D upsert); shared/inviteActions.js as single source of truth for action→event mapping and UX messages; granular security_events action names (`invite_sent | invite_resent | invite_skipped_existing_user`); `inviteSent` field reflects actual email delivery, not just the attempt; `authEmails.sendInviteEmail` gated by RESEND_API_KEY (no-op if missing)
+  - `watch`: frontend login flow; backend assumes Supabase Custom SMTP (Resend) is configured — without it, all email-auth flows hit Supabase's native ~3-4/h rate limit; `findAuthUserByEmail` paginated lookup caps at 20k users
 - `target=backend.security`
   - `keep`: fail-closed authz, progressive rate limits, no-store/noindex public routes, non-blocking `security_events` audit writes
   - `watch`: keep `X-Request-Id` and JSON logs secret-safe; login/reset are Supabase-direct and require Supabase-side antiabuse or backend proxy; memory rate limits assume single-process VPS unless `RATE_LIMIT_STORE=supabase` is enabled
@@ -219,6 +219,13 @@
 - `auth.audit_log_entries` is reachable from `get_auth_audit_events` on this Supabase plan; backend keeps graceful fallback if a future plan/role hides it
 
 ## Recent Fixes
+
+### Session 12 (2026-05-13) — Auth hardening Plan A
+
+- v1.1 Plan A shipped on branch `feat/auth-hardening-plan-a`: testMode checkbox gated to admin+QA via `canCreateTestCompany`; `canCreateCompanies` widened to admin OR QA so QA can actually reach the modal; ensureUserProfile now discriminates by `auth.users.last_sign_in_at` → 4 cases (A new / B reinvite / C update / D upsert) with public actions `invited | reinvited | assigned_existing`; `findAuthUserByEmail` is paginated (200 per page, 20k cap); new `authEmails.sendInviteEmail` (Resend, gated by RESEND_API_KEY) handles the reinvite email path that bypasses Supabase's `inviteUserByEmail` rate limit; granular security_events `invite_sent | invite_resent | invite_skipped_existing_user`; POST /api/companies now logs the manager invite outcome; `shared/inviteActions.js` maps decision actions to event names + Spanish UI messages via `buildInviteResultMessage`; dead `existingUser` field removed; `inviteSent` truthfully reflects email-send result (no longer hardcoded true on Case B failures).
+- Required pre-deploy (manual, Supabase Dashboard): Custom SMTP via Resend + `email_otp_exp = 86400`. Without it the reinvite path still hits Supabase's native ~3-4/h email rate limit.
+- Plans B-E (send-access UI, notifications, application_errors log, security observability) deferred to subsequent milestones.
+- Resolves over_email_send_rate_limit cascade investigated in session 11 (contact@avinovapower.com case — 5 user IDs across 4h before Supabase let through).
 
 ### Session 11 (2026-05-08 → 2026-05-13) — UI System Refactor + bulk actions
 
