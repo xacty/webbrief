@@ -69,6 +69,20 @@ IMAGEKIT_PUBLIC_KEY=public_xxx
 IMAGEKIT_PRIVATE_KEY=private_xxx
 IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your_imagekit_id
 PORT=3000
+# Optional — transactional email via Resend
+RESEND_API_KEY=re_xxx
+COMMENTS_EMAIL_FROM=WeBrief <no-reply@webrief.app>
+AUTH_EMAIL_FROM=WeBrief <no-reply@webrief.app>
+```
+
+Email env vars:
+
+```text
+RESEND_API_KEY        Required for real sends. If unset, email senders no-op.
+COMMENTS_EMAIL_FROM   Sender for comment notifications. Default: WeBrief <noreply@webrief.app>.
+AUTH_EMAIL_FROM       Sender for invite/recovery emails sent via Resend
+                      (outside Supabase's native invite flow). Falls back
+                      to COMMENTS_EMAIL_FROM if unset.
 ```
 
 Frontend:
