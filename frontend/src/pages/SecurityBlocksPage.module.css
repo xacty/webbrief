@@ -1,0 +1,91 @@
+.page {
+  padding: var(--wb-space-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: var(--wb-space-6);
+}
+
+.title {
+  font-size: var(--wb-text-2xl);
+  font-weight: 600;
+  color: var(--wb-color-neutral-900);
+  margin: var(--wb-space-3) 0 var(--wb-space-1);
+}
+
+.subtitle {
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-500);
+  margin: 0;
+}
+
+.info {
+  color: var(--wb-color-neutral-500);
+  font-size: var(--wb-text-sm);
+}
+
+.error {
+  color: var(--wb-color-danger-700);
+  background: var(--wb-color-danger-50);
+  padding: var(--wb-space-3) var(--wb-space-4);
+  border-radius: var(--wb-radius-md);
+  font-size: var(--wb-text-sm);
+}
+
+.success {
+  color: var(--wb-color-success-700);
+  background: var(--wb-color-success-50);
+  padding: var(--wb-space-3) var(--wb-space-4);
+  border-radius: var(--wb-radius-md);
+  font-size: var(--wb-text-sm);
+}
+
+.warningBanner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-radius: var(--wb-radius-md);
+  background: var(--wb-color-warning-50);
+  color: var(--wb-color-warning-700);
+  font-size: var(--wb-text-sm);
+  margin-bottom: var(--wb-space-4);
+}
+
+.empty {
+  color: var(--wb-color-neutral-500);
+  font-size: var(--wb-text-sm);
+  margin: 0;
+}
+
+.blocksTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--wb-text-sm);
+}
+
+.blocksTable thead th {
+  text-align: left;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-bottom: 1px solid var(--wb-color-neutral-200);
+  color: var(--wb-color-neutral-600);
+  font-weight: 500;
+}
+
+.blocksTable tbody td {
+  padding: var(--wb-space-3);
+  border-bottom: 1px solid var(--wb-color-neutral-100);
+  vertical-align: middle;
+}
+
+.subject {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--wb-text-xs);
+  background: var(--wb-color-neutral-50);
+  padding: 2px 6px;
+  border-radius: var(--wb-radius-xs);
+  color: var(--wb-color-neutral-700);
+  word-break: break-all;
+}

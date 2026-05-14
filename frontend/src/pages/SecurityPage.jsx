@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Ban, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Ban, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
 import styles from './SecurityPage.module.css'
@@ -169,6 +169,15 @@ export default function SecurityPage() {
           </p>
         </div>
         <div className={styles.headerActions}>
+          <Button
+            variant="secondary"
+            size="md"
+            icon={<ShieldOff size={16} />}
+            type="button"
+            onClick={() => navigate('/security/blocks')}
+          >
+            Bloqueos activos
+          </Button>
           <Button
             variant="secondary"
             size="md"
