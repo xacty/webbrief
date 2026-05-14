@@ -3,7 +3,7 @@ import { Archive, ArrowRight, Trash2, Plus } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
-import { isAdmin } from '../lib/roleCapabilities'
+import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
 import styles from './CompaniesPage.module.css'
 
@@ -628,14 +628,16 @@ export default function CompaniesPage() {
             autoFocus
           />
 
-          <label className={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              checked={testMode}
-              onChange={(event) => setTestMode(event.target.checked)}
-            />
-            <span>Empresa de prueba</span>
-          </label>
+          {canCreateTestCompany(currentUser) && (
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={testMode}
+                onChange={(event) => setTestMode(event.target.checked)}
+              />
+              <span>Empresa de prueba</span>
+            </label>
+          )}
 
           {!testMode && (
             <>

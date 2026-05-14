@@ -35,6 +35,11 @@ export function canUseSecurityNav(currentUser) {
   return isAdmin(currentUser)
 }
 
+export function canCreateTestCompany(currentUser) {
+  const platformRole = currentUser?.realPlatformRole || currentUser?.platformRole
+  return platformRole === 'admin' || platformRole === 'qa'
+}
+
 export function getInviteRoleOptions(currentUser, membershipRole) {
   // Use realPlatformRole when in preview so invite options reflect true admin level.
   const platformRole = currentUser?.realPlatformRole || currentUser?.platformRole
