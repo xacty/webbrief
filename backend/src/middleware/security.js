@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { logApplicationError } from '../lib/applicationErrors.js'
 import { consumePersistentRateLimit } from '../lib/rateLimitStore.js'
+import { logSecurityEvent } from '../lib/securityAudit.js'
 import { getActiveSecurityBlock } from '../lib/securityBlocks.js'
 import { getRequestLogContext, writeSecurityLog } from '../lib/securityLogger.js'
 
@@ -122,6 +123,23 @@ function rateLimitResponse(req, res, retryAfterSeconds, message, fields = {}) {
     retryAfterSeconds,
     ...fields,
   })
+
+  // Persist to security_events for cross-event analytics (Plan E.1).
+  // Best-effort: logSecurityEvent already swallows write failures in-band;
+  // the .catch here only guards against a rejected promise so the 429 path
+  // is never blocked.
+  logSecurityEvent(req, {
+    action: 'rate_limit_blocked',
+    resourceType: 'rate_limit',
+    outcome: 'denied',
+    metadata: {
+      limiter: fields.limiter || null,
+      key: fields.key || null,
+      retryAfterSeconds,
+      violations: fields.violations || 0,
+    },
+  }).catch(() => {})
+
   return res.status(429).json({ error: message })
 }
 
@@ -248,6 +266,7 @@ export function createRateLimit({
     if (result.blocked) {
       return rateLimitResponse(req, res, Number(result.retryAfterSeconds || 1), message, {
         limiter: name,
+        key,
         limit: max,
         count: Number(result.count || 0),
         violations: Number(result.violations || 0),
