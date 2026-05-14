@@ -337,6 +337,14 @@ export const rateLimiters = {
     maxBlockMs: 6 * 60 * 60_000,
     keyParts: (req) => [req.currentUser?.id, req.params?.id],
   }),
+  passwordReset: createRateLimit({
+    name: 'password-reset',
+    windowMs: 60 * 60_000,
+    max: 5,
+    blockMs: 15 * 60_000,
+    maxBlockMs: 6 * 60 * 60_000,
+    keyParts: (req) => [req.currentUser?.id, req.params?.id],
+  }),
 }
 
 export async function securityErrorHandler(error, req, res, next) {
