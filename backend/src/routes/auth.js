@@ -106,6 +106,34 @@ router.post('/validate-reset-token', requireAuth, rateLimiters.sensitiveAction, 
   }
 })
 
+router.post('/track-invite-accepted', requireAuth, rateLimiters.trackEvent, async (req, res) => {
+  try {
+    const userId = req.currentUser?.id
+    if (!userId) {
+      return res.status(401).json({ error: 'No autenticado' })
+    }
+
+    const rawVia = String(req.body?.via || '').toLowerCase()
+    const via = rawVia === 'recovery' ? 'recovery' : rawVia === 'invite' ? 'invite' : null
+    if (!via) {
+      return res.status(400).json({ error: "Body 'via' debe ser 'invite' o 'recovery'" })
+    }
+
+    const action = via === 'invite' ? 'invite_accepted' : 'password_reset_completed'
+    await logSecurityEvent(req, {
+      action,
+      resourceType: 'user',
+      resourceId: userId,
+      targetUserId: userId,
+      metadata: { via },
+    })
+
+    return res.status(200).json({ tracked: true, action })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo registrar el evento' })
+  }
+})
+
 router.post('/mark-reset-used', requireAuth, rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const userId = req.currentUser?.id

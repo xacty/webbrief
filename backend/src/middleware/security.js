@@ -364,6 +364,14 @@ export const rateLimiters = {
     maxBlockMs: 6 * 60 * 60_000,
     keyParts: (req) => [req.currentUser?.id, req.params?.id],
   }),
+  trackEvent: createRateLimit({
+    name: 'track-event',
+    windowMs: 60_000,
+    max: 5,
+    blockMs: 5 * 60_000,
+    maxBlockMs: 60 * 60_000,
+    keyParts: (req) => [req.currentUser?.id],
+  }),
 }
 
 export async function securityErrorHandler(error, req, res, next) {
