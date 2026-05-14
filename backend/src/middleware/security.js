@@ -221,7 +221,9 @@ export function createRateLimit({
   message = 'Demasiadas solicitudes. Intentá nuevamente más tarde.',
   keyParts = () => [],
 }) {
-  return async (req, res, next) => {
+  const config = { name, windowMs, max, blockMs, maxBlockMs, violationTtlMs, progressive }
+
+  const middleware = async (req, res, next) => {
     const now = Date.now()
     cleanupBuckets(now)
 
@@ -277,6 +279,9 @@ export function createRateLimit({
 
     return next()
   }
+
+  middleware.config = config
+  return middleware
 }
 
 export function resetRateLimitBucketsForTests() {
@@ -284,6 +289,24 @@ export function resetRateLimitBucketsForTests() {
     rateBuckets.clear()
     lastBucketCleanup = Date.now()
   }
+}
+
+// Public clear: lets admin /security/rate-limits/clear endpoint remove a specific
+// in-memory bucket. Returns true if a bucket existed, false otherwise. Persistent
+// store cleanup is the caller's responsibility (best-effort delete from
+// rate_limit_buckets table when RATE_LIMIT_STORE=supabase).
+export function clearRateLimitBucket(key) {
+  if (!key) return false
+  return rateBuckets.delete(key)
+}
+
+// Lookup the public config of a rate limiter by name (used by /security/blocks
+// to compute currentlyBlocked from blockMs).
+export function getRateLimiterConfig(name) {
+  for (const limiter of Object.values(rateLimiters)) {
+    if (limiter?.config?.name === name) return limiter.config
+  }
+  return null
 }
 
 export function publicAntiScrapingHeaders(req, res, next) {

@@ -2,9 +2,11 @@ import { Router } from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { isMissingTableError } from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
+import { clearRateLimitBucket, getRateLimiterConfig } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { clearSecurityBlockCache } from '../lib/securityBlocks.js'
 import { getRequestLogContext, writeSecurityLog } from '../lib/securityLogger.js'
+import { aggregateRateLimitBlocks, isRateLimitBlockActive } from './securityBlocksHelpers.js'
 
 const router = Router()
 
@@ -483,6 +485,107 @@ router.delete('/blocks/:id', async (req, res) => {
     return res.json({ revoked: true })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo revocar el bloqueo' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Unified blocks list (manual + rate-limit aggregation) — Plan E.5
+// ---------------------------------------------------------------------------
+
+router.get('/blocks', async (req, res) => {
+  try {
+    const days = parseDays(req.query.days, 1, 30) // last 24h default
+
+    const [manualBlockResult, rateEventsResult] = await Promise.all([
+      fetchActiveBlocks(),
+      supabaseAdmin
+        .from('security_events')
+        .select('id, created_at, metadata')
+        .eq('action', 'rate_limit_blocked')
+        .gte('created_at', sinceIso(days))
+        .order('created_at', { ascending: false })
+        .limit(500),
+    ])
+
+    if (rateEventsResult.error) throw rateEventsResult.error
+
+    const rateBlocks = aggregateRateLimitBlocks(rateEventsResult.data || [])
+    const now = new Date()
+    const rateBlocksEnriched = rateBlocks.map((block) => {
+      const config = getRateLimiterConfig(block.limiter)
+      const blockMs = config?.blockMs || 0
+      return {
+        type: 'rate_limit',
+        subject: block.key,
+        limiter: block.limiter,
+        lastBlockedAt: block.lastBlockedAt,
+        violations: block.violations,
+        eventCount: block.eventCount,
+        currentlyBlocked: isRateLimitBlockActive({ lastBlockedAt: block.lastBlockedAt, now, blockMs }),
+        blockMs,
+      }
+    })
+
+    const manualBlocks = (manualBlockResult.blocks || []).map((row) => ({
+      type: 'manual',
+      id: row.id,
+      blockType: row.blockType,
+      subject: row.userEmail || row.userId || row.ipAddress || '(unknown)',
+      reason: row.reason,
+      since: row.blockedAt,
+      expiresAt: row.expiresAt,
+      blockedBy: row.blockedByEmail || row.blockedBy,
+      currentlyBlocked: true,
+    }))
+
+    return res.json({
+      manualBlocks,
+      rateLimitBlocks: rateBlocksEnriched,
+      warnings: [manualBlockResult.warning].filter(Boolean),
+    })
+  } catch (error) {
+    writeSecurityLog('error', 'security_blocks_list_failed', {
+      ...getRequestLogContext(req),
+      error: error.message,
+    })
+    return res.status(500).json({ error: error.message || 'No se pudo cargar bloqueos' })
+  }
+})
+
+router.post('/rate-limits/clear', async (req, res) => {
+  try {
+    const key = String(req.body?.key || '').trim()
+    if (!key) {
+      return res.status(400).json({ error: 'Body requiere field key' })
+    }
+
+    const memoryCleared = clearRateLimitBucket(key)
+
+    // Best-effort: also delete persistent row (no-op when RATE_LIMIT_STORE=memory).
+    let persistentCleared = false
+    try {
+      const { count, error } = await supabaseAdmin
+        .from('rate_limit_buckets')
+        .delete({ count: 'exact' })
+        .eq('key', key)
+      if (!error && count && count > 0) persistentCleared = true
+    } catch {
+      // swallow — persistent path is optional
+    }
+
+    await logSecurityEvent(req, {
+      action: 'rate_limit_cleared',
+      resourceType: 'rate_limit',
+      metadata: { key, memoryCleared, persistentCleared },
+    })
+
+    return res.json({ cleared: true, memoryCleared, persistentCleared })
+  } catch (error) {
+    writeSecurityLog('error', 'rate_limit_clear_failed', {
+      ...getRequestLogContext(req),
+      error: error.message,
+    })
+    return res.status(500).json({ error: error.message || 'No se pudo limpiar el bloqueo' })
   }
 })
 
