@@ -220,6 +220,19 @@
 
 ## Recent Fixes
 
+### Session 14 (2026-05-14) — Auth hardening Plan B (send-access)
+
+- Plan B shipped on branch `feat/auth-hardening-plan-b`: new `password_reset_requests` table (migration `20260515_password_reset_requests.sql`) with service-role-only RLS for server-side 1h recovery TTL. Schema: id, user_id, requested_by, requested_at, expires_at, used_at, ip_address, metadata. Indexed on (user_id, requested_at DESC) and partial (user_id, expires_at) WHERE used_at IS NULL.
+- `backend/src/lib/sendAccess.js` exports 3 pure helpers: `canSendAccess` (admin global except self; manager only for shared-company-as-manager; QA explicitly forbidden as defensive guard even if QA holds a manager membership; editor/etc forbidden), `decideSendAccessAction` (last_sign_in_at NULL → invite_resent ttl=24h, else → reset_sent ttl=1h, no auth user → not_found), `validateResetRequestRow` (no_request | used | expired | valid).
+- `authEmails.sendResetPasswordEmail` + `buildResetPasswordEmailPayload` added; mirrors `sendInviteEmail` shape; gated by `RESEND_API_KEY` (no-op + warning if missing).
+- `rateLimiters.passwordReset` (5/h per actor+target, 15-min block escalating to 6h) added to security middleware.
+- `POST /api/users/:id/send-access` (requireAuth + rateLimiters.passwordReset): loads target profile + memberships → enforces canSendAccess → branches on last_sign_in_at → generateLink via `wrapSupabaseAuthCall` (Plan D wrapper, so Supabase auth errors land in /security/errors) → inserts password_reset_requests row for recovery path → sends invite/reset email → logs `invite_resent` or `password_reset_requested` security_events with `via: 'send_access'`. Returns `{ action, expiresAt, emailSent, errorId? }`.
+- `POST /api/auth/validate-reset-token` + `POST /api/auth/mark-reset-used` (requireAuth + rateLimiters.sensitiveAction): validate reads most-recent row and returns `{ valid, reason }`; mark-used sets used_at on the most recent active row. No security_events here (Plan E will hang `password_reset_completed` later).
+- Frontend: `canSendAccess(currentUser, targetUser)` mirrors backend (admin/manager rules + QA exclusion); `UsersPage.jsx` row gets Mail-icon button with adaptive toast (handles 429 with formatted minutes + 500 with `errorId`). Plan deviation: codebase uses Bearer-token auth via apiFetch which doesn't expose response headers, so the 429 Retry-After path uses raw fetch + manual session-token attach.
+- `SetPassword.jsx`: captures `type` from URL hash at supabase.js init time (`INITIAL_AUTH_TYPE` export, captured BEFORE `createClient` consumes the hash); when `type === 'recovery'` calls `/validate-reset-token` and shows new "recovery_invalid" state ("Link caducado, pedí uno nuevo") if invalid; on successful password update calls `/mark-reset-used` (best-effort).
+- 19 new tests in `backend/test/send-access.test.js` (15 — 8 canSendAccess + 3 decideSendAccessAction + 4 validateResetRequestRow) + `backend/test/authEmails-reset.test.js` (4). Full backend suite: 72/72 pass.
+- Required pre-deploy: apply migration `20260515_password_reset_requests.sql` on Supabase before pushing code (otherwise the recovery-path insert fails and propagates as 500 — caught and logged to `application_errors` via the Plan D wrapper, but the user gets an error toast).
+
 ### Session 13 (2026-05-14) — Auth hardening Plan D (application errors)
 
 - Plan D shipped on branch `feat/auth-hardening-plan-d`: new `application_errors` table (migration `20260514_application_errors.sql`) for technical/operator diagnostics, separate from `security_events`. Schema: id, created_at, level, source, request_id, route, method, user_id, error_code, error_message, stack_trace, metadata. Indexed on created_at DESC, (level, source), and request_id. RLS enabled (service-role-only reads).
