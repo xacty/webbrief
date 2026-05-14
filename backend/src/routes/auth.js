@@ -6,6 +6,7 @@ import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { normalizeEmail, normalizeText } from '../lib/validation.js'
 import { normalizePlatformRole } from '../../../shared/userRoles.js'
+import { toInviteSecurityAction } from '../../../shared/inviteActions.js'
 
 const router = Router()
 
@@ -47,12 +48,18 @@ router.post('/invite-user', requireAuth, rateLimiters.inviteUser, async (req, re
     })
 
     await logSecurityEvent(req, {
-      action: 'company_user_invited',
+      action: toInviteSecurityAction(invitedUser.action),
       resourceType: 'user',
       resourceId: invitedUser.id,
       companyId: targetCompanyId,
       targetUserId: invitedUser.id,
-      metadata: { role, platformRole: allowedPlatformRole, inviteSent: invitedUser.inviteSent },
+      metadata: {
+        role,
+        platformRole: allowedPlatformRole,
+        inviteSent: invitedUser.inviteSent,
+        decisionAction: invitedUser.action,
+        via: 'manual_invite',
+      },
     })
 
     return res.status(201).json({

@@ -25,6 +25,7 @@ import {
   PLATFORM_ROLE_SET,
   normalizePlatformRole as normalizeSharedPlatformRole,
 } from '../../../shared/userRoles.js'
+import { toInviteSecurityAction } from '../../../shared/inviteActions.js'
 
 const router = Router()
 const upload = multer({
@@ -413,11 +414,16 @@ router.post('/', rateLimiters.inviteUser, async (req, res) => {
       })
 
       await logSecurityEvent(req, {
-        action: 'global_user_invited',
+        action: toInviteSecurityAction(profile.action),
         resourceType: 'user',
         resourceId: profile.userId,
         targetUserId: profile.userId,
-        metadata: { platformRole: nextPlatformRole, inviteSent: profile.inviteSent },
+        metadata: {
+          platformRole: nextPlatformRole,
+          inviteSent: profile.inviteSent,
+          decisionAction: profile.action,
+          via: 'manual_invite',
+        },
       })
 
       return res.status(201).json({
@@ -443,12 +449,18 @@ router.post('/', rateLimiters.inviteUser, async (req, res) => {
     })
 
     await logSecurityEvent(req, {
-      action: 'company_user_invited',
+      action: toInviteSecurityAction(invitedUser.action),
       resourceType: 'user',
       resourceId: invitedUser.id,
       companyId,
       targetUserId: invitedUser.id,
-      metadata: { role, platformRole: nextPlatformRole, inviteSent: invitedUser.inviteSent },
+      metadata: {
+        role,
+        platformRole: nextPlatformRole,
+        inviteSent: invitedUser.inviteSent,
+        decisionAction: invitedUser.action,
+        via: 'manual_invite',
+      },
     })
 
     return res.status(201).json({

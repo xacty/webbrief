@@ -9,6 +9,7 @@ import {
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
+import { toInviteSecurityAction } from '../../../shared/inviteActions.js'
 
 const router = Router()
 let archiveColumnsAvailable = true
@@ -422,6 +423,20 @@ router.post('/', async (req, res) => {
           error: managerError.message || 'No se pudo crear el manager de la empresa',
         })
       }
+
+      await logSecurityEvent(req, {
+        action: toInviteSecurityAction(manager.action),
+        resourceType: 'user',
+        resourceId: manager.id,
+        companyId: company.id,
+        targetUserId: manager.id,
+        metadata: {
+          role: 'manager',
+          inviteSent: manager.inviteSent,
+          decisionAction: manager.action,
+          via: 'company_create',
+        },
+      })
     }
 
     const membershipMap = new Map()

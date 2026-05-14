@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './supabase.js'
 import { normalizePlatformRole } from '../../../shared/userRoles.js'
+import { sendInviteEmail } from './authEmails.js'
 
 export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
@@ -64,73 +65,148 @@ async function updateExistingProfile(profile, fullName, platformRole) {
   return data
 }
 
+export function decideEnsureProfileAction({ authUser, profile }) {
+  if (!authUser) {
+    return { action: 'invite', userId: null }
+  }
+  if (!authUser.last_sign_in_at) {
+    return { action: 'reinvite', userId: authUser.id }
+  }
+  return { action: 'assign_existing', userId: authUser.id }
+}
+
 export async function ensureUserProfile({ email, fullName, platformRole = 'user' }) {
   const normalizedEmail = normalizeEmail(email)
+  if (!normalizedEmail) {
+    throw new Error('email es requerido')
+  }
   const normalizedPlatformRole = normalizePlatformRole(platformRole)
   const timestamp = new Date().toISOString()
 
-  const { data: existingProfile, error: profileLookupError } = await supabaseAdmin
-    .from('profiles')
-    .select('id, email, full_name, platform_role')
-    .eq('email', normalizedEmail)
-    .maybeSingle()
+  // Look up both sources of truth in parallel.
+  const [authUser, existingProfileResult] = await Promise.all([
+    findAuthUserByEmail(normalizedEmail),
+    supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name, platform_role')
+      .eq('email', normalizedEmail)
+      .maybeSingle(),
+  ])
 
-  if (profileLookupError) throw profileLookupError
+  if (existingProfileResult.error) throw existingProfileResult.error
+  const existingProfile = existingProfileResult.data || null
 
-  if (existingProfile) {
-    const profile = await updateExistingProfile(existingProfile, fullName, normalizedPlatformRole)
+  const decision = decideEnsureProfileAction({ authUser, profile: existingProfile })
+  const redirectTo = getSetPasswordRedirectUrl()
+
+  // -------- Case A: fresh invite --------
+  if (decision.action === 'invite') {
+    const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
+      redirectTo,
+      data: { full_name: fullName || '' },
+    })
+
+    if (inviteError || !data?.user?.id) {
+      // Race: another invite landed between our lookups and now. Re-resolve once.
+      const fallback = await findAuthUserByEmail(normalizedEmail)
+      if (!fallback?.id) {
+        throw inviteError || new Error('No se pudo crear el usuario')
+      }
+      // Treat as Case B (reinvite) on the retry path.
+      return await handleReinvite(fallback, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp)
+    }
+
+    await upsertProfileRow(data.user.id, normalizedEmail, fullName, data.user, normalizedPlatformRole, timestamp)
+
     return {
-      userId: profile.id,
-      email: profile.email,
-      fullName: profile.full_name || '',
-      platformRole: profile.platform_role,
+      userId: data.user.id,
+      email: normalizedEmail,
+      fullName: fullName || data.user.user_metadata?.full_name || '',
+      platformRole: normalizedPlatformRole,
+      action: 'invited',
+      inviteSent: true,
+      existingUser: false,
+    }
+  }
+
+  // -------- Case B: reinvite (auth user exists, never activated) --------
+  if (decision.action === 'reinvite') {
+    return await handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp)
+  }
+
+  // -------- Case C/D: assign existing (auth user active) --------
+  if (existingProfile) {
+    const updatedProfile = await updateExistingProfile(existingProfile, fullName, normalizedPlatformRole)
+    return {
+      userId: updatedProfile.id,
+      email: updatedProfile.email,
+      fullName: updatedProfile.full_name || '',
+      platformRole: updatedProfile.platform_role,
+      action: 'assigned_existing',
       inviteSent: false,
       existingUser: true,
     }
   }
 
-  const redirectTo = getSetPasswordRedirectUrl()
-  const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
-    redirectTo,
-    data: {
-      full_name: fullName || '',
-    },
+  // Active auth user but no profile row — upsert one.
+  await upsertProfileRow(authUser.id, normalizedEmail, fullName, authUser, normalizedPlatformRole, timestamp)
+  return {
+    userId: authUser.id,
+    email: normalizedEmail,
+    fullName: fullName || authUser.user_metadata?.full_name || '',
+    platformRole: normalizedPlatformRole,
+    action: 'assigned_existing',
+    inviteSent: false,
+    existingUser: true,
+  }
+}
+
+async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp) {
+  const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+    type: 'invite',
+    email: normalizedEmail,
+    options: { redirectTo },
   })
 
-  let authUser = data?.user || null
-  let inviteSent = Boolean(authUser)
+  if (linkError) throw linkError
+  const actionLink = linkData?.properties?.action_link
+  if (!actionLink) throw new Error('No se pudo regenerar el link de invitación')
 
-  if (inviteError || !authUser?.id) {
-    authUser = await findAuthUserByEmail(normalizedEmail)
-    inviteSent = false
+  await sendInviteEmail({
+    to: normalizedEmail,
+    fullName,
+    actionLink,
+  })
 
-    if (!authUser?.id) {
-      throw inviteError || new Error('No se pudo crear o encontrar el usuario')
-    }
-  }
-
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .upsert({
-      id: authUser.id,
-      email: normalizedEmail,
-      full_name: fullName || authUser.user_metadata?.full_name || '',
-      platform_role: normalizedPlatformRole,
-      updated_at: timestamp,
-    })
-    .select('id, email, full_name, platform_role')
-    .single()
-
-  if (profileError) throw profileError
+  await upsertProfileRow(authUser.id, normalizedEmail, fullName, authUser, normalizedPlatformRole, timestamp)
 
   return {
-    userId: profile.id,
-    email: profile.email,
-    fullName: profile.full_name || '',
-    platformRole: profile.platform_role,
-    inviteSent,
+    userId: authUser.id,
+    email: normalizedEmail,
+    fullName: fullName || authUser.user_metadata?.full_name || '',
+    platformRole: normalizedPlatformRole,
+    action: 'reinvited',
+    inviteSent: true,
     existingUser: false,
   }
+}
+
+async function upsertProfileRow(userId, normalizedEmail, fullName, authUser, normalizedPlatformRole, timestamp) {
+  // Never downgrade an existing admin profile. We use upsert with onConflict on id.
+  const { error } = await supabaseAdmin
+    .from('profiles')
+    .upsert(
+      {
+        id: userId,
+        email: normalizedEmail,
+        full_name: fullName || authUser?.user_metadata?.full_name || '',
+        platform_role: normalizedPlatformRole,
+        updated_at: timestamp,
+      },
+      { onConflict: 'id' }
+    )
+
+  if (error) throw error
 }
 
 export async function assignUserToCompany({ companyId, userId, role }) {
@@ -162,5 +238,6 @@ export async function inviteUserToCompany({ email, fullName, companyId, role, pl
     companyId,
     inviteSent: profile.inviteSent,
     existingUser: profile.existingUser,
+    action: profile.action, // 'invited' | 'reinvited' | 'assigned_existing'
   }
 }
