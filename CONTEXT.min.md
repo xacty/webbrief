@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-07 (session 10)
+- Updated: 2026-05-13 (session 11 — milestone v1.0 UI System Refactor shipped + bulk actions feature)
 
 ## Targets
 
@@ -29,6 +29,11 @@
 - `backend.auth`
 - `backend.security`
 - `backend.db`
+- `ui.tokens`
+- `ui.shared-components`
+- `companies.bulk`
+- `projects.bulk`
+- `move-company`
 
 ## Core Facts
 
@@ -72,6 +77,11 @@
 - Operational guide lives at `docs/WEBRIEF_OPERATIONS_GUIDE.md`
 - Local `.env` files currently determine whether local dev hits Supabase Prod or a future Supabase Dev; using Prod locally is risky for DB/schema tests
 - Comments system v1 (Google Docs–style): `project_comments` extended with `parent_comment_id`, `anchor_snippet`, `mentions[]`, `resolved_at/by`, `edited_at`, `deleted_at/by`; TipTap `CommentMark` (`frontend/src/extensions/CommentMark.js`) wraps anchored text in `<span data-comment-id>`; backend routes at `backend/src/routes/comments.js` mounted under `/api/projects/:id/comments`; UI in `frontend/src/components/editor/CommentsPanel.jsx` + `CommentComposerPopover.jsx`; Realtime channel via `frontend/src/lib/commentsRealtime.js`; emails via `backend/src/lib/commentEmails.js` (Resend REST, env `RESEND_API_KEY` + `COMMENTS_EMAIL_FROM`)
+- UI System Refactor v1.0 shipped (2026-05-13): design tokens completos (`frontend/src/styles/tokens.css` con paleta `--wb-color-{neutral,primary,success,danger,warning}-{50..900}` + scales `--wb-space-*`, `--wb-text-*`, `--wb-leading-*`, `--wb-weight-*`, `--wb-shadow-{xs,sm,md,lg,xl}`, `--wb-radius-{xs,sm,md,lg,xl,full,2,3,4}`, `--wb-z-{base,dropdown,sticky,overlay,modal,popover,tooltip,toast}`); 6 shared primitives en `frontend/src/components/ui/` (Button/Input/Select/Modal/Card/Badge + KebabMenu + `cn()` helper, barrel `index.js`); editor sub-tokens `--wb-editor-*`, `--wb-tooltip-*`, `--wb-comment-*`, `--wb-section-*` preservan look dark sin paleta paralela; score Refactoring UI 8.5/10 promedio; legacy tokens preservados byte-for-byte como aliases; 1,643 referencias `var(--wb-*)` post-migration; tech debt advisory 3 TODOs (editor CSS spacing/typography/color sub-thresholds) deferidos a v1.1
+- KebabMenu (`frontend/src/components/ui/KebabMenu.jsx`): trigger MoreVertical icon + dropdown portal to `document.body` con `createPortal` para escapar stacking context de cards en hover; position fixed calculada vía `getBoundingClientRect` y recomputada en scroll/resize; items `{ label, icon, onClick, destructive, disabled }`; placement `top-start | top-end | bottom-start | bottom-end`; click outside + ESC cierran; z-index `--wb-z-popover`
+- Bulk actions feature: project cards con `[Abrir →][📋 Duplicar]  ___  [⋮]` action row + checkbox top-right (on-hover o select-mode) + kebab items `Mover de empresa` (icon `Building2`) / `Archivar` / `Enviar a papelera`; company cards mismo patrón pero sin Duplicar ni Mover (top-level entities, kebab items `Archivar` / `Enviar a papelera`); multiselect con sticky toolbar (selected count + `Archivar | Mover | Papelera | Cancelar (N)` + `Seleccionar todos`/`Deseleccionar todos` links); card click toggles selection cuando hay ≥1 seleccionado (sino abre); ESC clears selection (sin robar a modales abiertos); WeBrief (`isInternal=true`) NO renderiza checkbox NI kebab
+- MoveToCompanyModal (`frontend/src/components/MoveToCompanyModal.jsx`): reusable single-card y bulk; Select de empresas target donde el user es manager (admin global ve todas, excluye la company source); confirmación con count; POST `/api/projects/bulk/move-company` con feedback inline; refresca lista al success
+- Backend bulk endpoints: `POST /api/projects/bulk/{archive,trash,move-company}` y `POST /api/companies/bulk/{archive,trash}`; cada uno valida permisos per-row (manager/editor o admin) y retorna 207 Multi-Status con `{ archived/trashed/moved/count, failed: [{id, reason}] }`; `move-company` valida manager-target ANTES del loop (fast-fail 403 si user no es manager en target); activity logs con `metadata.bulk: true`; `project_moved` incluye `from_company_id` + `to_company_id`; rutas `/bulk/*` declaradas ANTES de `/:id/*` para evitar shadowing del param
 
 ## Editor Invariants
 
@@ -164,6 +174,21 @@
   - `watch`: keep `X-Request-Id` and JSON logs secret-safe; login/reset are Supabase-direct and require Supabase-side antiabuse or backend proxy; memory rate limits assume single-process VPS unless `RATE_LIMIT_STORE=supabase` is enabled
 - `target=backend.db`
   - `keep`: company/project/page schema + backend-owned authorization
+- `target=ui.tokens`
+  - `keep`: `frontend/src/styles/tokens.css` como única source of truth; legacy aliases byte-for-byte preservados (`--wb-bg`, `--wb-text`, `--wb-radius-sm/md/lg`, `--wb-shadow-sm/lg`, etc.); cero hardcoded colors fuera de excepciones documentadas (Modal overlay rgba, Button white text on dark, `@media print` blocks); editor sub-tokens derivan de paleta global, NO contaminan otros scopes
+  - `watch`: añadir nuevos tokens en lugar de modificar existentes; documentar rationale en comentario inline; verificar contrast WCAG AA cuando tokens de color cambian
+- `target=ui.shared-components`
+  - `keep`: 6 primitives + KebabMenu + cn() helper exportados desde `frontend/src/components/ui/index.js`; cero npm deps externos (no Radix, no shadcn); cero hardcoded values (solo tokens); React funcional con hooks; JSX (no TS); imports relativos; forwardRef en Button/Input/Select/Card; portal del Modal y KebabMenu a `document.body`
+  - `watch`: cualquier nuevo primitive sigue mismo patrón (`.jsx + .module.css` co-locados); update `index.js` barrel; agregar a UI-SPEC docs si milestone formal
+- `target=companies.bulk`
+  - `keep`: kebab top-right inferior con `[⋮]` para Archivar/Enviar a papelera; checkbox top-right de la card (hover o select-mode); card click abre empresa cuando no hay selección, toggle cuando hay ≥1 seleccionada; WeBrief (`isInternal=true`) NO renderiza checkbox NI kebab; toolbar sticky cuando `selectedIds.size > 0` con bulk actions; ESC clears selection
+  - `watch`: `canManageAnyCompany` gate (admin OR algún `membershipRole === 'manager'`); badge `Cliente/Prueba/Interna` ahora vive como sub-label debajo del nombre (no top-right); sessionStorage cache `webrief:companies` invalidado tras bulk actions; rate limit `sensitiveAction` cubre bulk endpoints
+- `target=projects.bulk`
+  - `keep`: action row `[Abrir →][📋 Duplicar]  ___  [⋮]`; kebab items `Mover de empresa` (icon `Building2`) / `Archivar` / `Enviar a papelera` (destructive); checkbox top-right; sticky bulk toolbar con `Archivar | Mover | Papelera | Cancelar (N)`; card click toggle en select-mode; ESC clears selection sin robar a modales abiertos
+  - `watch`: `canManageProjects` gate; sessionStorage cache `webrief:company:<id>` invalidado tras bulk actions; activity logs `project_archived/trashed/moved` con `metadata.bulk: true`
+- `target=move-company`
+  - `keep`: lista del Select solo muestra empresas donde el user es manager (admin global ve todas); excluye la empresa source; modal reusable single-card y bulk; submit POST `/api/projects/bulk/move-company` con `{ ids, target_company_id }`; backend valida target permission ANTES del loop (fast-fail 403); cada project move logged como `project_moved` con `metadata.from_company_id` + `metadata.to_company_id`
+  - `watch`: respuesta 207 Multi-Status si parcial; UI refresh local tras success
 
 ## New Data/Auth Baseline
 
@@ -178,6 +203,7 @@
 - onboarding route exists at `auth/set-password`
 - backend routes: `GET /api/auth/me`, `POST /api/auth/invite-user`, `GET /api/companies`, `GET /api/companies/:id`, `POST /api/companies`, `GET /api/trash?state=archived|trashed`, `GET/POST /api/projects`, `GET /api/projects/:id`, `PUT /api/projects/:id/pages`, `GET/POST/DELETE /api/security/*`
 - added backend routes for activity, deliverables, assets, share links, notifications, public share comments/approvals, archive/trash/restore/permanent-delete
+- bulk routes (2026-05-13): `POST /api/projects/bulk/archive`, `POST /api/projects/bulk/trash`, `POST /api/projects/bulk/move-company`, `POST /api/companies/bulk/archive`, `POST /api/companies/bulk/trash`; auth + `sensitiveAction` rate limit; declared BEFORE `/:id/*` routes to avoid param shadowing; 207 Multi-Status with `{ count, failed: [{id, reason}] }`; `move-company` validates manager-target before loop
 - added backend security routes/middleware policy: `backend/src/middleware/security.js`, `backend/src/lib/validation.js`, `backend/src/lib/securityAudit.js`, and Supabase `security_events`
 - `POST /api/companies` requires manager email and creates/assigns a `manager`; if manager setup fails, the newly inserted company is deleted before responding
 - exception: admin `POST /api/companies` with `testMode=true` creates `companies.is_test=true` without manager/invite to avoid Supabase invite rate limits in test setup
@@ -193,6 +219,24 @@
 - `auth.audit_log_entries` is reachable from `get_auth_audit_events` on this Supabase plan; backend keeps graceful fallback if a future plan/role hides it
 
 ## Recent Fixes
+
+### Session 11 (2026-05-08 → 2026-05-13) — UI System Refactor + bulk actions
+
+- **Milestone v1.0 UI System Refactor shipped** (deploy a prod 2026-05-13, merge commit `583a35a`): 27 plans across 5 phases (Tokens → Components → Admin/Auth → Editor → Public + Verification), ~75 atomic commits on `refactor/ui-system` worktree, score Refactoring UI 8.5/10 promedio
+- design tokens completos en `frontend/src/styles/tokens.css` (20 → 119+ declarations): paleta `--wb-color-{neutral,primary,success,danger,warning}-{50..900}` (45 color tokens), `--wb-space-{1..24}` (10 spacing tokens 4-96px), `--wb-text-{xs..4xl}` con `--wb-leading-*` pareados (8 type tokens), `--wb-shadow-{xs,sm,md,lg,xl}` (5 niveles), `--wb-radius-{xs,sm,md,lg,xl,full,2,3,4}` (canonical 2/3/4 + legacy sm/md/lg aliases byte-for-byte), `--wb-z-{base,dropdown,sticky,overlay,modal,popover,tooltip,toast}` (8 semantic tokens reemplazan valores ad-hoc 20→9999), editor sub-tokens `--wb-editor-{bg,surface,surface-elevated,border,border-strong,text,text-on-dark,text-on-dark-muted}` + `--wb-tooltip-{bg,text}` + `--wb-comment-{highlight,highlight-active,highlight-resolved}` + `--wb-section-flash`
+- 6 shared UI primitives en `frontend/src/components/ui/` con barrel `index.js`: Button (4 variants × 3 sizes + loading + icon + forwardRef), Input (label, helperText, error, password Eye toggle, useId), Select (native, preserva `--wb-select-chevron` de base.css, supports `options` prop OR `<Select.Option>` children), Modal (portal a `document.body`, focus trap, ESC + mousedown→mouseup overlay close, body-scroll lock con refcount), Card (polymorphic `as`, padding/shadow/radius props), Badge (4 variants × 2 sizes, icon slot, AA contrast pairs); `cn()` helper interno
+- KebabMenu (`frontend/src/components/ui/KebabMenu.jsx`): trigger MoreVertical + dropdown portal con `createPortal(document.body)` para escapar stacking context creado por `transform: translateY(-2px)` en card hover; position `fixed` calculada vía `getBoundingClientRect`, recomputada en `scroll` capture + `resize` mientras abierto; placement `top-start | top-end | bottom-start | bottom-end`; items `{ label, icon, onClick, destructive, disabled }`; click outside (excluye trigger + menú) y ESC cierran; z-index `--wb-z-popover`
+- bulk actions feature: project cards en CompanyPage con `[Abrir →][Duplicar icon]  ___  [⋮]` action row + checkbox top-right (revealed on-hover de la card OR siempre cuando hay ≥1 seleccionado OR siempre en card seleccionada) + kebab items `Mover de empresa` (icon `Building2`) / `Archivar` / `Enviar a papelera` (destructive); company cards en CompaniesPage mismo patrón pero sin Duplicar/Mover (top-level entities; badge `Cliente/Prueba/Interna` movido de top-right a sub-label debajo del nombre); sticky bulk toolbar entre header y grid cuando `selectedIds.size > 0` con `Archivar | Mover | Papelera | Cancelar (N)` + `Seleccionar todos` / `Deseleccionar todos`; card click toggle selection cuando hay ≥1 seleccionado, sino abre normal (mismo handler en Enter/Space); ESC clears selection sin robar a modales abiertos; WeBrief (`isInternal=true`) NO renderiza checkbox NI kebab
+- MoveToCompanyModal (`frontend/src/components/MoveToCompanyModal.jsx`): reusable single-card (desde kebab) y bulk (desde toolbar); Select de empresas target donde el user es manager (admin global ve todas, excluye source); count + confirm "Mover N proyecto(s) a [Empresa]"; POST `/api/projects/bulk/move-company`; refresh local de la lista al success
+- backend bulk endpoints: `POST /api/projects/bulk/{archive,trash,move-company}` y `POST /api/companies/bulk/{archive,trash}`; cada uno valida permisos per-row (manager/editor o admin via `canManageProjects`/`canManageAnyCompany`); 207 Multi-Status con `{ count, failed: [{id, reason}] }`; `move-company` valida manager-target ANTES del loop (fast-fail 403); activity logs con `metadata.bulk: true`; `project_moved` incluye `from_company_id` y `to_company_id`; rutas `/bulk/*` declaradas ANTES de `/:id/*` para evitar shadowing del param (Express resuelve rutas en orden de declaración)
+- migración por área eliminó ~3,000 líneas de CSS duplicado (admin/auth Phase 3 alone: -3000 / +1535 net); 0 hardcoded `#hex` en archivos migrados (excepciones documentadas: `@media print` blocks en SharePage, off-canon neutrals editor sin match exacto en Phase 1, Modal overlay `rgba(15,23,42,0.36)` literal por limitación de CSS vars dentro de rgba(), Button white text on dark); BriefPage checkmark success a11y upgrade `#16a34a` (4.0:1) → `--wb-color-success-700` `#15803d` (4.5:1 AA)
+- AccountSettingsPage pilot adoption (Phase 1): 4 hardcoded literals migrados a tokens (`top: 24px` → `--wb-space-6`, `gap: 16px` → `--wb-space-4`, `color: var(--wb-text-muted)` → `var(--wb-color-neutral-500)`, `font-size: 12px` → `--wb-text-xs`)
+- editor unification (Phase 4) eliminó paleta paralela: 5 named hex literals (`#212222`, `#2a2a2a`, `#d9d9d9`, `#1d4ed8`, `#2563eb`) reemplazados por sub-tokens del editor que derivan de paleta global; 14 editor sub-tokens nuevos; cero numeric z-index en 9 editor CSS modules; `EditorContextMenu` usa `calc(var(--wb-z-popover) + 1)` para flotar sobre comment cards; modales `shareLinkModal` (dead-code removido) y `exportModal` (single + bulk image export) ahora consumen `<Modal>` shared; 16 editor invariants verificadas preservadas (sectionDivider, comments anchoring, mentions, handoff copy-safe, autosave 8s, page-switch 480ms delay, HistoryTabPanel, etc.)
+- bootstrap GSD `.planning/` (mínimo, sin ingest completo) con PROJECT.md + REQUIREMENTS.md (UI-01..UI-10) + ROADMAP.md (5 phases) + STATE.md + MILESTONES.md + decisions pre-locked en `.planning/intel/decisions.md`; archivo v1.0 en `.planning/milestones/v1.0-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md`; tech debt advisory 3 TODOs (editor CSS spacing 7.5/typography 7.5/color 7.8 vs UI-09 min 9.0) deferidos a v1.1 en `.planning/todos/pending/001-003`
+- `.gitignore` agregó `.claude/skills/`, `.agents/`, `skills-lock.json` (Claude Agent SDK skill installer artifacts, local-only); `.claude/launch.json` cwd ahora relativo (portable)
+- production deploy 2026-05-13: `git push origin main` (583a35a) → `ssh deploy@199.192.22.74 && ./scripts/deploy.sh` → vite build 14.46s, 1946 modules, 0 errors; PM2 webrief-backend online (89.8mb); health check `https://webrief.app/api/health` → 200 `{"status":"ok","version":"1.0.0"}`
+
+### Session 10 and earlier
 
 - added shared AI workflow files and startup/read-order rules
 - added agent rules for clarification, validation, change scope, and done criteria

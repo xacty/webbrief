@@ -5,7 +5,7 @@
   - Read `CONTEXT.min.md` second.
   - Read this file only if more detail is needed.
   - If user explicitly asks to review/read `CONTEXT.md`, treat this file as authoritative expanded context.
-- Updated: 2026-05-06
+- Updated: 2026-05-13 (session 11 — UI System Refactor v1.0 shipped + bulk actions feature deployed to prod)
 - Scope: current repo state; use as authoritative project context when user says "review/read CONTEXT.md", unless user says some part is outdated.
 - Goal: optimize for AI consumption; prefer this file over inferring intent from stale code comments.
 
@@ -24,6 +24,10 @@
 - `frontend/src/pages/ProjectEditor.jsx`
 - `frontend/src/auth/AuthContext.jsx`
 - `frontend/src/components/layout/AppShell.jsx`
+- `frontend/src/components/MoveToCompanyModal.jsx`
+- `frontend/src/components/ui/{Button,Input,Select,Modal,Card,Badge,KebabMenu}.{jsx,module.css}`
+- `frontend/src/components/ui/{cn.js,index.js}`
+- `frontend/src/styles/{tokens.css,base.css}`
 - `backend/src/index.js`
 - `backend/src/routes/auth.js`
 - `backend/src/routes/companies.js`
@@ -33,6 +37,7 @@
 - `backend/src/lib/supabase.js`
 - `backend/src/lib/users.js`
 - `supabase/schema.sql`
+- `.planning/` — GSD project planning (PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md, MILESTONES.md, milestones/v1.0-*.md, intel/decisions.md, todos/pending/, phases/01..05-*/)
 
 ## Runtime
 
@@ -63,6 +68,11 @@
 - `backend.auth`: Supabase-backed session + invite flow.
 - `backend.security`: request IDs, JSON security logs, headers, CORS, rate limits, validation, security audit, public anti-scraping controls, incident runbook.
 - `backend.db`: Supabase Postgres company/project store.
+- `ui.tokens`: design system tokens (`tokens.css`) — color palette 50-900, spacing/typography/shadow/radius scales, semantic z-index, editor sub-tokens.
+- `ui.shared-components`: reusable primitives (`components/ui/`) — Button, Input, Select, Modal, Card, Badge, KebabMenu.
+- `companies.bulk`: multi-select + bulk archive/trash via kebab menu and sticky toolbar.
+- `projects.bulk`: multi-select + bulk archive/trash/move-to-company via kebab menu and sticky toolbar.
+- `move-company`: cross-company project relocation modal (manager-scope company picker).
 
 ## Current Features
 
@@ -765,6 +775,101 @@ Iteración intensa sobre el sistema de comments inicial: rediseño total de UI a
 **Migración de schema aplicada en Prod** (sesión 10): `20260507_comment_threads.sql` extiende `project_comments` con `parent_comment_id`, `anchor_snippet`, `mentions uuid[]`, `resolved_at`, `resolved_by_user_id`, `edited_at`, `deleted_at`, `deleted_by_user_id`. Índices: `thread_idx`, `parent_idx`, `mentions_idx` (GIN), `active_root_idx` (partial WHERE parent_comment_id IS NULL AND deleted_at IS NULL). `alter publication supabase_realtime add table public.project_comments`.
 
 **Deployed**: commits desde `1204dea` hasta `f12007b` aplicados en VPS, frontend rebuilt en cada paso, `pm2 restart webrief-backend`, health check `{"status":"ok"}` después de cada deploy.
+
+## Completed (2026-05-13) — Session 11: UI System Refactor v1.0 + bulk actions feature
+
+**Milestone v1.0 — UI System Refactor (shipped to prod 2026-05-13, merge commit `583a35a`):**
+
+5 phases ejecutadas con GSD (`/gsd-autonomous --interactive`), 27 plans, ~75 atomic commits en branch `refactor/ui-system` (worktree aislado), score Refactoring UI 8.5/10 promedio (threshold met).
+
+- **Phase 1 — Design Tokens Foundation** (3 plans): extendió `frontend/src/styles/tokens.css` de 20 a 119+ declarations.
+  - Color palette: 45 tokens `--wb-color-{neutral,primary,success,danger,warning}-{50..900}` (HSL-derived shades, body text `gray-700` 9.4:1 contrast en blanco)
+  - Scales: 10 spacing tokens `--wb-space-{1..24}` (4-96px), 8 type tokens `--wb-text-{xs..4xl}` con line-heights pareados (`--wb-leading-{tight,snug,normal,relaxed}`), 4 weights (`--wb-weight-{normal,medium,semibold,bold}`), 5 shadows `--wb-shadow-{xs,sm,md,lg,xl}`, radius canonical `--wb-radius-{2,3,4}` (8/12/16) + legacy aliases `--wb-radius-{sm,md,lg}` byte-for-byte (10/14/18), 8 z-index semánticos `--wb-z-{base,dropdown,sticky,overlay,modal,popover,tooltip,toast}`
+  - AccountSettingsPage pilot adoption: 4 hardcoded literals → tokens (value-equivalent)
+  - Legacy tokens (`--wb-bg`, `--wb-text`, `--wb-text-muted`, `--wb-primary`, etc.) preservados byte-for-byte como aliases
+
+- **Phase 2 — Shared UI Components** (5 plans): `frontend/src/components/ui/`
+  - `Button` (variants primary/secondary/ghost/danger × sizes sm-32px/md-40px/lg-48px, loading state con Loader2 spinner + SR-only "Cargando…", icon + iconPosition, fullWidth, forwardRef)
+  - `Input` (label, helperText, error string|bool, password Eye/EyeOff toggle con caret-preserving mousedown.preventDefault, `useId()` auto-id, aria-describedby/invalid wiring, forwardRef)
+  - `Select` (native `<select>`, preserva `--wb-select-chevron` de `base.css`, soporta `options` prop OR `<Select.Option>` children con options-wins precedence, forwardRef)
+  - `Modal` (portal a `document.body` via `createPortal`, role="dialog"/aria-modal/aria-labelledby, ESC + mousedown→mouseup overlay close, focus trap, refcount-based body-scroll lock para stacked modals, sizes sm-400/md-500/lg-720/full, z-index `--wb-z-modal`, prefers-reduced-motion)
+  - `Card` (polymorphic `as` prop, padding none/sm/md/lg, shadow none/sm/md, radius md/lg/xl, interactive states, forwardRef-friendly)
+  - `Badge` (variants neutral/success/warning/danger × sizes sm/md, icon slot, AA contrast pairs, `--wb-radius-full`)
+  - `cn.js` helper (~30 LOC, falsy-skipping, array-flattening)
+  - `index.js` barrel exporta los 6 primitives + KebabMenu
+
+- **Phase 3 — Admin & Auth Migration** (5 plans, 5 cohorts): migración por área eliminando duplicación, **net -3000 / +1535 líneas CSS** (~49% reducción).
+  - Cohort 1: Login + SetPassword + AuthPage.module.css
+  - Cohort 2: AccountSettings (extend pilot) + NewProject
+  - Cohort 3: CompaniesPage + CompanyPage (7 modales locales → `<Modal>` shared)
+  - Cohort 4: UsersPage + TrashPage + SecurityPage
+  - Cohort 5: AppShell (sidebar z-index 1000 → `--wb-z-sticky` 200, modales `--wb-z-modal` 1000)
+  - 0 hardcoded `#hex` en archivos migrados (excepciones documentadas: `.fileInputLabel` para native `<input type=file>`, `.tabButton` para native `role="tablist"` keyboard nav)
+  - Invariantes preservadas: sessionStorage caches, admin/test-mode bypass, memoized inviteRoleOptions, admin-self-delete prevent, last-manager downgrade prevent, request-removal flow, reason-required block modals, expandable-row keyboard nav
+
+- **Phase 4 — Editor Unification** (9 plans en 8 waves): eliminó paleta paralela del editor preservando look dark.
+  - 14 editor sub-tokens nuevos: `--wb-editor-{bg,surface,surface-elevated,border,border-strong,text,text-on-dark,text-on-dark-muted}` + `--wb-tooltip-{bg,text}` + `--wb-comment-{highlight,highlight-active,highlight-resolved}` + `--wb-section-flash`
+  - 5 named hex literals eliminados: `#212222`, `#2a2a2a`, `#d9d9d9`, `#1d4ed8`, `#2563eb`
+  - 19 raw z-index → tokens semánticos en 9 CSS modules del editor; `EditorContextMenu` usa `calc(var(--wb-z-popover) + 1)` para flotar sobre margin cards
+  - Modales `shareLinkModal` (dead-code, removido) y `exportModal` (single + bulk image export) ahora consumen `<Modal>` shared
+  - 16 editor invariants verificadas preservadas: sectionDivider markup, sidebar derivation, first-section logic, auto-naming, active section/heading sync, drag&drop, page pills + MoreVertical, toolbar context-sensitive, tables (3-approach), type labels (`t`/`img` non-interactive), handoff copy-safe, comments anchoring + 15-min edit window + mentions, right-click + fake-selection overlay, HistoryTabPanel, autosave 8s + version-conflict block, page-switch 480ms delay, SEO metadata in handoff dev
+
+- **Phase 5 — Public Pages & Verification** (5 plans): SharePage + BriefPage migration + retroactive audit + golden paths.
+  - SharePage: 5 hex → 0 outside `@media print` (preservado con `.printHide` wrapper para cross-browser print fidelity)
+  - BriefPage: 38 hex → 0; FileUploadField inline styles eliminados; native `<textarea>` y `<input type="file">` preservados con tokenización in-place; checkmark a11y upgrade `#16a34a` (4.0:1) → `--wb-color-success-700` `#15803d` (4.5:1 AA)
+  - Retroactive UI audit (`gsd-ui-review`): score 8.5/10 promedio sobre los 7 principios
+  - Golden paths A-F: ALL PASS via `vite build` + grep gates + code-read fallback (preview MCP cwd-incompatible con worktree; manual print-preview smoke recomendado post-merge)
+
+**Tech debt advisory deferido a v1.1** (`.planning/todos/pending/`):
+
+- `001-fix-ui-spacing-editor.md` — Editor CSS Spacing 7.5/10 (vs 9.0 min) — sweep ~288 raw padding|margin|gap px en 9 editor `.module.css` files → `--wb-space-*` tokens
+- `002-fix-ui-typography-editor.md` — Editor CSS Typography 7.5/10 (vs 9.0 min) — sweep ~149 raw `font-size` px en 7 editor CSS → `--wb-text-*` tokens
+- `003-fix-ui-color-editor.md` — Editor CSS Color 7.8/10 (vs 9.0 min) — sweep 96 hex literals + add `--wb-editor-selection-soft` sub-token + `--wb-color-warning-50`
+
+**Bulk actions feature (post-milestone, ~22 commits):**
+
+- **KebabMenu primitive** (`frontend/src/components/ui/KebabMenu.{jsx,module.css}`): trigger MoreVertical button (icon-only sm 32px) + dropdown que portea a `document.body` con `createPortal` para escapar el stacking context creado por `transform: translateY(-2px)` en card hover. Position `fixed` calculada vía `getBoundingClientRect`, recomputada en `scroll` capture + `resize` mientras abierto. Placements: `top-start | top-end | bottom-start | bottom-end`. Items con shape `{ label, icon, onClick, destructive, disabled }`. Click outside (excluyendo trigger y menú) + ESC cierran. z-index `--wb-z-popover` (1100, encima de cards y badges).
+
+- **Project cards UX** (CompanyPage): action row `[Abrir →][📋 Duplicar icon]  ___  [⋮]`. Checkbox top-right (revealed on-hover de la card OR siempre cuando hay ≥1 seleccionado OR siempre en card seleccionada). Kebab items: `Mover de empresa` (icon `Building2`), `Archivar`, `Enviar a papelera` (destructive). Solo render si `canManageProjects`.
+
+- **Company cards UX** (CompaniesPage): action row `[Abrir →]  ___  [⋮]` (sin Duplicar — companies son top-level). Checkbox top-right mismo patrón. Kebab items: `Archivar`, `Enviar a papelera`. Badge `Cliente/Prueba/Interna` movido de top-right (donde chocaba con kebab) a sub-label debajo del nombre (`.cardHeader` ahora `flex column`). WeBrief (`isInternal=true`) NO renderiza checkbox NI kebab — preserva apertura, no entra a select-mode.
+
+- **Multiselect mode** (ambas pages): sticky toolbar entre header y grid cuando `selectedIds.size > 0` — `"N proyecto(s)/empresa(s) seleccionado(s)" | Seleccionar todos / Deseleccionar todos | Archivar | Mover | Papelera | Cancelar (N)`. ESC clears selection sin robar el evento a modales abiertos. Card seleccionada: border `var(--wb-color-primary-500)` + shadow más fuerte.
+
+- **Card click behavior** (ambas pages): cuando NO hay selección activa, click en card abre la entidad (proyecto/empresa). Cuando hay ≥1 seleccionado, click en card alterna selección (toggle). Cuando se cancela toda la selección, vuelve al comportamiento normal. Botones explícitos (Abrir, Duplicar, kebab) siempre ejecutan su acción via `stopPropagation`. Mismo handler en click y keyboard (Enter/Space).
+
+- **MoveToCompanyModal** (`frontend/src/components/MoveToCompanyModal.{jsx,module.css}`): reusable single-card (desde kebab) y bulk (desde toolbar). Select de empresas target donde el user es manager (admin global ve todas, excluye la company source). Confirmación con count "Mover N proyecto(s) a [Empresa]". POST `/api/projects/bulk/move-company` con `{ ids, target_company_id }`. Feedback inline. Refresh local de la lista al success.
+
+- **Backend bulk endpoints** (mounted con auth + `sensitiveAction` rate limit; rutas `/bulk/*` declaradas ANTES de `/:id/*` para evitar param shadowing):
+  - `POST /api/projects/bulk/archive` — body `{ ids: string[] }` → 207 Multi-Status `{ archived: N, failed: [{id, reason}] }`. Valida `manager`/`editor`/`admin` per-project. Activity log `project_archived` con `metadata.bulk: true`.
+  - `POST /api/projects/bulk/trash` — análogo, `metadata.bulk: true`, activity log `project_trashed`.
+  - `POST /api/projects/bulk/move-company` — body `{ ids, target_company_id }`. Valida ANTES manager-target (fast-fail 403 si user no es manager en destino). Luego loop por id validando manager-source. Activity log `project_moved` con `metadata: { bulk: true, from_company_id, to_company_id }`.
+  - `POST /api/companies/bulk/archive` y `bulk/trash` — análogos. Audit via `logSecurityEvent` con `metadata.bulk: true` (companies no tienen activity table dedicada). Gate `canManageAnyCompany` (admin OR algún `membershipRole === 'manager'`).
+
+**UX polish iterativo (post-feature, ~7 commits adicionales):**
+
+- KebabMenu dropdown PORTAL a `document.body` (originalmente posicionado dentro del card; cambio resolvió el problema clásico de stacking context donde el dropdown se ocultaba detrás de cards adyacentes durante hover del propio card con `transform`)
+- Card layout final: checkbox top-RIGHT (esquina libre), kebab bottom-RIGHT del action row (placement="top-end" para que el dropdown abra arriba-izquierda del trigger, permaneciendo dentro de la card visualmente)
+- Action row final: `[Abrir →][Duplicar]  ___  [⋮]` (Abrir primary primero, Duplicar icon-only, kebab a la derecha con `margin-left: auto`)
+- Click-to-toggle en select-mode (replicado a ambas pages para consistencia)
+- Icon del "Mover" cambió de `MoveRight` (flecha genérica) a `Building2` (semánticamente = empresa destino); texto "Mover a otra empresa" → "Mover de empresa"
+- CompaniesPage badge `Cliente/Prueba/Interna` reubicado de top-right (colisión con kebab) a sub-label debajo del nombre
+
+**Bootstrap GSD `.planning/` (mínimo, sin ingest completo):**
+
+- `PROJECT.md` (WeBrief con validated/active requirements UI-01..UI-10), `REQUIREMENTS.md` (10 reqs mapeados a 5 phases), `ROADMAP.md` (milestone v1.0 + slot para v1.1), `STATE.md` (status `shipped` post-milestone), `MILESTONES.md` (v1.0 archived)
+- `.planning/intel/decisions.md`: paleta, scales, component patterns, editor sub-tokens, naming convention pre-locked (consumidas por agentes de plan/execute)
+- `.planning/phases/0{1..5}-*/`: CONTEXT.md + PLAN.md (3+5+5+9+5 = 27 plans total) + SUMMARY.md (post-execute) + VERIFICATION.md + UI-SPEC.md + UI-REVIEW.md (phases 2-5)
+- `.planning/milestones/v1.0-{ROADMAP,REQUIREMENTS,MILESTONE-AUDIT}.md` (archived al completar)
+- `.planning/todos/pending/00{1,2,3}-fix-ui-*-editor.md`: tech debt advisory para v1.1
+- `.planning/config.json`: `workflow.skip_discuss=true` (para agentes en autonomous mode), `workflow.code_review=true`
+
+**Deploy info:**
+
+- 2026-05-13: merge `refactor/ui-system` → `main` (no-ff merge commit `583a35a`), `git push origin main`, `ssh deploy@199.192.22.74 && ./scripts/deploy.sh`
+- Vite build: 14.46s, 1946 modules, 0 errors (warning sobre ProjectEditor bundle 691kB es pre-existing por TipTap, no nuevo)
+- PM2 webrief-backend restart OK; health endpoint `https://webrief.app/api/health` → 200 `{"status":"ok","version":"1.0.0"}`
+- `.gitignore` actualizado: `.claude/skills/`, `.agents/`, `skills-lock.json` (Claude Agent SDK skill installer artifacts, local-only); `.claude/launch.json` cwd ahora relativo (portable cross-machine)
 
 ## Pending
 
