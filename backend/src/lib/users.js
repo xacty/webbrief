@@ -67,12 +67,12 @@ async function updateExistingProfile(profile, fullName, platformRole) {
 
 export function decideEnsureProfileAction({ authUser, profile }) {
   if (!authUser) {
-    return { action: 'invite', userId: null }
+    return { action: 'invited', userId: null }
   }
   if (!authUser.last_sign_in_at) {
-    return { action: 'reinvite', userId: authUser.id }
+    return { action: 'reinvited', userId: authUser.id }
   }
-  return { action: 'assign_existing', userId: authUser.id }
+  return { action: 'assigned_existing', userId: authUser.id }
 }
 
 export async function ensureUserProfile({ email, fullName, platformRole = 'user' }) {
@@ -100,7 +100,7 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
   const redirectTo = getSetPasswordRedirectUrl()
 
   // -------- Case A: fresh invite --------
-  if (decision.action === 'invite') {
+  if (decision.action === 'invited') {
     const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
       redirectTo,
       data: { full_name: fullName || '' },
@@ -125,12 +125,11 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
       platformRole: normalizedPlatformRole,
       action: 'invited',
       inviteSent: true,
-      existingUser: false,
     }
   }
 
   // -------- Case B: reinvite (auth user exists, never activated) --------
-  if (decision.action === 'reinvite') {
+  if (decision.action === 'reinvited') {
     return await handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp)
   }
 
@@ -144,7 +143,6 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
       platformRole: updatedProfile.platform_role,
       action: 'assigned_existing',
       inviteSent: false,
-      existingUser: true,
     }
   }
 
@@ -157,7 +155,6 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
     platformRole: normalizedPlatformRole,
     action: 'assigned_existing',
     inviteSent: false,
-    existingUser: true,
   }
 }
 
@@ -187,7 +184,6 @@ async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPla
     platformRole: normalizedPlatformRole,
     action: 'reinvited',
     inviteSent: Boolean(emailResult?.sent),
-    existingUser: false,
   }
 }
 
@@ -237,7 +233,6 @@ export async function inviteUserToCompany({ email, fullName, companyId, role, pl
     role,
     companyId,
     inviteSent: profile.inviteSent,
-    existingUser: profile.existingUser,
     action: profile.action, // 'invited' | 'reinvited' | 'assigned_existing'
   }
 }

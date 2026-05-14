@@ -25,7 +25,7 @@ import {
   PLATFORM_ROLE_SET,
   normalizePlatformRole as normalizeSharedPlatformRole,
 } from '../../../shared/userRoles.js'
-import { toInviteSecurityAction } from '../../../shared/inviteActions.js'
+import { toInviteSecurityAction, buildInviteResultMessage } from '../../../shared/inviteActions.js'
 
 const router = Router()
 const upload = multer({
@@ -427,7 +427,10 @@ router.post('/', rateLimiters.inviteUser, async (req, res) => {
       })
 
       return res.status(201).json({
-        message: profile.inviteSent ? 'Invitacion enviada' : 'Usuario agregado',
+        message: buildInviteResultMessage({
+          action: profile.action,
+          inviteSent: profile.inviteSent,
+        }),
         invitedUser: profile,
       })
     }
@@ -464,7 +467,10 @@ router.post('/', rateLimiters.inviteUser, async (req, res) => {
     })
 
     return res.status(201).json({
-      message: invitedUser.inviteSent ? 'Invitacion enviada' : 'Acceso agregado',
+      message: buildInviteResultMessage({
+        action: invitedUser.action,
+        inviteSent: invitedUser.inviteSent,
+      }),
       invitedUser,
     })
   } catch (error) {

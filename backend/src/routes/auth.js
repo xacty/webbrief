@@ -6,7 +6,7 @@ import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { normalizeEmail, normalizeText } from '../lib/validation.js'
 import { normalizePlatformRole } from '../../../shared/userRoles.js'
-import { toInviteSecurityAction } from '../../../shared/inviteActions.js'
+import { toInviteSecurityAction, buildInviteResultMessage } from '../../../shared/inviteActions.js'
 
 const router = Router()
 
@@ -63,7 +63,10 @@ router.post('/invite-user', requireAuth, rateLimiters.inviteUser, async (req, re
     })
 
     return res.status(201).json({
-      message: invitedUser.inviteSent ? 'Invitacion enviada' : 'Usuario asignado',
+      message: buildInviteResultMessage({
+        action: invitedUser.action,
+        inviteSent: invitedUser.inviteSent,
+      }),
       invitedUser,
     })
   } catch (error) {

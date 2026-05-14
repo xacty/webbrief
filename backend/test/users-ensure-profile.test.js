@@ -4,7 +4,7 @@ import { decideEnsureProfileAction } from '../src/lib/users.js'
 
 test('decideEnsureProfileAction: case A — no auth user exists', () => {
   const result = decideEnsureProfileAction({ authUser: null, profile: null })
-  assert.equal(result.action, 'invite')
+  assert.equal(result.action, 'invited')
 })
 
 test('decideEnsureProfileAction: case A — no auth user but stale profile exists', () => {
@@ -14,7 +14,7 @@ test('decideEnsureProfileAction: case A — no auth user but stale profile exist
     authUser: null,
     profile: { id: 'stale', email: 'x@y.com' },
   })
-  assert.equal(result.action, 'invite')
+  assert.equal(result.action, 'invited')
 })
 
 test('decideEnsureProfileAction: case B — auth user exists, never signed in', () => {
@@ -22,7 +22,7 @@ test('decideEnsureProfileAction: case B — auth user exists, never signed in', 
     authUser: { id: 'u1', email: 'x@y.com', last_sign_in_at: null },
     profile: { id: 'u1', email: 'x@y.com' },
   })
-  assert.equal(result.action, 'reinvite')
+  assert.equal(result.action, 'reinvited')
   assert.equal(result.userId, 'u1')
 })
 
@@ -32,7 +32,7 @@ test('decideEnsureProfileAction: case B — auth user exists, never signed in, n
     authUser: { id: 'u1', email: 'x@y.com', last_sign_in_at: null },
     profile: null,
   })
-  assert.equal(result.action, 'reinvite')
+  assert.equal(result.action, 'reinvited')
   assert.equal(result.userId, 'u1')
 })
 
@@ -41,6 +41,6 @@ test('decideEnsureProfileAction: case C/D — auth user signed in at least once'
     authUser: { id: 'u1', email: 'x@y.com', last_sign_in_at: '2026-04-01T00:00:00Z' },
     profile: { id: 'u1', email: 'x@y.com' },
   })
-  assert.equal(result.action, 'assign_existing')
+  assert.equal(result.action, 'assigned_existing')
   assert.equal(result.userId, 'u1')
 })
