@@ -18,8 +18,15 @@ import {
   canRequestUserRemoval,
   getAccessibleCompanyIds,
 } from '../lib/projectAccess.js'
-import { ensureUserProfile, inviteUserToCompany, normalizeEmail } from '../lib/users.js'
+import {
+  ensureUserProfile,
+  findAuthUserByEmailPaginated,
+  inviteUserToCompany,
+  normalizeEmail,
+} from '../lib/users.js'
 import { wrapSupabaseAuthCall } from '../lib/applicationErrors.js'
+import { canSendAccess, decideSendAccessAction } from '../lib/sendAccess.js'
+import { sendInviteEmail, sendResetPasswordEmail } from '../lib/authEmails.js'
 import { requireAuth } from '../middleware/auth.js'
 import {
   COMPANY_ROLE_SET,
@@ -910,6 +917,132 @@ router.delete('/:id', rateLimiters.sensitiveAction, async (req, res) => {
     return res.json({ deleted: true })
   } catch (error) {
     return res.status(error.status || 500).json({ error: error.message || 'No se pudo borrar el usuario' })
+  }
+})
+
+router.post('/:id/send-access', rateLimiters.passwordReset, async (req, res) => {
+  const targetUserId = req.params.id
+
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'id requerido' })
+  }
+
+  try {
+    // 1. Load target profile (also gives us email and full_name for the email body).
+    const { data: targetProfile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name')
+      .eq('id', targetUserId)
+      .maybeSingle()
+
+    if (profileError) throw profileError
+    if (!targetProfile) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    // 2. Load target memberships (needed for canSendAccess shared-company check).
+    const { data: targetMemberships, error: membershipsError } = await supabaseAdmin
+      .from('company_memberships')
+      .select('company_id, role')
+      .eq('user_id', targetUserId)
+
+    if (membershipsError) throw membershipsError
+
+    const targetMembershipsMapped = (targetMemberships || []).map((m) => ({
+      companyId: m.company_id,
+      role: m.role,
+    }))
+
+    // 3. Permission check.
+    const allowed = canSendAccess({
+      actor: req.currentUser,
+      targetUserId,
+      actorMemberships: req.currentUser?.memberships || [],
+      targetMemberships: targetMembershipsMapped,
+    })
+
+    if (!allowed) {
+      return res.status(403).json({ error: 'No tienes permisos para enviar acceso a este usuario' })
+    }
+
+    // 4. Look up auth user (need last_sign_in_at).
+    const normalizedEmail = normalizeEmail(targetProfile.email)
+    const authUser = await findAuthUserByEmailPaginated(supabaseAdmin, normalizedEmail)
+
+    const decision = decideSendAccessAction({ authUser })
+    if (decision.action === 'not_found') {
+      return res.status(404).json({ error: 'No existe la cuenta de autenticación para este usuario' })
+    }
+
+    const redirectTo = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/set-password`
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + decision.ttlSeconds * 1000)
+
+    // 5. Generate the appropriate link (wrapped for /security/errors traceability).
+    const linkType = decision.action === 'invite_resent' ? 'invite' : 'recovery'
+    const { data: linkData, error: linkError } = await wrapSupabaseAuthCall({
+      operation: () => supabaseAdmin.auth.admin.generateLink({
+        type: linkType,
+        email: normalizedEmail,
+        options: { redirectTo },
+      }),
+      operationName: `generateLink:${linkType}`,
+      req,
+      args: { email: normalizedEmail, type: linkType },
+    })
+
+    if (linkError) throw linkError
+    const actionLink = linkData?.properties?.action_link
+    if (!actionLink) {
+      throw new Error('Supabase no devolvió action_link')
+    }
+
+    // 6. For recovery: insert tracking row BEFORE sending email (so a stale row never leaks).
+    if (decision.action === 'reset_sent') {
+      const { error: insertError } = await supabaseAdmin
+        .from('password_reset_requests')
+        .insert({
+          user_id: authUser.id,
+          requested_by: req.currentUser?.id || null,
+          expires_at: expiresAt.toISOString(),
+          ip_address: req.ip || null,
+          metadata: { actor_email: req.currentUser?.email || null },
+        })
+      if (insertError) throw insertError
+    }
+
+    // 7. Send email (best-effort; failure surfaces as emailSent: false, not 500).
+    const sender = decision.action === 'invite_resent' ? sendInviteEmail : sendResetPasswordEmail
+    const emailResult = await sender({
+      to: normalizedEmail,
+      fullName: targetProfile.full_name || '',
+      actionLink,
+      expiresAt,
+    })
+
+    // 8. Audit log (security_events).
+    const securityAction = decision.action === 'invite_resent' ? 'invite_resent' : 'password_reset_requested'
+    await logSecurityEvent(req, {
+      action: securityAction,
+      resourceType: 'user',
+      resourceId: targetUserId,
+      targetUserId,
+      metadata: {
+        via: 'send_access',
+        emailSent: Boolean(emailResult?.sent),
+        emailReason: emailResult?.sent ? null : (emailResult?.reason || 'unknown'),
+      },
+    })
+
+    return res.status(200).json({
+      action: decision.action,
+      expiresAt: expiresAt.toISOString(),
+      emailSent: Boolean(emailResult?.sent),
+    })
+  } catch (error) {
+    const status = error.status || 500
+    return res.status(status).json({
+      error: error.message || 'No se pudo enviar acceso',
+      errorId: error.applicationErrorId || null,
+    })
   }
 })
 
