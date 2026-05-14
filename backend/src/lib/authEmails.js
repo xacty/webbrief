@@ -119,3 +119,89 @@ export async function sendInviteEmail(args) {
     return { sent: false, reason: 'exception', errorMessage: error?.message }
   }
 }
+
+export function buildResetPasswordEmailPayload({ to, fullName, actionLink, expiresAt }) {
+  const safeName = fullName?.trim() || ''
+  const greeting = safeName ? `Hola ${safeName}` : 'Hola'
+  const subject = 'Restablece tu contraseña en WeBrief'
+
+  const html = `
+    <!doctype html>
+    <html lang="es"><head><meta charset="utf-8"></head><body style="font-family:system-ui,-apple-system,sans-serif;color:#222;max-width:560px;margin:0 auto;padding:24px">
+      <h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(greeting)}</h1>
+      <p style="font-size:15px;line-height:1.5;margin:0 0 16px">
+        Recibimos una solicitud para restablecer tu contraseña de WeBrief.
+        Hacé clic en el botón para elegir una nueva. El enlace expira en 1 hora.
+      </p>
+      <p style="margin:24px 0">
+        <a href="${escapeHtml(actionLink)}"
+           style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600">
+          Restablecer contraseña
+        </a>
+      </p>
+      <p style="font-size:13px;color:#666;margin:24px 0 0">
+        Si el botón no funciona, copiá esta dirección en tu navegador:<br>
+        <span style="word-break:break-all">${escapeHtml(actionLink)}</span>
+      </p>
+      <p style="font-size:12px;color:#888;margin:24px 0 0">
+        Si no solicitaste este cambio, ignorá este mensaje. Tu contraseña actual sigue siendo válida.
+      </p>
+    </body></html>
+  `.trim()
+
+  const text = [
+    greeting + '.',
+    '',
+    'Recibimos una solicitud para restablecer tu contraseña de WeBrief.',
+    'Abrí el siguiente enlace para elegir una nueva. El enlace expira en 1 hora:',
+    actionLink,
+    '',
+    'Si no solicitaste este cambio, ignorá este mensaje.',
+  ].join('\n')
+
+  return { to, subject, html, text, from: getSender(), expiresAt }
+}
+
+export async function sendResetPasswordEmail(args) {
+  if (!args?.to) {
+    console.warn('[authEmails] sendResetPasswordEmail called without recipient; skipping')
+    return { sent: false, reason: 'missing_recipient' }
+  }
+
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    console.warn('[authEmails] RESEND_API_KEY missing; skipping reset email send')
+    return { sent: false, reason: 'no_api_key' }
+  }
+
+  const payload = buildResetPasswordEmailPayload(args)
+
+  try {
+    const response = await fetch(RESEND_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: payload.from,
+        to: [payload.to],
+        subject: payload.subject,
+        html: payload.html,
+        text: payload.text,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      console.warn('[authEmails] Resend reset send failed', response.status, errorBody)
+      return { sent: false, reason: `resend_${response.status}`, errorBody }
+    }
+
+    const data = await response.json().catch(() => null)
+    return { sent: true, id: data?.id || null }
+  } catch (error) {
+    console.warn('[authEmails] Resend reset send threw', error?.message)
+    return { sent: false, reason: 'exception', errorMessage: error?.message }
+  }
+}
