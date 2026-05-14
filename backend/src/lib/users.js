@@ -2,6 +2,7 @@ import { supabaseAdmin } from './supabase.js'
 import { normalizePlatformRole } from '../../../shared/userRoles.js'
 import { sendInviteEmail } from './authEmails.js'
 import { wrapSupabaseAuthCall } from './applicationErrors.js'
+import { notifyManagerAssigned, shouldNotifyManagerAssigned } from './managerNotifications.js'
 
 export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
@@ -236,6 +237,19 @@ export async function assignUserToCompany({ companyId, userId, role }) {
 export async function inviteUserToCompany({ email, fullName, companyId, role, platformRole = 'user', req = null }) {
   const profile = await ensureUserProfile({ email, fullName, platformRole, req })
   await assignUserToCompany({ companyId, userId: profile.userId, role })
+
+  // Plan C: notify when an existing active user is promoted to manager.
+  // notifyManagerAssigned is best-effort and never throws (failures log
+  // to application_errors via Plan D). The membership row is already
+  // committed; this only affects notification delivery.
+  if (shouldNotifyManagerAssigned({ role, action: profile.action })) {
+    await notifyManagerAssigned({
+      targetUserId: profile.userId,
+      companyId,
+      actor: req?.currentUser || null,
+      req,
+    })
+  }
 
   return {
     id: profile.userId,
