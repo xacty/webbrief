@@ -220,6 +220,17 @@
 
 ## Recent Fixes
 
+### Session 15 (2026-05-14) — Auth hardening Plan E (security observability)
+
+- Plan E shipped on branch `feat/auth-hardening-plan-e`: three independent observability changes — rate_limit_blocked → security_events, invite_accepted / password_reset_completed tracking from SetPassword.jsx, and unified /security/blocks admin view with revoke action.
+- `rateLimitResponse` middleware now writes a `rate_limit_blocked` row to `security_events` (alongside the existing console writeSecurityLog) with metadata `{ limiter, key, retryAfterSeconds, violations }`. Best-effort persist (rejection swallowed) so 429 path is never blocked. Call site updated to include `key` so revoke can target a specific bucket.
+- New `POST /api/auth/track-invite-accepted` (requireAuth + rateLimiters.trackEvent 5/min): receives `{ via: 'invite' | 'recovery' }`, logs `invite_accepted` or `password_reset_completed` to security_events. `SetPassword.jsx` now calls this after `updateUser({password})` succeeds, reusing the `INITIAL_AUTH_TYPE` captured at supabase.js init from Plan B. mark-reset-used (Plan B) still fires for recovery; track-invite-accepted is new for both flows.
+- New `GET /api/security/blocks` unified endpoint: returns `{ manualBlocks, rateLimitBlocks, warnings }`. Manual blocks come from `fetchActiveBlocks()` (existing). Rate-limit blocks aggregate the last 24h of `security_events.action='rate_limit_blocked'` grouped by `metadata.key`, surfacing `lastBlockedAt`, `violations`, `eventCount`, and `currentlyBlocked` (derived from each limiter's `blockMs` config via newly exported `getRateLimiterConfig(name)` and the new `.config` property on the rate-limit middleware).
+- New `POST /api/security/rate-limits/clear` (admin-only): body `{ key }`; clears in-memory bucket via newly exported `clearRateLimitBucket(key)` from middleware AND best-effort deletes the persistent `rate_limit_buckets` row (no-op when RATE_LIMIT_STORE=memory, the default). Logs `rate_limit_cleared` security_event with `{ key, memoryCleared, persistentCleared }`.
+- New admin-only frontend sub-route `/security/blocks` (lazy-loaded; component `SecurityBlocksPage.jsx`). Unified table with type chip (manual/rate-limit), subject, reason, timestamps, currentlyBlocked badge, and Revocar button per row. Empty state + warning banner for table-missing cases. Cross-link from `/security` shell button.
+- 7 new tests in `backend/test/security-rate-limit-blocks.test.js` (3 `aggregateRateLimitBlocks` + 4 `isRateLimitBlockActive`). Helper module `backend/src/routes/securityBlocksHelpers.js`. Full backend suite: 79/79 pass.
+- No new migrations. All audit data piggybacks on existing `security_events` table.
+
 ### Session 14 (2026-05-14) — Auth hardening Plan B (send-access)
 
 - Plan B shipped on branch `feat/auth-hardening-plan-b`: new `password_reset_requests` table (migration `20260515_password_reset_requests.sql`) with service-role-only RLS for server-side 1h recovery TTL. Schema: id, user_id, requested_by, requested_at, expires_at, used_at, ip_address, metadata. Indexed on (user_id, requested_at DESC) and partial (user_id, expires_at) WHERE used_at IS NULL.
