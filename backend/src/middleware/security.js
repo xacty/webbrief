@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { logApplicationError } from '../lib/applicationErrors.js'
 import { consumePersistentRateLimit } from '../lib/rateLimitStore.js'
 import { getActiveSecurityBlock } from '../lib/securityBlocks.js'
 import { getRequestLogContext, writeSecurityLog } from '../lib/securityLogger.js'
@@ -338,7 +339,7 @@ export const rateLimiters = {
   }),
 }
 
-export function securityErrorHandler(error, req, res, next) {
+export async function securityErrorHandler(error, req, res, next) {
   if (res.headersSent) return next(error)
 
   if (error?.message === 'CORS_ORIGIN_NOT_ALLOWED') {
@@ -371,5 +372,18 @@ export function securityErrorHandler(error, req, res, next) {
     ...getRequestLogContext(req),
     error: error?.message || error,
   })
-  return res.status(500).json({ error: 'No se pudo procesar la solicitud' })
+
+  // Persist to application_errors for operator diagnostics.
+  // If the error already has applicationErrorId (e.g., from wrapSupabaseAuthCall),
+  // reuse it; otherwise persist a fresh row.
+  const errorId = error?.applicationErrorId
+    || await logApplicationError(req, error, {
+      source: 'unhandled',
+      metadata: { handler: 'securityErrorHandler' },
+    })
+
+  return res.status(500).json({
+    error: 'No se pudo procesar la solicitud',
+    errorId,
+  })
 }

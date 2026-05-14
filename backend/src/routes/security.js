@@ -486,4 +486,82 @@ router.delete('/blocks/:id', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Application errors (technical/operator diagnostics) — admin-only
+// ---------------------------------------------------------------------------
+
+function parseLevel(value) {
+  return value === 'warn' ? 'warn' : value === 'error' ? 'error' : ''
+}
+
+function parseSource(value) {
+  const allowed = ['supabase_auth', 'route', 'external_api', 'unhandled', 'email']
+  const normalized = String(value || '').trim()
+  return allowed.includes(normalized) ? normalized : ''
+}
+
+router.get('/errors', async (req, res) => {
+  try {
+    const days = parseDays(req.query.days)
+    const limit = parseLimit(req.query.limit)
+    const offset = parseOffset(req.query.offset)
+    const level = parseLevel(req.query.level)
+    const source = parseSource(req.query.source)
+    const search = String(req.query.search || '').trim().slice(0, 200)
+
+    let query = supabaseAdmin
+      .from('application_errors')
+      .select('id, created_at, level, source, request_id, route, method, user_id, error_code, error_message, metadata')
+      .gte('created_at', sinceIso(days))
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (level) query = query.eq('level', level)
+    if (source) query = query.eq('source', source)
+    if (search) query = query.ilike('error_message', `%${search}%`)
+
+    const { data, error } = await query
+
+    if (error) {
+      if (isMissingTableError(error, 'application_errors')) {
+        return res.json({
+          errors: [],
+          nextOffset: offset,
+          warnings: ['La tabla application_errors aún no está aplicada. Aplicá supabase/migrations/20260514_application_errors.sql antes de usar esta vista.'],
+        })
+      }
+      throw error
+    }
+
+    return res.json({
+      errors: data || [],
+      nextOffset: offset + limit,
+      warnings: [],
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron cargar errores técnicos' })
+  }
+})
+
+router.get('/errors/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('application_errors')
+      .select('*')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (error) {
+      if (isMissingTableError(error, 'application_errors')) {
+        return res.status(503).json({ error: 'Tabla application_errors no disponible' })
+      }
+      throw error
+    }
+    if (!data) return res.status(404).json({ error: 'Error no encontrado' })
+    return res.json({ error: data })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo cargar el error' })
+  }
+})
+
 export default router
