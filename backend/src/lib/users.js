@@ -9,15 +9,32 @@ function getSetPasswordRedirectUrl() {
   return `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/set-password`
 }
 
+const AUTH_USERS_PAGE_SIZE = 200
+const AUTH_USERS_MAX_PAGES = 100 // 20k user cap; raise if needed
+
+export async function findAuthUserByEmailPaginated(client, email) {
+  const normalized = normalizeEmail(email)
+  if (!normalized) return null
+
+  for (let page = 1; page <= AUTH_USERS_MAX_PAGES; page += 1) {
+    const { data, error } = await client.auth.admin.listUsers({
+      page,
+      perPage: AUTH_USERS_PAGE_SIZE,
+    })
+    if (error) throw error
+
+    const users = data?.users || []
+    const match = users.find((user) => normalizeEmail(user.email) === normalized)
+    if (match) return match
+    if (users.length < AUTH_USERS_PAGE_SIZE) return null
+  }
+
+  return null
+}
+
+// Convenience wrapper bound to supabaseAdmin (preserves existing import sites).
 async function findAuthUserByEmail(email) {
-  const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  })
-
-  if (error) throw error
-
-  return (data?.users || []).find((user) => normalizeEmail(user.email) === email) || null
+  return findAuthUserByEmailPaginated(supabaseAdmin, email)
 }
 
 async function updateExistingProfile(profile, fullName, platformRole) {
