@@ -220,6 +220,16 @@
 
 ## Recent Fixes
 
+### Session 16 (2026-05-14) — Auth hardening Plan C (manager-assigned notif)
+
+- Plan C shipped on branch `feat/auth-hardening-plan-c`: fires in-app notification + Resend email when an existing active user is added as manager to a company. Single chokepoint in `inviteUserToCompany` — covers all 3 invite endpoints (POST /api/companies, /api/auth/invite-user, /api/users) without per-endpoint wiring.
+- `backend/src/lib/managerNotifications.js` exports 4 pure helpers (`shouldNotifyManagerAssigned` — role=manager AND action=assigned_existing; `buildManagerNotificationRow` — shape for notifications table; `buildCompanyUrl` — FRONTEND_URL + /companies/{id} with trailing-slash strip; `buildAddedByLabel` — fullName||email||'') + the orchestrator `notifyManagerAssigned({ targetUserId, companyId, actor, req })`. Orchestrator loads profile + company in parallel, inserts notifications row best-effort, calls sendManagerAssignedEmail best-effort, logs any failure to application_errors (Plan D). Never throws — membership row is source of truth.
+- `authEmails.sendManagerAssignedEmail` + `buildManagerAssignedEmailPayload` added; Spanish subject "Te agregaron como manager en {companyName}"; CTA button to /companies/{companyId}; gated on RESEND_API_KEY (no-op + warning if missing, matching other authEmails functions).
+- `inviteUserToCompany` (lib/users.js) now calls notifyManagerAssigned after assignUserToCompany when shouldNotifyManagerAssigned returns true. Existing call sites untouched (single chokepoint pattern).
+- 11 new tests in `backend/test/manager-notifications.test.js` (4 shouldNotify + 3 buildRow + 3 buildUrl + 1 buildLabel with 4 asserts) + `backend/test/authEmails-manager-assigned.test.js` (4). Full backend suite: 94/94 pass.
+- No new migrations. Reuses existing `notifications` table (event_type='company_membership_added'); bell icon notification dropdown already polls this table — no UI changes required.
+- **v1.1 auth-hardening milestone complete:** Plans A + B + C + D + E all shipped to main local.
+
 ### Session 15 (2026-05-14) — Auth hardening Plan E (security observability)
 
 - Plan E shipped on branch `feat/auth-hardening-plan-e`: three independent observability changes — rate_limit_blocked → security_events, invite_accepted / password_reset_completed tracking from SetPassword.jsx, and unified /security/blocks admin view with revoke action.
