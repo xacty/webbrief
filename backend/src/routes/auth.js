@@ -7,6 +7,8 @@ import { logSecurityEvent } from '../lib/securityAudit.js'
 import { normalizeEmail, normalizeText } from '../lib/validation.js'
 import { normalizePlatformRole } from '../../../shared/userRoles.js'
 import { toInviteSecurityAction, buildInviteResultMessage } from '../../../shared/inviteActions.js'
+import { supabaseAdmin } from '../lib/supabase.js'
+import { validateResetRequestRow } from '../lib/sendAccess.js'
 
 const router = Router()
 
@@ -77,6 +79,66 @@ router.post('/invite-user', requireAuth, rateLimiters.inviteUser, async (req, re
       error: error.message,
     })
     return res.status(500).json({ error: 'No se pudo crear la invitación' })
+  }
+})
+
+router.post('/validate-reset-token', requireAuth, rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const userId = req.currentUser?.id
+    if (!userId) {
+      return res.status(401).json({ error: 'No autenticado' })
+    }
+
+    const { data: row, error } = await supabaseAdmin
+      .from('password_reset_requests')
+      .select('id, expires_at, used_at')
+      .eq('user_id', userId)
+      .order('requested_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) throw error
+
+    const result = validateResetRequestRow({ row, now: new Date() })
+    return res.status(200).json(result)
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo validar el token' })
+  }
+})
+
+router.post('/mark-reset-used', requireAuth, rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const userId = req.currentUser?.id
+    if (!userId) {
+      return res.status(401).json({ error: 'No autenticado' })
+    }
+
+    // Find the most recent active row.
+    const { data: row, error: findError } = await supabaseAdmin
+      .from('password_reset_requests')
+      .select('id')
+      .eq('user_id', userId)
+      .is('used_at', null)
+      .order('requested_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (findError) throw findError
+    if (!row) {
+      // Idempotent: nothing to mark. Not an error from the client's perspective.
+      return res.status(200).json({ marked: false, reason: 'no_active_row' })
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('password_reset_requests')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', row.id)
+
+    if (updateError) throw updateError
+
+    return res.status(200).json({ marked: true })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo marcar el token usado' })
   }
 })
 
