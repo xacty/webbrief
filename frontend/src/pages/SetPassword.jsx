@@ -101,17 +101,29 @@ export default function SetPassword() {
       const { error: updateError } = await supabase.auth.updateUser({ password })
       if (updateError) throw updateError
 
-      if (authType === 'recovery') {
-        // Mark the password_reset_requests row used so subsequent visits via the
-        // same link get 'used' instead of an open form. Best-effort: a failure
-        // here doesn't block the user from continuing.
+      // Post-success side effects (Plan B mark-reset-used + Plan E track-invite-accepted).
+      // Best-effort: a failure here doesn't block user navigation. Only fires when we
+      // know whether the visit was via invite or recovery (skipped for the rare case
+      // where the URL hash type was missing).
+      if (authType === 'invite' || authType === 'recovery') {
         try {
           const { data: { session } } = await supabase.auth.getSession()
           const headers = new Headers({ 'Content-Type': 'application/json' })
           if (session?.access_token) {
             headers.set('Authorization', `Bearer ${session.access_token}`)
           }
-          await fetch('/api/auth/mark-reset-used', { method: 'POST', headers })
+
+          // For recovery: mark the password_reset_requests row used (Plan B).
+          if (authType === 'recovery') {
+            await fetch('/api/auth/mark-reset-used', { method: 'POST', headers }).catch(() => {})
+          }
+
+          // For both: track the acceptance event for /security observability (Plan E.3).
+          await fetch('/api/auth/track-invite-accepted', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ via: authType }),
+          }).catch(() => {})
         } catch {
           // swallow — best-effort
         }
