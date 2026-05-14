@@ -412,6 +412,7 @@ router.post('/', async (req, res) => {
           fullName: managerFullName || managerName || '',
           role: 'manager',
           companyId: company.id,
+          req,
         })
       } catch (managerError) {
         await supabaseAdmin

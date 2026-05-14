@@ -1,6 +1,7 @@
 import { supabaseAdmin } from './supabase.js'
 import { normalizePlatformRole } from '../../../shared/userRoles.js'
 import { sendInviteEmail } from './authEmails.js'
+import { wrapSupabaseAuthCall } from './applicationErrors.js'
 
 export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
@@ -75,7 +76,7 @@ export function decideEnsureProfileAction({ authUser, profile }) {
   return { action: 'assigned_existing', userId: authUser.id }
 }
 
-export async function ensureUserProfile({ email, fullName, platformRole = 'user' }) {
+export async function ensureUserProfile({ email, fullName, platformRole = 'user', req = null }) {
   const normalizedEmail = normalizeEmail(email)
   if (!normalizedEmail) {
     throw new Error('email es requerido')
@@ -101,9 +102,14 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
 
   // -------- Case A: fresh invite --------
   if (decision.action === 'invited') {
-    const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
-      redirectTo,
-      data: { full_name: fullName || '' },
+    const { data, error: inviteError } = await wrapSupabaseAuthCall({
+      operation: () => supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
+        redirectTo,
+        data: { full_name: fullName || '' },
+      }),
+      operationName: 'inviteUserByEmail',
+      req,
+      args: { email: normalizedEmail },
     })
 
     if (inviteError || !data?.user?.id) {
@@ -113,7 +119,7 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
         throw inviteError || new Error('No se pudo crear el usuario')
       }
       // Treat as Case B (reinvite) on the retry path.
-      return await handleReinvite(fallback, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp)
+      return await handleReinvite(fallback, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req)
     }
 
     await upsertProfileRow(data.user.id, normalizedEmail, fullName, data.user, normalizedPlatformRole, timestamp)
@@ -130,7 +136,7 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
 
   // -------- Case B: reinvite (auth user exists, never activated) --------
   if (decision.action === 'reinvited') {
-    return await handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp)
+    return await handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req)
   }
 
   // -------- Case C/D: assign existing (auth user active) --------
@@ -158,11 +164,16 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
   }
 }
 
-async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp) {
-  const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-    type: 'invite',
-    email: normalizedEmail,
-    options: { redirectTo },
+async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req) {
+  const { data: linkData, error: linkError } = await wrapSupabaseAuthCall({
+    operation: () => supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email: normalizedEmail,
+      options: { redirectTo },
+    }),
+    operationName: 'generateLink:invite',
+    req,
+    args: { email: normalizedEmail, type: 'invite' },
   })
 
   if (linkError) throw linkError
@@ -222,8 +233,8 @@ export async function assignUserToCompany({ companyId, userId, role }) {
   if (error) throw error
 }
 
-export async function inviteUserToCompany({ email, fullName, companyId, role, platformRole = 'user' }) {
-  const profile = await ensureUserProfile({ email, fullName, platformRole })
+export async function inviteUserToCompany({ email, fullName, companyId, role, platformRole = 'user', req = null }) {
+  const profile = await ensureUserProfile({ email, fullName, platformRole, req })
   await assignUserToCompany({ companyId, userId: profile.userId, role })
 
   return {

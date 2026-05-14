@@ -45,6 +45,7 @@ router.post('/invite-user', requireAuth, rateLimiters.inviteUser, async (req, re
       role,
       companyId: targetCompanyId,
       platformRole: allowedPlatformRole,
+      req,
     })
 
     await logSecurityEvent(req, {

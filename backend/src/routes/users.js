@@ -19,6 +19,7 @@ import {
   getAccessibleCompanyIds,
 } from '../lib/projectAccess.js'
 import { ensureUserProfile, inviteUserToCompany, normalizeEmail } from '../lib/users.js'
+import { wrapSupabaseAuthCall } from '../lib/applicationErrors.js'
 import { requireAuth } from '../middleware/auth.js'
 import {
   COMPANY_ROLE_SET,
@@ -411,6 +412,7 @@ router.post('/', rateLimiters.inviteUser, async (req, res) => {
         email,
         fullName,
         platformRole: nextPlatformRole,
+        req,
       })
 
       await logSecurityEvent(req, {
@@ -449,6 +451,7 @@ router.post('/', rateLimiters.inviteUser, async (req, res) => {
       role,
       companyId,
       platformRole: nextPlatformRole,
+      req,
     })
 
     await logSecurityEvent(req, {
@@ -534,7 +537,12 @@ router.patch('/:id', rateLimiters.sensitiveAction, async (req, res) => {
     }
 
     if (Object.keys(authUpdates).length > 0) {
-      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, authUpdates)
+      const { error: authError } = await wrapSupabaseAuthCall({
+        operation: () => supabaseAdmin.auth.admin.updateUserById(userId, authUpdates),
+        operationName: 'updateUserById',
+        req,
+        args: { userId, fields: Object.keys(authUpdates) },
+      })
       if (authError) throw authError
     }
 
@@ -883,7 +891,12 @@ router.delete('/:id', rateLimiters.sensitiveAction, async (req, res) => {
       }
     }
 
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId)
+    const { error } = await wrapSupabaseAuthCall({
+      operation: () => supabaseAdmin.auth.admin.deleteUser(userId),
+      operationName: 'deleteUser',
+      req,
+      args: { userId },
+    })
     if (error) throw error
 
     await logSecurityEvent(req, {
