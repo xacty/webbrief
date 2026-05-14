@@ -329,13 +329,26 @@ router.get('/:id', async (req, res) => {
   }
 })
 
+export function canCreateCompany(currentUser, testMode) {
+  if (!currentUser) return false
+  if (currentUser.platformRole === 'admin') return true
+  if (currentUser.platformRole === 'qa' && testMode === true) return true
+  return false
+}
+
 router.post('/', async (req, res) => {
-  if (req.currentUser.platformRole !== 'admin') {
-    return res.status(403).json({ error: 'Solo admin puede crear empresas' })
+  const { name, managerName, managerFullName, managerEmail, testMode = false } = req.body
+  const wantsTestMode = Boolean(testMode)
+
+  if (!canCreateCompany(req.currentUser, wantsTestMode)) {
+    return res.status(403).json({
+      error: wantsTestMode
+        ? 'Solo admin o QA pueden crear empresas de prueba'
+        : 'Solo admin puede crear empresas',
+    })
   }
 
-  const { name, managerName, managerFullName, managerEmail, testMode = false } = req.body
-  const createAsTest = req.currentUser.platformRole === 'admin' && Boolean(testMode)
+  const createAsTest = wantsTestMode
   const timestamp = new Date().toISOString()
   const companyName = name?.trim() || (createAsTest ? `Empresa de prueba ${timestamp.slice(0, 16).replace('T', ' ')}` : '')
 
