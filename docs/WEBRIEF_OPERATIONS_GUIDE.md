@@ -71,8 +71,8 @@ IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your_imagekit_id
 PORT=3000
 # Optional — transactional email via Resend
 RESEND_API_KEY=re_xxx
-COMMENTS_EMAIL_FROM=WeBrief <no-reply@webrief.app>
-AUTH_EMAIL_FROM=WeBrief <no-reply@webrief.app>
+COMMENTS_EMAIL_FROM=WeBrief <noreply@webrief.app>
+AUTH_EMAIL_FROM=WeBrief <noreply@webrief.app>
 ```
 
 Email env vars:

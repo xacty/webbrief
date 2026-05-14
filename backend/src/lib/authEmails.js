@@ -8,7 +8,7 @@
 // Env:
 //   RESEND_API_KEY      — required for real sends; functions are
 //                         no-ops if missing (logs warning)
-//   AUTH_EMAIL_FROM     — e.g. "WeBrief <no-reply@webrief.app>"
+//   AUTH_EMAIL_FROM     — e.g. "WeBrief <noreply@webrief.app>"
 //                         falls back to COMMENTS_EMAIL_FROM, then
 //                         a hard-coded default.
 
@@ -18,7 +18,7 @@ function getSender() {
   return (
     process.env.AUTH_EMAIL_FROM
     || process.env.COMMENTS_EMAIL_FROM
-    || 'WeBrief <no-reply@webrief.app>'
+    || 'WeBrief <noreply@webrief.app>'
   )
 }
 
@@ -77,6 +77,11 @@ export function buildInviteEmailPayload({ to, fullName, actionLink, companyName 
 }
 
 export async function sendInviteEmail(args) {
+  if (!args?.to) {
+    console.warn('[authEmails] sendInviteEmail called without recipient; skipping')
+    return { sent: false, reason: 'missing_recipient' }
+  }
+
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn('[authEmails] RESEND_API_KEY missing; skipping invite email send')
