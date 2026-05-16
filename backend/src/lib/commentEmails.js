@@ -85,6 +85,10 @@ export async function sendCommentEmail({
   if (!to) {
     return { sent: false, reason: 'missing_recipient' }
   }
+  if (process.env.EMAIL_ENABLED === 'false') {
+    console.log('[commentEmails] EMAIL_ENABLED=false; skipping comment email', { to })
+    return { sent: false, reason: 'email_disabled' }
+  }
 
   const fromAddress = process.env.COMMENTS_EMAIL_FROM || 'WeBrief <noreply@webrief.app>'
   const frontendBase = (process.env.FRONTEND_URL || 'https://webrief.app').replace(/\/$/, '')

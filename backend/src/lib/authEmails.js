@@ -82,6 +82,11 @@ export async function sendInviteEmail(args) {
     return { sent: false, reason: 'missing_recipient' }
   }
 
+  if (process.env.EMAIL_ENABLED === 'false') {
+    console.log('[authEmails] EMAIL_ENABLED=false; skipping invite email', { to: args.to })
+    return { sent: false, reason: 'email_disabled' }
+  }
+
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn('[authEmails] RESEND_API_KEY missing; skipping invite email send')
@@ -175,6 +180,11 @@ export async function sendManagerAssignedEmail(args) {
     return { sent: false, reason: 'missing_recipient' }
   }
 
+  if (process.env.EMAIL_ENABLED === 'false') {
+    console.log('[authEmails] EMAIL_ENABLED=false; skipping manager-assigned email', { to: args.to })
+    return { sent: false, reason: 'email_disabled' }
+  }
+
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn('[authEmails] RESEND_API_KEY missing; skipping manager-assigned email send')
@@ -259,6 +269,11 @@ export async function sendResetPasswordEmail(args) {
   if (!args?.to) {
     console.warn('[authEmails] sendResetPasswordEmail called without recipient; skipping')
     return { sent: false, reason: 'missing_recipient' }
+  }
+
+  if (process.env.EMAIL_ENABLED === 'false') {
+    console.log('[authEmails] EMAIL_ENABLED=false; skipping reset email', { to: args.to })
+    return { sent: false, reason: 'email_disabled' }
   }
 
   const apiKey = process.env.RESEND_API_KEY

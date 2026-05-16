@@ -7,6 +7,14 @@ const {
   IMAGEKIT_URL_ENDPOINT,
 } = process.env
 
+// Optional folder prefix for environment isolation (e.g. "dev/" so Dev uploads
+// land under /dev/... and don't mix with Prod paths). When unset, paths are
+// unchanged. Trim and normalize so callers can use "dev", "/dev/", "dev/" etc.
+const RAW_FOLDER_PREFIX = (process.env.IMAGEKIT_FOLDER_PREFIX || '').trim()
+const FOLDER_PREFIX = RAW_FOLDER_PREFIX
+  ? `/${RAW_FOLDER_PREFIX.replace(/^\/+|\/+$/g, '')}`
+  : ''
+
 if (!IMAGEKIT_PUBLIC_KEY || !IMAGEKIT_PRIVATE_KEY || !IMAGEKIT_URL_ENDPOINT) {
   console.warn(
     'Missing IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, or IMAGEKIT_URL_ENDPOINT. Image uploads will fail until they are configured.'
@@ -107,6 +115,15 @@ export function buildImageKitUrl(filePath, transformations = []) {
   })
 }
 
+// Prepends FOLDER_PREFIX (if configured) to the destination folder so Dev
+// uploads land under /dev/... while keeping Prod paths unchanged.
+export function applyImageKitFolderPrefix(folder) {
+  if (!FOLDER_PREFIX) return folder
+  const normalized = `/${String(folder || '').replace(/^\/+|\/+$/g, '')}`
+  if (normalized === '/') return FOLDER_PREFIX
+  return `${FOLDER_PREFIX}${normalized}`
+}
+
 export async function uploadToImageKit({
   buffer,
   fileName,
@@ -120,7 +137,7 @@ export async function uploadToImageKit({
   return imagekit.files.upload({
     file: await toFile(buffer, sanitizeFileName(fileName)),
     fileName: sanitizeFileName(fileName),
-    folder,
+    folder: applyImageKitFolderPrefix(folder),
     useUniqueFileName: false,
     overwriteFile: false,
     tags,
