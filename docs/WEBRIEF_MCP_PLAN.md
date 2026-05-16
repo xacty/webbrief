@@ -128,10 +128,8 @@ Aclaraciones de scope:
 
 - La edicion de FAQ se refiere a `project_type='faq'`.
 - En `project_type='brief'` la edicion v1 cubre solo respuestas. Las preguntas son del template y no se editan via MCP.
-- Las operaciones requieren decidir entre dos estrategias antes de implementar:
-  - Estrategia A: el MCP computa el `content_json` completo localmente y reenvia la pagina entera por el endpoint existente. Requiere replicar los invariantes del documento en una libreria compartida.
-  - Estrategia B: el backend gana endpoints PATCH granulares por seccion/parrafo que validan invariantes server-side.
-- Sin esa decision la Fase 3 no tiene base ejecutable.
+- Estrategia elegida para v1: **A** — el MCP computa el `content_json` completo localmente y reenvia la pagina entera por el endpoint existente (`PUT /api/projects/:id/pages`). Requiere replicar los invariantes del documento en una libreria compartida (`shared/documentInvariants.js`).
+- Estrategia B (PATCH endpoints granulares server-side) queda diferida a post-v1. Razon: en v1 muchas operaciones del save dependen del flujo full-page (auditoria, notificaciones, version conflict, activity log); endpoints quirurgicos exigen replicar todo eso por cada PATCH. La migracion a B se puede hacer incrementalmente, un endpoint por vez, sin rehacer el MCP.
 
 ## Fases
 

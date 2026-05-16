@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-13 (session 11 — milestone v1.0 UI System Refactor shipped + bulk actions feature)
+- Updated: 2026-05-15 (session 12 — Dev Supabase project active, env-aware uploads/emails)
 
 ## Targets
 
@@ -513,6 +513,18 @@
 - **CSS fix history card overflow**: `historyItemHeader` con `flex-wrap: wrap`; `historyItemTime` sin `white-space: nowrap` → cuando el actor + fecha no caben con el sectionName, wrap natural a segunda línea en vez de overflow.
 - **Resend API key**: configurada en `backend/.env` local + VPS. Smoke test pasó. `RESEND_API_KEY=re_…` + `COMMENTS_EMAIL_FROM=WeBrief <noreply@webrief.app>`.
 
+## Session 12 — Dev Supabase project + env-aware uploads/emails
+
+- **Dev Supabase project**: `WeBrief Dev` creado en `us-west-1` (ref `iimqxacagxuemwgaunis`), org Free tier (Prod sigue en `gmrlhhszrdahcxyoywvt`, `us-west-2`). Local apunta a Dev; VPS sigue apuntando a Prod. Schema base + 13 migraciones aplicadas en orden alfabético via `mcp__supabaseRemote__apply_migration`. RLS habilitada en las 4 tablas que `schema.sql` omitía (drift fix). Buckets `project-assets` (public 8MB), `user-avatars` (public 2MB), `brief-documents` (private 50MB). Admin `admin@webrief.app` creado en Dev con `profiles.platform_role='admin'` (UUID `fd87958e-e307-4966-8301-16d982c685bd`, distinto del usuario homónimo en Prod).
+- **Bug en `schema.sql`**: el `CREATE TABLE public.companies` referencia inline `public.profiles(id)` antes de que `profiles` exista, lo que falla aplicarlo a una DB fresh. Workaround en Dev: aplicar profiles primero, luego el resto. TODO: arreglar `schema.sql` reordenando o quitando la FK inline (el `do $$ ... $$` block al final ya añade el constraint).
+- **Drift Prod ↔ `schema.sql`**: Prod no muestra `project_page_change_proposals` aunque `schema.sql` la declara. Verificar con SQL directo si Prod realmente la perdió o si nunca existió; afecta feature de designer proposals.
+- **Backend env vars nuevas**:
+  - `IMAGEKIT_FOLDER_PREFIX`: opcional. Prepende un folder a uploads a ImageKit (p.ej. `dev/`). `applyImageKitFolderPrefix()` en `backend/src/lib/imagekit.js` lo aplica adentro de `uploadToImageKit()` para que todos los callers hereden sin cambios.
+  - `EMAIL_ENABLED`: si es `'false'`, las funciones de envío (`sendInviteEmail`, `sendManagerAssignedEmail`, `sendResetPasswordEmail`, `sendCommentEmail`) loggean y devuelven `{ sent:false, reason:'email_disabled' }` sin pegarle a Resend. Default `true`. Local Dev: `false`.
+- **mcp-supabase split**: `/Users/adrian/GitHub/mcp-supabase/.env` renombrado a `.env.prod`; nuevo `.env.dev` con creds de Dev. Entradas MCP en `~/.codex/config.toml` renombradas: `supabaseLocal` → `supabaseProd`; nueva `supabaseDev`. Equivalente en `~/.claude.json` queda pendiente (clasificador de Auto Mode bloqueó self-modification). Reiniciar Codex/Claude para que carguen ambos.
+- **Workflow nuevo de migraciones**: aplicar primero en Dev (`mcp__supabaseDev__apply_migration_file`), validar local, después aplicar en Prod. Nunca DDL contra Prod sin haberlo probado en Dev primero.
+- **Plan MCP de WeBrief**: `docs/WEBRIEF_MCP_PLAN.md` revisado y mejorado: 4 brechas críticas (auth identity por stdio, edición granular sin endpoints PATCH, invariantes solo en frontend, contrato `expectedVersion` sin snapshot) + 8 mejoras menores; agregadas secciones `Politica De Fetch De URLs` y `Autenticacion MCP Local`; tools renombradas `documents.*` → `pages.*`. MCP server NO implementado aún.
+
 ## Pending — requires user action
 
 - **Auth hardening en Supabase Dashboard** (no API): confirmar Site URL = `https://webrief.app`; redirect URLs incluyen `http://localhost:5173/auth/set-password` y `https://webrief.app/auth/set-password`; `Allow new users to sign up` = OFF; password policy min 12 + Leaked Password Protection (HIBP) = ON; revisar TTL de invite (≤24h), reset (≤1h), OTP (5–10min)
@@ -525,8 +537,9 @@
 
 ## Pending
 
+- **MCP WeBrief — migracion futura a Estrategia B (PATCH granular server-side)**: v1 del MCP usa Estrategia A (full-page replace + libreria compartida `shared/documentInvariants.js`). B implica endpoints PATCH quirurgicos en backend (renombrar seccion, reemplazar parrafo, insertar seccion, etc.). Diferida a post-v1 porque el flujo full-page ya integra auditoria/notificaciones/version conflict; endpoints granulares exigen replicarlo por PATCH. Migracion puede hacerse incremental, un endpoint por vez. Ver `docs/WEBRIEF_MCP_PLAN.md` seccion "Edicion De Contenido Existente"
 - richer deliverables UI beyond compact editor panel
 - ~~document-type activity~~ ✓ resuelto en sesión 10b (`buildDocumentActivityEvents` con `sectionHtml` snapshot, History tab funciona en document)
 - ~~FAQ activity: verify each Q+A section tracked correctly~~ ✓ resuelto en sesión 10b (FAQ usa `buildSectionActivityEvents`, History tab funciona en faq)
-- Plan ejecutable para separar Supabase Dev vs Prod (free tier) en `docs/WEBRIEF_DEV_DB_PLAN.md`; ~1.5–2h, 10 fases. Hasta ejecutarlo, no probar SQL destructivo/schema changes contra Prod sin haber validado en algún sandbox primero.
+- ~~Plan ejecutable para separar Supabase Dev vs Prod~~ ✓ ejecutado sesión 12 (proyecto Dev `iimqxacagxuemwgaunis` en us-west-1; locals apuntan a Dev, VPS a Prod). TODO pendientes derivados: arreglar bug de `schema.sql` (FK forward reference en `companies → profiles`) y verificar drift de `project_page_change_proposals` en Prod.
 - Comments huérfanos visibles en alguna vista de "archive" además del History (opcional — actualmente se ven en History tab cuando se auto-resuelven, pero no hay manera de explorarlos cronológicamente fuera de eso)

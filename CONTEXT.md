@@ -5,7 +5,7 @@
   - Read `CONTEXT.min.md` second.
   - Read this file only if more detail is needed.
   - If user explicitly asks to review/read `CONTEXT.md`, treat this file as authoritative expanded context.
-- Updated: 2026-05-13 (session 11 — UI System Refactor v1.0 shipped + bulk actions feature deployed to prod)
+- Updated: 2026-05-15 (session 12 — Dev Supabase project active, env-aware uploads/emails)
 - Scope: current repo state; use as authoritative project context when user says "review/read CONTEXT.md", unless user says some part is outdated.
 - Goal: optimize for AI consumption; prefer this file over inferring intent from stale code comments.
 
@@ -274,7 +274,9 @@ When to rotate any credential:
 General rules (apply to every rotation):
 
 - Never paste secrets in chat. If it happened, rotate at the end of the session.
-- Never commit `.env` — `backend/.env`, `frontend/.env`, `mcp-supabase/.env` are already gitignored at root and per-repo. Verify with `git status` before commit.
+- Never commit `.env` — `backend/.env`, `frontend/.env`, `mcp-supabase/.env*` are already gitignored at root and per-repo. Verify with `git status` before commit.
+- Dev vs Prod: `backend/.env` y `frontend/.env` locales apuntan al proyecto Supabase **Dev** (`iimqxacagxuemwgaunis`, us-west-1). VPS apunta a Prod (`gmrlhhszrdahcxyoywvt`, us-west-2). `mcp-supabase/.env.prod` y `mcp-supabase/.env.dev` son archivos separados; entradas MCP `supabaseProd` y `supabaseDev` en `~/.codex/config.toml` y `~/.claude.json`. Backups Prod en `~/Documents/webrief-env-backup-{backend,frontend}-prod.env`.
+- Dev-only env vars: `IMAGEKIT_FOLDER_PREFIX=dev/` y `EMAIL_ENABLED=false` aíslan uploads y emails durante desarrollo local. Prod los deja sin setear (defaults: prefix vacío, emails habilitados).
 - Update the local `.env` first, validate the app boots/connects, then update the VPS `.env`.
 - After a VPS `.env` change: `ssh deploy@199.192.22.74` → `cd /var/www/webrief/backend` → edit `.env` → `pm2 restart webrief-backend` → verify `curl https://webrief.app/api/health`.
 - Frontend rotations also need rebuild + redeploy (anon key, Vite envs).
@@ -286,7 +288,7 @@ Used by backend and `mcp-supabase` to bypass RLS.
 
 1. Supabase Dashboard → Project Settings → API Keys → click reset / regenerate next to `service_role`.
 2. Update `/Users/adrian/GitHub/webbrief/backend/.env` locally.
-3. Update `/Users/adrian/GitHub/mcp-supabase/.env` locally.
+3. Update `/Users/adrian/GitHub/mcp-supabase/.env.prod` locally (Dev keys viven en `.env.dev` y se rotan por separado).
 4. SSH a VPS, actualizar `backend/.env`, `pm2 restart webrief-backend`.
 5. Validar: `curl https://webrief.app/api/health` y un endpoint protegido (ej. `/api/auth/me` con bearer token).
 
