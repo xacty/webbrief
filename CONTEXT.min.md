@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-15 (session 12 — Dev Supabase project active, env-aware uploads/emails)
+- Updated: 2026-05-18 (session 17 — Prod login bug fixed: VPS `.env` had `SUPABASE_URL` missing due to a mashed line; GitGuardian secrets remediated)
 
 ## Targets
 
@@ -219,6 +219,16 @@
 - `auth.audit_log_entries` is reachable from `get_auth_audit_events` on this Supabase plan; backend keeps graceful fallback if a future plan/role hides it
 
 ## Recent Fixes
+
+### Session 17 (2026-05-18) — Prod login bug + GitGuardian secrets remediation
+
+- **Prod login bug (root cause)**: backend en VPS devolvía `401 Token invalido o expirado` para todas las requests autenticadas. `supabaseAdmin.auth.getUser(token)` tiraba `TypeError: fetch failed`. Causa: el `.env` del VPS tenía la **línea 1 corrupta** — un JWT viejo (legacy `service_role` para Prod) + un ImageKit public key viejo + el `SUPABASE_URL=...supabase.co` todo concatenado sin saltos de línea, y SIN nombre de variable al inicio. Resultado: `process.env.SUPABASE_URL` era `undefined`, y `lib/supabase.js` caía al fallback `http://localhost:54321`, que no existe en el VPS. Fix: borrar línea 1 + agregar `SUPABASE_URL=https://gmrlhhszrdahcxyoywvt.supabase.co` como línea propia + `pm2 restart webrief-backend --update-env`. Backup del .env corrupto en `/var/www/webrief/backend/.env.bak.1779064747`.
+- **Gotcha clave de pm2**: `pm2 restart <app>` NO recarga variables del `.env`; hay que usar `--update-env`. Sin esto, el proceso sigue con el env viejo aunque el archivo en disco cambie. Aplica a todas las rotaciones de credenciales del playbook.
+- **ImageKit key rotation**: rotada (Roll keys en ImageKit Dashboard) en respuesta a GitGuardian incident en `backend/.env.production.example` (commit viejo `8abbc6d` del 2026-05-01 tenía las claves reales que después se reemplazaron por placeholders en `acfc0db`, pero quedaron vivas en el historial). Nueva private+public key deployadas a VPS + local. Gracia de la key vieja seteada en ImageKit; expiró durante la sesión, lo cual generó error transitorio "403 expired private API key" en uploads cuando descubrimos que el VPS todavía tenía la key vieja (solo se había actualizado el local).
+- **Otros GitGuardian incidents cerrados**:
+  - Google API Key en `xacty/web-rushmyphoto` (Sep 2025, `AIzaSy...`): era un repo scaffold de cliente con restricción de referer, ya no en uso. Repo borrado de GitHub. La cuenta GCP es del cliente — comunicado para que rote del lado de ellos.
+  - 2x SMTP credentials en docs (`WEBRIEF_OPERATIONS_GUIDE.md` y `superpowers/specs/2026-05-13-auth-security-hardening-design.md`): falsos positivos — el patrón Host/Port/Username/Password matcheó el scanner pero el "Password" describía dónde vive el `RESEND_API_KEY`, no su valor. Docs reformateados en prosa (commit `addad21`) para que el scanner no los re-flagee.
+- **Lecciones**: (1) cuando una credencial leakea, **rotar Y redeployar**; rotar sin redeployar deja el servicio caído cuando expire la vieja. (2) `pm2 restart` solo, sin `--update-env`, es la causa más común de "ya cambié el .env pero no surte efecto". (3) edits en `nano` sobre el `.env` del VPS pueden dejar líneas mashed si se cortan/pegan sin terminar con newline — vale la pena `cat .env | awk 'NR==1 || $0 ~ /^[A-Z_]+=/'` después de cualquier edit como sanity check.
 
 ### Session 16 (2026-05-14) — Auth hardening Plan C (manager-assigned notif)
 

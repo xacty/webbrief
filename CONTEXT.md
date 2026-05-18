@@ -278,7 +278,7 @@ General rules (apply to every rotation):
 - Dev vs Prod: `backend/.env` y `frontend/.env` locales apuntan al proyecto Supabase **Dev** (`iimqxacagxuemwgaunis`, us-west-1). VPS apunta a Prod (`gmrlhhszrdahcxyoywvt`, us-west-2). `mcp-supabase/.env.prod` y `mcp-supabase/.env.dev` son archivos separados; entradas MCP `supabaseProd` y `supabaseDev` en `~/.codex/config.toml` y `~/.claude.json`. Backups Prod en `~/Documents/webrief-env-backup-{backend,frontend}-prod.env`.
 - Dev-only env vars: `IMAGEKIT_FOLDER_PREFIX=dev/` y `EMAIL_ENABLED=false` aíslan uploads y emails durante desarrollo local. Prod los deja sin setear (defaults: prefix vacío, emails habilitados).
 - Update the local `.env` first, validate the app boots/connects, then update the VPS `.env`.
-- After a VPS `.env` change: `ssh deploy@199.192.22.74` → `cd /var/www/webrief/backend` → edit `.env` → `pm2 restart webrief-backend` → verify `curl https://webrief.app/api/health`.
+- After a VPS `.env` change: `ssh deploy@199.192.22.74` → `cd /var/www/webrief/backend` → edit `.env` → `pm2 restart webrief-backend --update-env` (el `--update-env` es **obligatorio** para que pm2 recargue el .env; sin él el proceso sigue con el env viejo) → verify `curl https://webrief.app/api/health`.
 - Frontend rotations also need rebuild + redeploy (anon key, Vite envs).
 - Keep a private rotation log (date, credential type, reason) — not in repo.
 
@@ -289,7 +289,7 @@ Used by backend and `mcp-supabase` to bypass RLS.
 1. Supabase Dashboard → Project Settings → API Keys → click reset / regenerate next to `service_role`.
 2. Update `/Users/adrian/GitHub/webbrief/backend/.env` locally.
 3. Update `/Users/adrian/GitHub/mcp-supabase/.env.prod` locally (Dev keys viven en `.env.dev` y se rotan por separado).
-4. SSH a VPS, actualizar `backend/.env`, `pm2 restart webrief-backend`.
+4. SSH a VPS, actualizar `backend/.env`, `pm2 restart webrief-backend --update-env`.
 5. Validar: `curl https://webrief.app/api/health` y un endpoint protegido (ej. `/api/auth/me` con bearer token).
 
 ### Supabase anon key (`VITE_SUPABASE_ANON_KEY`)
@@ -318,7 +318,7 @@ Backend SDK para uploads de imagen.
 
 1. ImageKit Dashboard → Developer Options → API Keys → Regenerate private key.
 2. Update `backend/.env` local + VPS.
-3. `pm2 restart webrief-backend`.
+3. `pm2 restart webrief-backend --update-env` (sin `--update-env` no recarga variables del `.env`).
 4. Validar subiendo una imagen desde el editor.
 
 ### Resend API key
@@ -328,7 +328,7 @@ Usada para invite/reset emails.
 1. Resend Dashboard → API Keys → "Create API Key" (o "Roll" si la opción existe).
 2. Borrar la vieja después de validar la nueva.
 3. Update `backend/.env` (la variable se llama `RESEND_API_KEY` u otra que el backend lea).
-4. `pm2 restart webrief-backend`.
+4. `pm2 restart webrief-backend --update-env`.
 5. Validar mandando un invite real.
 
 ### `LIFECYCLE_CRON_SECRET` (header `X-Cron-Secret`)
@@ -336,7 +336,7 @@ Usada para invite/reset emails.
 Solo usado por el cron del VPS para autenticar `POST /api/projects/lifecycle/tick`.
 
 1. Generar nueva: `openssl rand -hex 32`.
-2. Update VPS `backend/.env` + `pm2 restart webrief-backend`.
+2. Update VPS `backend/.env` + `pm2 restart webrief-backend --update-env`.
 3. Update VPS crontab (`crontab -e`) para usar el nuevo secret en el header `X-Cron-Secret`.
 4. Validar manualmente: `curl -X POST -H "X-Cron-Secret: <nuevo>" https://webrief.app/api/projects/lifecycle/tick`.
 
