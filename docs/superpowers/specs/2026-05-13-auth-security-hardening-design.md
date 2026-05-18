@@ -124,12 +124,7 @@ Input: { email, fullName, platformRole }
 **This is the most impactful change. No code involved — configuration only.**
 
 Steps:
-1. In Supabase Dashboard → Authentication → Email Settings → SMTP Settings, enable "Custom SMTP" with:
-   - Host: `smtp.resend.com`
-   - Port: `465` (SSL) or `587` (STARTTLS)
-   - Username: `resend`
-   - Password: existing `RESEND_API_KEY` value
-   - Sender: `WeBrief <no-reply@webrief.app>` (or current value in `COMMENTS_EMAIL_FROM`)
+1. In Supabase Dashboard → Authentication → Email Settings → SMTP Settings, enable "Custom SMTP" with Resend (host `smtp.resend.com`, port `465` SSL or `587` STARTTLS, username `resend`). For the SMTP secret field, paste the existing `RESEND_API_KEY` value. Sender: `WeBrief <no-reply@webrief.app>` (or current value in `COMMENTS_EMAIL_FROM`).
 2. In Authentication → Email Templates, raise `email_otp_exp` (OTP expiry) to `86400` (24h).
 3. Verify `webrief.app` domain in Resend dashboard if not already verified (SPF/DKIM).
 4. Send a test invite to confirm delivery and inspect headers.

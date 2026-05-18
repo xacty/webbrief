@@ -431,8 +431,8 @@ Before pushing Plan A code to production:
 1. Custom SMTP must be configured in Supabase Dashboard (one-time).
    See spec §5.1.A.3 for steps:
    - Authentication → Email Settings → SMTP Settings
-   - Host: smtp.resend.com, Port: 465, Username: resend
-   - Password: value of RESEND_API_KEY from VPS .env
+   - Use Resend SMTP (host `smtp.resend.com`, port 465, username `resend`)
+   - For the SMTP secret field, paste the `RESEND_API_KEY` value from the VPS `.env`
    - Sender: WeBrief <noreply@webrief.app>
 2. `email_otp_exp` must be raised to `86400` (24h) in Supabase Auth settings.
 3. Test invite delivery via Supabase Studio's "Invite User" UI (use a
