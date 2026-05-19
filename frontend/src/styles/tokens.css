@@ -232,27 +232,58 @@
    inline script in index.html to avoid flash.
    ============================================================ */
 [data-theme="dark"] {
-  --wb-bg:            #0d0d10;
-  --wb-surface:       #1c1c1e;
-  --wb-surface-muted: #111113;
-  --wb-border:        #1e1e22;
-  --wb-border-strong: #2a2a2e;
-  --wb-text:          #f5f5f7;
-  --wb-text-muted:    #8e8e93;
+  /* Semantic surfaces and text */
+  --wb-bg:            #0a0a0c;
+  --wb-surface:       #18181b;
+  --wb-surface-muted: #111114;
+  --wb-border:        #2a2a2e;
+  --wb-border-strong: #3f3f46;
+  --wb-text:          #fafafa;
+  --wb-text-muted:    #a1a1aa;
 
-  /* Semantic colors — lightened for WCAG AA on dark surfaces */
+  /* Semantic accents — lightened for WCAG AA on dark surfaces */
   --wb-success:       #34d399;
   --wb-danger:        #f87171;
 
-  /* Primary on dark: slightly lighter for contrast */
+  /* Primary on dark: lighter shades for contrast on dark surfaces.
+     Higher numbers (800/900) flip to light blues so text on primary
+     backgrounds stays readable. */
   --wb-color-primary-50:  #1a2a4a;
+  --wb-color-primary-100: #1e3a8a;
+  --wb-color-primary-200: #1d4ed8;
   --wb-color-primary-600: #3b82f6;
   --wb-color-primary-700: #60a5fa;
+  --wb-color-primary-800: #93c5fd;
+  --wb-color-primary-900: #dbeafe;
   --wb-primary:           var(--wb-color-primary-600);
   --wb-primary-hover:     var(--wb-color-primary-700);
   --wb-primary-soft:      var(--wb-color-primary-50);
 
+  /* Flipped neutral scale — light-to-dark in light mode becomes
+     dark-to-light in dark mode. Components that reference the raw
+     neutral tokens (Input labels, Button secondary, Card, etc.)
+     pick up the correct contrast automatically. */
+  --wb-color-neutral-50:  #18181b;
+  --wb-color-neutral-100: #1f1f23;
+  --wb-color-neutral-200: #2a2a2e;
+  --wb-color-neutral-300: #3f3f46;
+  --wb-color-neutral-400: #71717a;
+  --wb-color-neutral-500: #a1a1aa;
+  --wb-color-neutral-600: #d4d4d8;
+  --wb-color-neutral-700: #e4e4e7;
+  --wb-color-neutral-800: #f4f4f5;
+  --wb-color-neutral-900: #fafafa;
+
+  /* Danger background tints (used by Button danger hover, error helpers) */
+  --wb-color-danger-100: #450a0a;
+  --wb-color-danger-700: #fca5a5;
+
   /* Neutral shadow — no blue tint on dark backgrounds */
-  --wb-shadow-card:       0 4px 16px rgba(0, 0, 0, 0.30), 0 1px 3px rgba(0, 0, 0, 0.20);
-  --wb-shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.40), 0 2px 6px rgba(0, 0, 0, 0.24);
+  --wb-shadow-card:       0 4px 16px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --wb-shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.36);
+  --wb-shadow-xs:         0 1px 2px rgba(0, 0, 0, 0.40);
+  --wb-shadow-sm:         0 2px 4px rgba(0, 0, 0, 0.40);
+  --wb-shadow-md:         0 4px 8px rgba(0, 0, 0, 0.40);
+  --wb-shadow-lg:         0 8px 16px rgba(0, 0, 0, 0.45);
+  --wb-shadow-xl:         0 16px 32px rgba(0, 0, 0, 0.50);
 }
