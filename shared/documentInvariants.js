@@ -24,7 +24,7 @@
 //                  via MCP; only brief RESPONSES are). Returns an error.
 
 import { generateHTML } from '@tiptap/html'
-import { Node, Mark, mergeAttributes } from '@tiptap/core'
+import { Node, Mark, Extension, mergeAttributes } from '@tiptap/core'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Heading } from '@tiptap/extension-heading'
 import { Link } from '@tiptap/extension-link'
@@ -143,9 +143,10 @@ const CtaButtonNode = Node.create({
   },
 })
 
-// CommentMark — preserves <span data-comment-id="...">…</span>. The frontend
-// uses comments anchored via TipTap marks; we mirror just enough for HTML
-// roundtripping. Rendering and click handlers are NOT mirrored.
+// CommentMark — preserves <span data-comment-id="..." data-comment-resolved="...">…</span>.
+// The frontend uses comments anchored via TipTap marks; we mirror just enough
+// for HTML roundtripping. Rendering and click handlers are NOT mirrored.
+// Must stay in sync with frontend/src/extensions/CommentMark.js.
 const CommentMark = Mark.create({
   name: 'comment',
   inclusive: false,
@@ -160,6 +161,12 @@ const CommentMark = Mark.create({
         renderHTML: (attrs) =>
           attrs.commentId ? { 'data-comment-id': attrs.commentId } : {},
       },
+      resolved: {
+        default: false,
+        parseHTML: (el) => el.getAttribute('data-comment-resolved') === 'true',
+        renderHTML: (attrs) =>
+          attrs.resolved ? { 'data-comment-resolved': 'true' } : {},
+      },
     }
   },
 
@@ -169,6 +176,136 @@ const CommentMark = Mark.create({
 
   renderHTML({ HTMLAttributes }) {
     return ['span', mergeAttributes(HTMLAttributes), 0]
+  },
+})
+
+// EditableImageNode — mirrors frontend `EditableImageNode` in ProjectEditor.jsx
+// for the 6 extra attributes the frontend persists alongside the base Image
+// src/alt/title: width, originalWidth, originalHeight, assetId, fileName,
+// storagePath. Without this extension, generateHTML strips them silently and
+// downstream consumers (history snapshots, exports) lose layout + asset info.
+const EditableImageNode = Image.extend({
+  draggable: true,
+
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) => {
+          const dataWidth = element.getAttribute('data-width')
+          if (dataWidth) return Number(dataWidth) || null
+          const inlineWidth = element.getAttribute('style')?.match(/width:\s*(\d+)px/)?.[1] || ''
+          return Number(inlineWidth) || null
+        },
+        renderHTML: (attributes) => {
+          if (!attributes.width) return {}
+          return {
+            'data-width': attributes.width,
+            style: `width:${attributes.width}px;max-width:100%;height:auto;display:block;`,
+          }
+        },
+      },
+      originalWidth: {
+        default: null,
+        parseHTML: (element) => Number(element.getAttribute('data-original-width')) || null,
+        renderHTML: (attributes) =>
+          attributes.originalWidth ? { 'data-original-width': attributes.originalWidth } : {},
+      },
+      originalHeight: {
+        default: null,
+        parseHTML: (element) => Number(element.getAttribute('data-original-height')) || null,
+        renderHTML: (attributes) =>
+          attributes.originalHeight ? { 'data-original-height': attributes.originalHeight } : {},
+      },
+      assetId: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-asset-id') || null,
+        renderHTML: (attributes) =>
+          attributes.assetId ? { 'data-asset-id': attributes.assetId } : {},
+      },
+      fileName: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-file-name') || null,
+        renderHTML: (attributes) =>
+          attributes.fileName ? { 'data-file-name': attributes.fileName } : {},
+      },
+      storagePath: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-storage-path') || null,
+        renderHTML: (attributes) =>
+          attributes.storagePath ? { 'data-storage-path': attributes.storagePath } : {},
+      },
+    }
+  },
+})
+
+// TextBlockLayoutExtension — mirrors frontend `TextBlockLayoutExtension` in
+// ProjectEditor.jsx. Adds the `textBlockLayout` global attribute to
+// paragraph/heading/listItem nodes, serialized as `data-block-spacing` +
+// `data-indent-level` HTML attributes plus an inline `style` derived from
+// the same BLOCK_SPACING_PRESETS table. Kept in sync with the frontend so
+// HTML roundtrips preserve user spacing/indent choices.
+const BLOCK_SPACING_PRESETS = {
+  single: { lineHeight: '1.2', marginBottom: '0.45em' },
+  normal: { lineHeight: '1.65', marginBottom: '0.9em' },
+  relaxed: { lineHeight: '1.85', marginBottom: '1.15em' },
+  double: { lineHeight: '2', marginBottom: '1.35em' },
+}
+
+const TEXT_BLOCK_LAYOUT_TYPES = ['paragraph', 'heading', 'listItem']
+
+function normalizeTextBlockLayout(layout) {
+  const next = {
+    blockSpacing: layout?.blockSpacing || null,
+    indentLevel: Math.max(0, Math.min(8, Number(layout?.indentLevel) || 0)),
+  }
+  return next.blockSpacing || next.indentLevel > 0 ? next : null
+}
+
+const TextBlockLayoutExtension = Extension.create({
+  name: 'textBlockLayout',
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: TEXT_BLOCK_LAYOUT_TYPES,
+        attributes: {
+          textBlockLayout: {
+            default: null,
+            parseHTML: (element) =>
+              normalizeTextBlockLayout({
+                blockSpacing: element.getAttribute('data-block-spacing') || null,
+                indentLevel: element.getAttribute('data-indent-level') || 0,
+              }),
+            renderHTML: (attributes) => {
+              const layout = normalizeTextBlockLayout(attributes.textBlockLayout)
+              if (!layout) return {}
+
+              const declarations = []
+              if (layout.blockSpacing) {
+                const preset = BLOCK_SPACING_PRESETS[layout.blockSpacing]
+                if (preset) {
+                  declarations.push(`line-height: ${preset.lineHeight}`)
+                  declarations.push(`margin-bottom: ${preset.marginBottom}`)
+                }
+              }
+              if (layout.indentLevel > 0) {
+                declarations.push(`margin-left: ${layout.indentLevel * 1.5}em`)
+              }
+
+              return {
+                ...(layout.blockSpacing ? { 'data-block-spacing': layout.blockSpacing } : {}),
+                ...(layout.indentLevel > 0
+                  ? { 'data-indent-level': String(layout.indentLevel) }
+                  : {}),
+                ...(declarations.length > 0 ? { style: `${declarations.join('; ')};` } : {}),
+              }
+            },
+          },
+        },
+      },
+    ]
   },
 })
 
@@ -183,7 +320,7 @@ const HTML_EXTENSIONS = [
     underline: false,
   }),
   Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
-  Image.configure({
+  EditableImageNode.configure({
     inline: false,
     HTMLAttributes: { style: 'max-width:100%; height:auto; display:block;' },
   }),
@@ -200,6 +337,7 @@ const HTML_EXTENSIONS = [
   SectionDividerNode,
   CtaButtonNode,
   CommentMark,
+  TextBlockLayoutExtension,
 ]
 
 // ---------------------------------------------------------------------------
@@ -430,10 +568,23 @@ function repairSections(doc, projectType, repairs) {
     // For each flagged FAQ section that is entirely empty (only a divider),
     // insert an empty H3 placeholder so the editor doesn't render a bare
     // divider. For sections with non-question content, just warn.
+    //
+    // IDEMPOTENCY: a section that already contains a heading node (even with
+    // empty text) must NOT receive another placeholder — otherwise repeated
+    // calls would stack H3s indefinitely on every MCP edit. The presence of
+    // any H2/H3 node means "this section already has a question slot".
     // Iterate from end to keep indices stable.
     for (let k = flagged.length - 1; k >= 0; k--) {
       const { start, name, nextIdx } = flagged[k]
       const body = doc.content.slice(start + 1, nextIdx)
+      const hasAnyHeading = body.some(
+        (n) => n.type === 'heading' && (n.attrs?.level === 2 || n.attrs?.level === 3)
+      )
+      if (hasAnyHeading) {
+        // Section already has a (possibly empty) question heading slot;
+        // skip placeholder insertion to keep the repair idempotent.
+        continue
+      }
       const isEntirelyEmpty = body.length === 0 || body.every((n) => !nodeHasMeaningfulContent(n))
       if (isEntirelyEmpty) {
         doc.content.splice(start + 1, 0, {

@@ -307,6 +307,119 @@ test('ensureInvariants does not mutate caller input', () => {
   assert.equal(JSON.stringify(input), snapshot, 'input must not be mutated')
 })
 
+test('FAQ idempotency: empty trailing section does not grow on repeated passes', () => {
+  // Pass 1 inserts an empty H3 placeholder in the trailing empty FAQ section.
+  // Pass 2 must NOT insert another one — the previously-inserted (empty)
+  // heading should already satisfy the "section has a question slot" check.
+  const input = doc(
+    divider('q1', 'Pregunta Frecuente 1'),
+    h(3, '¿Pregunta 1?'),
+    p('Respuesta 1'),
+    divider('q2', 'Pregunta Frecuente 2'),
+    // trailing section is entirely empty
+  )
+  const pass1 = ensureInvariants(input, 'faq')
+  // Sanity: pass 1 did insert the placeholder
+  assert.ok(
+    pass1.repairs.some((r) => /empty H3 placeholder/.test(r)),
+    'pass 1 should insert placeholder',
+  )
+
+  const pass2 = ensureInvariants(pass1.contentJson, 'faq')
+  // Pass 2 must be a no-op: no further placeholder insertions, identical doc.
+  assert.deepEqual(pass2.contentJson, pass1.contentJson, 'pass 2 must equal pass 1')
+  assert.ok(
+    !pass2.repairs.some((r) => /empty H3 placeholder/.test(r)),
+    'pass 2 must not insert another placeholder',
+  )
+  assert.deepEqual(pass2.repairs, [], 'pass 2 must produce no repairs')
+
+  // A third pass should also be a no-op (defensive)
+  const pass3 = ensureInvariants(pass2.contentJson, 'faq')
+  assert.deepEqual(pass3.contentJson, pass2.contentJson, 'pass 3 must equal pass 2')
+  assert.deepEqual(pass3.repairs, [])
+})
+
+test('image: width/originalWidth/originalHeight/assetId/fileName/storagePath roundtrip in HTML', () => {
+  const input = doc(
+    divider('s1', 'Sección 1'),
+    {
+      type: 'image',
+      attrs: {
+        src: 'https://example.com/pic.jpg',
+        alt: 'pic',
+        width: 480,
+        originalWidth: 1200,
+        originalHeight: 800,
+        assetId: 'asset-uuid-42',
+        fileName: 'pic.jpg',
+        storagePath: 'projects/abc/assets/asset-uuid-42.jpg',
+      },
+    },
+  )
+  const result = ensureInvariants(input, 'page')
+  const html = result.contentHtml
+  assert.match(html, /data-width="480"/, 'width must serialize as data-width')
+  assert.match(html, /data-original-width="1200"/, 'originalWidth must serialize')
+  assert.match(html, /data-original-height="800"/, 'originalHeight must serialize')
+  assert.match(html, /data-asset-id="asset-uuid-42"/, 'assetId must serialize')
+  assert.match(html, /data-file-name="pic\.jpg"/, 'fileName must serialize')
+  assert.match(
+    html,
+    /data-storage-path="projects\/abc\/assets\/asset-uuid-42\.jpg"/,
+    'storagePath must serialize',
+  )
+  // contentJson must preserve all attrs intact (not coerced/dropped)
+  const img = result.contentJson.content.find((n) => n.type === 'image')
+  assert.equal(img.attrs.width, 480)
+  assert.equal(img.attrs.originalWidth, 1200)
+  assert.equal(img.attrs.originalHeight, 800)
+  assert.equal(img.attrs.assetId, 'asset-uuid-42')
+  assert.equal(img.attrs.fileName, 'pic.jpg')
+  assert.equal(img.attrs.storagePath, 'projects/abc/assets/asset-uuid-42.jpg')
+})
+
+test('textBlockLayout: blockSpacing + indentLevel serialize as data-* + inline style', () => {
+  const input = doc(
+    divider('s1', 'Sección 1'),
+    {
+      type: 'paragraph',
+      attrs: {
+        textBlockLayout: { blockSpacing: 'double', indentLevel: 1 },
+      },
+      content: [{ type: 'text', text: 'spaced paragraph' }],
+    },
+  )
+  const result = ensureInvariants(input, 'page')
+  const html = result.contentHtml
+  assert.match(html, /data-block-spacing="double"/, 'blockSpacing as data-*')
+  assert.match(html, /data-indent-level="1"/, 'indentLevel as data-*')
+  assert.match(html, /line-height:\s*2/, 'inline style line-height for "double" preset')
+  assert.match(html, /margin-left:\s*1\.5em/, 'inline style margin-left from indentLevel')
+  assert.match(html, /spaced paragraph/)
+})
+
+test('comment mark resolved=true roundtrips as data-comment-resolved', () => {
+  const input = doc(
+    divider('s1', 'Sección 1'),
+    {
+      type: 'paragraph',
+      content: [
+        {
+          type: 'text',
+          text: 'resuelto',
+          marks: [
+            { type: 'comment', attrs: { commentId: 'c-uuid-9', resolved: true } },
+          ],
+        },
+      ],
+    },
+  )
+  const result = ensureInvariants(input, 'page')
+  assert.match(result.contentHtml, /data-comment-id="c-uuid-9"/)
+  assert.match(result.contentHtml, /data-comment-resolved="true"/)
+})
+
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
