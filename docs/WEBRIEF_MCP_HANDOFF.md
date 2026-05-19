@@ -1,6 +1,6 @@
 # WeBrief MCP — Next Session Handoff
 
-Updated: 2026-05-19. Last edit: sesion N+1 — Prep A completado (MCP token system, Dev migration, backend CRUD, requireAuth fast-path, UI).
+Updated: 2026-05-19. Last edit: sesion N+1 extendida — Prep A + N+2 (Prep B + Fase 0) completados, Prod migration aplicada.
 
 ## Status snapshot
 
@@ -8,7 +8,7 @@ Updated: 2026-05-19. Last edit: sesion N+1 — Prep A completado (MCP token syst
 - Dev Supabase project listo: `iimqxacagxuemwgaunis` (us-west-1). Local `backend/.env` y `frontend/.env` apuntan aca.
 - Prod Supabase intacto: `gmrlhhszrdahcxyoywvt` (us-west-2). VPS pulled latest y reiniciado.
 - Backend tiene env vars nuevas en codigo y prod (`IMAGEKIT_FOLDER_PREFIX`, `EMAIL_ENABLED`), backward compatible.
-- MCP server: cero codigo todavia. Carpeta `mcp/webrief-server/` no existe.
+- MCP server scaffold: ✅ existe en `mcp/webrief-server/` con 10 tools no-op (Fase 0).
 
 ### Prep A — COMPLETADO (sesion N+1, 2026-05-19)
 
@@ -18,7 +18,30 @@ Updated: 2026-05-19. Last edit: sesion N+1 — Prep A completado (MCP token syst
 - `backend/src/index.js`: mcpTokensRoutes montado en `/api/auth`.
 - `frontend/src/pages/AccountSettingsPage.jsx`: seccion "Tokens MCP" con create/list/revoke y reveal-once banner.
 - Commits `6e15e67..9f4b13b` en `main`. Todos los tests de subagentes pasaron.
-- **Accion antes de deploy a Prod**: aplicar la migration en Supabase Prod (`mcp__supabaseProd__apply_migration_file`).
+- Smoke test 7/7 pasos + audit 4/4 events verificados (curl + SQL).
+- ✅ Migration aplicada a Prod (`mcp_tokens` table existe en `gmrlhhszrdahcxyoywvt`).
+- **Accion antes de deploy a VPS**: `git pull` + `pm2 restart webrief-backend`.
+
+### N+2 — COMPLETADO (sesion N+1 extendida, 2026-05-19)
+
+**Fase 0** (Sonnet 4.6 high, commit `2c6f905`):
+- `mcp/webrief-server/` scaffold completo: 24 archivos.
+- `@modelcontextprotocol/sdk ^1.29.0` + `zod ^3.23.0`. SDK usa `McpServer.registerTool()`.
+- 10 tools registradas como no-ops: `session.getContext`, `companies.selectActive`, `projects.previewCreateFromContent`, `projects.createFromPreview`, `brief.previewPrefill`, `pages.previewDraft`, `projects.get`, `pages.get`, `pages.previewEdits`, `pages.applyEdits`.
+- Stubs: `src/auth/mcpToken.js` (lee `WEBRIEF_MCP_TOKEN` env), `src/lib/webbriefClient.js` (`get/post/patch`, sin `delete`).
+- `node src/index.js < /dev/null` arranca clean.
+- **Notas para N+3** (cuando se implementen los handlers):
+  - `getMcpToken()` actualmente throws hard; wrap en try/catch en handlers para devolver MCP error estructurado.
+  - `webbriefClient.js` no tiene `delete` — agregar si algún tool lo necesita.
+  - `pages.applyEdits.edits[]` es `z.array(z.unknown())` con TODO; el shape granular se define en Fase 3 (N+4).
+
+**Prep B** (Opus 4.7 high, commits `0617e16` + `3bb5e4c`):
+- `shared/documentInvariants.js`: pure ESM, API `ensureInvariants(contentJson, projectType) → { contentJson, contentHtml, repairs[] }`.
+- `shared/package.json` declara deps Tiptap (`@tiptap/html`, `@tiptap/core`, `@tiptap/starter-kit`, `@tiptap/extension-*`). MCP server también las lista para resolver shared/.
+- 23/23 tests passing (`cd shared && npm test`). Cubre: section repairs, FAQ Q/A, CTA, image attrs roundtrip, textBlockLayout, comment resolved, idempotency, no-mutation.
+- Code review Opus pass 1: encontró 4 silent-corruption bugs (FAQ non-idempotency, image attrs drift, textBlockLayout missing, comment.resolved drift).
+- Pass 2 (`3bb5e4c`) los corrigió mirroring extensiones frontend completas. Review pass 3 confirmó Yes-to-merge.
+- **Constraint clave**: `projectType='brief'` rechazado (las respuestas de brief van por otro endpoint, no por MCP edits).
 
 ## Read order al arrancar la proxima sesion
 
@@ -44,10 +67,7 @@ Updated: 2026-05-19. Last edit: sesion N+1 — Prep A completado (MCP token syst
 
 ### ~~Session N+1 — Prep A~~ — COMPLETADO (2026-05-19) ✓
 
-### Session N+2 (ahora N+1) — Prep B (invariants lib) + Fase 0 (scaffolding) — ~80-130k combined
-Pueden ir en paralelo si dispatch a 2 agentes con modelos distintos.
-- **Prep B** (**Opus 4.7 high**): `shared/documentInvariants.js`. Portar desde frontend TipTap (ver `frontend/src/pages/ProjectEditor.jsx` invariants: `sectionDivider` obligatorio, numeracion contigua, FAQ Q/A pattern, CTAs como nodos semanticos, custom-named sections consumen ordinal). Funciones puras tipo `ensureInvariants(contentJson, projectType) -> { contentJson, contentHtml }`. Opus por riesgo de bug silencioso.
-- **Fase 0** (**Sonnet 4.6 high**): crear `mcp/webrief-server/` con `package.json` (type: module, deps `@modelcontextprotocol/sdk` + `zod`), `src/index.js` con transport stdio, schemas zod de las 10 tools v1, `AGENTS.md` y `CLAUDE.md` que referencian `AI_GLOBAL.md`. Tools no-op solo para validar transport con Codex/Claude.
+### ~~Session N+2 — Prep B + Fase 0~~ — COMPLETADO (2026-05-19) ✓
 
 ### Session N+3 — Fases 1 + 2 (read + create) — ~120-180k — **Sonnet 4.6 high**
 - **Fase 1**: implementar `session.getContext`, `companies.selectActive`, `projects.get`, `pages.get`. Solo reads. Forward bearer MCP token al backend en cada request.
