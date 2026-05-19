@@ -16,6 +16,7 @@ import notificationsRoutes from './routes/notifications.js'
 import publicRoutes from './routes/public.js'
 import trashRoutes from './routes/trash.js'
 import securityRoutes from './routes/security.js'
+import mcpTokensRoutes from './routes/mcpTokens.js'
 import {
   buildCorsOptions,
   enforceIpSecurityBlock,
@@ -49,6 +50,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
 // Rutas de autenticación y datos
 app.use('/api/auth', authRoutes)
+app.use('/api/auth', mcpTokensRoutes)
 app.use('/api/companies', companiesRoutes)
 app.use('/api/projects', projectsRoutes)
 app.use('/api/projects', commentsRoutes)
