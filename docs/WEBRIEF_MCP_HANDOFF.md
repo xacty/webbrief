@@ -1,6 +1,6 @@
 # WeBrief MCP — Next Session Handoff
 
-Updated: 2026-05-16. Last edit: cierre de sesion que reviso el plan + monto Dev DB + deploy de env-aware uploads/emails a Prod.
+Updated: 2026-05-19. Last edit: sesion N+1 — Prep A completado (MCP token system, Dev migration, backend CRUD, requireAuth fast-path, UI).
 
 ## Status snapshot
 
@@ -9,6 +9,16 @@ Updated: 2026-05-16. Last edit: cierre de sesion que reviso el plan + monto Dev 
 - Prod Supabase intacto: `gmrlhhszrdahcxyoywvt` (us-west-2). VPS pulled latest y reiniciado.
 - Backend tiene env vars nuevas en codigo y prod (`IMAGEKIT_FOLDER_PREFIX`, `EMAIL_ENABLED`), backward compatible.
 - MCP server: cero codigo todavia. Carpeta `mcp/webrief-server/` no existe.
+
+### Prep A — COMPLETADO (sesion N+1, 2026-05-19)
+
+- Migration `supabase/migrations/20260519_mcp_tokens.sql` en `main`. **Aplicada a Dev. Pendiente aplicar a Prod antes de deploy.**
+- `backend/src/routes/mcpTokens.js`: GET/POST/DELETE `/api/auth/mcp-tokens`, cap 10 tokens activos, rate-limited.
+- `backend/src/middleware/auth.js`: fast-path `mcpt_*` via SHA-256 hash, audit `mcp_token_used` non-blocking.
+- `backend/src/index.js`: mcpTokensRoutes montado en `/api/auth`.
+- `frontend/src/pages/AccountSettingsPage.jsx`: seccion "Tokens MCP" con create/list/revoke y reveal-once banner.
+- Commits `6e15e67..9f4b13b` en `main`. Todos los tests de subagentes pasaron.
+- **Accion antes de deploy a Prod**: aplicar la migration en Supabase Prod (`mcp__supabaseProd__apply_migration_file`).
 
 ## Read order al arrancar la proxima sesion
 
@@ -32,15 +42,9 @@ Updated: 2026-05-16. Last edit: cierre de sesion que reviso el plan + monto Dev 
 
 **Modelo por defecto**: Sonnet 4.6 reasoning `high` (minimo). Cambiar a Opus 4.7 reasoning `high` SOLO en Prep B (invariants) y Fase 3 (edit). Ver `WEBRIEF_MCP_PLAN.md` seccion "Modelo Recomendado" para tabla completa.
 
-### Session N+1 — Prep A (MCP Token system) — ~80-120k tokens — **Sonnet 4.6 high**
-Standalone. Sin involucrar TipTap. Output:
-- Migration: `mcp_tokens (id, user_id, label, token_hash, prefix, created_at, revoked_at, last_used_at)`.
-- Backend: `POST /api/auth/mcp-tokens` (issue, devuelve raw token solo una vez), `GET` (list sin raw), `DELETE /:id` (revoke).
-- Middleware: extender `requireAuth` para reconocer tokens con prefix `mcpt_*` (mirando token_hash, no el raw).
-- Audit: cada uso logea a `security_events` con action `mcp_token_used`.
-- UI minima: nueva seccion en `UsersPage.jsx` o pagina de perfil — listar tokens activos, crear con label, revocar.
+### ~~Session N+1 — Prep A~~ — COMPLETADO (2026-05-19) ✓
 
-### Session N+2 — Prep B (invariants lib) + Fase 0 (scaffolding) — ~80-130k combined
+### Session N+2 (ahora N+1) — Prep B (invariants lib) + Fase 0 (scaffolding) — ~80-130k combined
 Pueden ir en paralelo si dispatch a 2 agentes con modelos distintos.
 - **Prep B** (**Opus 4.7 high**): `shared/documentInvariants.js`. Portar desde frontend TipTap (ver `frontend/src/pages/ProjectEditor.jsx` invariants: `sectionDivider` obligatorio, numeracion contigua, FAQ Q/A pattern, CTAs como nodos semanticos, custom-named sections consumen ordinal). Funciones puras tipo `ensureInvariants(contentJson, projectType) -> { contentJson, contentHtml }`. Opus por riesgo de bug silencioso.
 - **Fase 0** (**Sonnet 4.6 high**): crear `mcp/webrief-server/` con `package.json` (type: module, deps `@modelcontextprotocol/sdk` + `zod`), `src/index.js` con transport stdio, schemas zod de las 10 tools v1, `AGENTS.md` y `CLAUDE.md` que referencian `AI_GLOBAL.md`. Tools no-op solo para validar transport con Codex/Claude.
