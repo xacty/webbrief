@@ -104,6 +104,7 @@ export default function CompanyPage() {
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [feedbackNotice, setFeedbackNotice] = useState('')
+  const [activeTab, setActiveTab] = useState('proyectos')
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
@@ -512,7 +513,23 @@ export default function CompanyPage() {
             </Card>
           </section>
 
-          <div className={styles.workspaceGrid}>
+          {/* Tab bar */}
+          <div className={styles.tabBar} role="tablist">
+            {['proyectos', 'equipo', 'actividad'].map((tab) => (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
+                className={activeTab === tab ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab panels */}
+          <div role="tabpanel" hidden={activeTab !== 'proyectos'} className={styles.tabPanel}>
             <section className={styles.projectsSection}>
               <div className={styles.sectionHeader}>
                 <div>
@@ -729,98 +746,104 @@ export default function CompanyPage() {
                 </div>
               )}
             </section>
+          </div>
 
-            <Card as="aside" padding="md" shadow="sm" radius="md" className={styles.teamCard}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h2 className={styles.sectionTitle}>Equipo</h2>
-                  <p className={styles.sectionText}>
-                    Miembros actuales e invitación rápida en una sola sidecard.
-                  </p>
-                </div>
+          <div role="tabpanel" hidden={activeTab !== 'equipo'} className={styles.tabPanel}>
+            <div className={styles.sectionHeader}>
+              <div>
+                <h2 className={styles.sectionTitle}>Equipo</h2>
+                <p className={styles.sectionText}>
+                  Miembros actuales e invitación rápida en una sola vista.
+                </p>
+              </div>
+            </div>
+
+            {canInvite ? (
+              <form className={styles.inviteForm} onSubmit={handleInvite}>
+                <Input
+                  type="text"
+                  placeholder="Nombre completo"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                />
+                <Input
+                  type="email"
+                  placeholder="email@empresa.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  required
+                />
+                <Select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                >
+                  {inviteRoles.map((role) => (
+                    <option key={role} value={role}>
+                      {roleLabel(role)}
+                    </option>
+                  ))}
+                </Select>
+                <Button type="submit" variant="primary" disabled={inviting} loading={inviting} fullWidth>
+                  {inviting ? 'Enviando...' : 'Invitar usuario'}
+                </Button>
+              </form>
+            ) : (
+              <div className={styles.inlineNotice}>
+                Tu rol no puede enviar invitaciones en esta empresa.
+              </div>
+            )}
+
+            {inviteFeedback && <p className={styles.feedback}>{inviteFeedback}</p>}
+
+            <div className={styles.membersSection}>
+              <div className={styles.membersHeader}>
+                <h3 className={styles.membersTitle}>Miembros</h3>
+                <Badge variant="neutral" size="sm">{members.length}</Badge>
               </div>
 
-              {canInvite ? (
-                <form className={styles.inviteForm} onSubmit={handleInvite}>
-                  <Input
-                    type="text"
-                    placeholder="Nombre completo"
-                    value={inviteName}
-                    onChange={(e) => setInviteName(e.target.value)}
-                  />
-                  <Input
-                    type="email"
-                    placeholder="email@empresa.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    required
-                  />
-                  <Select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                  >
-                    {inviteRoles.map((role) => (
-                      <option key={role} value={role}>
-                        {roleLabel(role)}
-                      </option>
-                    ))}
-                  </Select>
-                  <Button type="submit" variant="primary" disabled={inviting} loading={inviting} fullWidth>
-                    {inviting ? 'Enviando...' : 'Invitar usuario'}
-                  </Button>
-                </form>
+              {members.length === 0 ? (
+                <div className={styles.emptyStateCompact}>
+                  Aún no hay miembros registrados para esta empresa.
+                </div>
               ) : (
-                <div className={styles.inlineNotice}>
-                  Tu rol no puede enviar invitaciones en esta empresa.
+                <div className={styles.membersList}>
+                  {members.map((member) => {
+                    const memberManageable = canManageMember(member)
+                    return (
+                      <article key={member.userId} className={styles.memberRow}>
+                        <div>
+                          <p className={styles.memberName}>{member.fullName || 'Sin nombre'}</p>
+                          <p className={styles.memberEmail}>{member.email || 'Sin email'}</p>
+                        </div>
+
+                        <div className={styles.memberMeta}>
+                          <span className={styles.memberRole}>{roleLabel(member.role)}</span>
+                          <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
+                        </div>
+
+                        {memberManageable && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            icon={<Pencil size={16} />}
+                            onClick={() => openEditMember(member)}
+                            title="Editar miembro"
+                            aria-label="Editar miembro"
+                          />
+                        )}
+                      </article>
+                    )
+                  })}
                 </div>
               )}
+            </div>
+          </div>
 
-              {inviteFeedback && <p className={styles.feedback}>{inviteFeedback}</p>}
-
-              <div className={styles.membersSection}>
-                <div className={styles.membersHeader}>
-                  <h3 className={styles.membersTitle}>Miembros</h3>
-                  <Badge variant="neutral" size="sm">{members.length}</Badge>
-                </div>
-
-                {members.length === 0 ? (
-                  <div className={styles.emptyStateCompact}>
-                    Aún no hay miembros registrados para esta empresa.
-                  </div>
-                ) : (
-                  <div className={styles.membersList}>
-                    {members.map((member) => {
-                      const memberManageable = canManageMember(member)
-                      return (
-                        <article key={member.userId} className={styles.memberRow}>
-                          <div>
-                            <p className={styles.memberName}>{member.fullName || 'Sin nombre'}</p>
-                            <p className={styles.memberEmail}>{member.email || 'Sin email'}</p>
-                          </div>
-
-                          <div className={styles.memberMeta}>
-                            <span className={styles.memberRole}>{roleLabel(member.role)}</span>
-                            <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
-                          </div>
-
-                          {memberManageable && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              icon={<Pencil size={16} />}
-                              onClick={() => openEditMember(member)}
-                              title="Editar miembro"
-                              aria-label="Editar miembro"
-                            />
-                          )}
-                        </article>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </Card>
+          <div role="tabpanel" hidden={activeTab !== 'actividad'} className={styles.tabPanel}>
+            <p className={styles.emptyStateCompact}>
+              Actividad reciente próximamente.
+            </p>
           </div>
         </>
       )}
