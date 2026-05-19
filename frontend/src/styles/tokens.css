@@ -3,7 +3,7 @@
      Color palette — shades 50-900
      Decisions: .planning/intel/decisions.md (Color)
      - Grays: cool-tinted (slate family)
-     - Primary base: #091223 at -900 (preserves --wb-primary)
+     - Primary (Royal Blue): #2563eb at -600 (--wb-primary)
      - Body text on white: use --wb-color-neutral-700 or darker (WCAG AA 4.5:1)
      ============================================================ */
 
@@ -238,7 +238,11 @@
   --wb-border:        #1e1e22;
   --wb-border-strong: #2a2a2e;
   --wb-text:          #f5f5f7;
-  --wb-text-muted:    #6b6b6e;
+  --wb-text-muted:    #8e8e93;
+
+  /* Semantic colors — lightened for WCAG AA on dark surfaces */
+  --wb-success:       #34d399;
+  --wb-danger:        #f87171;
 
   /* Primary on dark: slightly lighter for contrast */
   --wb-color-primary-50:  #1a2a4a;
