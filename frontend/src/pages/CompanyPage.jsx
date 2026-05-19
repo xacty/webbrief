@@ -105,6 +105,8 @@ export default function CompanyPage() {
   const [bulkBusy, setBulkBusy] = useState(false)
   const [feedbackNotice, setFeedbackNotice] = useState('')
   const [activeTab, setActiveTab] = useState('proyectos')
+  const [activity, setActivity] = useState([])
+  const [activityLoading, setActivityLoading] = useState(false)
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
@@ -175,6 +177,25 @@ export default function CompanyPage() {
     setInviteFeedback('')
     setInviteRole((current) => (inviteRoles.includes(current) ? current : inviteRoles[0] || 'editor'))
   }, [currentUser, companyId, inviteRoles])
+
+  useEffect(() => {
+    if (activeTab !== 'actividad' || !companyId) return
+    let active = true
+    setActivityLoading(true)
+
+    apiFetch(`/api/companies/${companyId}/activity`)
+      .then((data) => {
+        if (active) setActivity(data.activity ?? [])
+      })
+      .catch(() => {
+        if (active) setActivity([])
+      })
+      .finally(() => {
+        if (active) setActivityLoading(false)
+      })
+
+    return () => { active = false }
+  }, [activeTab, companyId])
 
   // ESC clears multiselect; do not consume ESC when no selection is active
   // so other components (modals, kebab menus) keep their own ESC handling.
@@ -841,9 +862,30 @@ export default function CompanyPage() {
           </div>
 
           <div role="tabpanel" hidden={activeTab !== 'actividad'} className={styles.tabPanel}>
-            <p className={styles.emptyStateCompact}>
-              Actividad reciente próximamente.
-            </p>
+            {activityLoading ? (
+              <p className={styles.info}>Cargando actividad...</p>
+            ) : activity.length === 0 ? (
+              <div className={styles.emptyState}>
+                <p className={styles.emptyTitle}>Sin actividad registrada</p>
+                <p className={styles.emptyText}>
+                  La actividad de los proyectos de esta empresa aparecerá aquí.
+                </p>
+              </div>
+            ) : (
+              <ol className={styles.activityList}>
+                {activity.map((event) => (
+                  <li key={event.id} className={styles.activityItem}>
+                    <span className={styles.activityType}>{event.event_type}</span>
+                    <time
+                      className={styles.activityDate}
+                      dateTime={event.created_at}
+                    >
+                      {formatDate(event.created_at)}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         </>
       )}
