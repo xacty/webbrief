@@ -343,53 +343,42 @@ export default function CompaniesPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Admin</p>
-          <h1 className={styles.title}>Empresas</h1>
-          <p className={styles.subtitle}>
-            Home principal del admin. Busca, filtra y entra al workspace de cada empresa.
-          </p>
+      <header className={styles.pageHeader}>
+        <div className={styles.titleRow}>
+          <div className={styles.headerMain}>
+            <h1 className={styles.title}>Empresas</h1>
+            <p className={styles.headerMeta}>
+              {filteredCompanies.length} empresa{filteredCompanies.length === 1 ? '' : 's'} · Home principal del admin
+            </p>
+          </div>
+          {canCreateCompanies && (
+            <Button variant="primary" icon={<Plus size={16} />} onClick={openModal}>
+              Nueva empresa
+            </Button>
+          )}
+        </div>
+
+        <div className={styles.toolbar}>
+          <Input
+            id="company-search"
+            type="search"
+            placeholder="Buscar por nombre"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          <Select
+            id="company-filter"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <option value="all">Todas</option>
+            <option value="clients">Clientes</option>
+            <option value="test">Pruebas</option>
+            <option value="internal">Internas</option>
+          </Select>
         </div>
       </header>
-
-      <section className={styles.toolbar}>
-        <Input
-          id="company-search"
-          label="Buscar"
-          type="search"
-          placeholder="Buscar por nombre"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-
-        <Select
-          id="company-filter"
-          label="Tipo"
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-        >
-          <option value="all">Todas</option>
-          <option value="clients">Clientes</option>
-          <option value="test">Pruebas</option>
-          <option value="internal">Internas</option>
-        </Select>
-      </section>
-
-      <section className={styles.sectionHeader}>
-        <div>
-          <h2 className={styles.sectionTitle}>Empresas</h2>
-          <p className={styles.sectionMeta}>
-            {filteredCompanies.length} empresa{filteredCompanies.length === 1 ? '' : 's'}
-          </p>
-        </div>
-
-        {canCreateCompanies && (
-          <Button variant="primary" icon={<Plus size={16} />} onClick={openModal}>
-            Nueva empresa
-          </Button>
-        )}
-      </section>
 
       {canManageAnyCompany && selectedIds.size > 0 && (
         <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">

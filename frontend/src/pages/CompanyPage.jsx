@@ -511,56 +511,65 @@ export default function CompanyPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.breadcrumbs}>
-        <Button variant="ghost" size="sm" onClick={() => navigate('/companies')}>
-          ← Empresas
-        </Button>
-      </div>
-
       {loading && <p className={styles.info}>Cargando empresa...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
 
       {!loading && company && (
         <>
-          <header className={styles.header}>
-            <div className={styles.headerMain}>
-              <div className={styles.titleRow}>
-                <h1 className={styles.title}>{company.name}</h1>
-                {company.isInternal && <Badge variant="neutral" size="sm">Interna</Badge>}
-              </div>
-              <div className={styles.headerMeta}>
-                <span>{company.projectCount} proyecto{company.projectCount === 1 ? '' : 's'}</span>
-                <span aria-hidden="true">·</span>
-                <span>{company.memberCount} miembro{company.memberCount === 1 ? '' : 's'}</span>
-                <span aria-hidden="true">·</span>
-                <span>{getCompanyRoleLabel(currentUser, company.membershipRole)}</span>
-              </div>
-            </div>
-            {canCreateProjects && (
-              <Button
-                variant="primary"
-                icon={<Plus size={16} />}
-                onClick={() => navigate(`/new-project?companyId=${companyId}`)}
-              >
-                Proyecto
-              </Button>
-            )}
-          </header>
-
-          {/* Tab bar */}
-          <div className={styles.tabBar} role="tablist">
-            {['proyectos', 'equipo', 'actividad'].map((tab) => (
+          <header className={styles.pageHeader}>
+            <nav className={styles.breadcrumb} aria-label="Migas de pan">
               <button
-                key={tab}
-                role="tab"
-                aria-selected={activeTab === tab}
-                className={activeTab === tab ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-                onClick={() => setActiveTab(tab)}
+                type="button"
+                className={styles.breadcrumbLink}
+                onClick={() => navigate('/companies')}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                Empresas
               </button>
-            ))}
-          </div>
+              <span className={styles.breadcrumbSep} aria-hidden="true">/</span>
+              <span className={styles.breadcrumbCurrent} aria-current="page">
+                {company.name}
+              </span>
+            </nav>
+
+            <div className={styles.titleRow}>
+              <div className={styles.headerMain}>
+                <div className={styles.titleLine}>
+                  <h1 className={styles.title}>{company.name}</h1>
+                  {company.isInternal && <Badge variant="neutral" size="sm">Interna</Badge>}
+                </div>
+                <div className={styles.headerMeta}>
+                  <span>{company.projectCount} proyecto{company.projectCount === 1 ? '' : 's'}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{company.memberCount} miembro{company.memberCount === 1 ? '' : 's'}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{getCompanyRoleLabel(currentUser, company.membershipRole)}</span>
+                </div>
+              </div>
+              {canCreateProjects && (
+                <Button
+                  variant="primary"
+                  icon={<Plus size={16} />}
+                  onClick={() => navigate(`/new-project?companyId=${companyId}`)}
+                >
+                  Proyecto
+                </Button>
+              )}
+            </div>
+
+            <div className={styles.tabBar} role="tablist">
+              {['proyectos', 'equipo', 'actividad'].map((tab) => (
+                <button
+                  key={tab}
+                  role="tab"
+                  aria-selected={activeTab === tab}
+                  className={activeTab === tab ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
+            </div>
+          </header>
 
           {/* Tab panels */}
           <div role="tabpanel" hidden={activeTab !== 'proyectos'} className={styles.tabPanel}>

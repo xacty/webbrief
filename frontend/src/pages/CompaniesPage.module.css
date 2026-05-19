@@ -1,35 +1,50 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--wb-space-5);
+  gap: var(--wb-space-6);
 }
 
-.header {
+/* Divided page header — surface bg + bottom border, extends edge-to-edge
+   beyond AppShell.content padding via negative margins. Same pattern as
+   CompanyPage so list and detail screens share a visual rhythm. */
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+  margin: calc(var(--wb-space-8) * -1) calc(var(--wb-space-6) * -1) 0;
+  padding: var(--wb-space-8) var(--wb-space-6) var(--wb-space-5);
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.titleRow {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   gap: var(--wb-space-5);
+  flex-wrap: wrap;
 }
 
-.eyebrow {
-  margin: 0 0 var(--wb-space-2);
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-semibold);
-  color: var(--wb-text-muted);
+.headerMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-1);
+  min-width: 0;
 }
 
 .title {
   margin: 0;
-  font-size: var(--wb-text-4xl);
+  font-size: var(--wb-text-3xl);
+  font-weight: var(--wb-weight-bold);
   line-height: var(--wb-leading-tight);
+  letter-spacing: -0.02em;
   color: var(--wb-text);
 }
 
-.subtitle {
-  margin: var(--wb-space-3) 0 0;
-  max-width: 720px;
+.headerMeta {
+  margin: 0;
   color: var(--wb-text-muted);
-  line-height: var(--wb-leading-relaxed);
+  font-size: var(--wb-text-sm);
 }
 
 .toolbar {
@@ -37,24 +52,6 @@
   grid-template-columns: minmax(0, 1fr) 220px;
   gap: var(--wb-space-3);
   align-items: end;
-}
-
-.sectionHeader {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--wb-space-4);
-}
-
-.sectionTitle {
-  margin: 0;
-  font-size: var(--wb-text-2xl);
-  color: var(--wb-text);
-}
-
-.sectionMeta {
-  margin: var(--wb-space-1) 0 0;
-  color: var(--wb-text-muted);
 }
 
 .cardsGrid {
