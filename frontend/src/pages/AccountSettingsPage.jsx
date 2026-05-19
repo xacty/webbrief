@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Camera, Download, KeyRound, Save } from 'lucide-react'
+import { Bell, Camera, Copy, Download, KeyRound, Save, Terminal, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { supabase } from '../lib/supabase'
@@ -46,6 +46,12 @@ export default function AccountSettingsPage() {
     newPassword: '',
     confirmPassword: '',
   })
+  const [mcpTokens, setMcpTokens] = useState([])
+  const [mcpLabelInput, setMcpLabelInput] = useState('')
+  const [mcpBusy, setMcpBusy] = useState('')
+  const [mcpNewToken, setMcpNewToken] = useState(null) // { raw, id, label, prefix }
+  const [mcpError, setMcpError] = useState('')
+  const [mcpCopied, setMcpCopied] = useState(false)
   const [busyKey, setBusyKey] = useState('')
   const [profileMessage, setProfileMessage] = useState('')
   const [profileError, setProfileError] = useState('')
@@ -64,6 +70,12 @@ export default function AccountSettingsPage() {
     setAvatarPreview(currentUser.avatarUrl || '')
     setAvatarFile(null)
   }, [currentUser?.id, currentUser?.fullName, currentUser?.avatarUrl])
+
+  useEffect(() => {
+    apiFetch('/api/auth/mcp-tokens')
+      .then((data) => setMcpTokens(data.tokens || []))
+      .catch(() => {})
+  }, [])
 
   function handleAvatarFileChange(event) {
     const file = event.target.files?.[0] || null
@@ -162,6 +174,53 @@ export default function AccountSettingsPage() {
     }
   }
 
+  async function handleMcpCreate(event) {
+    event.preventDefault()
+    const label = mcpLabelInput.trim()
+    if (!label) return
+    setMcpBusy('create')
+    setMcpError('')
+    setMcpNewToken(null)
+    try {
+      const data = await apiFetch('/api/auth/mcp-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ label }),
+      })
+      setMcpNewToken(data.token)
+      setMcpLabelInput('')
+      setMcpTokens((prev) => [
+        { id: data.token.id, label: data.token.label, prefix: data.token.prefix, created_at: data.token.created_at, last_used_at: null },
+        ...prev,
+      ])
+    } catch (error) {
+      setMcpError(error.message || 'No se pudo crear el token')
+    } finally {
+      setMcpBusy('')
+    }
+  }
+
+  async function handleMcpRevoke(tokenId) {
+    setMcpBusy(tokenId)
+    setMcpError('')
+    try {
+      await apiFetch(`/api/auth/mcp-tokens/${tokenId}`, { method: 'DELETE' })
+      setMcpTokens((prev) => prev.filter((t) => t.id !== tokenId))
+      if (mcpNewToken?.id === tokenId) setMcpNewToken(null)
+    } catch (error) {
+      setMcpError(error.message || 'No se pudo revocar el token')
+    } finally {
+      setMcpBusy('')
+    }
+  }
+
+  function handleMcpCopy() {
+    if (!mcpNewToken?.raw) return
+    navigator.clipboard.writeText(mcpNewToken.raw).then(() => {
+      setMcpCopied(true)
+      setTimeout(() => setMcpCopied(false), 2000)
+    })
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -179,6 +238,7 @@ export default function AccountSettingsPage() {
           <a href="#profile">Perfil</a>
           <a href="#security">Seguridad</a>
           <a href="#notifications">Notificaciones</a>
+          <a href="#api-tokens">Tokens MCP</a>
         </nav>
 
         <div className={styles.sections}>
@@ -373,6 +433,101 @@ export default function AccountSettingsPage() {
             <div className={styles.emptyState}>
               Las preferencias de notificaciones se pueden sumar acá cuando definamos los tipos de aviso.
             </div>
+          </Card>
+
+          <Card as="section" id="api-tokens" padding="md" shadow="sm" radius="lg" className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <h2 className={styles.panelTitle}>Tokens MCP</h2>
+                <p className={styles.panelText}>
+                  Tokens de larga duración para clientes MCP locales (Codex, Claude Code).
+                  El valor raw solo se muestra una vez al crear.
+                </p>
+              </div>
+              <Terminal className={styles.panelIcon} aria-hidden="true" />
+            </div>
+
+            {mcpNewToken && (
+              <div className={styles.mcpReveal}>
+                <p className={styles.mcpRevealLabel}>
+                  Copia este token ahora — no se puede ver de nuevo.
+                </p>
+                <div className={styles.mcpRevealRow}>
+                  <code className={styles.mcpCode}>{mcpNewToken.raw}</code>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Copy size={14} />}
+                    onClick={handleMcpCopy}
+                  >
+                    {mcpCopied ? 'Copiado' : 'Copiar'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMcpNewToken(null)}
+                  >
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <form className={styles.form} onSubmit={handleMcpCreate}>
+              <div className={styles.mcpCreateRow}>
+                <Input
+                  id="mcp-token-label"
+                  label="Nombre del token"
+                  type="text"
+                  placeholder="p.ej. Claude Code local"
+                  value={mcpLabelInput}
+                  onChange={(e) => setMcpLabelInput(e.target.value)}
+                  maxLength={120}
+                />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  disabled={!mcpLabelInput.trim() || mcpBusy === 'create'}
+                  loading={mcpBusy === 'create'}
+                >
+                  Crear token
+                </Button>
+              </div>
+              {mcpError && <p className={styles.error} role="alert">{mcpError}</p>}
+            </form>
+
+            {mcpTokens.length > 0 ? (
+              <ul className={styles.mcpList}>
+                {mcpTokens.map((token) => (
+                  <li key={token.id} className={styles.mcpItem}>
+                    <div className={styles.mcpItemInfo}>
+                      <span className={styles.mcpItemLabel}>{token.label}</span>
+                      <code className={styles.mcpItemPrefix}>{token.prefix}…</code>
+                      <span className={styles.mcpItemMeta}>
+                        Creado {new Date(token.created_at).toLocaleDateString('es')}
+                        {token.last_used_at && ` · Último uso ${new Date(token.last_used_at).toLocaleDateString('es')}`}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 size={14} />}
+                      disabled={mcpBusy === token.id}
+                      loading={mcpBusy === token.id}
+                      onClick={() => handleMcpRevoke(token.id)}
+                    >
+                      Revocar
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.emptyState}>Sin tokens activos.</p>
+            )}
           </Card>
         </div>
       </div>
