@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { projectId, companyId, projectTypeEnum } from './common.js';
+import { projectId, companyId, pageId, projectTypeEnum } from './common.js';
 
 export const ProjectInput = z.object({
   companyId,
@@ -8,18 +8,24 @@ export const ProjectInput = z.object({
 });
 
 export const PageSummary = z.object({
-  id: z.string().uuid(),
+  id: pageId,
   name: z.string(),
+  position: z.number().int().optional(),
   version: z.number().int(),
+  reviewStatus: z.string().optional(),
+  updatedAt: z.string().datetime().optional(),
 });
 
 export const ProjectOutput = z.object({
   id: projectId,
   companyId,
   name: z.string(),
-  type: projectTypeEnum,
-  pages: z.array(PageSummary),
-  createdAt: z.string().datetime().optional(),
+  projectType: projectTypeEnum,
+  clientName: z.string().nullable().optional(),
+  clientEmail: z.string().nullable().optional(),
+  businessType: z.string().nullable().optional(),
+  archivedAt: z.string().datetime().nullable().optional(),
+  trashedAt: z.string().datetime().nullable().optional(),
   updatedAt: z.string().datetime().optional(),
 });
 

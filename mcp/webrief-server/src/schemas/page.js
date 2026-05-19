@@ -11,10 +11,12 @@ export const PageOutput = z.object({
   id: pageId,
   projectId,
   name: z.string(),
+  position: z.number().int().optional(),
   contentJson: z.unknown().optional(),
   contentHtml: z.string().optional(),
+  seoMetadata: z.unknown().nullable().optional(),
   version: z.number().int(),
-  createdAt: z.string().datetime().optional(),
+  reviewStatus: z.string().optional(),
   updatedAt: z.string().datetime().optional(),
 });
 
