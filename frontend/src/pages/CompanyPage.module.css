@@ -11,8 +11,15 @@
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--wb-space-5);
+}
+
+.headerMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  min-width: 0;
 }
 
 .titleRow {
@@ -24,39 +31,20 @@
 
 .title {
   margin: 0;
-  font-size: var(--wb-text-4xl);
+  font-size: var(--wb-text-3xl);
+  font-weight: var(--wb-weight-bold);
   line-height: var(--wb-leading-tight);
+  letter-spacing: -0.02em;
   color: var(--wb-text);
 }
 
-.subtitle {
-  margin: var(--wb-space-3) 0 0;
-  color: var(--wb-text-muted);
-  line-height: var(--wb-leading-relaxed);
-}
-
-.summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--wb-space-3);
-}
-
-.summaryCard {
+.headerMeta {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--wb-space-2);
-  border: 1px solid var(--wb-border);
-}
-
-.summaryLabel {
-  font-size: var(--wb-text-xs);
-  font-weight: var(--wb-weight-semibold);
   color: var(--wb-text-muted);
-}
-
-.summaryValue {
-  font-size: var(--wb-text-base);
-  color: var(--wb-text);
+  font-size: var(--wb-text-sm);
+  flex-wrap: wrap;
 }
 
 .projectsSection {
@@ -96,8 +84,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--wb-space-4);
-  min-height: 220px;
-  padding: var(--wb-space-4);
+  min-height: 180px;
+  padding: var(--wb-space-5);
   border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-md);
   background: var(--wb-surface);
@@ -218,74 +206,56 @@
 .projectTop {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--wb-space-3);
-  /* Reserve room for the absolute checkbox at top-right (32 px + gap)
-   * so the project name/client never collide with it. The kebab now lives
-   * in the action row below — no left-padding needed for the title. */
+  /* Reserve room for the absolute checkbox at top-right (32 px + gap). */
   padding-right: var(--wb-space-7);
+}
+
+.projectTypeChip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--wb-space-1) var(--wb-space-3);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-bold);
+  letter-spacing: 0.02em;
+}
+
+.projectKebabSlot {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.projectBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-1);
 }
 
 .projectName {
   margin: 0;
   font-size: var(--wb-text-lg);
+  font-weight: var(--wb-weight-bold);
   line-height: var(--wb-leading-snug);
   color: var(--wb-text);
 }
 
-.projectClient {
-  margin: var(--wb-space-1) 0 0;
+.projectTimestamp {
+  margin: 0;
   color: var(--wb-text-muted);
   font-size: var(--wb-text-sm);
-}
-
-.projectMetaList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wb-space-2);
-}
-
-.projectMetaRow {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--wb-space-3);
-  align-items: baseline;
-}
-
-.metaLabel {
-  font-size: var(--wb-text-xs);
-  font-weight: var(--wb-weight-semibold);
-  color: var(--wb-text-muted);
-}
-
-.metaValue {
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-semibold);
-  color: var(--wb-text);
-  text-align: right;
 }
 
 .projectActions {
-  /* Primary action cluster (Abrir + Duplicar) at the left; kebab pinned
-   * to the bottom-right via `margin-left: auto`. If there is no kebab
-   * (no manage perms) the buttons stay left-aligned. */
+  /* Action buttons live flush at the bottom of the card, no border separator —
+   * the chip at the top already provides visual structure. */
   display: flex;
   align-items: center;
   gap: var(--wb-space-2);
   margin-top: auto;
-  padding-top: var(--wb-space-3);
-  border-top: 1px solid var(--wb-border);
-}
-
-.projectActionsButtons {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wb-space-2);
-}
-
-.projectActionsKebab {
-  display: inline-flex;
-  margin-left: auto;
 }
 
 .inviteForm {

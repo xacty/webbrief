@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Building2, Copy, Pencil, Trash2, Plus } from 'lucide-react'
+import { Archive, Building2, Pencil, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -16,7 +16,7 @@ import {
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
-import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
+import { Button, Input, Select, Modal, Badge, KebabMenu } from '../components/ui'
 import MoveToCompanyModal from '../components/MoveToCompanyModal'
 import styles from './CompanyPage.module.css'
 
@@ -63,6 +63,23 @@ function formatDate(isoDate) {
     month: 'short',
     year: 'numeric',
   })
+}
+
+function formatRelativeDate(isoDate) {
+  if (!isoDate) return 'sin actividad'
+  const now = new Date()
+  const then = new Date(isoDate)
+  const diffMs = now - then
+  const diffMin = Math.round(diffMs / 60000)
+  const diffH = Math.round(diffMs / 3600000)
+  const diffD = Math.round(diffMs / 86400000)
+  if (diffMin < 1) return 'hace instantes'
+  if (diffMin < 60) return `hace ${diffMin} min`
+  if (diffH < 24) return `hace ${diffH} h`
+  if (diffD === 1) return 'ayer'
+  if (diffD < 7) return `hace ${diffD} días`
+  if (diffD < 30) return `hace ${Math.round(diffD / 7)} semanas`
+  return `el ${formatDate(isoDate)}`
 }
 
 function getCompanyRoleLabel(currentUser, membershipRole) {
@@ -506,33 +523,29 @@ export default function CompanyPage() {
       {!loading && company && (
         <>
           <header className={styles.header}>
-            <div>
+            <div className={styles.headerMain}>
               <div className={styles.titleRow}>
                 <h1 className={styles.title}>{company.name}</h1>
                 {company.isInternal && <Badge variant="neutral" size="sm">Interna</Badge>}
               </div>
-              <p className={styles.subtitle}>
-                Workspace operativo de la empresa. Aquí viven sus proyectos y su equipo.
-              </p>
+              <div className={styles.headerMeta}>
+                <span>{company.projectCount} proyecto{company.projectCount === 1 ? '' : 's'}</span>
+                <span aria-hidden="true">·</span>
+                <span>{company.memberCount} miembro{company.memberCount === 1 ? '' : 's'}</span>
+                <span aria-hidden="true">·</span>
+                <span>{getCompanyRoleLabel(currentUser, company.membershipRole)}</span>
+              </div>
             </div>
+            {canCreateProjects && (
+              <Button
+                variant="primary"
+                icon={<Plus size={16} />}
+                onClick={() => navigate(`/new-project?companyId=${companyId}`)}
+              >
+                Proyecto
+              </Button>
+            )}
           </header>
-
-          <section className={styles.summary}>
-            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
-              <span className={styles.summaryLabel}>Tu rol</span>
-              <strong className={styles.summaryValue}>
-                {getCompanyRoleLabel(currentUser, company.membershipRole)}
-              </strong>
-            </Card>
-            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
-              <span className={styles.summaryLabel}>Proyectos</span>
-              <strong className={styles.summaryValue}>{company.projectCount}</strong>
-            </Card>
-            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
-              <span className={styles.summaryLabel}>Equipo</span>
-              <strong className={styles.summaryValue}>{company.memberCount}</strong>
-            </Card>
-          </section>
 
           {/* Tab bar */}
           <div className={styles.tabBar} role="tablist">
@@ -552,25 +565,6 @@ export default function CompanyPage() {
           {/* Tab panels */}
           <div role="tabpanel" hidden={activeTab !== 'proyectos'} className={styles.tabPanel}>
             <section className={styles.projectsSection}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h2 className={styles.sectionTitle}>Proyectos</h2>
-                  <p className={styles.sectionText}>
-                    Todos los proyectos de {company.name} viven aquí en cards navegables.
-                  </p>
-                </div>
-
-                {canCreateProjects && (
-                  <Button
-                    variant="primary"
-                    icon={<Plus size={16} />}
-                    onClick={() => navigate(`/new-project?companyId=${companyId}`)}
-                  >
-                    Nuevo proyecto
-                  </Button>
-                )}
-              </div>
-
               {canManageProjects && selectedIds.size > 0 && (
                 <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
                   <div className={styles.bulkInfo}>
@@ -684,56 +678,46 @@ export default function CompanyPage() {
                       )}
 
                       <div className={styles.projectTop}>
-                        <div>
-                          <h3 className={styles.projectName}>{project.name}</h3>
-                          <p className={styles.projectClient}>{project.client}</p>
-                        </div>
+                        <span className={styles.projectTypeChip}>
+                          {projectTypeLabel(project.projectType)}
+                        </span>
                       </div>
 
-                      <div className={styles.projectMetaList}>
-                        <div className={styles.projectMetaRow}>
-                          <span className={styles.metaLabel}>Tipo</span>
-                          <span className={styles.metaValue}>{projectTypeLabel(project.projectType)}</span>
-                        </div>
-                        <div className={styles.projectMetaRow}>
-                          <span className={styles.metaLabel}>Actividad</span>
-                          <span className={styles.metaValue}>{formatDate(project.lastActivity)}</span>
-                        </div>
+                      <div className={styles.projectBody}>
+                        <h3 className={styles.projectName}>{project.name}</h3>
+                        <p className={styles.projectTimestamp}>
+                          Editado {formatRelativeDate(project.lastActivity)}
+                        </p>
                       </div>
 
                       <div className={styles.projectActions}>
-                        <div className={styles.projectActionsButtons}>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openProject(project.id)
+                          }}
+                        >
+                          Abrir
+                        </Button>
+                        {canManageProjects && (
                           <Button
                             type="button"
-                            variant="primary"
+                            variant="secondary"
                             size="sm"
-                            icon={<ArrowRight size={14} />}
-                            iconPosition="right"
                             onClick={(event) => {
                               event.stopPropagation()
-                              openProject(project.id)
+                              handleProjectDuplicate(project.id)
                             }}
                           >
-                            Abrir
+                            Duplicar
                           </Button>
-                          {canManageProjects && (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              icon={<Copy size={14} />}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleProjectDuplicate(project.id)
-                              }}
-                              title="Duplicar proyecto"
-                              aria-label={`Duplicar ${project.name}`}
-                            />
-                          )}
-                        </div>
+                        )}
                         {canManageProjects && (
                           <div
-                            className={styles.projectActionsKebab}
+                            className={styles.projectKebabSlot}
                             onClick={(event) => event.stopPropagation()}
                           >
                             <KebabMenu
@@ -770,15 +754,6 @@ export default function CompanyPage() {
           </div>
 
           <div role="tabpanel" hidden={activeTab !== 'equipo'} className={styles.tabPanel}>
-            <div className={styles.sectionHeader}>
-              <div>
-                <h2 className={styles.sectionTitle}>Equipo</h2>
-                <p className={styles.sectionText}>
-                  Miembros actuales e invitación rápida en una sola vista.
-                </p>
-              </div>
-            </div>
-
             {canInvite ? (
               <form className={styles.inviteForm} onSubmit={handleInvite}>
                 <Input
