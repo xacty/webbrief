@@ -70,13 +70,15 @@
   gap: var(--wb-space-4);
   min-height: 220px;
   border: 1px solid var(--wb-border);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-card);
+  transition: box-shadow 150ms ease, border-color 150ms ease;
 }
 
 .companyCard:hover,
 .companyCard:focus-within {
-  border-color: var(--wb-border-strong);
-  box-shadow: var(--wb-shadow-md);
+  box-shadow: var(--wb-shadow-card-hover);
+  border-color: var(--wb-color-primary-100);
 }
 
 .companyCardSelected {
