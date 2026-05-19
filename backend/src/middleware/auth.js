@@ -104,21 +104,6 @@ export async function requireAuth(req, res, next) {
     req.accessToken = null
     req.mcpTokenId = mcpToken.id
 
-    // Non-blocking: audit + last_used_at
-    Promise.all([
-      supabaseAdmin
-        .from('mcp_tokens')
-        .update({ last_used_at: new Date().toISOString() })
-        .eq('id', mcpToken.id),
-      logSecurityEvent(req, {
-        action: 'mcp_token_used',
-        resourceType: 'mcp_token',
-        resourceId: mcpToken.id,
-        targetUserId: mcpToken.user_id,
-        outcome: 'success',
-      }),
-    ]).catch(() => {})
-
     const userBlock = await getActiveSecurityBlock(req, {
       userId: req.currentUser.id,
       ipAddress: req.clientIp,
@@ -139,6 +124,21 @@ export async function requireAuth(req, res, next) {
       })
       return res.status(403).json({ error: 'Usuario bloqueado por seguridad', blockId: userBlock.id })
     }
+
+    // Non-blocking: audit + last_used_at (only for unblocked requests)
+    Promise.all([
+      supabaseAdmin
+        .from('mcp_tokens')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('id', mcpToken.id),
+      logSecurityEvent(req, {
+        action: 'mcp_token_used',
+        resourceType: 'mcp_token',
+        resourceId: mcpToken.id,
+        targetUserId: mcpToken.user_id,
+        outcome: 'success',
+      }),
+    ]).catch(() => {})
 
     return next()
   }
