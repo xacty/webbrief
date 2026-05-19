@@ -30,7 +30,9 @@ Updated: 2026-05-16. Last edit: cierre de sesion que reviso el plan + monto Dev 
 
 ## Sequencing recomendado
 
-### Session N+1 — Prep A (MCP Token system) — ~80-120k tokens
+**Modelo por defecto**: Sonnet 4.6 reasoning `high` (minimo). Cambiar a Opus 4.7 reasoning `high` SOLO en Prep B (invariants) y Fase 3 (edit). Ver `WEBRIEF_MCP_PLAN.md` seccion "Modelo Recomendado" para tabla completa.
+
+### Session N+1 — Prep A (MCP Token system) — ~80-120k tokens — **Sonnet 4.6 high**
 Standalone. Sin involucrar TipTap. Output:
 - Migration: `mcp_tokens (id, user_id, label, token_hash, prefix, created_at, revoked_at, last_used_at)`.
 - Backend: `POST /api/auth/mcp-tokens` (issue, devuelve raw token solo una vez), `GET` (list sin raw), `DELETE /:id` (revoke).
@@ -39,17 +41,18 @@ Standalone. Sin involucrar TipTap. Output:
 - UI minima: nueva seccion en `UsersPage.jsx` o pagina de perfil — listar tokens activos, crear con label, revocar.
 
 ### Session N+2 — Prep B (invariants lib) + Fase 0 (scaffolding) — ~80-130k combined
-Pueden ir en paralelo si dispatch a 2 agentes.
-- **Prep B**: `shared/documentInvariants.js`. Portar desde frontend TipTap (ver `frontend/src/pages/ProjectEditor.jsx` invariants: `sectionDivider` obligatorio, numeracion contigua, FAQ Q/A pattern, CTAs como nodos semanticos, custom-named sections consumen ordinal). Funciones puras tipo `ensureInvariants(contentJson, projectType) -> { contentJson, contentHtml }`.
-- **Fase 0**: crear `mcp/webrief-server/` con `package.json` (type: module, deps `@modelcontextprotocol/sdk` + `zod`), `src/index.js` con transport stdio, schemas zod de las 10 tools v1, `AGENTS.md` y `CLAUDE.md` que referencian `AI_GLOBAL.md`. Tools no-op solo para validar transport con Codex/Claude.
+Pueden ir en paralelo si dispatch a 2 agentes con modelos distintos.
+- **Prep B** (**Opus 4.7 high**): `shared/documentInvariants.js`. Portar desde frontend TipTap (ver `frontend/src/pages/ProjectEditor.jsx` invariants: `sectionDivider` obligatorio, numeracion contigua, FAQ Q/A pattern, CTAs como nodos semanticos, custom-named sections consumen ordinal). Funciones puras tipo `ensureInvariants(contentJson, projectType) -> { contentJson, contentHtml }`. Opus por riesgo de bug silencioso.
+- **Fase 0** (**Sonnet 4.6 high**): crear `mcp/webrief-server/` con `package.json` (type: module, deps `@modelcontextprotocol/sdk` + `zod`), `src/index.js` con transport stdio, schemas zod de las 10 tools v1, `AGENTS.md` y `CLAUDE.md` que referencian `AI_GLOBAL.md`. Tools no-op solo para validar transport con Codex/Claude.
 
-### Session N+3 — Fases 1 + 2 (read + create) — ~120-180k
+### Session N+3 — Fases 1 + 2 (read + create) — ~120-180k — **Sonnet 4.6 high**
 - **Fase 1**: implementar `session.getContext`, `companies.selectActive`, `projects.get`, `pages.get`. Solo reads. Forward bearer MCP token al backend en cada request.
 - **Fase 2**: implementar `projects.previewCreateFromContent`, `projects.createFromPreview`, `brief.previewPrefill`, `pages.previewDraft`. Incluye URL fetching server-side respetando la `Politica De Fetch De URLs` del plan.
 
-### Session N+4 — Fase 3 (edit, mas denso) — ~100-150k
+### Session N+4 — Fase 3 (edit, mas denso) — ~100-150k — **Opus 4.7 high**
 - `pages.previewEdits` y `pages.applyEdits`. Usar Prep B lib para validar invariantes antes de mandar al backend. Manejar `expectedVersion` + conflict response con snapshot.
 - Operaciones cubiertas: cambiar titulo, cambiar varios titulos, reemplazar parrafo, insertar seccion, eliminar seccion, renombrar pagina, reemplazos masivos, FAQ Q/A.
+- Opus por: combinatoria invariantes × operaciones × estados de conflict version. Es el espacio de estados mas grande de v1.
 
 ### Fase 4 (Remote V2) — diferida fuera de v1
 HTTP/SSE detras de Nginx en VPS. Mismo modelo de identidad y permisos.

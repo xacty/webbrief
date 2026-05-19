@@ -197,9 +197,28 @@ Aclaraciones de scope:
 - El MCP server no llama a LLMs. Toda generacion la hace el cliente (Codex/Claude).
 - Existe un proyecto Supabase de desarrollo separado del de produccion antes de habilitar mutaciones.
 
+## Modelo Recomendado
+
+Para ejecutar este plan via Claude Code, se recomiendan los siguientes modelos por fase. La eleccion balancea calidad de codigo contra costo de tokens.
+
+| Fase | Modelo | Reasoning | Justificacion |
+|---|---|---|---|
+| Prep A (MCP token system) | Sonnet 4.6 | high | Patterns claros (migration, endpoints, middleware). Reasoning high como minimo para evitar bugs sutiles en auth. |
+| Prep B (`shared/documentInvariants.js`) | **Opus 4.7** | **high** | Porteo desde frontend TipTap. Bug silencioso en invariantes rompe documentos en produccion semanas despues. Opus se justifica. |
+| Fase 0 (Contratos + Scaffolding) | Sonnet 4.6 | high | Boilerplate de stdio + zod schemas. Pattern conocido. |
+| Fase 1 (Lectura + Contexto) | Sonnet 4.6 | high | Read-only tools, validacion de auth, multi-empresa. Mecanico. |
+| Fase 2 (Creacion desde contenido) | Sonnet 4.6 | high | URL fetching + project type detection + brief prefill. Patrones conocidos pero con varias ramas. |
+| Fase 3 (Edicion existente) | **Opus 4.7** | **high** | Combinacion de invariantes + expectedVersion + conflict snapshot + 8 operaciones. El espacio de estados es el mas grande de v1. |
+| Fase 4 (Remote V2) | TBD | TBD | Fuera de v1. Re-evaluar cuando se aborde. |
+
+Reglas:
+
+- Sonnet 4.6 reasoning `high` es el minimo para cualquier fase. No bajar a medium/low en este proyecto.
+- Cambiar a Opus 4.7 reasoning `high` SOLO para Prep B y Fase 3.
+- No usar Opus very-high/max: ganancia marginal sobre high, costo y latencia significativos.
+
 ## Proximos Pasos
 
 - Antes de profundizar MCP, completar `Fase 2` del plan general: seguridad de la app.
 - Despues de completar `Fase 2`, pasar a `Fase 3`: completar el plan MCP v1.
-- Modelo recomendado para `Fase 3`: `GPT-5.4`.
-- Thinking recomendado para `Fase 3`: `high`.
+- Ver `docs/WEBRIEF_MCP_HANDOFF.md` para sequencing por sesion y modelo recomendado por unidad de trabajo.
