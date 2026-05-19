@@ -218,7 +218,7 @@ export default function AccountSettingsPage() {
     navigator.clipboard.writeText(mcpNewToken.raw).then(() => {
       setMcpCopied(true)
       setTimeout(() => setMcpCopied(false), 2000)
-    })
+    }).catch(() => {})
   }
 
   return (
