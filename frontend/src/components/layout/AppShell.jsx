@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Settings } from 'lucide-react'
+import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { canManageUsersNav, canUseSecurityNav, canUseTrashNav } from '../../lib/roleCapabilities'
 import {
@@ -25,6 +26,15 @@ export default function AppShell() {
   const canUseTrash = canUseTrashNav(currentUser)
   const canUseSecurity = canUseSecurityNav(currentUser)
 
+  const [darkMode, setDarkMode] = useState(
+    () => localStorage.getItem('wb-theme') === 'dark'
+  )
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+    localStorage.setItem('wb-theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
+
   async function handleLogout() {
     await signOut()
     navigate('/login')
@@ -39,12 +49,14 @@ export default function AppShell() {
           </div>
 
           <nav className={styles.nav}>
+            <p className={styles.navSectionLabel}>Principal</p>
             <NavLink
               to="/companies"
               className={({ isActive }) => (
                 isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
               )}
             >
+              <Building2 className={styles.navIcon} aria-hidden="true" />
               Empresas
             </NavLink>
             {canManageUsers && (
@@ -54,7 +66,23 @@ export default function AppShell() {
                   isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                 )}
               >
+                <Users className={styles.navIcon} aria-hidden="true" />
                 Usuarios
+              </NavLink>
+            )}
+
+            {(canUseSecurity || canUseTrash) && (
+              <p className={styles.navSectionLabel}>Admin</p>
+            )}
+            {canUseSecurity && (
+              <NavLink
+                to="/security"
+                className={({ isActive }) => (
+                  isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                )}
+              >
+                <Shield className={styles.navIcon} aria-hidden="true" />
+                Seguridad
               </NavLink>
             )}
             {canUseTrash && (
@@ -65,6 +93,7 @@ export default function AppShell() {
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
                 >
+                  <Archive className={styles.navIcon} aria-hidden="true" />
                   Archivados
                 </NavLink>
                 <NavLink
@@ -73,19 +102,10 @@ export default function AppShell() {
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
                 >
+                  <Trash2 className={styles.navIcon} aria-hidden="true" />
                   Papelera
                 </NavLink>
               </>
-            )}
-            {canUseSecurity && (
-              <NavLink
-                to="/security"
-                className={({ isActive }) => (
-                  isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
-                )}
-              >
-                Seguridad
-              </NavLink>
             )}
           </nav>
         </div>
@@ -109,6 +129,16 @@ export default function AppShell() {
             <Settings className={styles.navIcon} aria-hidden="true" />
             Ajustes de cuenta
           </NavLink>
+
+          <button
+            type="button"
+            className={styles.darkToggle}
+            onClick={() => setDarkMode((d) => !d)}
+            aria-label={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          >
+            {darkMode ? <Sun size={14} /> : <Moon size={14} />}
+            {darkMode ? 'Modo claro' : 'Modo oscuro'}
+          </button>
 
           <Button variant="secondary" onClick={handleLogout} fullWidth>
             Cerrar sesión
