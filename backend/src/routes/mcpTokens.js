@@ -16,7 +16,7 @@ function generateMcpToken() {
 }
 
 // GET /api/auth/mcp-tokens — list active tokens for current user (no raw)
-router.get('/mcp-tokens', requireAuth, async (req, res) => {
+router.get('/mcp-tokens', requireAuth, rateLimiters.sensitiveAction, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('mcp_tokens')
@@ -38,6 +38,15 @@ router.post('/mcp-tokens', requireAuth, rateLimiters.sensitiveAction, async (req
   if (!label) return res.status(400).json({ error: 'El campo label es obligatorio' })
 
   try {
+    const { count, error: countError } = await supabaseAdmin
+      .from('mcp_tokens')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', req.currentUser.id)
+      .is('revoked_at', null)
+
+    if (countError) return res.status(500).json({ error: 'No se pudo crear el token' })
+    if (count >= 10) return res.status(400).json({ error: 'Límite de 10 tokens activos por usuario' })
+
     const { raw, hash, prefix } = generateMcpToken()
 
     const { data, error } = await supabaseAdmin
