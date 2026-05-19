@@ -1,13 +1,17 @@
 /**
- * mcpToken.js — Auth stub for Fase 0.
+ * mcpToken.js — Auth helpers for the WeBrief MCP server.
  *
  * In v1 local mode the user sets WEBRIEF_MCP_TOKEN in their environment before
  * launching the server. Real token validation happens server-side via the
  * `requireAuth` fast-path — the MCP server just forwards the token as
  * `Authorization: Bearer mcpt_...` on every backend request.
+ */
+
+/**
+ * The structured error response returned when no MCP token is configured.
+ * Tool handlers should check this before calling the backend client.
  *
- * TODO (Fase 1): Support per-request token exchange or session-based token
- * refresh if the token management story evolves.
+ * @typedef {{ status: 'error', tool: string, error: { code: string, message: string } }} MissingTokenError
  */
 
 /**
@@ -34,4 +38,32 @@ export function getMcpToken() {
  */
 export function getAuthHeader() {
   return `Bearer ${getMcpToken()}`;
+}
+
+/**
+ * Checks whether WEBRIEF_MCP_TOKEN is set without throwing.
+ * Returns a structured MCP error object if missing, or null if ok.
+ *
+ * Use at the top of every tool handler before calling the backend client:
+ *   const tokenError = checkMcpToken(name);
+ *   if (tokenError) return tokenError;
+ *
+ * @param {string} toolName  The tool's `name` export (used in the error envelope).
+ * @returns {MissingTokenError | null}
+ */
+export function checkMcpToken(toolName) {
+  if (!process.env.WEBRIEF_MCP_TOKEN) {
+    return {
+      status: 'error',
+      tool: toolName,
+      error: {
+        code: 'mcp_token_missing',
+        message:
+          'WEBRIEF_MCP_TOKEN is not set. ' +
+          'Generate a token in WeBrief → Account Settings → MCP Tokens, ' +
+          'then set the environment variable before starting the MCP server.',
+      },
+    };
+  }
+  return null;
 }
