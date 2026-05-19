@@ -1,20 +1,13 @@
 {
-  "name": "@webbrief/mcp-server",
+  "name": "@webbrief/shared",
   "version": "0.1.0",
-  "description": "WeBrief MCP server — local stdio for Codex/Claude",
+  "description": "Shared modules consumed by backend, frontend, and the MCP server.",
   "type": "module",
   "private": true,
-  "main": "src/index.js",
-  "bin": {
-    "webbrief-mcp": "src/index.js"
-  },
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "test:invariants": "node ../../shared/documentInvariants.test.js"
+    "test": "node documentInvariants.test.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "@tiptap/core": "^3.20.4",
     "@tiptap/extension-color": "^3.20.4",
     "@tiptap/extension-heading": "^3.20.4",
@@ -30,8 +23,7 @@
     "@tiptap/extension-underline": "^3.20.4",
     "@tiptap/html": "^3.20.4",
     "@tiptap/pm": "^3.20.4",
-    "@tiptap/starter-kit": "^3.20.4",
-    "zod": "^3.23.0"
+    "@tiptap/starter-kit": "^3.20.4"
   },
   "engines": {
     "node": ">=20.0.0"
