@@ -1,0 +1,22 @@
+{
+  "name": "@webbrief/mcp-server",
+  "version": "0.1.0",
+  "description": "WeBrief MCP server — local stdio for Codex/Claude",
+  "type": "module",
+  "private": true,
+  "main": "src/index.js",
+  "bin": {
+    "webbrief-mcp": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
