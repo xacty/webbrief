@@ -78,6 +78,22 @@ export async function patch(path, body) {
 }
 
 /**
+ * PUT /api/<path>
+ *
+ * @param {string} path
+ * @param {unknown} body
+ * @returns {Promise<unknown>}
+ */
+export async function put(path, body) {
+  const url = `${getBackendUrl()}/api${path}`;
+  const res = await fetch(
+    url,
+    buildRequestOptions({ method: 'PUT', body: JSON.stringify(body) })
+  );
+  return handleResponse(res);
+}
+
+/**
  * @param {Response} res
  * @returns {Promise<unknown>}
  */
