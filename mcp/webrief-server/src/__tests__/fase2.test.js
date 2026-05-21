@@ -522,6 +522,82 @@ await test('end-to-end: preview then create posts to /projects and returns proje
   assertStructuredError(second, 'preview_not_found');
 });
 
+await test('createFromPreview applies overrides on top of preview', async () => {
+  _resetPreviewStoreForTests();
+  const NEW_PROJECT_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+  let previewId;
+  await withMockedFetch(
+    {
+      [`${BACKEND_BASE}/companies`]: {
+        body: { companies: [{ id: COMPANY_ID, name: 'Acme' }] },
+      },
+    },
+    async () => {
+      const r = await previewCreate.handler({
+        companyId: COMPANY_ID,
+        content: '# Borrador inicial',
+        projectType: 'page',
+      });
+      previewId = r.previewId;
+    },
+  );
+
+  await withMockedFetch(
+    {
+      [`${BACKEND_BASE}/projects`]: {
+        body: {
+          project: {
+            id: NEW_PROJECT_ID,
+            name: 'Nombre corregido',
+            company_id: COMPANY_ID,
+            project_type: 'document',
+            business_type: 'general',
+            client_name: 'Globex',
+            client_email: 'ops@globex.com',
+          },
+        },
+      },
+    },
+    async (calls) => {
+      const r = await createFromPreview.handler({
+        companyId: COMPANY_ID,
+        previewId,
+        overrides: {
+          name: 'Nombre corregido',
+          projectType: 'document',
+          businessType: 'general',
+          clientName: 'Globex',
+          clientEmail: 'ops@globex.com',
+        },
+      });
+      assert.equal(r.status, 'ok');
+      assert.equal(r.project.name, 'Nombre corregido');
+      assert.equal(r.project.projectType, 'document');
+      assert.equal(r.project.businessType, 'general');
+      assert.equal(r.project.clientName, 'Globex');
+      assert.equal(r.project.clientEmail, 'ops@globex.com');
+
+      // The POST payload reflects the overrides, not the preview defaults.
+      const body = JSON.parse(calls[0].options.body);
+      assert.equal(body.name, 'Nombre corregido');
+      assert.equal(body.projectType, 'document');
+      assert.equal(body.businessType, 'general');
+      assert.equal(body.clientName, 'Globex');
+      assert.equal(body.clientEmail, 'ops@globex.com');
+    },
+  );
+});
+
+await test('createFromPreview rejects invalid override values via schema', async () => {
+  const parsed = createFromPreview.inputSchema.safeParse({
+    companyId: COMPANY_ID,
+    previewId: 'prev_x',
+    overrides: { projectType: 'website' }, // not in enum
+  });
+  assert.ok(!parsed.success, 'should reject projectType=website');
+});
+
 await test('createFromPreview rejects mismatched companyId', async () => {
   _resetPreviewStoreForTests();
   let previewId;
