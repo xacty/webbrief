@@ -39,73 +39,147 @@ export const editOpSchema = z.discriminatedUnion('op', [
   // 1. Rename the page itself (project_pages.name)
   z.object({
     op: z.literal('set_page_name'),
-    value: z.string().min(1).max(200),
+    value: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe('New page display name.'),
   }),
 
   // 2. Rename a section (sectionDivider.attrs.sectionName)
   z.object({
     op: z.literal('set_section_name'),
-    sectionId: z.string().min(1),
-    value: z.string().min(1).max(200),
+    sectionId: z
+      .string()
+      .min(1)
+      .describe('Existing sectionDivider id (from contentJson). Op records a warning if not found.'),
+    value: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe('New section display name. Auto-named sections like "Sección 1" will get renumbered by invariants when this op changes the order.'),
   }),
 
   // 3. Replace a heading's text. Match by sectionId + optional level + optional matchText.
   z.object({
     op: z.literal('set_heading_text'),
-    sectionId: z.string().min(1).optional(),
-    level: headingLevel.optional(),
-    matchText: z.string().min(1).optional(),
-    value: nonEmptyText,
+    sectionId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, only headings inside this section are considered.'),
+    level: headingLevel
+      .optional()
+      .describe('If set, only headings of this level (1-6) match.'),
+    matchText: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, the heading must contain this exact text. First match wins.'),
+    value: nonEmptyText.describe('Replacement heading text (plain — inline marks like bold are lost).'),
   }),
 
   // 4. Replace a paragraph's text. Match by sectionId + (paragraphIndex OR matchText).
   z.object({
     op: z.literal('replace_paragraph'),
-    sectionId: z.string().min(1).optional(),
-    paragraphIndex: z.number().int().min(0).optional(),
-    matchText: z.string().min(1).optional(),
-    value: nonEmptyText,
+    sectionId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, search only inside this section.'),
+    paragraphIndex: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('0-based index of the paragraph within the section body. Counts only paragraph nodes, skipping headings/dividers.'),
+    matchText: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, the paragraph text must equal this exactly.'),
+    value: nonEmptyText.describe('Replacement paragraph text (plain — inline marks lost).'),
   }),
 
   // 5. Insert a new section at the given position (default: end).
   z.object({
     op: z.literal('insert_section'),
-    position: z.number().int().min(0).optional(),
-    name: z.string().min(1).max(200).optional(),
-    headingText: z.string().min(1).max(500).optional(),
-    bodyText: z.string().max(20_000).optional(),
+    position: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('0-based index counting only sectionDividers. Omit to append at the end.'),
+    name: z
+      .string()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe('Section display name. Omit to let invariants auto-name (e.g. "Sección 3").'),
+    headingText: z
+      .string()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe('Optional H2 heading inserted at the start of the new section.'),
+    bodyText: z
+      .string()
+      .max(20_000)
+      .optional()
+      .describe('Optional first-paragraph body text. If omitted, an empty paragraph is inserted so the section is editable.'),
   }),
 
   // 6. Delete a section by id (removes the sectionDivider and every node up to
   //    the next sectionDivider).
   z.object({
     op: z.literal('delete_section'),
-    sectionId: z.string().min(1),
+    sectionId: z
+      .string()
+      .min(1)
+      .describe('Section to delete. Removes the divider AND every node up to (but not including) the next divider.'),
   }),
 
   // 7. Find-and-replace plain text inside text nodes. Optionally scoped to a
   //    single section.
   z.object({
     op: z.literal('find_replace'),
-    find: z.string().min(1),
-    replace: z.string(), // empty = delete
-    caseSensitive: z.boolean().optional(),
-    sectionId: z.string().min(1).optional(),
+    find: z
+      .string()
+      .min(1)
+      .describe('Literal string to search for. Regex metacharacters are escaped — NOT a regex.'),
+    replace: z
+      .string()
+      .describe('Replacement string. Empty string deletes every match.'),
+    caseSensitive: z
+      .boolean()
+      .optional()
+      .describe('Default false (case-insensitive). Set true to require exact case.'),
+    sectionId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, only replace within this section. Otherwise the whole document is scanned.'),
   }),
 
   // 8a. Replace a FAQ question (the heading inside a FAQ section).
   z.object({
     op: z.literal('set_faq_question'),
-    sectionId: z.string().min(1),
-    value: nonEmptyText,
+    sectionId: z
+      .string()
+      .min(1)
+      .describe('FAQ section whose question heading should be replaced. projectType must be "faq" — op warns otherwise.'),
+    value: nonEmptyText.describe('New question heading text.'),
   }),
 
   // 8b. Replace a FAQ answer (all paragraphs in the section get collapsed
   //     into one paragraph with the new text).
   z.object({
     op: z.literal('set_faq_answer'),
-    sectionId: z.string().min(1),
-    value: nonEmptyText,
+    sectionId: z
+      .string()
+      .min(1)
+      .describe('FAQ section whose answer body should be replaced. All paragraphs in the section are collapsed into one paragraph with this text.'),
+    value: nonEmptyText.describe('New answer body (plain text). Inline marks are lost.'),
   }),
 
   // 9. Insert a CTA button (ctaButton node) into a section body. `position`
@@ -113,10 +187,26 @@ export const editOpSchema = z.discriminatedUnion('op', [
   //    if omitted, append at the end of the body.
   z.object({
     op: z.literal('insert_cta'),
-    sectionId: z.string().min(1),
-    position: z.number().int().min(0).optional(),
-    ctaText: z.string().min(1).max(200),
-    ctaUrl: z.string().min(1).max(2000),
+    sectionId: z
+      .string()
+      .min(1)
+      .describe('Section into whose body the CTA button is inserted.'),
+    position: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('0-based index within the section BODY (NOT counting the divider). Omit to append at the end of the body.'),
+    ctaText: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe('Visible button label.'),
+    ctaUrl: z
+      .string()
+      .min(1)
+      .max(2000)
+      .describe('Target URL the button links to. Can be absolute or relative.'),
   }),
 
   // 10. Insert an image (image node) by referencing an already-public URL
@@ -124,10 +214,26 @@ export const editOpSchema = z.discriminatedUnion('op', [
   //     `position` is 0-based within the section body.
   z.object({
     op: z.literal('insert_image_by_url'),
-    sectionId: z.string().min(1),
-    position: z.number().int().min(0).optional(),
-    src: z.string().min(1).max(2000),
-    alt: z.string().max(500).optional(),
+    sectionId: z
+      .string()
+      .min(1)
+      .describe('Section into whose body the image is inserted.'),
+    position: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('0-based index within the section BODY. Omit to append at the end.'),
+    src: z
+      .string()
+      .min(1)
+      .max(2000)
+      .describe('Public image URL (typically ImageKit). MCP does NOT upload — the asset must already exist at this URL.'),
+    alt: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('Optional alt text for accessibility.'),
   }),
 
   // 11. Replace the page's SEO metadata (project_pages.seo_metadata JSONB).
@@ -150,12 +256,35 @@ export const editOpSchema = z.discriminatedUnion('op', [
     op: z.literal('set_seo_metadata'),
     value: z
       .object({
-        titleTag: z.string().max(200).optional(),
-        metaDescription: z.string().max(500).optional(),
-        urlSlug: z.string().max(200).optional(),
+        titleTag: z
+          .string()
+          .max(200)
+          .optional()
+          .describe('Becomes the <title> tag when the page is rendered/exported.'),
+        metaDescription: z
+          .string()
+          .max(500)
+          .optional()
+          .describe('Becomes <meta name="description"> when rendered/exported.'),
+        urlSlug: z
+          .string()
+          .max(200)
+          .optional()
+          .describe('URL path segment for the page (e.g. "home", "contact-us").'),
       })
-      .strict(),
-    merge: z.boolean().optional(),
+      .strict()
+      .describe(
+        'SEO fields. ONLY the 3 keys the WeBrief editor UI reads are accepted ' +
+          '(titleTag, metaDescription, urlSlug). Unknown keys are rejected to keep ' +
+          'the JSONB single-sourced with the UI.',
+      ),
+    merge: z
+      .boolean()
+      .optional()
+      .describe(
+        'Default true. true = merge into existing seoMetadata (preserves unspecified keys). ' +
+          'false = replace entirely (drops keys not in `value`).',
+      ),
   }),
 ]);
 

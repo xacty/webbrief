@@ -7,11 +7,10 @@ import { savePreview } from '../lib/previewStore.js';
 export const name = 'brief.previewPrefill';
 
 export const description =
-  'Loads an existing brief project, extracts its questions, and returns them alongside ' +
-  "the raw content the client wants to map onto them. Does NOT call an LLM — the client " +
-  'is expected to build the response mapping from the questions + content and then apply it ' +
-  '(Fase 3 / pages.applyEdits will provide the apply step). ' +
-  'Verifies that the project is of type `brief` before returning.';
+  'What: returns the answerable brief questions (id, type, label, hint, required, options) for a brief-type project, alongside echo of the user-provided content. Excludes section_header and file_upload questions (out of v1 prefill scope). The CLIENT does the mapping content→answers — this server never calls an LLM. ' +
+  'When: use after the user pasted brief responses or source material that should fill an existing brief. Read-only step; v1 has NO apply path for brief responses yet (planned). Surface the proposed mapping to the user and let them fill the brief via the WeBrief UI. ' +
+  'Side effects: stores a preview entry in memory (kind=brief_prefill, 10-min TTL) for traceability; no DB writes. ' +
+  'Errors: mcp_token_missing, backend_unauthorized, project_not_found, project_not_mutable, invalid_project_type (not a brief), backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the brief project to prefill'),

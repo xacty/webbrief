@@ -12,12 +12,10 @@ import { getPreview, deletePreview } from '../lib/previewStore.js';
 export const name = 'projects.createFromPreview';
 
 export const description =
-  'Creates a WeBrief project from a previously generated preview. ' +
-  'Returns the new projectId. Must be called after projects.previewCreateFromContent ' +
-  'with the previewId it returned. The preview expires after ~10 minutes. ' +
-  'Accepts optional `overrides` to last-mile-edit the preview before commit ' +
-  '(name, projectType, businessType, clientName, clientEmail) so the client ' +
-  'does not have to re-run previewCreateFromContent just to tweak a value.';
+  'What: commits a project preview into a real WeBrief project via POST /projects. Returns the created project and burns the preview so it cannot be applied twice. ' +
+  'When: step 2 of the create-project flow, AFTER projects.previewCreateFromContent. The preview expires ~10 min after creation. ' +
+  'Side effects: writes a new project + seeded pages to the database. Accepts an optional `overrides` bag to last-mile-edit the preview at apply time (name/projectType/businessType/clientName/clientEmail) so the user does not have to regenerate the preview just to tweak a value. ' +
+  'Errors: mcp_token_missing, backend_unauthorized, preview_not_found (expired/already-applied), preview_kind_mismatch, preview_company_mismatch, invalid_preview_data, backend_error.';
 
 export const inputSchema = z.object({
   companyId: companyId.describe('UUID of the company that will own the project'),

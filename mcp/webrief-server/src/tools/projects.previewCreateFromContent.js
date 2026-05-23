@@ -13,9 +13,10 @@ import { savePreview } from '../lib/previewStore.js';
 export const name = 'projects.previewCreateFromContent';
 
 export const description =
-  'Analyzes raw content (pasted text or URL bodies) and returns a preview of the project that would be created: ' +
-  'a previewId, the suggested name, projectType, and a summary of any reference URLs that were fetched server-side. ' +
-  'Does NOT persist anything. Call projects.createFromPreview with the returned previewId to commit.';
+  'What: takes pasted content + optional reference URLs, fetches the URLs server-side under the SSRF-safe policy, applies cheap heuristics to suggest name + projectType, and returns a previewId + summary. Does NOT persist anything. ' +
+  'When: step 1 of the create-project flow. Call projects.createFromPreview with the returned previewId to commit. ' +
+  'Side effects: stores a preview entry in process-local memory (10-min TTL, evicted on apply). The reference-URL fetcher hits external hosts under the policy: http/https only, 10s timeout, 2MB cap, no private/local IPs, no redirects. ' +
+  'Errors: mcp_token_missing, backend_unauthorized, company_not_found, backend_error.';
 
 export const inputSchema = z.object({
   companyId: companyId.describe('UUID of the company that will own the project'),
@@ -39,8 +40,17 @@ export const inputSchema = z.object({
     .max(200)
     .optional()
     .describe('Override the auto-detected project name'),
-  clientName: z.string().min(1).max(200).optional(),
-  clientEmail: z.string().email().optional(),
+  clientName: z
+    .string()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe('Optional client/customer display name to associate with the project.'),
+  clientEmail: z
+    .string()
+    .email()
+    .optional()
+    .describe('Optional client email — must be a valid email address.'),
   referenceUrls: referenceUrls.describe(
     'Optional list of http/https URLs the server should fetch as additional context (max 10). ' +
       'Each URL is capped at 10s and 2MB; private/local hosts are rejected.',

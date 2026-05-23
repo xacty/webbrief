@@ -6,8 +6,10 @@ import { get } from '../lib/webbriefClient.js';
 export const name = 'pages.get';
 
 export const description =
-  'Fetches a single page by ID, returning its full content (contentJson, contentHtml) and current version. ' +
-  'Record the version — you will need it to call pages.applyEdits without triggering a version conflict.';
+  'What: returns the full page payload (id/name/position/contentJson/contentHtml/seoMetadata/version/reviewStatus/updatedAt). ' +
+  'When: use right before pages.previewEdits / pages.applyEdits to capture the current version (required for optimistic concurrency) and the sectionId values inside contentJson that ops will target. ' +
+  'Side effects: none (read-only). ' +
+  'Errors: mcp_token_missing, backend_unauthorized, project_not_found, page_not_found, backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the project the page belongs to'),

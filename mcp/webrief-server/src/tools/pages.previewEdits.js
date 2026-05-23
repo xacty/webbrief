@@ -9,10 +9,10 @@ import { ensureInvariants, SUPPORTED_PROJECT_TYPES } from '../../../../shared/do
 export const name = 'pages.previewEdits';
 
 export const description =
-  'Applies a list of edit operations to a page in memory and returns the resulting contentJson, ' +
-  'a per-op summary, any unmatched-selector warnings, and the repairs that ensureInvariants applied. ' +
-  'Nothing is persisted — call pages.applyEdits with the returned previewId + expectedVersion to commit. ' +
-  'Rejects brief projects (their content is not editable via MCP v1; only brief responses are).';
+  'What: runs a list of edit ops against the current page contentJson + seoMetadata + name in memory, normalizes via ensureInvariants, and returns the resulting page state, a per-op summary (matched + before/after), warnings for unmatched selectors, and repairs the invariants module applied. ' +
+  'When: dry-run an edit batch BEFORE calling pages.applyEdits. Useful to surface unmatched selectors to the user without burning a version. ' +
+  'Side effects: no DB writes. Stores a preview entry (kind=page_edits, 10-min TTL) for traceability — the apply step does NOT reuse it (apply re-runs ops against the freshest snapshot to stay deterministic). ' +
+  'Errors: mcp_token_missing, backend_unauthorized, project_not_found, project_not_mutable, page_not_found, invalid_project_type (brief refused), edit_op_failed, invariants_failed, backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the project'),

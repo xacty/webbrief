@@ -7,10 +7,10 @@ import { getPreview, deletePreview } from '../lib/previewStore.js';
 export const name = 'projects.applyUpdate';
 
 export const description =
-  'Applies a previously generated update preview against PATCH /projects/:id. ' +
-  'Returns the updated project. Burns the preview so it cannot be applied twice. ' +
-  'Must be called after projects.previewUpdate with the previewId it returned. ' +
-  'The preview expires after ~10 minutes.';
+  'What: commits a project meta update preview via PATCH /projects/:id. Returns the updated project. Only the diffed fields (computed in previewUpdate) are sent — untouched columns are not overwritten. ' +
+  'When: step 2 of the project-update flow, AFTER projects.previewUpdate. The preview expires ~10 min after creation. ' +
+  'Side effects: writes the project meta. Burns the preview so it cannot be applied twice. ' +
+  'Errors: mcp_token_missing, backend_unauthorized, preview_not_found, preview_kind_mismatch, preview_project_mismatch, empty_update, invalid_update, project_not_found, backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the project to update'),

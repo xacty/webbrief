@@ -6,9 +6,10 @@ import { getActiveCompanyId } from '../session/activeCompany.js';
 export const name = 'session.getContext';
 
 export const description =
-  'Returns the authenticated user context: user profile, default company, and list of accessible companies. ' +
-  'Also reports the currently active company for this MCP session (if one has been set). ' +
-  'Call this first to discover companyId values for subsequent tool calls.';
+  'What: returns { user, companies[], activeCompanyId } for the authenticated MCP token. ' +
+  'When: call this FIRST on every new session to discover the user profile, the list of companies they can access, and whether an active company is already pinned. ' +
+  'Side effects: none (read-only; does not mutate session state). ' +
+  'Errors: mcp_token_missing, backend_unauthorized, backend_error.';
 
 export const inputSchema = z.object({});
 

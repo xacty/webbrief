@@ -11,25 +11,49 @@ import { savePreview } from '../lib/previewStore.js';
 export const name = 'projects.previewUpdate';
 
 export const description =
-  'Previews a metadata update against an existing project (name, clientName, ' +
-  'clientEmail, businessType, projectType). Returns a previewId + a per-field diff ' +
-  '(before vs after). Does NOT persist anything — call projects.applyUpdate with the ' +
-  'returned previewId to commit. Archived/trashed projects are rejected.';
+  'What: dry-runs an update on an EXISTING project meta (any subset of name/clientName/clientEmail/businessType/projectType). Returns previewId + a per-field diff. Fields that already match the current value are dropped from the diff (and `noop:true` is returned if everything matches). ' +
+  'When: step 1 of the rename / re-classify flow for a project that already exists. For brand-new projects use projects.previewCreateFromContent instead. ' +
+  'Side effects: stores a preview entry in memory (10-min TTL). No DB writes. ' +
+  'Errors: mcp_token_missing, backend_unauthorized, project_not_found, project_not_mutable (archived/trashed), backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the project to update'),
   changes: z
     .object({
-      name: z.string().min(1).max(200).optional(),
-      clientName: z.string().max(200).optional(),
-      clientEmail: z.string().email().optional().or(z.literal('')),
-      businessType: businessType.optional(),
-      projectType: projectTypeEnum.optional(),
+      name: z
+        .string()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe('New project display name. Cannot be empty.'),
+      clientName: z
+        .string()
+        .max(200)
+        .optional()
+        .describe('New client/customer name. Send empty string to clear the field.'),
+      clientEmail: z
+        .string()
+        .email()
+        .optional()
+        .or(z.literal(''))
+        .describe('New client email. Send empty string to clear; otherwise must be a valid email.'),
+      businessType: businessType
+        .optional()
+        .describe(
+          "Template family (e.g. 'general', 'tabula_rasa'). Cannot be empty when present.",
+        ),
+      projectType: projectTypeEnum
+        .optional()
+        .describe('One of: page, brief, document, faq. Unknown values are rejected (no silent coercion).'),
     })
     .strict()
     .refine((c) => Object.keys(c).length > 0, {
       message: 'changes must contain at least one field to update',
-    }),
+    })
+    .describe(
+      'Partial project meta. Only include fields you want to change. ' +
+        'Unknown keys are rejected. At least one field is required.',
+    ),
 });
 
 export async function handler(input) {

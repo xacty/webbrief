@@ -8,10 +8,10 @@ import { ensureInvariants, SUPPORTED_PROJECT_TYPES } from '../../../../shared/do
 export const name = 'pages.applyEdits';
 
 export const description =
-  'Applies a list of edit operations to a page and persists the result via PUT /projects/:id/pages. ' +
-  'Optimistic concurrency: caller MUST pass expectedVersion (the version they last read via pages.get). ' +
-  'On conflict the handler returns { code: "version_conflict", currentVersion, currentSnapshot } so the ' +
-  'client can re-plan against the fresh snapshot. Rejects brief projects.';
+  'What: persists a batch of edit ops to a page. Re-runs the ops against the freshest snapshot the backend has, normalizes via ensureInvariants, and writes the result through PUT /projects/:id/pages (full-replace endpoint — backend bumps version). Returns the saved page (with new version) + opsApplied + warnings + repairs. ' +
+  'When: commit a batch you already validated with pages.previewEdits. Pass expectedVersion = the version you saw in pages.get. ' +
+  'Side effects: writes contentJson + contentHtml + seoMetadata + name to the database; the backend rotates version. Other pages in the project are sent verbatim in the same PUT (full-replace contract — never sent with stale local copies). ' +
+  'Errors: mcp_token_missing, backend_unauthorized, project_not_found, project_not_mutable, page_not_found, invalid_project_type (brief refused), version_conflict (returns currentVersion + currentSnapshot for replan), invariants_failed, edit_op_failed, backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the project'),

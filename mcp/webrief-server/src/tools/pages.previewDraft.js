@@ -8,11 +8,10 @@ import { savePreview } from '../lib/previewStore.js';
 export const name = 'pages.previewDraft';
 
 export const description =
-  'Loads an existing project, fetches any reference URLs server-side, and returns the project ' +
-  'context (existing pages + projectType) alongside the raw content the client wants to draft. ' +
-  'Does NOT call an LLM — the client builds the draft from this material and then applies it ' +
-  '(Fase 3 / pages.applyEdits will provide the apply step). ' +
-  'Rejects brief projects; use brief.previewPrefill for those.';
+  'What: returns the project context (existing pages, projectType) + a suggested page name and position for a NEW page, alongside echo of the user content and bodies of any reference URLs the server fetched. The CLIENT builds the actual draft locally — this server never calls an LLM. ' +
+  'When: use to gather material before drafting a new page. To persist the draft, call pages.applyEdits with insert_section ops on the same project. ' +
+  'Side effects: stores a preview entry in memory (kind=page_draft, 10-min TTL). Reference URLs are fetched under the SSRF-safe policy: http/https only, 10s timeout, 2MB cap, no private hosts, no redirects. ' +
+  'Errors: mcp_token_missing, backend_unauthorized, project_not_found, project_not_mutable, invalid_project_type (rejects brief — use brief.previewPrefill there), backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the project the draft page will belong to'),

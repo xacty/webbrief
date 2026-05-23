@@ -6,8 +6,10 @@ import { get } from '../lib/webbriefClient.js';
 export const name = 'projects.get';
 
 export const description =
-  'Fetches a WeBrief project by ID, including its name, type, and a list of its pages (id + name + version + reviewStatus). ' +
-  'Use pages.get to fetch full page content.';
+  'What: returns { project, pages[] } for a project. Project meta covers id/name/companyId/projectType/clientName/clientEmail/businessType/archivedAt/trashedAt/updatedAt; pages are summarized (id/name/position/version/reviewStatus/updatedAt) without content. ' +
+  'When: use to inspect what a project contains before editing, or to harvest the page list to drive pages.get / pages.applyEdits. ' +
+  'Side effects: none (read-only). ' +
+  'Errors: mcp_token_missing, backend_unauthorized, project_not_found, backend_error.';
 
 export const inputSchema = z.object({
   projectId: projectId.describe('UUID of the project to fetch'),
