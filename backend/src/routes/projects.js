@@ -882,8 +882,48 @@ router.get('/:id', async (req, res) => {
 })
 
 router.patch('/:id', async (req, res) => {
-  const name = req.body.name?.trim()
-  if (!name) return res.status(400).json({ error: 'name es requerido' })
+  // Build a partial update from the request body. Only fields explicitly present
+  // are updated; undefined keys are left untouched. Allows the MCP / UI to PATCH
+  // any subset of project meta without overwriting the rest.
+  const updates = {}
+  if (req.body.name !== undefined) {
+    const name = String(req.body.name).trim()
+    if (!name) return res.status(400).json({ error: 'name no puede estar vacío' })
+    updates.name = name
+  }
+  if (req.body.clientName !== undefined) {
+    // Empty string is allowed to "clear" the client name in the UI; the column
+    // accepts NULL so we normalize blanks to null.
+    const clientName = String(req.body.clientName).trim()
+    updates.client_name = clientName || null
+  }
+  if (req.body.clientEmail !== undefined) {
+    const clientEmail = String(req.body.clientEmail).trim()
+    updates.client_email = clientEmail || null
+  }
+  if (req.body.businessType !== undefined) {
+    const businessType = String(req.body.businessType).trim()
+    if (!businessType) return res.status(400).json({ error: 'businessType no puede estar vacío' })
+    updates.business_type = businessType
+  }
+  if (req.body.projectType !== undefined) {
+    // Reuse the same normalizer the rest of the routes use — anything not in
+    // (page|brief|document|faq) falls back to 'page'. We refuse to silently
+    // coerce, so reject explicitly when the caller sends something invalid.
+    const requested = String(req.body.projectType).trim()
+    if (!['page', 'brief', 'document', 'faq'].includes(requested)) {
+      return res.status(400).json({
+        error: `projectType inválido. Valores aceptados: page, brief, document, faq.`,
+      })
+    }
+    updates.project_type = requested
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({
+      error: 'Nada para actualizar. Enviá al menos uno de: name, clientName, clientEmail, businessType, projectType.',
+    })
+  }
 
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
@@ -893,9 +933,10 @@ router.patch('/:id', async (req, res) => {
     }
 
     const timestamp = new Date().toISOString()
+    updates.updated_at = timestamp
     const { data, error } = await supabaseAdmin
       .from('projects')
-      .update({ name, updated_at: timestamp })
+      .update(updates)
       .eq('id', project.id)
       .select('*')
       .single()
