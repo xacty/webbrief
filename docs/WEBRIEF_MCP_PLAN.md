@@ -79,7 +79,7 @@ La v1 sera local para `Codex` y `Claude` usando `stdio`. La v2 sera remota usand
 - El MCP server no realiza llamadas a LLMs. La generacion de contenido (estructura inicial, borradores, prefill) la hace el cliente MCP (Codex/Claude). El servidor solo expone tools y aplica mutaciones validadas.
 - El MCP debe forwardear el token del usuario al backend en cada llamada para que el rate limiting, los permisos y la auditoria del backend apliquen naturalmente. El rate limiting propio del MCP es defensa en profundidad, no control primario.
 - El MCP no opera proyectos archivados ni en papelera. Restore se hace via UI.
-- El MCP no maneja uploads de assets ni operaciones de media en v1.
+- El MCP no maneja uploads de assets ni transformaciones de media en v1. Las imagenes se suben via UI (pipeline ImageKit); el MCP puede referenciar URLs publicas ya existentes via `insert_image_by_url` (v1.1).
 - Side-effect deseable: introducir logger estructurado (pino) cuando se monte el MCP. Hoy el backend usa solo `console.log`.
 
 ## Tools V1
@@ -192,7 +192,7 @@ Aclaraciones de scope:
 - V2 remota por `HTTP/SSE` queda fuera de la implementacion inicial.
 - El MCP opera contenido y proyectos de WeBrief, no deploy ni cambios arbitrarios de codigo.
 - La seguridad base de la app se implementa antes de habilitar mutaciones MCP.
-- V1 no maneja uploads de assets ni operaciones de media. Las imagenes se editan via UI.
+- V1 no maneja uploads de assets ni transformaciones de media. Las imagenes se suben via UI; desde v1.1 el MCP puede embeber URLs publicas ya subidas (`insert_image_by_url`) e insertar CTAs (`insert_cta`).
 - V1 no opera proyectos archivados ni en papelera.
 - El MCP server no llama a LLMs. Toda generacion la hace el cliente (Codex/Claude).
 - Existe un proyecto Supabase de desarrollo separado del de produccion antes de habilitar mutaciones.
