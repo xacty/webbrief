@@ -107,6 +107,28 @@ export const editOpSchema = z.discriminatedUnion('op', [
     sectionId: z.string().min(1),
     value: nonEmptyText,
   }),
+
+  // 9. Insert a CTA button (ctaButton node) into a section body. `position`
+  //    is a 0-based index within the section BODY (not counting the divider);
+  //    if omitted, append at the end of the body.
+  z.object({
+    op: z.literal('insert_cta'),
+    sectionId: z.string().min(1),
+    position: z.number().int().min(0).optional(),
+    ctaText: z.string().min(1).max(200),
+    ctaUrl: z.string().min(1).max(2000),
+  }),
+
+  // 10. Insert an image (image node) by referencing an already-public URL
+  //     (e.g. ImageKit). MCP does NOT upload assets — uploads stay in the UI.
+  //     `position` is 0-based within the section body.
+  z.object({
+    op: z.literal('insert_image_by_url'),
+    sectionId: z.string().min(1),
+    position: z.number().int().min(0).optional(),
+    src: z.string().min(1).max(2000),
+    alt: z.string().max(500).optional(),
+  }),
 ]);
 
 export const editOpsArraySchema = z
@@ -144,6 +166,16 @@ function makeParagraph(text) {
 
 function makeHeading(level, text) {
   return { type: 'heading', attrs: { level }, content: [makeTextNode(text)] };
+}
+
+function makeCtaButton(ctaText, ctaUrl) {
+  return { type: 'ctaButton', attrs: { ctaText, ctaUrl } };
+}
+
+function makeImage(src, alt) {
+  const attrs = { src };
+  if (alt !== undefined) attrs.alt = alt;
+  return { type: 'image', attrs };
 }
 
 function makeSectionDivider(name, sectionId) {
@@ -476,6 +508,49 @@ function opSetFaqAnswer(state, op) {
   };
 }
 
+function insertNodeIntoSection(state, op, node) {
+  const section = findSection(state.doc, op.sectionId);
+  if (!section || !section.divider) {
+    return { error: { op: op.op, matched: false, warning: `sectionId ${op.sectionId} not found` } };
+  }
+  const bodyLength = section.bodyEnd - section.bodyStart;
+  const requestedPosition = op.position ?? bodyLength;
+  const clamped = Math.max(0, Math.min(requestedPosition, bodyLength));
+  const insertAt = section.bodyStart + clamped;
+  state.doc.content = [
+    ...state.doc.content.slice(0, insertAt),
+    node,
+    ...state.doc.content.slice(insertAt),
+  ];
+  return { ok: { sectionId: op.sectionId, insertedAtBodyIndex: clamped } };
+}
+
+function opInsertCta(state, op) {
+  const result = insertNodeIntoSection(state, op, makeCtaButton(op.ctaText, op.ctaUrl));
+  if (result.error) return result.error;
+  return {
+    op: op.op,
+    matched: true,
+    sectionId: result.ok.sectionId,
+    insertedAtBodyIndex: result.ok.insertedAtBodyIndex,
+    ctaText: op.ctaText,
+    ctaUrl: op.ctaUrl,
+  };
+}
+
+function opInsertImageByUrl(state, op) {
+  const result = insertNodeIntoSection(state, op, makeImage(op.src, op.alt));
+  if (result.error) return result.error;
+  return {
+    op: op.op,
+    matched: true,
+    sectionId: result.ok.sectionId,
+    insertedAtBodyIndex: result.ok.insertedAtBodyIndex,
+    src: op.src,
+    alt: op.alt ?? null,
+  };
+}
+
 const OPS = {
   set_page_name: opSetPageName,
   set_section_name: opSetSectionName,
@@ -486,6 +561,8 @@ const OPS = {
   find_replace: opFindReplace,
   set_faq_question: opSetFaqQuestion,
   set_faq_answer: opSetFaqAnswer,
+  insert_cta: opInsertCta,
+  insert_image_by_url: opInsertImageByUrl,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────

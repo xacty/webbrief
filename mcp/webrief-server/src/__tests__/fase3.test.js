@@ -52,12 +52,14 @@ import {
 
 console.log('\nlib/editOps.js — schema');
 
-await test('EDIT_OP_NAMES exposes the 9 v1 operations', () => {
+await test('EDIT_OP_NAMES exposes the 11 v1 operations', () => {
   assert.deepEqual(
     [...EDIT_OP_NAMES].sort(),
     [
       'delete_section',
       'find_replace',
+      'insert_cta',
+      'insert_image_by_url',
       'insert_section',
       'replace_paragraph',
       'set_faq_answer',
@@ -385,6 +387,225 @@ await test('set_faq_answer collapses all paragraphs in section into one', () => 
   assert.equal(paragraphs.length, 1);
   assert.equal(paragraphs[0].content[0].text, 'Por chat o por email.');
   assert.equal(r.opsApplied[0].paragraphsCollapsed, 2);
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// insert_cta + insert_image_by_url — schema + apply
+// ──────────────────────────────────────────────────────────────────────────────
+
+await test('rejects insert_cta without sectionId', () => {
+  assert.ok(
+    !editOpSchema.safeParse({
+      op: 'insert_cta',
+      ctaText: 'Empezar',
+      ctaUrl: 'https://x.com',
+    }).success,
+  );
+});
+
+await test('rejects insert_cta with empty ctaText', () => {
+  assert.ok(
+    !editOpSchema.safeParse({
+      op: 'insert_cta',
+      sectionId: 'sec-1',
+      ctaText: '',
+      ctaUrl: 'https://x.com',
+    }).success,
+  );
+});
+
+await test('rejects insert_cta with empty ctaUrl', () => {
+  assert.ok(
+    !editOpSchema.safeParse({
+      op: 'insert_cta',
+      sectionId: 'sec-1',
+      ctaText: 'X',
+      ctaUrl: '',
+    }).success,
+  );
+});
+
+await test('rejects insert_image_by_url without sectionId or src', () => {
+  assert.ok(!editOpSchema.safeParse({ op: 'insert_image_by_url', src: 'x' }).success);
+  assert.ok(
+    !editOpSchema.safeParse({ op: 'insert_image_by_url', sectionId: 'sec-1', src: '' }).success,
+  );
+});
+
+await test('insert_cta appends a ctaButton at end of section body', () => {
+  const r = applyEditsToContentJson({
+    contentJson: buildPageDoc(),
+    ops: [
+      {
+        op: 'insert_cta',
+        sectionId: 'sec-1',
+        ctaText: 'Bienvenido mundo',
+        ctaUrl: 'https://webrief.app',
+      },
+    ],
+    pageName: 'p',
+    projectType: 'page',
+  });
+  assert.equal(r.opsApplied[0].matched, true);
+  assert.equal(r.opsApplied[0].sectionId, 'sec-1');
+  // sec-1 body is content[1..3] (heading + 2 paragraphs); divider for sec-2 is at index 4.
+  // After insert, the ctaButton should be at index 4 (immediately before sec-2 divider).
+  const sec2DividerIdx = r.contentJson.content.findIndex(
+    (n) => n.type === 'sectionDivider' && n.attrs.sectionId === 'sec-2',
+  );
+  const ctaNode = r.contentJson.content[sec2DividerIdx - 1];
+  assert.equal(ctaNode.type, 'ctaButton');
+  assert.equal(ctaNode.attrs.ctaText, 'Bienvenido mundo');
+  assert.equal(ctaNode.attrs.ctaUrl, 'https://webrief.app');
+});
+
+await test('insert_cta with position=0 inserts at start of section body', () => {
+  const r = applyEditsToContentJson({
+    contentJson: buildPageDoc(),
+    ops: [
+      {
+        op: 'insert_cta',
+        sectionId: 'sec-2',
+        position: 0,
+        ctaText: 'Ver más',
+        ctaUrl: 'https://x.com',
+      },
+    ],
+    pageName: 'p',
+    projectType: 'page',
+  });
+  const sec2DividerIdx = r.contentJson.content.findIndex(
+    (n) => n.type === 'sectionDivider' && n.attrs.sectionId === 'sec-2',
+  );
+  const afterDivider = r.contentJson.content[sec2DividerIdx + 1];
+  assert.equal(afterDivider.type, 'ctaButton');
+  assert.equal(afterDivider.attrs.ctaText, 'Ver más');
+});
+
+await test('insert_cta warns when sectionId not found', () => {
+  const r = applyEditsToContentJson({
+    contentJson: buildPageDoc(),
+    ops: [
+      {
+        op: 'insert_cta',
+        sectionId: 'missing',
+        ctaText: 'X',
+        ctaUrl: 'https://x.com',
+      },
+    ],
+    pageName: 'p',
+    projectType: 'page',
+  });
+  assert.equal(r.opsApplied[0].matched, false);
+  assert.match(r.warnings[0], /sectionId missing not found/);
+});
+
+await test('insert_image_by_url appends an image node at end of section body', () => {
+  const r = applyEditsToContentJson({
+    contentJson: buildPageDoc(),
+    ops: [
+      {
+        op: 'insert_image_by_url',
+        sectionId: 'sec-1',
+        src: 'https://ik.imagekit.io/x/hero.jpg',
+        alt: 'Hero',
+      },
+    ],
+    pageName: 'p',
+    projectType: 'page',
+  });
+  assert.equal(r.opsApplied[0].matched, true);
+  assert.equal(r.opsApplied[0].src, 'https://ik.imagekit.io/x/hero.jpg');
+  assert.equal(r.opsApplied[0].alt, 'Hero');
+  const sec2DividerIdx = r.contentJson.content.findIndex(
+    (n) => n.type === 'sectionDivider' && n.attrs.sectionId === 'sec-2',
+  );
+  const imgNode = r.contentJson.content[sec2DividerIdx - 1];
+  assert.equal(imgNode.type, 'image');
+  assert.equal(imgNode.attrs.src, 'https://ik.imagekit.io/x/hero.jpg');
+  assert.equal(imgNode.attrs.alt, 'Hero');
+});
+
+await test('insert_image_by_url without alt records alt=null in summary', () => {
+  const r = applyEditsToContentJson({
+    contentJson: buildPageDoc(),
+    ops: [
+      {
+        op: 'insert_image_by_url',
+        sectionId: 'sec-2',
+        src: 'https://ik.imagekit.io/x/photo.png',
+      },
+    ],
+    pageName: 'p',
+    projectType: 'page',
+  });
+  assert.equal(r.opsApplied[0].matched, true);
+  assert.equal(r.opsApplied[0].alt, null);
+  // alt attr is omitted when not provided.
+  const imgNode = r.contentJson.content.find((n) => n.type === 'image');
+  assert.ok(imgNode);
+  assert.equal('alt' in imgNode.attrs, false);
+});
+
+await test('insert_image_by_url warns when sectionId not found', () => {
+  const r = applyEditsToContentJson({
+    contentJson: buildPageDoc(),
+    ops: [
+      {
+        op: 'insert_image_by_url',
+        sectionId: 'nope',
+        src: 'https://ik.imagekit.io/x/y.jpg',
+      },
+    ],
+    pageName: 'p',
+    projectType: 'page',
+  });
+  assert.equal(r.opsApplied[0].matched, false);
+  assert.match(r.warnings[0], /sectionId nope not found/);
+});
+
+await test('insert_cta + insert_image_by_url survive ensureInvariants', async () => {
+  const { ensureInvariants } = await import(
+    '../../../../shared/documentInvariants.js'
+  );
+  const edited = applyEditsToContentJson({
+    contentJson: buildPageDoc(),
+    ops: [
+      {
+        op: 'insert_cta',
+        sectionId: 'sec-1',
+        ctaText: 'Empezar',
+        ctaUrl: 'https://webrief.app',
+      },
+      {
+        op: 'insert_image_by_url',
+        sectionId: 'sec-1',
+        position: 0,
+        src: 'https://ik.imagekit.io/x/hero.jpg',
+        alt: 'Hero',
+      },
+    ],
+    pageName: 'p',
+    projectType: 'page',
+  });
+  const normalized = ensureInvariants(edited.contentJson, 'page');
+  // Repair shouldn't have changed attrs of well-formed nodes.
+  const cta = normalized.contentJson.content.find((n) => n.type === 'ctaButton');
+  assert.ok(cta, 'ctaButton must survive ensureInvariants');
+  assert.equal(cta.attrs.ctaText, 'Empezar');
+  assert.equal(cta.attrs.ctaUrl, 'https://webrief.app');
+  const img = normalized.contentJson.content.find((n) => n.type === 'image');
+  assert.ok(img, 'image node must survive ensureInvariants');
+  assert.equal(img.attrs.src, 'https://ik.imagekit.io/x/hero.jpg');
+  // CTA repair shouldn't have logged any defaults.
+  assert.equal(
+    normalized.repairs.some((r) => /CTA node/.test(r)),
+    false,
+  );
+  // HTML output should embed both nodes.
+  assert.match(normalized.contentHtml, /data-cta-button/);
+  assert.match(normalized.contentHtml, /data-cta-text="Empezar"/);
+  assert.match(normalized.contentHtml, /<img[^>]+src="https:\/\/ik\.imagekit\.io\/x\/hero\.jpg"/);
 });
 
 await test('multiple ops applied in order', () => {
