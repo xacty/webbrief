@@ -17,6 +17,7 @@ import publicRoutes from './routes/public.js'
 import trashRoutes from './routes/trash.js'
 import securityRoutes from './routes/security.js'
 import mcpTokensRoutes from './routes/mcpTokens.js'
+import mcpRoutes from './routes/mcp.js'
 import {
   buildCorsOptions,
   enforceIpSecurityBlock,
@@ -58,6 +59,7 @@ app.use('/api/users', usersRoutes)
 app.use('/api/notifications', notificationsRoutes)
 app.use('/api/trash', trashRoutes)
 app.use('/api/security', securityRoutes)
+app.use('/api/mcp', mcpRoutes)
 app.use(securityErrorHandler)
 
 app.listen(PORT, () => {

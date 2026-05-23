@@ -1,33 +1,76 @@
 /**
- * activeCompany.js — Module-level session state for v1 single-process MCP.
+ * activeCompany.js — per-token "active company" session state.
  *
- * Stores the user's currently selected active company for this MCP session.
- * Module-level state is correct for v1 (one MCP process per user, stdio transport).
- * Multi-tenant / per-session isolation comes in v2 with HTTP/SSE transport.
+ * Behavior is mode-dependent:
+ *
+ *   - stdio: one user per process, so a module-level variable is safe.
+ *
+ *   - HTTP: one Express process serves many users concurrently. Using a
+ *     module-level variable would cross-contaminate users — user A picks
+ *     company X, user B picks company Y, user A's next request would see
+ *     Y. To prevent that we key the state by the per-request token using
+ *     a shared `Map<token, companyId>` passed in via requestContext.
+ *
+ * The HTTP entry point creates that Map once at server boot and threads it
+ * through every request via `runInRequestContext({ token, activeCompanyByToken, ... })`.
+ *
+ * If no request context is open (stdio mode), the helpers fall back to a
+ * module-level variable so existing stdio callers keep working unchanged.
  */
 
+import { getRequestContext } from './requestContext.js';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// stdio fallback — single variable
+// ──────────────────────────────────────────────────────────────────────────────
+
 /** @type {string | null} */
-let activeCompanyId = null
+let stdioActiveCompanyId = null;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Public API
+// ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Returns the currently active company ID, or null if none has been set.
+ * Returns the active company ID for the current request, or null.
  * @returns {string | null}
  */
 export function getActiveCompanyId() {
-  return activeCompanyId
+  const ctx = getRequestContext();
+  if (ctx?.activeCompanyByToken && ctx.token) {
+    return ctx.activeCompanyByToken.get(ctx.token) ?? null;
+  }
+  return stdioActiveCompanyId;
 }
 
 /**
- * Sets the active company ID for this session.
+ * Sets the active company ID for the current request.
  * @param {string} id  UUID of the company to activate
  */
 export function setActiveCompanyId(id) {
-  activeCompanyId = id
+  const ctx = getRequestContext();
+  if (ctx?.activeCompanyByToken && ctx.token) {
+    ctx.activeCompanyByToken.set(ctx.token, id);
+    return;
+  }
+  stdioActiveCompanyId = id;
 }
 
 /**
- * Clears the active company ID (resets to no selection).
+ * Clears the active company ID for the current request.
  */
 export function clearActiveCompanyId() {
-  activeCompanyId = null
+  const ctx = getRequestContext();
+  if (ctx?.activeCompanyByToken && ctx.token) {
+    ctx.activeCompanyByToken.delete(ctx.token);
+    return;
+  }
+  stdioActiveCompanyId = null;
+}
+
+// Test-only: reset both modes' state.
+export function _resetActiveCompanyForTests() {
+  stdioActiveCompanyId = null;
+  const ctx = getRequestContext();
+  if (ctx?.activeCompanyByToken) ctx.activeCompanyByToken.clear();
 }

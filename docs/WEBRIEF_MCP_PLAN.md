@@ -161,12 +161,36 @@ Aclaraciones de scope:
 - Preservar `content_json`, `content_html`, actividad y auditoria.
 - Cubrir cambios de titulos, parrafos, secciones, paginas y FAQ.
 
-### Fase 4: MCP Remoto V2
+### Fase 4: MCP Remoto (en scope v1, no v2)
 
-- Disenar transporte `HTTP/SSE`.
-- Definir autenticacion remota y controles de cliente.
-- Evaluar montaje en VPS detras de Nginx.
-- Preparar compatibilidad futura con clientes como `ChatGPT`.
+**Cambio respecto al plan original (2026-05-23)**: la fase remota se moviò
+dentro de v1 para evitar que cada usuario tenga que clonar el repo y
+mantener un path absoluto en su cliente MCP. La distribución será un
+único endpoint HTTP en el VPS de WeBrief; los clientes se conectan con
+una URL + su `mcpt_*` token, sin npm install ni binarios locales.
+
+Decisiones:
+
+- **Transporte**: `StreamableHTTPServerTransport` del SDK MCP (v1.29.0+).
+  Compatible con Claude Code, Codex CLI, Claude Desktop. SSE legacy NO
+  se implementa (deprecado en favor de Streamable HTTP).
+- **Auth**: token bearer `mcpt_*` en `Authorization` header de cada
+  request, validado por el `requireAuth` middleware existente del
+  backend Express (fast-path `mcpt_` ya implementado en Prep A).
+- **Montaje**: dentro del backend Express, en `POST /api/mcp`. Reusa el
+  mismo proceso y middleware; cero overhead de proceso adicional.
+- **Multi-tenant**: el server hoy es monolítico (env-scoped); pasa a
+  per-request via `AsyncLocalStorage`. Cada handler recibe el token +
+  `currentUser` del request actual; el state de "active company" se
+  guarda en un `Map<token, companyId>` en lugar de variable global.
+- **Stdio sigue funcionando**: `src/index.js` queda como fallback para
+  desarrollo local y para usuarios que prefieran el modo offline.
+- **Nginx**: el endpoint vive bajo el mismo dominio del backend; Nginx
+  pasa el body raw + `Authorization` header. No requiere cambios
+  sustanciales en el reverse proxy.
+- **OAuth/device flow**: NO se implementa en esta vuelta. El `mcpt_`
+  token actúa como API key. Si en el futuro hay multi-org / scopes
+  complejos, se migra a OAuth sin romper el contrato de los tools.
 
 ## Validacion
 
