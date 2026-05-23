@@ -99,9 +99,11 @@ export async function handler(input) {
     };
   }
 
-  // 4. Apply ops to the current contentJson.
+  // 4. Apply ops to the current contentJson + seoMetadata.
   const startingContentJson =
     targetPage.contentJson ?? targetPage.content_json ?? { type: 'doc', content: [] };
+  const startingSeoMetadata =
+    targetPage.seoMetadata ?? targetPage.seo_metadata ?? {};
 
   let edited;
   try {
@@ -109,6 +111,7 @@ export async function handler(input) {
       contentJson: startingContentJson,
       ops: input.edits,
       pageName: targetPage.name,
+      seoMetadata: startingSeoMetadata,
       projectType,
     });
   } catch (err) {
@@ -138,7 +141,7 @@ export async function handler(input) {
         position: p.position,
         contentJson: normalized.contentJson,
         contentHtml: normalized.contentHtml,
-        seoMetadata: p.seoMetadata ?? p.seo_metadata ?? {},
+        seoMetadata: edited.seoMetadata ?? {},
         contentRules: p.contentRules ?? p.content_rules ?? {},
         version: currentVersion, // backend bumps to currentVersion + 1
         reviewStatus: p.reviewStatus ?? p.review_status ?? 'draft',
@@ -183,6 +186,7 @@ export async function handler(input) {
       version: newVersion,
       contentJson: normalized.contentJson,
       contentHtml: normalized.contentHtml,
+      seoMetadata: edited.seoMetadata ?? {},
       reviewStatus: savedPage?.reviewStatus ?? targetPage.reviewStatus ?? 'draft',
       updatedAt: savedPage?.updatedAt ?? null,
     },

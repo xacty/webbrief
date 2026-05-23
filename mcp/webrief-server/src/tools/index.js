@@ -2,6 +2,8 @@ export * as sessionGetContext from './session.getContext.js';
 export * as companiesSelectActive from './companies.selectActive.js';
 export * as projectsPreviewCreateFromContent from './projects.previewCreateFromContent.js';
 export * as projectsCreateFromPreview from './projects.createFromPreview.js';
+export * as projectsPreviewUpdate from './projects.previewUpdate.js';
+export * as projectsApplyUpdate from './projects.applyUpdate.js';
 export * as briefPreviewPrefill from './brief.previewPrefill.js';
 export * as pagesPreviewDraft from './pages.previewDraft.js';
 export * as projectsGet from './projects.get.js';

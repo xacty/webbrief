@@ -67,6 +67,7 @@ export async function handler(input) {
 
   const startingContentJson = page.contentJson ?? page.content_json ?? { type: 'doc', content: [] };
   const startingPageName = page.name;
+  const startingSeoMetadata = page.seoMetadata ?? page.seo_metadata ?? {};
 
   // Apply ops to a deep clone.
   let edited;
@@ -75,6 +76,7 @@ export async function handler(input) {
       contentJson: startingContentJson,
       ops: input.edits,
       pageName: startingPageName,
+      seoMetadata: startingSeoMetadata,
       projectType,
     });
   } catch (err) {
@@ -112,6 +114,7 @@ export async function handler(input) {
     pageVersion: page.version ?? page.version ?? 1,
     contentJson: normalized.contentJson,
     contentHtml: normalized.contentHtml,
+    seoMetadata: edited.seoMetadata,
     opsApplied: edited.opsApplied,
     warnings: edited.warnings,
     repairs: normalized.repairs,
@@ -129,6 +132,7 @@ export async function handler(input) {
       version: page.version ?? 1,
       contentJson: normalized.contentJson,
       contentHtml: normalized.contentHtml,
+      seoMetadata: edited.seoMetadata,
     },
     opsApplied: edited.opsApplied,
     warnings: edited.warnings,

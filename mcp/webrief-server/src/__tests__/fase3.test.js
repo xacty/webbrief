@@ -52,7 +52,7 @@ import {
 
 console.log('\nlib/editOps.js — schema');
 
-await test('EDIT_OP_NAMES exposes the 11 v1 operations', () => {
+await test('EDIT_OP_NAMES exposes the 12 v1 operations', () => {
   assert.deepEqual(
     [...EDIT_OP_NAMES].sort(),
     [
@@ -67,8 +67,55 @@ await test('EDIT_OP_NAMES exposes the 11 v1 operations', () => {
       'set_heading_text',
       'set_page_name',
       'set_section_name',
+      'set_seo_metadata',
     ].sort(),
   );
+});
+
+await test('set_seo_metadata schema accepts known SEO keys, rejects unknown ones', () => {
+  const ok = editOpSchema.safeParse({
+    op: 'set_seo_metadata',
+    value: { title: 'Hi', description: 'desc', keywords: ['a', 'b'], noindex: true },
+  });
+  assert.ok(ok.success, 'should accept known keys');
+
+  const unknown = editOpSchema.safeParse({
+    op: 'set_seo_metadata',
+    value: { madeUpKey: 'x' },
+  });
+  assert.ok(!unknown.success, 'should reject unknown keys (strict)');
+});
+
+await test('set_seo_metadata merges into existing seoMetadata by default', () => {
+  const r = applyEditsToContentJson({
+    contentJson: { type: 'doc', content: [] },
+    ops: [
+      { op: 'set_seo_metadata', value: { title: 'New title', description: 'desc' } },
+    ],
+    pageName: 'p',
+    seoMetadata: { title: 'Old title', ogImage: 'https://kept' },
+    projectType: 'page',
+  });
+  assert.equal(r.seoMetadata.title, 'New title');
+  assert.equal(r.seoMetadata.description, 'desc');
+  assert.equal(r.seoMetadata.ogImage, 'https://kept', 'pre-existing field should remain');
+  assert.deepEqual(r.opsApplied[0].changedKeys.sort(), ['description', 'title'].sort());
+  assert.deepEqual(r.opsApplied[0].removedKeys, []);
+});
+
+await test('set_seo_metadata with merge=false replaces all fields', () => {
+  const r = applyEditsToContentJson({
+    contentJson: { type: 'doc', content: [] },
+    ops: [
+      { op: 'set_seo_metadata', merge: false, value: { title: 'Only this' } },
+    ],
+    pageName: 'p',
+    seoMetadata: { title: 'Old', ogImage: 'https://gone' },
+    projectType: 'page',
+  });
+  assert.equal(r.seoMetadata.title, 'Only this');
+  assert.equal(r.seoMetadata.ogImage, undefined, 'pre-existing field should be dropped');
+  assert.ok(r.opsApplied[0].removedKeys.includes('ogImage'));
 });
 
 await test('rejects an empty op list', () => {
@@ -826,6 +873,53 @@ await test('happy path: PUT receives every page with the target modified', async
     // Other page stays as-is
     const otherInPayload = body.pages.find((p) => p.id === OTHER_PAGE_ID);
     assert.equal(otherInPayload.name, 'Contacto');
+  });
+});
+
+await test('set_seo_metadata persisted: PUT payload carries the new seoMetadata for target page only', async () => {
+  const SAVED_VERSION = 5;
+  const projectResp = buildProjectResponse();
+  // Pre-seed an existing SEO field on the target page.
+  projectResp.pages[0].seoMetadata = { ogImage: 'https://keep' };
+  // And on the OTHER page so we can prove we don't disturb it.
+  projectResp.pages[1].seoMetadata = { title: 'untouched' };
+
+  const routes = {
+    [`GET ${BACKEND_BASE}/projects/${PROJECT_ID}`]: { body: projectResp },
+    [`PUT ${BACKEND_BASE}/projects/${PROJECT_ID}/pages`]: {
+      body: {
+        pages: [
+          { id: PAGE_ID, name: 'p', version: SAVED_VERSION, reviewStatus: 'draft' },
+          { id: OTHER_PAGE_ID, name: 'c', version: 2, reviewStatus: 'draft' },
+        ],
+      },
+    },
+  };
+
+  await withMockedFetch(routes, async (calls) => {
+    const r = await pagesApplyEdits.handler({
+      projectId: PROJECT_ID,
+      pageId: PAGE_ID,
+      expectedVersion: 4,
+      edits: [
+        {
+          op: 'set_seo_metadata',
+          value: { title: 'SEO title', description: 'SEO desc' },
+        },
+      ],
+    });
+    assert.equal(r.status, 'ok');
+
+    const putCall = calls.find((c) => c.method === 'PUT');
+    const body = JSON.parse(putCall.options.body);
+
+    const target = body.pages.find((p) => p.id === PAGE_ID);
+    assert.equal(target.seoMetadata.title, 'SEO title');
+    assert.equal(target.seoMetadata.description, 'SEO desc');
+    assert.equal(target.seoMetadata.ogImage, 'https://keep', 'merge preserves pre-existing');
+
+    const other = body.pages.find((p) => p.id === OTHER_PAGE_ID);
+    assert.equal(other.seoMetadata.title, 'untouched', 'other page seoMetadata untouched');
   });
 });
 

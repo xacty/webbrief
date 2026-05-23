@@ -129,6 +129,26 @@ export const editOpSchema = z.discriminatedUnion('op', [
     src: z.string().min(1).max(2000),
     alt: z.string().max(500).optional(),
   }),
+
+  // 11. Replace the page's SEO metadata (project_pages.seo_metadata JSONB).
+  //     Lives outside contentJson — the op mutates state.seoMetadata, which
+  //     the calling handler must persist via PUT /:id/pages.
+  //     `merge=true` (default) merges keys into existing metadata; merge=false
+  //     replaces it entirely. Use merge=false to clear stale fields.
+  z.object({
+    op: z.literal('set_seo_metadata'),
+    value: z
+      .object({
+        title: z.string().max(200).optional(),
+        description: z.string().max(500).optional(),
+        ogImage: z.string().max(2000).optional(),
+        keywords: z.array(z.string().min(1).max(100)).max(20).optional(),
+        canonicalUrl: z.string().max(2000).optional(),
+        noindex: z.boolean().optional(),
+      })
+      .strict(),
+    merge: z.boolean().optional(),
+  }),
 ]);
 
 export const editOpsArraySchema = z
@@ -551,6 +571,31 @@ function opInsertImageByUrl(state, op) {
   };
 }
 
+function opSetSeoMetadata(state, op) {
+  const before = { ...state.seoMetadata };
+  const merge = op.merge !== false; // default true
+  const next = merge ? { ...state.seoMetadata, ...op.value } : { ...op.value };
+  // Strip explicit `undefined` so the resulting JSONB stays compact.
+  for (const k of Object.keys(next)) {
+    if (next[k] === undefined) delete next[k];
+  }
+  state.seoMetadata = next;
+  // Compute a small diff for the audit summary.
+  const changedKeys = Object.keys(next).filter(
+    (k) => JSON.stringify(next[k]) !== JSON.stringify(before[k]),
+  );
+  const removedKeys = !merge
+    ? Object.keys(before).filter((k) => !(k in next))
+    : [];
+  return {
+    op: op.op,
+    matched: true,
+    merge,
+    changedKeys,
+    removedKeys,
+  };
+}
+
 const OPS = {
   set_page_name: opSetPageName,
   set_section_name: opSetSectionName,
@@ -563,6 +608,7 @@ const OPS = {
   set_faq_answer: opSetFaqAnswer,
   insert_cta: opInsertCta,
   insert_image_by_url: opInsertImageByUrl,
+  set_seo_metadata: opSetSeoMetadata,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -576,10 +622,23 @@ const OPS = {
  * @param {object} params.contentJson  Initial ProseMirror doc
  * @param {Array<object>} params.ops    List of typed edit operations
  * @param {string} params.pageName     Current page name (used by set_page_name)
+ * @param {object} [params.seoMetadata] Current seoMetadata (used by set_seo_metadata)
  * @param {string} params.projectType  page | document | faq
- * @returns {{ contentJson: object, pageName: string, opsApplied: object[], warnings: string[] }}
+ * @returns {{
+ *   contentJson: object,
+ *   pageName: string,
+ *   seoMetadata: object,
+ *   opsApplied: object[],
+ *   warnings: string[],
+ * }}
  */
-export function applyEditsToContentJson({ contentJson, ops, pageName, projectType }) {
+export function applyEditsToContentJson({
+  contentJson,
+  ops,
+  pageName,
+  seoMetadata,
+  projectType,
+}) {
   if (!contentJson || contentJson.type !== 'doc') {
     throw new Error('applyEditsToContentJson: contentJson must be a ProseMirror doc');
   }
@@ -590,6 +649,8 @@ export function applyEditsToContentJson({ contentJson, ops, pageName, projectTyp
   const state = {
     doc: deepClone(contentJson),
     pageName: pageName ?? '',
+    seoMetadata:
+      seoMetadata && typeof seoMetadata === 'object' ? deepClone(seoMetadata) : {},
     projectType,
     idCounter: 0,
   };
@@ -615,6 +676,7 @@ export function applyEditsToContentJson({ contentJson, ops, pageName, projectTyp
   return {
     contentJson: state.doc,
     pageName: state.pageName,
+    seoMetadata: state.seoMetadata,
     opsApplied,
     warnings,
   };
