@@ -133,18 +133,26 @@ export const editOpSchema = z.discriminatedUnion('op', [
   // 11. Replace the page's SEO metadata (project_pages.seo_metadata JSONB).
   //     Lives outside contentJson — the op mutates state.seoMetadata, which
   //     the calling handler must persist via PUT /:id/pages.
+  //
+  //     Keys are ALIGNED with the frontend editor's SEO panel
+  //     (frontend/src/pages/ProjectEditor.jsx → getPageSeoMetadata):
+  //       - titleTag         (max 200, what becomes <title>)
+  //       - metaDescription  (max 500, what becomes <meta name=description>)
+  //       - urlSlug          (max 200, the path segment)
+  //
+  //     If the frontend ever adds richer SEO fields (ogImage, keywords,
+  //     canonicalUrl, noindex), reintroduce them here with the SAME names
+  //     the UI uses so the JSONB stays single-sourced.
+  //
   //     `merge=true` (default) merges keys into existing metadata; merge=false
   //     replaces it entirely. Use merge=false to clear stale fields.
   z.object({
     op: z.literal('set_seo_metadata'),
     value: z
       .object({
-        title: z.string().max(200).optional(),
-        description: z.string().max(500).optional(),
-        ogImage: z.string().max(2000).optional(),
-        keywords: z.array(z.string().min(1).max(100)).max(20).optional(),
-        canonicalUrl: z.string().max(2000).optional(),
-        noindex: z.boolean().optional(),
+        titleTag: z.string().max(200).optional(),
+        metaDescription: z.string().max(500).optional(),
+        urlSlug: z.string().max(200).optional(),
       })
       .strict(),
     merge: z.boolean().optional(),
