@@ -4161,6 +4161,7 @@ export default function ProjectEditor() {
         projectName={projectMeta?.name || 'Proyecto'}
         projectType={projectType}
         companyId={projectMeta?.companyId || ''}
+        companyName={projectMeta?.companyName || ''}
         saveMessage={saveMessage}
         isDirty={isDirty}
         isSaving={isSaving}
@@ -4627,6 +4628,7 @@ function Navbar({
   projectName,
   projectType = 'page',
   companyId,
+  companyName = '',
   saveMessage,
   isDirty,
   isSaving,
@@ -4650,6 +4652,7 @@ function Navbar({
   openMenuId,
   onSetOpenMenuId,
 }) {
+  const navigate = useNavigate()
   const saveLabel = saveMessage || (isDirty ? 'Sin guardar' : 'Guardado')
   return (
     <div className={navStyles.navbar}>
@@ -4659,10 +4662,31 @@ function Navbar({
           <span className={navStyles.navLogoLight}>We</span>
           <span className={navStyles.navLogoBold}>Brief</span>
         </span>
-        <button className={navStyles.navBackBtn} onClick={onBack} title={companyId ? 'Volver a la empresa' : 'Volver a empresas'}>
-          <ArrowLeft size={18} />
-        </button>
-        <ProjectNameInput name={projectName} onRename={canRenameProject ? onRenameProject : null} />
+        <div className={navStyles.navLeftInner}>
+          {(companyId || companyName) && (
+            <nav className={navStyles.breadcrumb} aria-label="Migas de pan">
+              <button type="button" className={navStyles.breadcrumbLink} onClick={() => navigate('/companies')}>
+                Empresas
+              </button>
+              {companyId && companyName && (
+                <>
+                  <span className={navStyles.breadcrumbSep} aria-hidden="true">/</span>
+                  <button type="button" className={navStyles.breadcrumbLink} onClick={() => navigate(`/companies/${companyId}`)}>
+                    {companyName}
+                  </button>
+                </>
+              )}
+              <span className={navStyles.breadcrumbSep} aria-hidden="true">/</span>
+              <span className={navStyles.breadcrumbCurrent} aria-current="page">{projectName}</span>
+            </nav>
+          )}
+          <div className={navStyles.navLeftTop}>
+            <button className={navStyles.navBackBtn} onClick={onBack} title={companyId ? 'Volver a la empresa' : 'Volver a empresas'}>
+              <ArrowLeft size={18} />
+            </button>
+            <ProjectNameInput name={projectName} onRename={canRenameProject ? onRenameProject : null} />
+          </div>
+        </div>
       </div>
 
       {/* Columna central: Pills de páginas */}
@@ -4694,7 +4718,14 @@ function Navbar({
 
       {/* Columna derecha: Iconos + Save */}
       <div className={navStyles.navRight}>
-        <span className={navStyles.navSaveStatus}>{saveLabel}</span>
+        {isDirty && !isSaving ? (
+          <span className={navStyles.saveStatusChip} aria-live="polite">
+            <span className={navStyles.saveStatusDot} aria-hidden="true" />
+            {saveMessage || 'Sin guardar'}
+          </span>
+        ) : (
+          <span className={navStyles.navSaveStatus}>{saveLabel}</span>
+        )}
         <button
           type="button"
           className={`${navStyles.navSaveBtn} ${isSaving ? navStyles.navSaveBtnDisabled : ''}`}
