@@ -50,6 +50,23 @@
   background: #f2f2f2;
 }
 
+/* Canvas — TipTap editing surface. Always paper-light regardless of
+   global theme. Per spec F1: canvas siempre claro, chrome sigue toggle. */
+.canvas {
+  background: var(--wb-canvas-bg);
+  color: var(--wb-canvas-text);
+  border-color: var(--wb-canvas-border);
+}
+
+.canvas a {
+  color: var(--wb-color-primary-700);
+}
+
+.canvas ::selection {
+  background: var(--wb-color-primary-100);
+  color: var(--wb-canvas-text);
+}
+
 .toolbarSep {
   width: 1px;
   height: 20px;

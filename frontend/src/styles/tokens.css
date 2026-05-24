@@ -3,7 +3,7 @@
      Color palette — shades 50-900
      Decisions: .planning/intel/decisions.md (Color)
      - Grays: cool-tinted (slate family)
-     - Primary (Royal Blue): #2563eb at -600 (--wb-primary)
+     - Primary (Indigo): #4f46e5 at -600 (--wb-primary)
      - Body text on white: use --wb-color-neutral-700 or darker (WCAG AA 4.5:1)
      ============================================================ */
 
@@ -19,17 +19,17 @@
   --wb-color-neutral-800: #1e293b;
   --wb-color-neutral-900: #0f172a;
 
-  /* Primary (Royal Blue — #2563eb at -600) */
-  --wb-color-primary-50:  #eff6ff;
-  --wb-color-primary-100: #dbeafe;
-  --wb-color-primary-200: #bfdbfe;
-  --wb-color-primary-300: #93c5fd;
-  --wb-color-primary-400: #60a5fa;
-  --wb-color-primary-500: #3b82f6;
-  --wb-color-primary-600: #2563eb; /* main accent */
-  --wb-color-primary-700: #1d4ed8;
-  --wb-color-primary-800: #1e40af;
-  --wb-color-primary-900: #1e3a8a;
+  /* Primary (Indigo — #4f46e5 at -600) */
+  --wb-color-primary-50:  #eef2ff;
+  --wb-color-primary-100: #e0e7ff;
+  --wb-color-primary-200: #c7d2fe;
+  --wb-color-primary-300: #a5b4fc;
+  --wb-color-primary-400: #818cf8;
+  --wb-color-primary-500: #6366f1;
+  --wb-color-primary-600: #4f46e5; /* main accent */
+  --wb-color-primary-700: #4338ca;
+  --wb-color-primary-800: #3730a3;
+  --wb-color-primary-900: #312e81;
 
   /* Success (green) */
   --wb-color-success-50:  #f0fdf4;
@@ -70,14 +70,14 @@
   /* Legacy aliases — preserve current computed values for back-compat.
      Plans 02-05 of this milestone will gradually migrate consumers
      to the new --wb-color-* tokens; do NOT remove these aliases yet. */
-  --wb-bg: var(--wb-color-neutral-50);            /* was #f8fafc */
+  --wb-bg: #f3f2ff;                               /* Modern SaaS lavender tint */
   --wb-surface: #ffffff;                          /* no canonical needed */
   --wb-surface-muted: var(--wb-color-neutral-100);/* was #f1f5f9 */
   --wb-border: #dbe3f0;                           /* keep literal — between 200 and 300 */
   --wb-border-strong: #c7d2e5;                    /* keep literal */
   --wb-text: var(--wb-color-neutral-900);         /* #0f172a — slate, NOT blue */
   --wb-text-muted: var(--wb-color-neutral-500);   /* #64748b */
-  --wb-primary: var(--wb-color-primary-600);      /* #2563eb — Royal Blue */
+  --wb-primary: var(--wb-color-primary-600);      /* #4f46e5 — Indigo */
   --wb-primary-hover: var(--wb-color-primary-700);/* #1d4ed8 */
   --wb-primary-soft: var(--wb-color-primary-50);  /* #eff6ff */
   --wb-success: #0f766e;                          /* keep literal — Phase 1 preserves teal accent */
@@ -180,9 +180,9 @@
   --wb-radius-lg: 18px;
   --wb-content-width: 1180px;
 
-  /* Card elevation — blue-tinted (light mode only; dark overrides below) */
-  --wb-shadow-card:       0 4px 16px rgba(37, 99, 235, 0.10), 0 1px 3px rgba(0, 0, 0, 0.04);
-  --wb-shadow-card-hover: 0 8px 24px rgba(37, 99, 235, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06);
+  /* Card elevation — indigo-tinted (light mode only; dark overrides below) */
+  --wb-shadow-card:       0 4px 16px rgba(79, 70, 229, 0.10), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --wb-shadow-card-hover: 0 8px 24px rgba(79, 70, 229, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06);
 
   /* ============================================================
      Editor sub-tokens (Phase 4)
@@ -223,6 +223,19 @@
 
   /* Section flash animation (re-uses base.css @keyframes wb-section-flash) */
   --wb-section-flash:              rgba(254, 240, 138, 0.6);
+
+  /* ============================================================
+     Canvas lock — values that stay paper-white regardless of theme.
+     Used inside .canvas to keep the TipTap surface light when the rest
+     of the chrome inverts. Mimics Google Docs / Word in dark mode.
+     Per editor visual refresh spec F1: canvas siempre claro, chrome
+     sigue toggle. DO NOT add overrides in [data-theme="dark"].
+     ============================================================ */
+  --wb-canvas-bg:            #ffffff;
+  --wb-canvas-text:          #0f172a;        /* slate-900 */
+  --wb-canvas-text-muted:    #475569;        /* slate-600 */
+  --wb-canvas-border:        #e2e8f0;        /* slate-200 */
+  --wb-canvas-surface-muted: #f8fafc;        /* slate-50 — for callouts inside canvas */
 }
 
 /* ============================================================
@@ -246,15 +259,15 @@
   --wb-danger:        #f87171;
 
   /* Primary on dark: lighter shades for contrast on dark surfaces.
-     Higher numbers (800/900) flip to light blues so text on primary
+     Higher numbers (800/900) flip to light indigos so text on primary
      backgrounds stays readable. */
-  --wb-color-primary-50:  #1a2a4a;
-  --wb-color-primary-100: #1e3a8a;
-  --wb-color-primary-200: #1d4ed8;
-  --wb-color-primary-600: #3b82f6;
-  --wb-color-primary-700: #60a5fa;
-  --wb-color-primary-800: #93c5fd;
-  --wb-color-primary-900: #dbeafe;
+  --wb-color-primary-50:  #1e1b4b;
+  --wb-color-primary-100: #312e81;
+  --wb-color-primary-200: #4338ca;
+  --wb-color-primary-600: #818cf8;
+  --wb-color-primary-700: #a5b4fc;
+  --wb-color-primary-800: #c7d2fe;
+  --wb-color-primary-900: #e0e7ff;
   --wb-primary:           var(--wb-color-primary-600);
   --wb-primary-hover:     var(--wb-color-primary-700);
   --wb-primary-soft:      var(--wb-color-primary-50);

@@ -7225,7 +7225,7 @@ function EditorPanel({
             onMouseDown={focusEditorFromPage}
             data-flash-container=""
           >
-            <div ref={wrapperRef} className={seoRulesStyles.editorCanvasContent}>
+            <div ref={wrapperRef} className={`${seoRulesStyles.editorCanvasContent} ${styles.canvas}`}>
               <EditorContent editor={editor} />
               <TableInlineButtons editor={editor} wrapperRef={wrapperRef} />
               <TableRightClickMenu editor={editor} />
