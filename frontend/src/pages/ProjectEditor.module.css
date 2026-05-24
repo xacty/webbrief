@@ -615,7 +615,7 @@
   height: 22px;
   padding: 0 var(--wb-space-2);
   border: 1px solid var(--wb-border);
-  border-radius: var(--wb-radius-xs, 4px);
+  border-radius: var(--wb-radius-full);
   background: var(--wb-color-neutral-50);
   color: var(--wb-color-neutral-500);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
