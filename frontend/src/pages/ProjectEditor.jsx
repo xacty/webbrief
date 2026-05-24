@@ -7292,7 +7292,9 @@ function EditorPanel({
                     className={styles.canvasAddSectionBtn}
                     onClick={() => onOpenAddSectionAfter?.(activeSectionId)}
                   >
-                    <Plus size={14} color="#2a2a2a" />
+                    <span className={styles.canvasAddSectionIconWrap} aria-hidden="true">
+                      <Plus size={14} />
+                    </span>
                     Agregar sección debajo
                   </button>
                 </div>

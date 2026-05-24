@@ -75,22 +75,30 @@
 }
 
 .sectionDivider {
-  margin: 20px 0 12px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: var(--wb-space-2, 8px) 0;
+  margin: var(--wb-space-4, 16px) 0 12px;
+  border-top: 1px solid var(--wb-border);
 }
 
 .sectionDividerLabel {
-  display: block;
-  margin-bottom: 6px;
+  position: absolute;
+  top: -10px;
+  left: 0;
+  padding: 0 var(--wb-space-2, 8px);
+  background: var(--wb-canvas-bg, #fff);
   color: var(--wb-text-muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--wb-text-xs, 11px);
+  font-weight: var(--wb-weight-bold, 700);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   user-select: none;
 }
 
 .sectionDividerHr {
-  margin: 0;
-  border: none;
-  border-top: 1px solid var(--wb-border);
+  display: none;
 }
 
 .ctaNode {
@@ -660,20 +668,27 @@
 }
 
 .typeLabelBtn {
-  width: 30px;
-  height: 30px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  width: 30px;
+  height: 24px;
+  padding: 0 var(--wb-space-2);
   border: none;
-  border-radius: 6px;
-  background: var(--wb-text-muted);
-  color: var(--wb-text);
-  font-family: inherit;
+  border-radius: var(--wb-radius-xs, 4px);
+  background: transparent;
+  color: var(--wb-text-muted);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--wb-weight-medium, 500);
   cursor: pointer;
+  user-select: none;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.typeLabelBtn:hover {
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
 }
 
 .typeLabelBtnDisabled {
@@ -904,18 +919,36 @@
 .canvasAddSectionBtn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border: 1px dashed var(--wb-border-strong);
-  border-radius: 999px;
-  background: var(--wb-surface);
-  color: var(--wb-text);
+  gap: var(--wb-space-2, 8px);
+  padding: var(--wb-space-2, 8px) var(--wb-space-4, 16px);
+  border: 1px dashed var(--wb-border);
+  border-radius: var(--wb-radius-full, 999px);
+  background: transparent;
+  color: var(--wb-text-muted);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--wb-text-sm, 13px);
   font-weight: 500;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
   pointer-events: auto;
+  transition: border-color 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+
+.canvasAddSectionBtn:hover {
+  border-color: var(--wb-primary);
+  color: var(--wb-primary);
+  background: var(--wb-primary-soft);
+}
+
+.canvasAddSectionIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-600);
+  flex-shrink: 0;
 }
 
 .rulesPanel {
