@@ -35,9 +35,9 @@
 }
 
 .filterChipActive {
-  background: #e8f0fe;
-  border-color: var(--wb-color-primary-200);
-  color: var(--wb-color-primary-900);
+  background: var(--wb-color-primary-100);
+  border-color: var(--wb-color-primary-300);
+  color: var(--wb-primary);
 }
 
 .commentsList {
@@ -57,19 +57,21 @@
 .threadCard {
   background: var(--wb-surface);
   border: 1px solid var(--wb-border);
-  border-radius: 10px;
-  padding: 12px;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  border-radius: var(--wb-radius-md);
+  padding: var(--wb-space-3);
+  box-shadow: var(--wb-shadow-card);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
   cursor: pointer;
 }
 
 .threadCard:hover {
-  border-color: var(--wb-color-neutral-300);
+  border-color: var(--wb-color-primary-300);
+  box-shadow: var(--wb-shadow-card-hover);
 }
 
 .threadCardActive {
-  border-color: var(--wb-color-warning-500);
-  box-shadow: 0 0 0 1px var(--wb-color-warning-200);
+  border-color: var(--wb-color-primary-300);
+  box-shadow: var(--wb-shadow-card-hover);
 }
 
 .threadCardResolved {
@@ -107,13 +109,13 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--wb-border);
-  color: var(--wb-color-neutral-600);
+  background: var(--wb-color-primary-100);
+  color: var(--wb-color-primary-700);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-bold);
   flex-shrink: 0;
   background-size: cover;
   background-position: center;
@@ -134,8 +136,8 @@
 }
 
 .commentAuthor {
-  font-weight: 600;
-  color: var(--wb-surface);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-text);
 }
 
 .commentTime {
@@ -150,8 +152,8 @@
 }
 
 .commentText {
-  font-size: 13px;
-  color: var(--wb-surface);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text);
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -187,16 +189,16 @@
 
 .actionBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-surface);
+  color: var(--wb-text);
 }
 
 .actionBtnPrimary {
-  color: var(--wb-color-primary-900);
+  color: var(--wb-primary);
 }
 
 .actionBtnPrimary:hover {
-  background: #e8f0fe;
-  color: var(--wb-color-primary-900);
+  background: var(--wb-color-primary-100);
+  color: var(--wb-primary);
 }
 
 .actionBtnDanger {
@@ -227,7 +229,7 @@
   padding: 8px 10px;
   outline: none;
   background: var(--wb-surface);
-  color: var(--wb-surface);
+  color: var(--wb-text);
 }
 
 .replyTextarea:focus,
@@ -257,7 +259,7 @@
 
 .iconBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-surface);
+  color: var(--wb-text);
 }
 
 .iconBtnPrimary {
@@ -374,7 +376,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 12.5px;
-  color: var(--wb-surface);
+  color: var(--wb-text);
 }
 
 .mentionItem:hover {
@@ -382,20 +384,20 @@
 }
 
 .mentionItemActive {
-  background: #e8f0fe;
+  background: var(--wb-color-primary-100);
 }
 
 .mentionAvatar {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--wb-border);
-  color: var(--wb-color-neutral-600);
+  background: var(--wb-color-primary-100);
+  color: var(--wb-color-primary-700);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: var(--wb-weight-bold);
   background-size: cover;
   background-position: center;
 }
@@ -406,8 +408,8 @@
 }
 
 .mentionToken {
-  background: #e8f0fe;
-  color: var(--wb-color-primary-900);
+  background: var(--wb-color-primary-100);
+  color: var(--wb-primary);
   padding: 1px 4px;
   border-radius: 4px;
   font-weight: 500;
