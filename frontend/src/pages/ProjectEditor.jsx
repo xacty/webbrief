@@ -4807,7 +4807,7 @@ function FloatingEditorBar({
 }) {
   const modeOptions = [
     { id: 'brief', label: 'Brief', icon: FileText },
-    { id: 'handoff', label: 'Handoff', icon: MousePointerClick },
+    { id: 'handoff', label: 'Handoff', icon: Send },
     { id: 'preview', label: 'Preview', icon: Eye },
   ].filter((mode) => availableModes.includes(mode.id))
 
@@ -4837,7 +4837,7 @@ function FloatingEditorBar({
           <div className={styles.floatingSegment} aria-label="Audiencia de handoff">
             <button
               type="button"
-              className={cx(styles.floatingModeBtn, handoffAudience === 'designer' && styles.floatingModeBtnActive)}
+              className={cx(styles.floatingModeBtn, handoffAudience === 'designer' && styles.floatingAudienceBtnActive)}
               onClick={() => onHandoffAudienceChange('designer')}
             >
               <Palette size={14} />
@@ -4845,7 +4845,7 @@ function FloatingEditorBar({
             </button>
             <button
               type="button"
-              className={cx(styles.floatingModeBtn, handoffAudience === 'dev' && styles.floatingModeBtnActive)}
+              className={cx(styles.floatingModeBtn, handoffAudience === 'dev' && styles.floatingAudienceBtnActive)}
               onClick={() => onHandoffAudienceChange('dev')}
             >
               <Code2 size={14} />

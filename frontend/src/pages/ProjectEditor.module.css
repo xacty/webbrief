@@ -322,18 +322,18 @@
   left: 50%;
   bottom: 22px;
   z-index: var(--wb-z-sticky);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
   max-width: calc(100vw - 48px);
   min-height: 48px;
   flex-wrap: wrap;
-  padding: 7px 8px;
-  border: 1px solid rgba(33, 34, 34, 0.12);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.16);
+  padding: var(--wb-space-2);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-lg);
   backdrop-filter: blur(12px);
   transform: translateX(-50%);
 }
@@ -354,10 +354,10 @@
 .floatingSegment {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 10px;
-  background: #f4f4f5;
+  gap: var(--wb-space-1);
+  padding: var(--wb-space-1);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-surface-muted);
 }
 
 .floatingStatusDraft {
@@ -394,20 +394,42 @@
   align-items: center;
   gap: 5px;
   height: 30px;
-  padding: 0 10px;
+  padding: var(--wb-space-1) var(--wb-space-3);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--wb-radius-full);
   background: transparent;
   color: var(--wb-color-neutral-500);
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.floatingModeBtn:hover:not(.floatingModeBtnActive):not(.floatingBtnDisabled) {
+  background: var(--wb-surface);
+  color: var(--wb-text);
 }
 
 .floatingModeBtnActive {
+  background: var(--wb-color-primary-600);
+  color: #ffffff;
+}
+
+.floatingModeBtnActive:hover {
+  background: var(--wb-color-primary-700);
+}
+
+/* Audience sub-toggle active: lighter pill (surface bg + indigo text) */
+.floatingAudienceBtnActive {
   background: var(--wb-surface);
-  color: var(--wb-text);
+  color: var(--wb-color-primary-700);
+  box-shadow: var(--wb-shadow-xs);
+}
+
+.floatingAudienceBtnActive:hover {
+  background: var(--wb-surface);
+  color: var(--wb-color-primary-600);
 }
 
 .floatingBtnDisabled {
