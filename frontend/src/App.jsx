@@ -23,6 +23,7 @@ const BriefPage = lazy(() => import('./pages/BriefPage'))
 const SecurityPage = lazy(() => import('./pages/SecurityPage'))
 const SecurityErrorsPage = lazy(() => import('./pages/SecurityErrorsPage'))
 const SecurityBlocksPage = lazy(() => import('./pages/SecurityBlocksPage'))
+const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 
 const ROLE_PREVIEW_OPTIONS = [
   ...PLATFORM_ROLE_ORDER
@@ -75,6 +76,7 @@ function AppRoutes() {
           <Route path="security" element={<SecurityPage />} />
           <Route path="security/errors" element={<SecurityErrorsPage />} />
           <Route path="security/blocks" element={<SecurityBlocksPage />} />
+          <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="new-project" element={<NewProject />} />
         </Route>
 

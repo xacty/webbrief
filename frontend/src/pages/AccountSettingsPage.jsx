@@ -374,6 +374,7 @@ export default function AccountSettingsPage() {
               Las preferencias de notificaciones se pueden sumar acá cuando definamos los tipos de aviso.
             </div>
           </Card>
+
         </div>
       </div>
     </div>
