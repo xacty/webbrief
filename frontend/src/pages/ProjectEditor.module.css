@@ -637,29 +637,73 @@
   cursor: default;
 }
 
-.typeLabelDropdown {
+/* Horizontal bubble picker (Phase 2b — issue 5):
+   replaces the legacy vertical dropdown with a row of pill-shaped block-type
+   options that pop out to the right of the label. Bubble visuals mirror the
+   .typeLabelBtn so the active type reads like a "selected sibling" of the
+   trigger label. */
+.typeLabelBubbleRow {
   position: absolute;
   top: 0;
   left: 34px;
   z-index: var(--wb-z-sticky);
-  min-width: 110px;
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  padding: 0;
+}
+
+.typeLabelBubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 22px;
+  padding: 0 var(--wb-space-2);
   border: 1px solid var(--wb-border);
-  border-radius: 6px;
-  background: var(--wb-surface);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-}
-
-.typeLabelOption {
-  padding: 8px 14px;
-  color: var(--wb-text);
-  font-family: inherit;
-  font-size: 13px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-surface-muted);
+  color: var(--wb-color-neutral-500);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: var(--wb-weight-semibold, 600);
   cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transform: translateX(-6px);
+  animation: wb-bubble-in 180ms ease forwards;
+  animation-delay: var(--bubble-delay, 0ms);
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 
-.typeLabelOption:hover {
-  background: var(--wb-color-neutral-50);
+.typeLabelBubble:hover:not(.typeLabelBubbleActive) {
+  background: var(--wb-color-primary-50);
+  border-color: var(--wb-color-primary-200);
+  color: var(--wb-color-primary-700);
+}
+
+.typeLabelBubbleActive {
+  background: var(--wb-color-primary-600);
+  border-color: var(--wb-color-primary-600);
+  color: #ffffff;
+  cursor: default;
+}
+
+.typeLabelBubbleActive:hover {
+  background: var(--wb-color-primary-700);
+  border-color: var(--wb-color-primary-700);
+}
+
+/* Subtle visual hint for the trigger label while the bubble row is open */
+.typeLabelBtnOpen {
+  background: var(--wb-color-primary-50);
+  border-color: var(--wb-color-primary-200);
+  color: var(--wb-color-primary-700);
+}
+
+@keyframes wb-bubble-in {
+  0%   { opacity: 0; transform: translateX(-6px); }
+  100% { opacity: 1; transform: translateX(0);    }
 }
 
 .floatingTooltip {

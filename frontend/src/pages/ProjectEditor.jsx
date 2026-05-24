@@ -5535,40 +5535,66 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
     return TEXT_OPTIONS
   }
 
+  // Horizontal bubble picker labels (Phase 2b — issue 5).
+  // Show ALL options as bubbles; mark the current one as active rather than
+  // filtering it out. "Párrafo" abbreviates to "¶" so the bubble row stays
+  // visually tight and matches the existing block-label glyph for paragraphs.
+  function bubbleDisplayLabel(opt) {
+    if (opt === 'Párrafo') return '¶'
+    return opt
+  }
+
+  function isActiveOption(currentLabel, opt) {
+    if (currentLabel === '¶' && opt === 'Párrafo') return true
+    return currentLabel === opt
+  }
+
   return (
     <div ref={columnRef} className={styles.typeLabelsCol}>
-      {labels.map((item, idx) => (
-        <div
-          key={idx}
-          className={styles.typeLabelItem}
-          ref={(node) => setCssVars(node, { '--type-label-top': item.top })}
-        >
-          <button
-            className={cx(styles.typeLabelBtn, ['t', 'img', 'CTA'].includes(item.label) && styles.typeLabelBtnDisabled)}
-            onClick={(e) => { e.stopPropagation(); if (['t', 'img', 'CTA'].includes(item.label)) return; setOpenIdx(idx === openIdx ? -1 : idx) }}
-            title={`Tipo actual: ${item.label}`}
+      {labels.map((item, idx) => {
+        const isInteractive = !['t', 'img', 'CTA'].includes(item.label)
+        const isOpen = openIdx === idx && isInteractive
+        const options = isInteractive ? getOptionsForLabel(item.label) : []
+        return (
+          <div
+            key={idx}
+            className={styles.typeLabelItem}
+            ref={(node) => setCssVars(node, { '--type-label-top': item.top })}
           >
-            {item.label}
-          </button>
+            <button
+              className={cx(
+                styles.typeLabelBtn,
+                !isInteractive && styles.typeLabelBtnDisabled,
+                isOpen && styles.typeLabelBtnOpen,
+              )}
+              onClick={(e) => { e.stopPropagation(); if (!isInteractive) return; setOpenIdx(idx === openIdx ? -1 : idx) }}
+              title={`Tipo actual: ${item.label}`}
+            >
+              {item.label}
+            </button>
 
-          {openIdx === idx && !['t', 'img', 'CTA'].includes(item.label) && (
-            <div ref={dropdownRef} className={styles.typeLabelDropdown}>
-              {getOptionsForLabel(item.label).filter((opt) => {
-                if (item.label === '¶') return opt !== 'Párrafo'
-                return opt !== item.label
-              }).map((opt) => (
-                <div
-                  key={opt}
-                  className={styles.typeLabelOption}
-                  onClick={() => applyType(opt === 'Párrafo' ? 'paragraph' : opt, item.blockEl, item.label)}
-                >
-                  {opt}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+            {isOpen && (
+              <div ref={idx === openIdx ? dropdownRef : null} className={styles.typeLabelBubbleRow} role="menu">
+                {options.map((opt, i) => {
+                  const active = isActiveOption(item.label, opt)
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      role="menuitem"
+                      className={cx(styles.typeLabelBubble, active && styles.typeLabelBubbleActive)}
+                      style={{ ['--bubble-delay']: `${i * 30}ms` }}
+                      onClick={() => applyType(opt === 'Párrafo' ? 'paragraph' : opt, item.blockEl, item.label)}
+                    >
+                      {bubbleDisplayLabel(opt)}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
