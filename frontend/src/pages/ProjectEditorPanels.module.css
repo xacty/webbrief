@@ -43,23 +43,34 @@
 }
 
 .panelAddBtn {
-  padding: 0;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-text-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.panelAddBtn:hover {
+  background: var(--wb-primary-soft);
+  color: var(--wb-primary);
+  border-color: var(--wb-color-primary-100);
 }
 
 .seoPanelButton {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 30px 14px;
+  margin: 0 var(--wb-space-3) 14px;
   padding: 8px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
   color: var(--wb-text);
   cursor: pointer;
@@ -79,8 +90,8 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 30px 30px;
+  gap: 2px;
+  padding: 0 var(--wb-space-3) var(--wb-space-6);
 }
 
 .emptyMsg {
@@ -197,26 +208,33 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
-  border-radius: 6px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  min-height: 40px;
+  border-radius: var(--wb-radius-2);
   cursor: pointer;
   background: transparent;
+  border: none;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .sectionNavBtn {
-  border: 1px solid transparent;
+  color: var(--wb-text-muted);
 }
 
 .sectionNavBtn:hover {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
+  color: var(--wb-text);
 }
 
 .sectionNavBtnActive {
-  border: 1px solid var(--wb-surface);
+  background: var(--wb-primary-soft);
+  color: var(--wb-primary);
+  font-weight: var(--wb-weight-semibold);
 }
 
 .sectionNavBtnActive:hover {
-  background: #f0f4f9;
+  background: var(--wb-primary-soft);
+  color: var(--wb-primary);
 }
 
 .sectionNavLeft {
@@ -233,7 +251,16 @@
   padding: 2px 0;
   margin-right: -2px;
   cursor: grab;
-  opacity: 0.4;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  color: var(--wb-text-muted);
+}
+
+.sectionNavBtn:hover .dragHandle,
+.sectionNavBtn:focus-within .dragHandle,
+.sectionNavBtnActive:hover .dragHandle,
+.sectionNavBtnActive:focus-within .dragHandle {
+  opacity: 1;
 }
 
 .sectionNameWrap {
@@ -248,9 +275,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--wb-text);
-  font-size: 15px;
-  font-weight: 500;
+  color: inherit;
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
 }
 
 .sectionSubtitle {
@@ -362,11 +389,11 @@
   margin-bottom: 1px;
   padding-left: 10px;
   cursor: pointer;
-  border-left: 2px solid #e0e0e0;
+  border-left: 2px solid var(--wb-border);
 }
 
 .sectionHeadingItemActive {
-  border-left-color: var(--wb-color-primary-900);
+  border-left-color: var(--wb-primary);
 }
 
 .sectionHeadingText {

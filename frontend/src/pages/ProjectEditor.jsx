@@ -5108,11 +5108,11 @@ function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId,
         <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {canManageSections && (
             <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar pregunta">
-              <Plus size={24} color="#2a2a2a" />
+              <Plus size={14} />
             </button>
           )}
           <button className={panelStyles.panelAddBtn} onClick={onExportCsv} title="Exportar CSV">
-            <Download size={20} color="#2a2a2a" />
+            <Download size={14} />
           </button>
         </div>
       </div>
@@ -5227,7 +5227,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
         <span className={panelStyles.panelTitle}>Page sections</span>
         {canManageSections && (
           <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar sección">
-            <Plus size={24} color="#2a2a2a" />
+            <Plus size={14} />
           </button>
         )}
       </div>
@@ -5318,10 +5318,10 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               onDragEnd={onDragEnd}
               className={panelStyles.dragHandle}
             >
-              <GripVertical size={16} color="#999" />
+              <GripVertical size={16} />
             </div>
           )}
-          <Tag size={18} color="#2a2a2a" strokeWidth={1.8} />
+          <Tag size={18} strokeWidth={1.8} />
           {editing ? (
             <input
               className={panelStyles.sectionNameInput}
@@ -5358,7 +5358,7 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
               title="Opciones"
             >
-              <MoreVertical size={24} color="#2a2a2a" />
+              <MoreVertical size={24} />
             </button>
           )}
           {canManageSection && menuOpen && (
