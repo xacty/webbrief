@@ -90,7 +90,7 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--wb-space-1);
   padding: 0 var(--wb-space-3) var(--wb-space-6);
 }
 
@@ -257,8 +257,10 @@
 }
 
 .sectionNavBtn:hover .dragHandle,
+.sectionNavBtn:focus .dragHandle,
 .sectionNavBtn:focus-within .dragHandle,
 .sectionNavBtnActive:hover .dragHandle,
+.sectionNavBtnActive:focus .dragHandle,
 .sectionNavBtnActive:focus-within .dragHandle {
   opacity: 1;
 }
