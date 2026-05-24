@@ -40,7 +40,7 @@ import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
-import { Modal } from '../components/ui'
+import { Modal, Button } from '../components/ui'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -4611,13 +4611,16 @@ function TemplatesDropdown({ companyId, pages, disabled = false }) {
               onChange={(e) => setName(e.target.value)}
               autoFocus
             />
-            <button
+            <Button
               type="submit"
-              className={navStyles.templatesSubmit}
-              disabled={saving || !name.trim()}
+              variant="primary"
+              size="sm"
+              fullWidth
+              loading={saving}
+              disabled={!name.trim()}
             >
-              {saving ? 'Guardando…' : 'Guardar estructura actual'}
-            </button>
+              Guardar estructura actual
+            </Button>
           </form>
           {feedback && <p className={navStyles.templatesFeedback}>{feedback}</p>}
           <p className={navStyles.templatesHint}>
@@ -4734,14 +4737,15 @@ function Navbar({
         ) : (
           <span className={navStyles.navSaveStatus}>{saveLabel}</span>
         )}
-        <button
-          type="button"
-          className={`${navStyles.navSaveBtn} ${isSaving ? navStyles.navSaveBtnDisabled : ''}`}
+        <Button
+          variant="primary"
+          size="sm"
+          loading={isSaving}
+          disabled={!canSave}
           onClick={onSave}
-          disabled={isSaving || !canSave}
         >
-          {isSaving ? 'Guardando...' : 'Guardar'}
-        </button>
+          Guardar
+        </Button>
         <div className={navStyles.navIcons}>
           <button className={navStyles.navIconBtn} title="Ajustes de cuenta" onClick={onSettings}>
             <User size={20} color="#2a2a2a" />
@@ -4968,15 +4972,16 @@ function AddFaqModal({ onConfirm, onSkip, onClose }) {
           }}
         />
         <div className={styles.modalActions}>
-          <button
-            className={styles.modalBtnPrimary}
+          <Button
+            variant="primary"
+            fullWidth
             onClick={() => onConfirm(value.trim())}
           >
             Agregar
-          </button>
-          <button className={styles.modalBtnSecondary} onClick={onSkip}>
+          </Button>
+          <Button variant="ghost" fullWidth onClick={onSkip}>
             Saltar
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -5020,15 +5025,16 @@ function AddSectionModal({ onConfirm, onSkip, onClose, projectType = 'page' }) {
           />
         )}
         <div className={styles.modalActions}>
-          <button
-            className={styles.modalBtnPrimary}
+          <Button
+            variant="primary"
+            fullWidth
             onClick={() => onConfirm(value.trim())}
           >
             Agregar
-          </button>
-          <button className={styles.modalBtnSecondary} onClick={onSkip}>
+          </Button>
+          <Button variant="ghost" fullWidth onClick={onSkip}>
             Saltar
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -8977,30 +8983,34 @@ function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, 
               {copied ? <span className={styles.shareLinkCopiedBadge}>✓</span> : <Copy size={14} />}
             </button>
           </div>
-          <button
-            type="button"
-            className={styles.shareLinkOpenBtn}
+          <Button
+            variant="primary"
+            size="sm"
+            fullWidth
             onClick={() => window.open(shareUrl, '_blank', 'noopener')}
           >
             Abrir en nueva pestaña
-          </button>
-          <button
-            type="button"
-            className={styles.shareLinkRevokeBtn}
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            fullWidth
             onClick={onRevoke}
+            className={styles.shareLinkRevokeSpacer}
           >
             Revocar link
-          </button>
+          </Button>
         </>
       ) : (
-        <button
-          type="button"
-          className={styles.shareLinkOpenBtn}
+        <Button
+          variant="primary"
+          size="sm"
+          fullWidth
+          loading={busy}
           onClick={handleCreate}
-          disabled={busy}
         >
-          {busy ? 'Creando…' : 'Crear link privado'}
-        </button>
+          Crear link privado
+        </Button>
       )}
       <p className={panelStyles.deliverablesEmpty} style={{ marginTop: 4 }}>
         Comparte este link con el cliente para que vea y comente el contenido.

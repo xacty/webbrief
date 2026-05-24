@@ -279,30 +279,6 @@
   text-align: right;
 }
 
-.navSaveBtn {
-  min-width: 86px;
-  height: 34px;
-  padding: 0 14px;
-  background: var(--wb-color-primary-900);
-  color: var(--wb-text);
-  border: none;
-  border-radius: 9px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 120ms;
-}
-
-.navSaveBtn:hover:not(.navSaveBtnDisabled) {
-  background: var(--wb-primary-hover);
-}
-
-.navSaveBtnDisabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .navIcons {
   display: flex;
   align-items: center;
@@ -529,28 +505,6 @@
 
 .templatesInput:focus {
   border-color: var(--wb-surface);
-}
-
-.templatesSubmit {
-  min-height: 32px;
-  border: none;
-  border-radius: 6px;
-  background: var(--wb-surface);
-  color: var(--wb-text);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 120ms;
-}
-
-.templatesSubmit:hover:not(:disabled) {
-  background: #000;
-}
-
-.templatesSubmit:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 .templatesFeedback {
