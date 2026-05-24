@@ -524,18 +524,20 @@
   display: inline-flex;
   align-items: center;
   gap: var(--wb-space-1);
-  padding: 3px var(--wb-space-2);
+  padding: 4px 10px;
   border-radius: var(--wb-radius-full);
-  background: var(--wb-surface-muted);
-  color: var(--wb-text-muted);
+  background: var(--wb-color-warning-50);
+  color: var(--wb-color-warning-700);
+  border: 1px solid var(--wb-color-warning-200);
   font-size: var(--wb-text-xs);
-  font-weight: var(--wb-weight-medium);
+  font-weight: var(--wb-weight-semibold);
   white-space: nowrap;
+  line-height: 1;
 }
 
 .saveStatusDot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--wb-color-warning-500);
   flex-shrink: 0;

@@ -609,23 +609,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 24px;
+  min-width: 30px;
+  height: 22px;
   padding: 0 var(--wb-space-2);
-  border: none;
+  border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-xs, 4px);
-  background: transparent;
-  color: var(--wb-text-muted);
+  background: var(--wb-color-neutral-50);
+  color: var(--wb-color-neutral-500);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px;
-  font-weight: var(--wb-weight-medium, 500);
+  font-weight: var(--wb-weight-semibold, 600);
   cursor: pointer;
   user-select: none;
-  transition: color 120ms ease, background-color 120ms ease;
+  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
 }
 
 .typeLabelBtn:hover {
   background: var(--wb-color-primary-50);
+  border-color: var(--wb-color-primary-200);
   color: var(--wb-color-primary-700);
 }
 

@@ -40,8 +40,8 @@
   min-width: 500px;
   max-width: 800px;
   min-height: calc(100vh - 120px);
-  background: #f8f8f8;
-  border: 1px solid var(--wb-border);
+  background: var(--wb-canvas-bg);
+  border: 1px solid var(--wb-canvas-border);
   border-radius: 4px;
   padding: 60px 50px 1000px;
 }
