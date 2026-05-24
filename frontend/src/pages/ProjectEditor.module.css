@@ -355,17 +355,18 @@
 
 .floatingDivider {
   width: 1px;
-  height: 28px;
-  background: #e5e7eb;
+  height: 24px;
+  margin: 0 var(--wb-space-1);
+  background: var(--wb-border);
 }
 
+/* Segment is a pure grouping wrapper — no own pill background so the
+   outer .floatingBar reads as a single rounded container with a thin
+   divider between the mode group and the audience sub-toggle. */
 .floatingSegment {
   display: inline-flex;
   align-items: center;
   gap: var(--wb-space-1);
-  padding: var(--wb-space-1);
-  border-radius: var(--wb-radius-full);
-  background: var(--wb-surface-muted);
 }
 
 .floatingStatusDraft {
@@ -415,7 +416,7 @@
 }
 
 .floatingModeBtn:hover:not(.floatingModeBtnActive):not(.floatingBtnDisabled) {
-  background: var(--wb-surface);
+  background: var(--wb-surface-muted);
   color: var(--wb-text);
 }
 
@@ -428,16 +429,17 @@
   background: var(--wb-color-primary-700);
 }
 
-/* Audience sub-toggle active: lighter pill (surface bg + indigo text) */
+/* Audience sub-toggle active: lighter pill (primary-50 bg + indigo text) so
+   it reads as a distinct selected state within the single shared container. */
 .floatingAudienceBtnActive {
-  background: var(--wb-surface);
+  background: var(--wb-color-primary-50);
   color: var(--wb-color-primary-700);
   box-shadow: var(--wb-shadow-xs);
 }
 
 .floatingAudienceBtnActive:hover {
-  background: var(--wb-surface);
-  color: var(--wb-color-primary-600);
+  background: var(--wb-color-primary-100);
+  color: var(--wb-color-primary-700);
 }
 
 .floatingBtnDisabled {
