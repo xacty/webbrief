@@ -11,7 +11,7 @@
   min-height: 0;
   overflow: hidden;
   background: var(--wb-surface);
-  border-right: 1px solid var(--wb-surface);
+  border-right: 1px solid var(--wb-border);
 }
 
 .rightPanel {
@@ -22,9 +22,12 @@
   position: relative;
   min-height: 0;
   overflow: hidden;
-  padding: 30px;
+  /* top reduced so the tabs align vertically with the left panel header
+     ("Page sections"). Tab padding-top is var(--wb-space-3) ≈ 12px, plus
+     this 12px panel top = 24px, matching .panelHeader's padding-top. */
+  padding: 12px 30px 30px;
   background: var(--wb-surface);
-  border-left: 1px solid var(--wb-surface);
+  border-left: 1px solid var(--wb-border);
 }
 
 .panelHeader {
