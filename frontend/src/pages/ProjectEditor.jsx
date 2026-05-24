@@ -35,7 +35,7 @@ import {
   groupCommentsIntoThreads,
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
@@ -5019,7 +5019,7 @@ function SeoPanelButton({ active = false, onClick }) {
       className={cx(panelStyles.seoPanelButton, active && panelStyles.seoPanelButtonActive)}
       onClick={onClick}
     >
-      <Search size={16} />
+      <Globe size={16} />
       <span>SEO metadata</span>
     </button>
   )
@@ -7360,7 +7360,7 @@ function SeoMetadataPanel({ metadata, contentRules, expanded, onExpandedChange, 
         aria-expanded={expanded}
         aria-controls={panelId}
       >
-        <Search size={15} />
+        <Globe size={15} />
         <span>SEO metadata</span>
         <span className={seoRulesStyles.seoToggleMeta}>
           {metadata?.titleTag || metadata?.metaDescription || metadata?.urlSlug ? 'Completo' : 'Sin completar'}
