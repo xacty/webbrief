@@ -600,14 +600,6 @@ function cx(...classes) {
   return classes.filter(Boolean).join(' ')
 }
 
-function getInitials(fullName, email) {
-  const source = (fullName && fullName.trim()) || (email && email.split('@')[0]) || ''
-  if (!source) return '?'
-  const parts = source.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
 function insertTemporaryImage(editor, src, alt = '', position = null, attrs = {}) {
   if (!editor || !src) return false
   const chain = editor.chain().focus()
@@ -4169,7 +4161,6 @@ export default function ProjectEditor() {
         projectName={projectMeta?.name || 'Proyecto'}
         projectType={projectType}
         companyId={projectMeta?.companyId || ''}
-        companyName={projectMeta?.companyName || ''}
         saveMessage={saveMessage}
         isDirty={isDirty}
         isSaving={isSaving}
@@ -4639,7 +4630,6 @@ function Navbar({
   projectName,
   projectType = 'page',
   companyId,
-  companyName = '',
   saveMessage,
   isDirty,
   isSaving,
@@ -4663,7 +4653,6 @@ function Navbar({
   openMenuId,
   onSetOpenMenuId,
 }) {
-  const navigate = useNavigate()
   const saveLabel = saveMessage || (isDirty ? 'Sin guardar' : 'Guardado')
   return (
     <div className={navStyles.navbar}>
@@ -4673,31 +4662,10 @@ function Navbar({
           <span className={navStyles.navLogoLight}>We</span>
           <span className={navStyles.navLogoBold}>Brief</span>
         </span>
-        <div className={navStyles.navLeftInner}>
-          {(companyId || companyName) && (
-            <nav className={navStyles.breadcrumb} aria-label="Migas de pan">
-              <button type="button" className={navStyles.breadcrumbLink} onClick={() => navigate('/companies')}>
-                Empresas
-              </button>
-              {companyId && companyName && (
-                <>
-                  <span className={navStyles.breadcrumbSep} aria-hidden="true">/</span>
-                  <button type="button" className={navStyles.breadcrumbLink} onClick={() => navigate(`/companies/${companyId}`)}>
-                    {companyName}
-                  </button>
-                </>
-              )}
-              <span className={navStyles.breadcrumbSep} aria-hidden="true">/</span>
-              <span className={navStyles.breadcrumbCurrent} aria-current="page">{projectName}</span>
-            </nav>
-          )}
-          <div className={navStyles.navLeftTop}>
-            <button className={navStyles.navBackBtn} onClick={onBack} title={companyId ? 'Volver a la empresa' : 'Volver a empresas'}>
-              <ArrowLeft size={18} />
-            </button>
-            <ProjectNameInput name={projectName} onRename={canRenameProject ? onRenameProject : null} />
-          </div>
-        </div>
+        <button className={navStyles.navBackBtn} onClick={onBack} title={companyId ? 'Volver a la empresa' : 'Volver a empresas'}>
+          <ArrowLeft size={18} />
+        </button>
+        <ProjectNameInput name={projectName} onRename={canRenameProject ? onRenameProject : null} />
       </div>
 
       {/* Columna central: Pills de páginas */}
@@ -9536,22 +9504,17 @@ function ActivityListItem({ item, selectedActivityId = null, onActivityClick, on
       id={`activity-${item.id}`}
       className={cx(panelStyles.updatesItem, item.id === selectedActivityId && panelStyles.updatesItemActive)}
     >
-      <span className={panelStyles.updatesItemAvatar} aria-hidden="true">
-        {getInitials(item.actorLabel, null)}
+      <button
+        type="button"
+        className={panelStyles.updatesItemButton}
+        onClick={() => onActivityClick?.(item)}
+      >
+        <span className={panelStyles.updatesField}>{item.title}</span>
+      </button>
+      {item.description && <span className={panelStyles.updatesDescription}>{item.description}</span>}
+      <span className={panelStyles.updatesDatetime}>
+        {item.actorLabel} · {formatPanelDate(item.createdAt)}
       </span>
-      <div className={panelStyles.updatesItemBody}>
-        <button
-          type="button"
-          className={panelStyles.updatesItemButton}
-          onClick={() => onActivityClick?.(item)}
-        >
-          <span className={panelStyles.updatesField}>{item.title}</span>
-        </button>
-        {item.description && <span className={panelStyles.updatesDescription}>{item.description}</span>}
-        <span className={panelStyles.updatesDatetime}>
-          {item.actorLabel} · {formatPanelDate(item.createdAt)}
-        </span>
-      </div>
     </li>
   )
 }

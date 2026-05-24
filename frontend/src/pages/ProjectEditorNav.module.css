@@ -7,7 +7,7 @@
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr);
   align-items: center;
-  min-height: 90px;
+  min-height: 70px;
   background: #f0f0f0;
   border-bottom: 1px solid var(--wb-surface);
   flex-shrink: 0;
@@ -517,61 +517,6 @@
   margin: 0;
   font-size: 11px;
   color: var(--wb-color-neutral-400);
-}
-
-/* ── Breadcrumb ── */
-.navLeftInner {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.navLeftTop {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: var(--wb-space-1);
-  font-size: var(--wb-text-xs);
-  color: var(--wb-text-muted);
-  padding-left: 2px;
-}
-
-.breadcrumbLink {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  font-size: var(--wb-text-xs);
-  color: var(--wb-primary);
-  cursor: pointer;
-  font-weight: var(--wb-weight-medium);
-}
-
-.breadcrumbLink:hover {
-  text-decoration: underline;
-}
-
-.breadcrumbSep {
-  color: var(--wb-text-muted);
-  opacity: 0.5;
-  font-size: var(--wb-text-xs);
-}
-
-.breadcrumbCurrent {
-  color: var(--wb-text-muted);
-  font-weight: var(--wb-weight-regular);
-  font-size: var(--wb-text-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 160px;
 }
 
 /* ── Save status chip ── */
