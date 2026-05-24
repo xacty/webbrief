@@ -39,9 +39,29 @@ Total CSS surface to touch: ~4500 lines across 7 files. Plan is to migrate incre
 - **One subagent per task** — do not bundle. Each task should be reviewable independently.
 - The user has 2 deferred Phase 2 items (floating glass toolbar, horizontal bubble block-picker). These are **explicitly out of scope** for this plan.
 
+## Model recommendations per task
+
+Each task has a recommended AI model + intelligence level. **Floor is Sonnet 4.6 high** (do not use anything lower — even read-only tasks benefit from the better instruction following). Escalate to **Opus 4.7 high** for tasks that touch the foundational canvas-light invariant (Task 1) or that require restructuring a monolithic 9600-line JSX file with high blast radius (Task 8). Use Opus high also at your discretion when a Sonnet-led task surfaces unexpected complexity mid-execution.
+
+| Task | Model | Why |
+|---|---|---|
+| 0 | Sonnet 4.6 high | Read-only orientation; no code changes |
+| 1 | **Opus 4.7 high** | Foundational invariant — canvas must stay light in dark mode; finds TipTap mount inside 9626-line file; breaking it cascades to every later task |
+| 2 | Sonnet 4.6 high | Mechanical bulk search-and-replace across 6 CSS files + manual audit of one edge case (`--wb-editor-surface-elevated`) |
+| 3 | Sonnet 4.6 high | Add breadcrumb + class swaps + 4 distinct JSX edits, all in one navbar zone |
+| 4 | Sonnet 4.6 high | Floating bar CSS + lucide icon swaps + minor JSX |
+| 5 | Sonnet 4.6 high | Left panel CSS-only changes; minimal JSX |
+| 6 | Sonnet 4.6 high | 4 panel cards + tabs + events list restructure (longer but mechanical) |
+| 7 | Sonnet 4.6 high | 2 CSS files + optional KebabMenu component swap |
+| 8 | **Opus 4.7 high** | Restructure 9626-line JSX to wrap toolbar buttons into 5 visual groups; high blast radius if buttons are misgrouped — needs careful identification of every existing button |
+| 9 | Sonnet 4.6 high | Block label + divider CSS + minor JSX |
+| 10 | Sonnet 4.6 high | Manual smoke test + screenshot capture; no new code |
+
 ---
 
 ## Task 0: Pre-flight — read the spec and walk the editor
+
+**Model:** Sonnet 4.6 high — read-only.
 
 **Files:**
 - Read: `docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.md`
@@ -74,6 +94,8 @@ No commit. This is read-only orientation.
 ---
 
 ## Task 1: Canvas-light lock (F1 foundational)
+
+**Model:** Opus 4.7 high — foundational invariant. Wrong implementation cascades to every later task.
 
 **Goal:** Guarantee the TipTap canvas stays light no matter what `[data-theme]` is set on `<html>`. This is the most important invariant of the whole refresh — if this breaks, the spec breaks.
 
@@ -159,6 +181,8 @@ Refs: docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.md"
 ---
 
 ## Task 2: Editor chrome token migration
+
+**Model:** Sonnet 4.6 high — mechanical bulk search-and-replace across 6 files + manual audit of one edge case.
 
 **Goal:** Replace `--wb-editor-bg`, `--wb-editor-surface`, `--wb-editor-text*`, `--wb-editor-border*` usages in chrome surfaces (navbar, toolbar, panels, floating bar) with the shell's general tokens (`--wb-surface`, `--wb-text`, `--wb-border`, etc.). Editor sub-tokens that genuinely scope only to canvas-internal styling (e.g., tooltip backgrounds inside the canvas) stay.
 
@@ -271,6 +295,8 @@ Refs: docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.md"
 ---
 
 ## Task 3: Top Navbar refresh (S1)
+
+**Model:** Sonnet 4.6 high — multiple distinct JSX edits but all in one navbar zone, well-scoped.
 
 **Goal:** Breadcrumb + page pills with indigo active state, "Sin guardar" as muted chip, indigo bell badge, save button untouched.
 
@@ -452,6 +478,8 @@ Refs spec S1 in docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.m
 
 ## Task 4: Floating Bottom Bar (S6)
 
+**Model:** Sonnet 4.6 high — focused CSS + lucide icon swaps.
+
 **Goal:** Same `Brief | Handoff | Preview` modes, but active state indigo (was dark/black), lucide icons, pill shape with shell shadow.
 
 **Files:**
@@ -586,6 +614,8 @@ Refs spec S6 in docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.m
 
 ## Task 5: Left Panel sections list (S4)
 
+**Model:** Sonnet 4.6 high — CSS-only updates with minimal JSX.
+
 **Goal:** Section list items match the shell sidebar nav rhythm — same height, indigo soft-bg active state, hover muted, drag handles on hover only.
 
 **Files:**
@@ -714,6 +744,8 @@ Refs spec S4 in docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.m
 ---
 
 ## Task 6: Right Panel polish (S5, F3)
+
+**Model:** Sonnet 4.6 high — longer surface (4 cards + tabs + events list) but mechanical pattern reuse.
 
 **Goal:** Right panel keeps its vertical stack (Actividad/Historial tabs + share card + deliverables card + rules dock), but each piece adopts shell tokens, CompanyPage-style underline tabs, indigo avatars, event rows with dividers.
 
@@ -930,6 +962,8 @@ Refs spec F3, S5 in docs/superpowers/specs/2026-05-24-editor-visual-refresh-desi
 
 ## Task 7: Comments visual refresh (S7)
 
+**Model:** Sonnet 4.6 high — 2 CSS files + optional KebabMenu swap; isolated component scope.
+
 **Goal:** Margin cards adopt shell card tokens, indigo avatars, indigo @mentions; functional yellow highlight stays.
 
 **Files:**
@@ -1083,6 +1117,8 @@ Refs spec S7 in docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.m
 ---
 
 ## Task 8: Formatting Toolbar (S2)
+
+**Model:** Opus 4.7 high — needs to restructure a long flat toolbar inside 9626-line `ProjectEditor.jsx`, identifying every button by its action and grouping correctly into 5 visual segments. High blast radius if buttons are misgrouped or accidentally lose their handlers.
 
 **Goal:** 5 visual groups (Bloque | Texto | Color/Highlight | Alineación/Spacing/Listas | Insertar) separated by subtle vertical dividers; 32px square buttons; indigo active state; dropdowns use shell shadow + radius.
 
@@ -1272,6 +1308,8 @@ Refs spec S2 in docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.m
 
 ## Task 9: Canvas block labels + section dividers (S3)
 
+**Model:** Sonnet 4.6 high — focused CSS updates + minor JSX in well-bounded canvas zone.
+
 **Goal:** Block labels (H1, ¶) become lighter — no background, monospace 11px, muted color. Section dividers thinner, label in uppercase letter-spacing. "Agregar sección debajo" button polished.
 
 **Files:**
@@ -1430,6 +1468,8 @@ Refs spec S3 in docs/superpowers/specs/2026-05-24-editor-visual-refresh-design.m
 ---
 
 ## Task 10: Integration smoke test + final visual audit
+
+**Model:** Sonnet 4.6 high — manual checklist verification + optional screenshot capture; no new code changes.
 
 **Goal:** Walk through every route + every editor mode + light/dark to confirm the full refresh holds together and nothing regressed.
 
