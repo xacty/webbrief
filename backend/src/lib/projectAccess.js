@@ -199,7 +199,7 @@ export async function getProjectById(projectId, currentUser, options = {}) {
   async function fetchProject(withArchiveColumns) {
     let query = supabaseAdmin
       .from('projects')
-      .select('*')
+      .select('*, company:companies(name)')
       .eq('id', projectId)
 
     if (!includeTrashed && withArchiveColumns) {

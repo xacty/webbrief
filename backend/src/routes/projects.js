@@ -825,16 +825,7 @@ router.get('/:id', async (req, res) => {
     const currentRole = getCompanyRole(req.currentUser, project.company_id)
     const shouldOverlayDesignerProposal = currentRole === 'designer' && req.currentUser.platformRole !== 'admin'
 
-    // Fetch company name for breadcrumb display
-    let companyName = ''
-    if (project.company_id) {
-      const { data: companyRow } = await supabaseAdmin
-        .from('companies')
-        .select('name')
-        .eq('id', project.company_id)
-        .maybeSingle()
-      companyName = companyRow?.name || ''
-    }
+    const companyName = project.company?.name || ''
 
     return res.json({
       project: {

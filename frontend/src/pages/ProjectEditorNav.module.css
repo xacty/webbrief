@@ -7,7 +7,7 @@
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr);
   align-items: center;
-  min-height: 70px;
+  min-height: 90px;
   background: #f0f0f0;
   border-bottom: 1px solid var(--wb-surface);
   flex-shrink: 0;
