@@ -35,7 +35,7 @@ import {
   groupCommentsIntoThreads,
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
@@ -598,6 +598,14 @@ const TEXT_BLOCK_LAYOUT_TYPES = ['paragraph', 'heading', 'listItem']
 
 function cx(...classes) {
   return classes.filter(Boolean).join(' ')
+}
+
+function getInitials(fullName, email) {
+  const source = (fullName && fullName.trim()) || (email && email.split('@')[0]) || ''
+  if (!source) return '?'
+  const parts = source.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
 function insertTemporaryImage(editor, src, alt = '', position = null, attrs = {}) {
@@ -9320,7 +9328,7 @@ function UpdatesPanel({
           data-wb-tooltip="Actualizar"
           aria-label={isRefreshing ? 'Actualizando' : 'Actualizar'}
         >
-          <RotateCw size={14} className={isRefreshing ? panelStyles.updatesRefreshSpinner : undefined} />
+          <RefreshCw size={14} className={isRefreshing ? panelStyles.updatesRefreshSpinner : undefined} />
         </button>
       </div>
       <div className={cx(panelStyles.rightPanelScroll, projectType === 'document' && panelStyles.rightPanelScrollWithDock)}>
@@ -9502,17 +9510,22 @@ function ActivityListItem({ item, selectedActivityId = null, onActivityClick, on
       id={`activity-${item.id}`}
       className={cx(panelStyles.updatesItem, item.id === selectedActivityId && panelStyles.updatesItemActive)}
     >
-      <button
-        type="button"
-        className={panelStyles.updatesItemButton}
-        onClick={() => onActivityClick?.(item)}
-      >
-        <span className={panelStyles.updatesField}>{item.title}</span>
-      </button>
-      {item.description && <span className={panelStyles.updatesDescription}>{item.description}</span>}
-      <span className={panelStyles.updatesDatetime}>
-        {item.actorLabel} · {formatPanelDate(item.createdAt)}
+      <span className={panelStyles.updatesItemAvatar} aria-hidden="true">
+        {getInitials(item.actorLabel, null)}
       </span>
+      <div className={panelStyles.updatesItemBody}>
+        <button
+          type="button"
+          className={panelStyles.updatesItemButton}
+          onClick={() => onActivityClick?.(item)}
+        >
+          <span className={panelStyles.updatesField}>{item.title}</span>
+        </button>
+        {item.description && <span className={panelStyles.updatesDescription}>{item.description}</span>}
+        <span className={panelStyles.updatesDatetime}>
+          {item.actorLabel} · {formatPanelDate(item.createdAt)}
+        </span>
+      </div>
     </li>
   )
 }
