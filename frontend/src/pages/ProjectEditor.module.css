@@ -55,15 +55,14 @@
 .canvas {
   background: var(--wb-canvas-bg);
   color: var(--wb-canvas-text);
-  border-color: var(--wb-canvas-border);
 }
 
 .canvas a {
-  color: var(--wb-color-primary-700);
+  color: var(--wb-canvas-link);
 }
 
 .canvas ::selection {
-  background: var(--wb-color-primary-100);
+  background: var(--wb-canvas-selection-bg);
   color: var(--wb-canvas-text);
 }
 
@@ -1624,6 +1623,13 @@
 :global(.ProseMirror a) {
   color: var(--wb-color-primary-900);
   text-decoration: underline;
+}
+
+/* Canvas link override — wins over the generic :global(.ProseMirror a)
+   rule via specificity (0,2,1 vs 0,1,1) so canvas links stay indigo-700
+   regardless of theme. */
+.canvas :global(.ProseMirror a) {
+  color: var(--wb-canvas-link);
 }
 
 :global(.ProseMirror [data-cta-button] a) {

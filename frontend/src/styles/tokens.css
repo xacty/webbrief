@@ -233,9 +233,11 @@
      ============================================================ */
   --wb-canvas-bg:            #ffffff;
   --wb-canvas-text:          #0f172a;        /* slate-900 */
-  --wb-canvas-text-muted:    #475569;        /* slate-600 */
+  --wb-canvas-text-muted:    #475569;        /* slate-600 — reserved for canvas-internal muted text */
   --wb-canvas-border:        #e2e8f0;        /* slate-200 */
-  --wb-canvas-surface-muted: #f8fafc;        /* slate-50 — for callouts inside canvas */
+  --wb-canvas-surface-muted: #f8fafc;        /* slate-50 — reserved for canvas callouts */
+  --wb-canvas-link:          #4338ca;        /* indigo-700, permanent */
+  --wb-canvas-selection-bg:  #e0e7ff;        /* indigo-100, permanent */
 }
 
 /* ============================================================
