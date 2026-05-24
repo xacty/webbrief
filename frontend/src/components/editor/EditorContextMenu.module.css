@@ -21,7 +21,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 13px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   cursor: pointer;
   text-align: left;
   font-family: inherit;

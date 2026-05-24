@@ -41,7 +41,7 @@
   max-width: 800px;
   min-height: calc(100vh - 120px);
   background: #f8f8f8;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 4px;
   padding: 60px 50px 1000px;
 }
@@ -64,11 +64,11 @@
   align-items: center;
   gap: 8px;
   padding: 0 18px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-bottom: none;
   border-radius: 14px 14px 0 0;
   background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -89,7 +89,7 @@
   flex-direction: column;
   gap: 12px;
   padding: 14px 18px 16px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-bottom: none;
   background: var(--wb-surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
@@ -131,9 +131,9 @@
   flex: 1;
   min-width: 0;
   width: 100%;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 8px;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
   font-size: 13px;
 }
@@ -203,7 +203,7 @@
 
 .rulesTitle {
   display: block;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -218,12 +218,12 @@
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
 }
 
 .rulesEditButtonActive {
-  border-color: var(--wb-editor-border);
+  border-color: var(--wb-border);
   background: rgba(248, 248, 248, 0.9);
 }
 
@@ -307,7 +307,7 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
   font-size: 12px;
   font-weight: 400;
@@ -326,7 +326,7 @@
 }
 
 .ruleStaticNumber {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-weight: 600;
   font-size: 12px;
   line-height: 15px;
@@ -339,7 +339,7 @@
 
 .ruleInputShell:has(.ruleInput) {
   background: rgba(248, 248, 248, 0.75);
-  box-shadow: inset 0 -1px 0 var(--wb-editor-border);
+  box-shadow: inset 0 -1px 0 var(--wb-border);
 }
 
 .ruleControlsSingle .ruleStaticNumber {

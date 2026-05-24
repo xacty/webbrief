@@ -66,7 +66,7 @@
 
 .popoverCloseBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .cardActive:hover {
@@ -136,7 +136,7 @@
 .entryAuthor {
   font-weight: 600;
   font-size: 12.5px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -156,7 +156,7 @@
 
 .entryText {
   font-size: 13px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -211,7 +211,7 @@
 
 .dotsBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 /* Reply trigger (idle compact button shown when active card has no composer open yet) */
@@ -258,7 +258,7 @@
 .replyComposerName {
   font-size: 12px;
   font-weight: 600;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .replyTextarea {
@@ -272,7 +272,7 @@
   outline: none;
   padding: 4px 0;
   background: transparent;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .replyComposerActions {
@@ -352,7 +352,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 12.5px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   cursor: pointer;
   text-align: left;
   font-family: inherit;

@@ -135,7 +135,7 @@
 
 .commentAuthor {
   font-weight: 600;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .commentTime {
@@ -151,7 +151,7 @@
 
 .commentText {
   font-size: 13px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -187,7 +187,7 @@
 
 .actionBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .actionBtnPrimary {
@@ -227,7 +227,7 @@
   padding: 8px 10px;
   outline: none;
   background: var(--wb-surface);
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .replyTextarea:focus,
@@ -257,7 +257,7 @@
 
 .iconBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .iconBtnPrimary {
@@ -374,7 +374,7 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 12.5px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
 }
 
 .mentionItem:hover {

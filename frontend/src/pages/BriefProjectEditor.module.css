@@ -20,7 +20,7 @@
   padding: 0 24px;
   height: 70px;
   background: #f0f0f0;
-  border-bottom: 1px solid var(--wb-editor-bg);
+  border-bottom: 1px solid var(--wb-surface);
   z-index: var(--wb-z-sticky);
 }
 
@@ -32,9 +32,9 @@
   justify-content: center;
   flex-shrink: 0;
   padding: 0;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   background: var(--wb-surface);
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 999px;
   cursor: pointer;
   transition: background 120ms, border-color 120ms;
@@ -42,7 +42,7 @@
 
 .backBtn:hover {
   background: #f0f4f9;
-  border-color: var(--wb-editor-text-on-dark-muted);
+  border-color: var(--wb-text-muted);
 }
 
 .navbarCenter {
@@ -67,7 +67,7 @@
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   background: #f0f4f9;
   border-radius: 20px;
 }
@@ -104,8 +104,8 @@
   font-size: 13px;
   font-weight: 700;
   font-family: inherit;
-  color: var(--wb-editor-text-on-dark);
-  background: var(--wb-editor-bg);
+  color: var(--wb-text);
+  background: var(--wb-surface);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -179,7 +179,7 @@
   height: 20px;
   font-size: 11px;
   font-weight: 700;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   background: #f0f4f9;
   border-radius: 50%;
 }
@@ -224,7 +224,7 @@
 }
 
 .metaInput:focus {
-  border-color: var(--wb-editor-bg);
+  border-color: var(--wb-surface);
   background: var(--wb-surface);
 }
 
@@ -242,7 +242,7 @@
 }
 
 .metaTextarea:focus {
-  border-color: var(--wb-editor-bg);
+  border-color: var(--wb-surface);
   background: var(--wb-surface);
 }
 
@@ -286,7 +286,7 @@
 .questionCardSection {
   background: var(--wb-color-neutral-50);
   border-color: var(--wb-color-neutral-300);
-  border-left: 3px solid var(--wb-editor-bg);
+  border-left: 3px solid var(--wb-surface);
 }
 
 .questionCardTop {
@@ -382,7 +382,7 @@
 }
 
 .fieldInput:focus {
-  border-color: var(--wb-editor-bg);
+  border-color: var(--wb-surface);
   background: var(--wb-surface);
 }
 
@@ -399,7 +399,7 @@
 .requiredToggle input {
   width: 15px;
   height: 15px;
-  accent-color: var(--wb-editor-bg);
+  accent-color: var(--wb-surface);
   cursor: pointer;
 }
 
@@ -432,7 +432,7 @@
 }
 
 .optionsTextarea:focus {
-  border-color: var(--wb-editor-bg);
+  border-color: var(--wb-surface);
   background: var(--wb-surface);
 }
 
@@ -449,7 +449,7 @@
   font-size: 13px;
   font-weight: 700;
   font-family: inherit;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   background: #f0f4f9;
   border: 1px dashed var(--wb-color-primary-200);
   border-radius: 10px;
@@ -486,9 +486,9 @@
 }
 
 .typePickerBtn:hover {
-  background: var(--wb-editor-bg);
-  color: var(--wb-editor-text-on-dark);
-  border-color: var(--wb-editor-bg);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  border-color: var(--wb-surface);
 }
 
 .typePickerCancel {
@@ -560,7 +560,7 @@
 .linkText {
   flex: 1;
   font-size: 12px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-surface);
   word-break: break-all;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -597,8 +597,8 @@
   font-size: 13px;
   font-weight: 700;
   font-family: inherit;
-  color: var(--wb-editor-text-on-dark);
-  background: var(--wb-editor-bg);
+  color: var(--wb-text);
+  background: var(--wb-surface);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -652,7 +652,7 @@
 }
 
 .templateInput:focus {
-  border-color: var(--wb-editor-bg);
+  border-color: var(--wb-surface);
   background: var(--wb-surface);
 }
 

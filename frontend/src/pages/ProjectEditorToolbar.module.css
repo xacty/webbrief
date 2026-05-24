@@ -1,6 +1,6 @@
 /* Migrated to tokens 2026-05-09 (plan 04-03). NOTE: this file
    currently implements a LIGHT toolbar (background: var(--wb-surface),
-   border: var(--wb-editor-border)) — UI-SPEC §Color §Dark-chrome
+   border: var(--wb-border)) — UI-SPEC §Color §Dark-chrome
    prescribes a dark toolbar. The "zero visual regression" invariant
    takes precedence; UI-SPEC vs. impl discrepancy flagged in
    04-03-SUMMARY.md for product decision. Off-canon neutrals
@@ -14,7 +14,7 @@
   gap: 4px;
   padding: 8px 16px;
   background: var(--wb-surface);
-  border-bottom: 1px solid var(--wb-editor-border);
+  border-bottom: 1px solid var(--wb-border);
   flex-shrink: 0;
   overflow: visible;
 }
@@ -24,7 +24,7 @@
   height: 20px;
   margin: 0 4px;
   flex-shrink: 0;
-  background: var(--wb-editor-border);
+  background: var(--wb-border);
 }
 
 .menu {
@@ -39,7 +39,7 @@
   left: 0;
   min-width: 160px;
   padding: 6px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 8px;
   background: var(--wb-surface);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
@@ -60,7 +60,7 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -88,7 +88,7 @@
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 14px;
@@ -124,7 +124,7 @@
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
   font-size: 14px;
   cursor: pointer;
@@ -150,10 +150,10 @@
   justify-content: space-between;
   gap: 8px;
   padding: 0 10px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 5px;
   background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -171,7 +171,7 @@
 }
 
 .textColorSample {
-  border-bottom: 3px solid var(--wb-editor-text);
+  border-bottom: 3px solid var(--wb-text);
   line-height: 1;
   padding-bottom: 1px;
 }
@@ -235,7 +235,7 @@
 .tablePickerCell {
   width: 18px;
   height: 18px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 2px;
   background: var(--wb-surface);
   cursor: pointer;
