@@ -11,14 +11,31 @@
   z-index: var(--wb-z-sticky);
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 16px;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-2) var(--wb-space-3);
   background: var(--wb-surface);
   border-bottom: 1px solid var(--wb-border);
   flex-shrink: 0;
   overflow: visible;
 }
 
+/* Group container: clusters related buttons with tight internal spacing */
+.toolbarGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+}
+
+/* Subtle vertical divider between groups (spec S2) */
+.toolbarDivider {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--wb-space-1);
+  flex-shrink: 0;
+  background: var(--wb-border);
+}
+
+/* Legacy separator (still used inside table contextual toolbar etc.) */
 .separator {
   width: 1px;
   height: 20px;
@@ -37,17 +54,17 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  min-width: 160px;
-  padding: 6px;
+  min-width: 180px;
+  padding: var(--wb-space-1);
   border: 1px solid var(--wb-border);
-  border-radius: 8px;
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: var(--wb-z-sticky);
+  box-shadow: var(--wb-shadow-md);
+  z-index: var(--wb-z-dropdown);
 }
 
 .dropdownBlock {
-  min-width: 118px;
+  min-width: 140px;
 }
 
 .dropdownItem {
@@ -55,52 +72,65 @@
   min-height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px;
+  gap: var(--wb-space-2);
+  padding: 0 var(--wb-space-3);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--wb-radius-xs);
   background: transparent;
   color: var(--wb-text);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--wb-text-sm);
   text-align: left;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .dropdownItem:hover {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
 }
 
 .dropdownItemActive {
-  background: #e8f0fe;
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
   font-weight: 600;
 }
 
 .dropdownItemActive:hover {
-  background: #d2e3fc;
+  background: var(--wb-color-primary-100);
 }
 
+/* Square 32x32 power-use buttons (spec S2) */
 .toolBtn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 4px 10px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--wb-radius-2);
   background: transparent;
   color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 14px;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
 .toolBtn:hover:not(.toolBtnDisabled) {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
 }
 
+/* Indigo active state per spec S2 */
 .toolBtnActive {
-  background: #e8f0fe;
-  border-color: transparent;
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
+  border-color: var(--wb-color-primary-100);
+}
+
+.toolBtnActive:hover:not(.toolBtnDisabled) {
+  background: var(--wb-color-primary-100);
 }
 
 .toolBtnDisabled {
@@ -116,22 +146,27 @@
   position: relative;
 }
 
+/* toolLabel kept as auto-width to host color pickers / file input with icons */
 .toolLabel {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 4px 10px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--wb-space-2);
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--wb-radius-2);
   background: transparent;
   color: var(--wb-text);
   font: inherit;
   font-size: 14px;
   cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
 .toolLabel:hover:not(.toolLabelDisabled) {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
 }
 
 .toolLabelDisabled {
@@ -143,20 +178,25 @@
 }
 
 .blockSelectButton {
-  min-width: 92px;
-  min-height: 30px;
+  min-width: 110px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 10px;
+  gap: var(--wb-space-2);
+  padding: 0 var(--wb-space-2);
   border: 1px solid var(--wb-border);
-  border-radius: 5px;
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
   color: var(--wb-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--wb-text-sm);
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.blockSelectButton:hover:not(.blockSelectButtonDisabled) {
+  background: var(--wb-surface-muted);
 }
 
 .blockSelectButtonDisabled {
@@ -204,14 +244,14 @@
 
 .tablePickerDropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
-  padding: 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  padding: var(--wb-space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: var(--wb-z-sticky);
+  box-shadow: var(--wb-shadow-md);
+  z-index: var(--wb-z-dropdown);
 }
 
 .tablePickerLabel {

@@ -5901,285 +5901,299 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
         setOpenToolbarMenu(null)
       }}
     >
-      <ToolBtn
-        disabled={disabled}
-        onClick={onUndo}
-        title="Deshacer (Ctrl+Z)"
-      ><Undo2 size={16} /></ToolBtn>
+      {/* Group: Historial (undo/redo — not in spec's 5 groups, kept as leading group) */}
+      <div className={toolbarStyles.toolbarGroup}>
+        <ToolBtn
+          disabled={disabled}
+          onClick={onUndo}
+          title="Deshacer (Ctrl+Z)"
+        ><Undo2 size={16} /></ToolBtn>
 
-      <ToolBtn
-        disabled={disabled}
-        onClick={onRedo}
-        title="Rehacer (Ctrl+Y)"
-      ><Redo2 size={16} /></ToolBtn>
+        <ToolBtn
+          disabled={disabled}
+          onClick={onRedo}
+          title="Rehacer (Ctrl+Y)"
+        ><Redo2 size={16} /></ToolBtn>
+      </div>
 
-      <div className={toolbarStyles.separator} />
+      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
 
-      <div className={toolbarStyles.menu} data-toolbar-menu="">
-        <button
-          type="button"
-          className={cx(
-            toolbarStyles.blockSelectButton,
-            disabled && toolbarStyles.blockSelectButtonDisabled,
+      {/* Group 1: Bloque — block selector */}
+      <div className={toolbarStyles.toolbarGroup}>
+        <div className={toolbarStyles.menu} data-toolbar-menu="">
+          <button
+            type="button"
+            className={cx(
+              toolbarStyles.blockSelectButton,
+              disabled && toolbarStyles.blockSelectButtonDisabled,
+            )}
+            disabled={disabled}
+            onClick={() => setOpenToolbarMenu((value) => value === 'block' ? null : 'block')}
+            data-wb-tooltip="Estilo de texto"
+          >
+            <span>{blockOptions.find((option) => option.value === activeBlockType)?.label || 'Párrafo'}</span>
+            <ChevronDown size={12} />
+          </button>
+          {openToolbarMenu === 'block' && (
+            <div className={cx(toolbarStyles.dropdown, toolbarStyles.dropdownBlock)}>
+              {blockOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={cx(
+                    toolbarStyles.dropdownItem,
+                    activeBlockType === option.value && toolbarStyles.dropdownItemActive,
+                  )}
+                  onClick={() => applyBlockType(option.value)}
+                  data-wb-tooltip={option.tooltip}
+                >
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
           )}
-          disabled={disabled}
-          onClick={() => setOpenToolbarMenu((value) => value === 'block' ? null : 'block')}
-          data-wb-tooltip="Estilo de texto"
-        >
-          <span>{blockOptions.find((option) => option.value === activeBlockType)?.label || 'Párrafo'}</span>
-          <ChevronDown size={12} />
-        </button>
-        {openToolbarMenu === 'block' && (
-          <div className={cx(toolbarStyles.dropdown, toolbarStyles.dropdownBlock)}>
-            {blockOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={cx(
-                  toolbarStyles.dropdownItem,
-                  activeBlockType === option.value && toolbarStyles.dropdownItemActive,
-                )}
-                onClick={() => applyBlockType(option.value)}
-                data-wb-tooltip={option.tooltip}
-              >
-                <span>{option.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        </div>
       </div>
 
-      <div className={toolbarStyles.separator} />
+      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
 
-      <ToolBtn
-        active={editor?.isActive('bold')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBold().run()}
-        title="Negrita (Ctrl+B)"
-      ><b>B</b></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('italic')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleItalic().run()}
-        title="Cursiva (Ctrl+I)"
-      ><i>I</i></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('underline')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleUnderline().run()}
-        title="Subrayado (Ctrl+U)"
-      ><u>U</u></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('strike')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleStrike().run()}
-        title="Tachado (Ctrl+Shift+X)"
-      ><Strikethrough size={16} /></ToolBtn>
-
-      <div className={toolbarStyles.separator} />
-
-      <label
-        className={cx(
-          toolbarStyles.toolLabel,
-          toolbarStyles.toolLabelRelative,
-          disabled && toolbarStyles.toolLabelDisabled,
-        )}
-        data-wb-tooltip="Color de texto"
-      >
-        <span className={toolbarStyles.colorTrigger}>
-          <Palette size={14} />
-          <span className={toolbarStyles.textColorSample}>A</span>
-        </span>
-        <input
-          type="color"
-          className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
-          onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
-        />
-      </label>
-
-      <label
-        className={cx(
-          toolbarStyles.toolLabel,
-          toolbarStyles.toolLabelRelative,
-          disabled && toolbarStyles.toolLabelDisabled,
-        )}
-        data-wb-tooltip="Color de resaltado"
-      >
-        <span className={toolbarStyles.highlightSample}>H</span>
-        <input
-          type="color"
-          className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
-          defaultValue="#fef08a"
-          onChange={(e) => editor?.chain().focus().setHighlight({ color: e.target.value }).run()}
-        />
-      </label>
-
-      <div className={toolbarStyles.separator} />
-
-      <div className={toolbarStyles.menu} data-toolbar-menu="">
+      {/* Group 2: Texto — bold, italic, underline, strike */}
+      <div className={toolbarStyles.toolbarGroup}>
         <ToolBtn
-          active={openToolbarMenu === 'align'}
+          active={editor?.isActive('bold')}
           disabled={disabled}
-          onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
-          title="Alineación de texto"
-        >
-          {getAlignmentIcon(activeAlignment)}
-          <ChevronDown size={12} />
-        </ToolBtn>
-        {openToolbarMenu === 'align' && (
-          <div className={toolbarStyles.dropdown}>
-            {alignmentOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={cx(
-                  toolbarStyles.dropdownItem,
-                  activeAlignment === option.value && toolbarStyles.dropdownItemActive,
-                )}
-                onClick={() => {
-                  editor?.chain().focus().setTextAlign(option.value).run()
-                  setOpenToolbarMenu(null)
-                }}
-                data-wb-tooltip={option.tooltip}
-              >
-                {option.icon}
-                <span>{option.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
+          onClick={() => editor?.chain().focus().toggleBold().run()}
+          title="Negrita (Ctrl+B)"
+        ><b>B</b></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('italic')}
+          disabled={disabled}
+          onClick={() => editor?.chain().focus().toggleItalic().run()}
+          title="Cursiva (Ctrl+I)"
+        ><i>I</i></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('underline')}
+          disabled={disabled}
+          onClick={() => editor?.chain().focus().toggleUnderline().run()}
+          title="Subrayado (Ctrl+U)"
+        ><u>U</u></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('strike')}
+          disabled={disabled}
+          onClick={() => editor?.chain().focus().toggleStrike().run()}
+          title="Tachado (Ctrl+Shift+X)"
+        ><Strikethrough size={16} /></ToolBtn>
       </div>
 
-      <div className={toolbarStyles.menu} data-toolbar-menu="">
-        <ToolBtn
-          active={openToolbarMenu === 'spacing'}
-          disabled={disabled}
-          onClick={() => setOpenToolbarMenu((value) => value === 'spacing' ? null : 'spacing')}
-          title="Interlineado y espacio de párrafo"
+      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
+
+      {/* Group 3: Color — text color, highlight */}
+      <div className={toolbarStyles.toolbarGroup}>
+        <label
+          className={cx(
+            toolbarStyles.toolLabel,
+            toolbarStyles.toolLabelRelative,
+            disabled && toolbarStyles.toolLabelDisabled,
+          )}
+          data-wb-tooltip="Color de texto"
         >
-          <ListCollapse size={16} />
-          <ChevronDown size={12} />
-        </ToolBtn>
-        {openToolbarMenu === 'spacing' && (
-          <div className={toolbarStyles.dropdown}>
-            <button
-              type="button"
-              className={cx(
-                toolbarStyles.dropdownItem,
-                getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
-              )}
-              onClick={() => applyBlockSpacing('')}
-              data-wb-tooltip="Espaciado predeterminado"
-            >
-              <ListCollapse size={16} />
-              <span>Predeterminado</span>
-            </button>
-            {Object.entries(BLOCK_SPACING_PRESETS).map(([key, preset]) => (
+          <span className={toolbarStyles.colorTrigger}>
+            <Palette size={14} />
+            <span className={toolbarStyles.textColorSample}>A</span>
+          </span>
+          <input
+            type="color"
+            className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
+            onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
+          />
+        </label>
+
+        <label
+          className={cx(
+            toolbarStyles.toolLabel,
+            toolbarStyles.toolLabelRelative,
+            disabled && toolbarStyles.toolLabelDisabled,
+          )}
+          data-wb-tooltip="Color de resaltado"
+        >
+          <span className={toolbarStyles.highlightSample}>H</span>
+          <input
+            type="color"
+            className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
+            defaultValue="#fef08a"
+            onChange={(e) => editor?.chain().focus().setHighlight({ color: e.target.value }).run()}
+          />
+        </label>
+      </div>
+
+      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
+
+      {/* Group 4: Alineación — alignment, spacing, indent, lists, quote */}
+      <div className={toolbarStyles.toolbarGroup}>
+        <div className={toolbarStyles.menu} data-toolbar-menu="">
+          <ToolBtn
+            active={openToolbarMenu === 'align'}
+            disabled={disabled}
+            onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
+            title="Alineación de texto"
+          >
+            {getAlignmentIcon(activeAlignment)}
+            <ChevronDown size={12} />
+          </ToolBtn>
+          {openToolbarMenu === 'align' && (
+            <div className={toolbarStyles.dropdown}>
+              {alignmentOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={cx(
+                    toolbarStyles.dropdownItem,
+                    activeAlignment === option.value && toolbarStyles.dropdownItemActive,
+                  )}
+                  onClick={() => {
+                    editor?.chain().focus().setTextAlign(option.value).run()
+                    setOpenToolbarMenu(null)
+                  }}
+                  data-wb-tooltip={option.tooltip}
+                >
+                  {option.icon}
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className={toolbarStyles.menu} data-toolbar-menu="">
+          <ToolBtn
+            active={openToolbarMenu === 'spacing'}
+            disabled={disabled}
+            onClick={() => setOpenToolbarMenu((value) => value === 'spacing' ? null : 'spacing')}
+            title="Interlineado y espacio de párrafo"
+          >
+            <ListCollapse size={16} />
+            <ChevronDown size={12} />
+          </ToolBtn>
+          {openToolbarMenu === 'spacing' && (
+            <div className={toolbarStyles.dropdown}>
               <button
-                key={key}
                 type="button"
                 className={cx(
                   toolbarStyles.dropdownItem,
-                  getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
+                  getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
                 )}
-                onClick={() => applyBlockSpacing(key)}
-                data-wb-tooltip={`Espaciado ${preset.label.toLowerCase()}`}
+                onClick={() => applyBlockSpacing('')}
+                data-wb-tooltip="Espaciado predeterminado"
               >
                 <ListCollapse size={16} />
-                <span>{preset.label}</span>
+                <span>Predeterminado</span>
               </button>
-            ))}
-          </div>
-        )}
+              {Object.entries(BLOCK_SPACING_PRESETS).map(([key, preset]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={cx(
+                    toolbarStyles.dropdownItem,
+                    getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
+                  )}
+                  onClick={() => applyBlockSpacing(key)}
+                  data-wb-tooltip={`Espaciado ${preset.label.toLowerCase()}`}
+                >
+                  <ListCollapse size={16} />
+                  <span>{preset.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <ToolBtn
+          disabled={disabled}
+          onClick={() => applyIndent(-1)}
+          title="Disminuir sangría"
+        ><IndentDecrease size={16} /></ToolBtn>
+
+        <ToolBtn
+          disabled={disabled}
+          onClick={() => applyIndent(1)}
+          title="Aumentar sangría"
+        ><IndentIncrease size={16} /></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('bulletList')}
+          disabled={disabled}
+          onClick={() => editor?.chain().focus().toggleBulletList().run()}
+          title="Lista sin orden"
+        ><List size={16} /></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('orderedList')}
+          disabled={disabled}
+          onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+          title="Lista ordenada"
+        ><ListOrdered size={16} /></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('blockquote')}
+          disabled={disabled}
+          onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+          title="Cita"
+        ><Quote size={16} /></ToolBtn>
       </div>
 
-      <ToolBtn
-        disabled={disabled}
-        onClick={() => applyIndent(-1)}
-        title="Disminuir sangría"
-      ><IndentDecrease size={16} /></ToolBtn>
+      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
 
-      <ToolBtn
-        disabled={disabled}
-        onClick={() => applyIndent(1)}
-        title="Aumentar sangría"
-      ><IndentIncrease size={16} /></ToolBtn>
-
-      <div className={toolbarStyles.separator} />
-
-      <ToolBtn
-        active={editor?.isActive('bulletList')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBulletList().run()}
-        title="Lista sin orden"
-      ><List size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('orderedList')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-        title="Lista ordenada"
-      ><ListOrdered size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('blockquote')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-        title="Cita"
-      ><Quote size={16} /></ToolBtn>
-
-      <div className={toolbarStyles.separator} />
-
-      <TableGridPicker
-        disabled={disabled}
-        open={openToolbarMenu === 'table'}
-        onToggle={() => setOpenToolbarMenu((value) => value === 'table' ? null : 'table')}
-        onClose={() => setOpenToolbarMenu(null)}
-        onInsert={(rows, cols) => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()}
-      />
-
-      <div className={toolbarStyles.separator} />
-
-      <ToolBtn
-        active={editor?.isActive('link')}
-        disabled={disabled}
-        onClick={handleLink}
-        title="Insertar enlace"
-      ><Link2 size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('comment')}
-        disabled={disabled || !canComment || (editor?.state?.selection?.empty ?? true)}
-        onClick={() => {
-          if (!editor || editor.state.selection.empty) return
-          onAddComment?.()
-        }}
-        title="Agregar comentario"
-      ><MessageSquare size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('ctaButton')}
-        disabled={disabled}
-        onClick={handleCtaInsert}
-        title="Insertar CTA/button"
-      ><MousePointerClick size={16} /></ToolBtn>
-
-      <label
-        className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
-        data-wb-tooltip="Insertar imagen"
-      >
-        <ImageIcon size={16} />
-        <input
-          type="file"
-          accept="image/*"
-          className={toolbarStyles.hiddenFileInput}
-          onChange={handleImageUpload}
+      {/* Group 5: Insertar — table, link, comment, CTA, image */}
+      <div className={toolbarStyles.toolbarGroup}>
+        <TableGridPicker
           disabled={disabled}
+          open={openToolbarMenu === 'table'}
+          onToggle={() => setOpenToolbarMenu((value) => value === 'table' ? null : 'table')}
+          onClose={() => setOpenToolbarMenu(null)}
+          onInsert={(rows, cols) => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()}
         />
-      </label>
+
+        <ToolBtn
+          active={editor?.isActive('link')}
+          disabled={disabled}
+          onClick={handleLink}
+          title="Insertar enlace"
+        ><Link2 size={16} /></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('comment')}
+          disabled={disabled || !canComment || (editor?.state?.selection?.empty ?? true)}
+          onClick={() => {
+            if (!editor || editor.state.selection.empty) return
+            onAddComment?.()
+          }}
+          title="Agregar comentario"
+        ><MessageSquare size={16} /></ToolBtn>
+
+        <ToolBtn
+          active={editor?.isActive('ctaButton')}
+          disabled={disabled}
+          onClick={handleCtaInsert}
+          title="Insertar CTA/button"
+        ><MousePointerClick size={16} /></ToolBtn>
+
+        <label
+          className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
+          data-wb-tooltip="Insertar imagen"
+        >
+          <ImageIcon size={16} />
+          <input
+            type="file"
+            accept="image/*"
+            className={toolbarStyles.hiddenFileInput}
+            onChange={handleImageUpload}
+            disabled={disabled}
+          />
+        </label>
+      </div>
 
     </div>
   )
