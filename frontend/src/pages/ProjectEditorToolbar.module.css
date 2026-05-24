@@ -6,15 +6,25 @@
    04-03-SUMMARY.md for product decision. Off-canon neutrals
    (#f0f4f9 / #e8f0fe / #d2e3fc / #e0f0ff / #e5e7eb) kept as literals
    pending dedicated palette decision. */
+/* Floating glass toolbar (Phase 2a — issue 4): visually detached from the
+   center-column edges with horizontal margin, a translucent background
+   and backdrop blur. The toolbar still anchors to the top of the canvas
+   column (it sits before the editor scroll area in the DOM, so the scroll
+   area starts below it) — no sticky needed. */
 .toolbar {
   position: relative;
   z-index: var(--wb-z-sticky);
   display: flex;
   align-items: center;
   gap: var(--wb-space-2);
+  margin: var(--wb-space-3) var(--wb-space-4) 0;
   padding: var(--wb-space-2) var(--wb-space-3);
-  background: var(--wb-surface);
-  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-glass-bg);
+  border: 1px solid var(--wb-glass-border);
+  border-radius: var(--wb-radius-3);
+  box-shadow: var(--wb-glass-shadow);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
   flex-shrink: 0;
   overflow: visible;
 }

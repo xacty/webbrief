@@ -220,6 +220,16 @@
   --wb-section-flash:              rgba(254, 240, 138, 0.6);
 
   /* ============================================================
+     Glass surfaces (Vision OS / iOS 17 / macOS Sonoma style)
+     Translucent backgrounds intended for sticky/floating chrome
+     surfaces (formatting toolbar, future popovers). Pair with
+     backdrop-filter: blur(...) on the consumer rule.
+     ============================================================ */
+  --wb-glass-bg:                  rgba(255, 255, 255, 0.72);
+  --wb-glass-border:              rgba(15, 23, 42, 0.08);
+  --wb-glass-shadow:              0 8px 24px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.06);
+
+  /* ============================================================
      Canvas lock — values that stay paper-white regardless of theme.
      Used inside .canvas to keep the TipTap surface light when the rest
      of the chrome inverts. Mimics Google Docs / Word in dark mode.
@@ -296,4 +306,9 @@
   --wb-shadow-md:         0 4px 8px rgba(0, 0, 0, 0.40);
   --wb-shadow-lg:         0 8px 16px rgba(0, 0, 0, 0.45);
   --wb-shadow-xl:         0 16px 32px rgba(0, 0, 0, 0.50);
+
+  /* Glass overrides — translucent dark slab for floating chrome on dark theme */
+  --wb-glass-bg:          rgba(24, 24, 27, 0.66);
+  --wb-glass-border:      rgba(255, 255, 255, 0.08);
+  --wb-glass-shadow:      0 8px 24px rgba(0, 0, 0, 0.50), 0 1px 3px rgba(0, 0, 0, 0.40);
 }
