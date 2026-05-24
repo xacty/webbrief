@@ -87,6 +87,14 @@ export default function AppShell() {
                 Seguridad
               </NavLink>
             )}
+            <NavLink
+              to="/integrations"
+              className={({ isActive }) => (
+                isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+              )}
+            >
+              Integraciones
+            </NavLink>
           </nav>
         </div>
 
