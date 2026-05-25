@@ -192,7 +192,7 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
   // generateLink with type='invite' creates the auth user when it doesn't exist AND returns a
   // properly-redirected action_link that lands on /auth/set-password.
   if (decision.action === 'invited') {
-    const { error: inviteError, actionLink, user: newAuthUser, emailSent } = await generateInviteLinkAndSendEmail({
+    const { error: inviteError, user: newAuthUser, emailSent } = await generateInviteLinkAndSendEmail({
       email: normalizedEmail,
       fullName,
       redirectTo,
