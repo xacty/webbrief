@@ -7,14 +7,23 @@
 
 import { getCompanyRoleRank } from '../../../shared/userRoles.js'
 
+// Roles that are allowed to manage other users (set passwords, view sessions).
+// This mirrors `canManageCompanyUsers` from projectAccess.js — keeping the gate
+// inside the helper so route handlers cannot accidentally skip it.
+// Editors and worker roles can NEVER reach the password/session surface, even
+// if rank > target (e.g., editor rank 2 > designer rank 1).
+const USER_MANAGER_ROLES = new Set(['admin', 'manager'])
+
 /**
  * Can the actor set/generate a password for the target?
  *
  * Rules:
  *   - platform-admin: always yes (except self — self uses recovery-email flow)
  *   - QA: always no (defensive guard)
- *   - Otherwise: actor must STRICTLY OUTRANK target in at least one shared company
- *     (peer-rank denied; cross-company denied; admin > manager > editor > workers)
+ *   - Otherwise: actor must (a) hold a user-manager role (admin|manager) in at least
+ *     one shared company AND (b) STRICTLY OUTRANK target in that same company.
+ *     Peer-rank denied; cross-company denied; editor→worker denied (editor is not
+ *     a user-manager role even though rank 2 > 1).
  *   - Target with platformRole='admin' (platform-admin): only platform-admin can set
  *
  * @param {object} args
@@ -30,7 +39,8 @@ export function canSetPassword({ actor, target, actorMemberships = [], targetMem
   if (actor.platformRole === 'admin') return true
   if (target.platformRole === 'admin') return false
 
-  // Per-company rank check: actor must outrank target in at least one shared company.
+  // Per-company gate: actor must be a user-manager (admin|manager) AND outrank target
+  // in at least one shared company. The user-manager gate is what blocks editor→worker.
   const actorByCompany = new Map()
   for (const m of actorMemberships) actorByCompany.set(m.companyId, m.role)
   if (actorByCompany.size === 0) return false
@@ -38,6 +48,7 @@ export function canSetPassword({ actor, target, actorMemberships = [], targetMem
   for (const tm of targetMemberships) {
     const actorRole = actorByCompany.get(tm.companyId)
     if (!actorRole) continue
+    if (!USER_MANAGER_ROLES.has(actorRole)) continue
     if (getCompanyRoleRank(actorRole) > getCompanyRoleRank(tm.role)) return true
   }
   return false

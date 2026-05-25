@@ -3,6 +3,10 @@
 
 import { getCompanyRoleRank } from '../../../shared/userRoles.js'
 
+// Mirrors backend USER_MANAGER_ROLES. Editor and worker roles cannot set
+// passwords / view sessions even if their rank > target.
+const USER_MANAGER_ROLES = new Set(['admin', 'manager'])
+
 function platformRoleOf(user) {
   return user?.realPlatformRole || user?.platformRole
 }
@@ -22,6 +26,7 @@ export function canSetPassword(currentUser, targetUser) {
   for (const tc of (targetUser.companies || [])) {
     const actorRole = actorByCompany.get(tc.companyId)
     if (!actorRole) continue
+    if (!USER_MANAGER_ROLES.has(actorRole)) continue
     if (getCompanyRoleRank(actorRole) > getCompanyRoleRank(tc.role)) return true
   }
   return false

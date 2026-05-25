@@ -1302,6 +1302,10 @@ router.post('/:id/set-password', rateLimiters.passwordReset, async (req, res) =>
     }
   }
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!Array.isArray(revokeSessionIds)) {
+    return res.status(400).json({ error: 'revokeSessionIds debe ser un array' })
+  }
+  // Cap to prevent oversized payloads (typical user has < 20 active sessions).
   if (revokeSessionIds.length > 100) {
     return res.status(400).json({ error: 'demasiados revokeSessionIds (máx 100)' })
   }

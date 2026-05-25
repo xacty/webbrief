@@ -147,8 +147,9 @@ test('canSetPassword: manager cannot set peer manager or admin', () => {
   )
 })
 
-test('canSetPassword: editor cannot set anyone above workers', () => {
+test('canSetPassword: editor cannot set anyone, including workers (no user-manager role)', () => {
   const am = [{ companyId: 'c1', role: 'editor' }]
+  // editor → manager: denied (rank check would have caught this anyway)
   assert.equal(
     canSetPassword({
       actor: PLATFORM_USER,
@@ -158,9 +159,9 @@ test('canSetPassword: editor cannot set anyone above workers', () => {
     }),
     false,
   )
-  // Note: editor outranks workers by rank (2 vs 1) but per the spec's intent
-  // outer route gate canManageCompanyUsers excludes editor from this surface.
-  // Helper alone allows editor→worker (documented in PR 3 Task 5).
+  // editor → worker: denied by USER_MANAGER_ROLES gate (editor is NOT a user-manager role).
+  // Closes the privilege-escalation vulnerability where editor (rank 2) > worker (rank 1)
+  // would bypass the rank check despite the spec requiring editor to be blocked entirely.
   assert.equal(
     canSetPassword({
       actor: PLATFORM_USER,
@@ -168,7 +169,35 @@ test('canSetPassword: editor cannot set anyone above workers', () => {
       actorMemberships: am,
       targetMemberships: [{ companyId: 'c1', role: 'designer' }],
     }),
-    true,
+    false,
+  )
+})
+
+test('canSetPassword: worker roles cannot set anyone', () => {
+  for (const workerRole of ['content_writer', 'designer', 'developer']) {
+    const am = [{ companyId: 'c1', role: workerRole }]
+    assert.equal(
+      canSetPassword({
+        actor: PLATFORM_USER,
+        target: { id: 't', platformRole: 'user' },
+        actorMemberships: am,
+        targetMemberships: [{ companyId: 'c1', role: 'designer' }],
+      }),
+      false,
+      `${workerRole} should NOT be able to set passwords`,
+    )
+  }
+})
+
+test('canViewSessions: editor cannot view sessions (mirrors canSetPassword gate)', () => {
+  assert.equal(
+    canViewSessions({
+      actor: PLATFORM_USER,
+      target: { id: 't', platformRole: 'user' },
+      actorMemberships: [{ companyId: 'c1', role: 'editor' }],
+      targetMemberships: [{ companyId: 'c1', role: 'designer' }],
+    }),
+    false,
   )
 })
 
