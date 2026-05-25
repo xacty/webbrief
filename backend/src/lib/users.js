@@ -253,26 +253,16 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
 }
 
 async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req) {
-  const { data: linkData, error: linkError } = await wrapSupabaseAuthCall({
-    operation: () => supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
-      email: normalizedEmail,
-      options: { redirectTo },
-    }),
-    operationName: 'generateLink:invite',
-    req,
-    args: { email: normalizedEmail, type: 'invite' },
-  })
-
-  if (linkError) throw linkError
-  const actionLink = linkData?.properties?.action_link
-  if (!actionLink) throw new Error('No se pudo regenerar el link de invitación')
-
-  const emailResult = await sendInviteEmail({
-    to: normalizedEmail,
+  const { error, actionLink, emailSent } = await generateInviteLinkAndSendEmail({
+    email: normalizedEmail,
     fullName,
-    actionLink,
+    redirectTo,
+    req,
+    operationName: 'generateLink:invite:reinvite',
   })
+
+  if (error) throw error
+  if (!actionLink) throw new Error('No se pudo regenerar el link de invitación')
 
   await upsertProfileRow(authUser.id, normalizedEmail, fullName, authUser, normalizedPlatformRole, timestamp)
 
@@ -282,7 +272,7 @@ async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPla
     fullName: fullName || authUser.user_metadata?.full_name || '',
     platformRole: normalizedPlatformRole,
     action: 'reinvited',
-    inviteSent: Boolean(emailResult?.sent),
+    inviteSent: Boolean(emailSent),
   }
 }
 
