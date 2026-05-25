@@ -70,7 +70,11 @@
   border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
   box-shadow: var(--wb-shadow-md);
-  z-index: var(--wb-z-dropdown);
+  /* Must beat the canvas's .typeLabelBubbleRow (--wb-z-sticky = 200);
+     --wb-z-dropdown (100) was losing to it. --wb-z-popover (1100) is
+     the right tier for click-opened menus that need to clear sticky
+     content but stay below modals. */
+  z-index: var(--wb-z-popover);
 }
 
 .dropdownBlock {

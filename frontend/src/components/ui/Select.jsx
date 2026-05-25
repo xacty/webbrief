@@ -115,6 +115,10 @@ const Select = forwardRef(function Select(
     required = false,
     disabled = false,
     fullWidth = true,
+    // 'md' (default) → 40px trigger, 16px font — for forms / standalone
+    // inputs. 'sm' → 32px trigger, 14px font — for floating bars and
+    // toolbars where the trigger sits among other 32px controls.
+    size = 'md',
     id,
     placeholder,
     options,
@@ -503,7 +507,11 @@ const Select = forwardRef(function Select(
         disabled={disabled}
         onClick={handleTriggerClick}
         onKeyDown={handleTriggerKeyDown}
-        className={cn(styles.trigger, open && styles.triggerOpen)}
+        className={cn(
+          styles.trigger,
+          size === 'sm' && styles.triggerSm,
+          open && styles.triggerOpen
+        )}
       >
         <span
           className={cn(

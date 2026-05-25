@@ -72,6 +72,16 @@
   background-color: var(--wb-color-neutral-50);
 }
 
+/* Compact (sm) trigger — matches the editor toolbar's .blockSelectButton
+   dimensions (32px tall, --wb-text-sm font, --wb-space-2 padding) so a
+   Select dropped into a toolbar/floating-pill aligns with neighboring
+   32px controls instead of dominating them at 40px. */
+.triggerSm {
+  height: 32px;
+  padding: 0 var(--wb-space-2);
+  font-size: var(--wb-text-sm);
+}
+
 .triggerLabel {
   flex: 1 1 auto;
   min-width: 0;

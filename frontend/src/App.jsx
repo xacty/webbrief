@@ -96,6 +96,7 @@ function AppRoutes() {
           <Select
             id="global-role-preview-select"
             fullWidth={false}
+            size="sm"
             value={rolePreview || 'admin'}
             onChange={(event) => setRolePreview(event.target.value)}
           >
@@ -125,13 +126,13 @@ const rolePreviewStyles = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 10,
-    // 48px = .floatingBar min-height. Inner Select trigger is 40px
-    // (--wb-space-8 + --wb-space-2), so vertical padding is 4px to keep
-    // total height at exactly 48 (4 + 40 + 4 = 48). Horizontal 20px
-    // left gives the "Ver como" label breathing room; 12px right
-    // matches the trigger's natural padding-right + chevron geometry.
+    // 48px = .floatingBar min-height. Inner Select trigger is 32px
+    // (size="sm" matches the toolbar's .blockSelectButton), so vertical
+    // padding is 8px to keep total height at exactly 48 (8 + 32 + 8 = 48).
+    // Horizontal 16px left gives the "Ver como" label breathing room;
+    // 8px right matches the sm-trigger's natural padding-right.
     minHeight: 48,
-    padding: '4px 12px 4px 20px',
+    padding: '8px 8px 8px 16px',
     border: '1px solid var(--wb-border)',
     borderRadius: 'var(--wb-radius-full)',
     background: 'var(--wb-surface)',
