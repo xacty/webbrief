@@ -187,18 +187,20 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
   const redirectTo = getSetPasswordRedirectUrl()
 
   // -------- Case A: fresh invite --------
+  // Uses generateLink+sendInviteEmail (Resend) — NOT supabaseAdmin.auth.admin.inviteUserByEmail,
+  // because the native Supabase template lands users on the Site URL root, which redirects to /login.
+  // generateLink with type='invite' creates the auth user when it doesn't exist AND returns a
+  // properly-redirected action_link that lands on /auth/set-password.
   if (decision.action === 'invited') {
-    const { data, error: inviteError } = await wrapSupabaseAuthCall({
-      operation: () => supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
-        redirectTo,
-        data: { full_name: fullName || '' },
-      }),
-      operationName: 'inviteUserByEmail',
+    const { error: inviteError, actionLink, user: newAuthUser, emailSent } = await generateInviteLinkAndSendEmail({
+      email: normalizedEmail,
+      fullName,
+      redirectTo,
       req,
-      args: { email: normalizedEmail },
+      operationName: 'generateLink:invite:new',
     })
 
-    if (inviteError || !data?.user?.id) {
+    if (inviteError || !newAuthUser?.id) {
       // Race: another invite landed between our lookups and now. Re-resolve once.
       const fallback = await findAuthUserByEmail(normalizedEmail)
       if (!fallback?.id) {
@@ -208,15 +210,15 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
       return await handleReinvite(fallback, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req)
     }
 
-    await upsertProfileRow(data.user.id, normalizedEmail, fullName, data.user, normalizedPlatformRole, timestamp)
+    await upsertProfileRow(newAuthUser.id, normalizedEmail, fullName, newAuthUser, normalizedPlatformRole, timestamp)
 
     return {
-      userId: data.user.id,
+      userId: newAuthUser.id,
       email: normalizedEmail,
-      fullName: fullName || data.user.user_metadata?.full_name || '',
+      fullName: fullName || newAuthUser.user_metadata?.full_name || '',
       platformRole: normalizedPlatformRole,
       action: 'invited',
-      inviteSent: true,
+      inviteSent: Boolean(emailSent),
     }
   }
 
