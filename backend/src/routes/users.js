@@ -13,7 +13,6 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import {
-  canInviteCompanyRole,
   canManageCompanyUsers,
   canRequestUserRemoval,
   getAccessibleCompanyIds,
@@ -26,6 +25,11 @@ import {
 } from '../lib/users.js'
 import { wrapSupabaseAuthCall } from '../lib/applicationErrors.js'
 import { canSendAccess, decideSendAccessAction } from '../lib/sendAccess.js'
+import {
+  canAssignRoleRanked,
+  canManageMembershipRanked,
+  wouldLeaveCompanyWithoutAdmin,
+} from '../lib/membershipPermissions.js'
 import { sendInviteEmail, sendResetPasswordEmail } from '../lib/authEmails.js'
 import { requireAuth } from '../middleware/auth.js'
 import {
@@ -65,12 +69,22 @@ function canUseUsersPage(currentUser) {
 
 function canAssignRole(currentUser, companyId, role) {
   if (!COMPANY_ROLE_SET.has(role)) return false
-  return canInviteCompanyRole(currentUser, companyId, role)
+  return canAssignRoleRanked({
+    actorPlatformRole: currentUser?.platformRole,
+    actorMemberships: currentUser?.memberships || [],
+    companyId,
+    role,
+  })
 }
 
 function canManageMembership(currentUser, companyId, targetRole) {
   if (!canManageCompanyUsers(currentUser, companyId)) return false
-  return isAdmin(currentUser) || targetRole !== 'manager'
+  return canManageMembershipRanked({
+    actorPlatformRole: currentUser?.platformRole,
+    actorMemberships: currentUser?.memberships || [],
+    companyId,
+    targetRole,
+  })
 }
 
 function normalizePlatformRole(currentUser, requestedRole) {
@@ -134,18 +148,32 @@ async function getMembership(userId, companyId) {
   return data
 }
 
-async function assertCompanyKeepsManager(companyId, removedManagerId) {
+// Returns the list of admin user_ids for a company.
+async function getCompanyAdminUserIds(companyId) {
   const { data, error } = await supabaseAdmin
     .from('company_memberships')
     .select('user_id')
     .eq('company_id', companyId)
-    .eq('role', 'manager')
+    .eq('role', 'admin')
 
   if (error) throw error
+  return (data || []).map((m) => m.user_id).filter(Boolean)
+}
 
-  const remainingManagers = (data || []).filter((membership) => membership.user_id !== removedManagerId)
-  if (remainingManagers.length === 0) {
-    throw httpError(400, 'La empresa debe conservar al menos un manager')
+// Throws 400 if changing this membership would leave the company without an admin.
+// Pass the new role; pass null when fully removing the membership.
+async function assertCompanyKeepsAdmin(companyId, targetUserId, nextRole) {
+  const adminIds = await getCompanyAdminUserIds(companyId)
+  // We need the CURRENT role to know if we're actually demoting an admin.
+  const currentMembership = await getMembership(targetUserId, companyId)
+  const currentRole = currentMembership?.role
+  if (wouldLeaveCompanyWithoutAdmin({
+    currentRole,
+    nextRole: nextRole === null ? 'editor' : nextRole, // "removed" treated as demoted
+    companyAdminUserIds: adminIds,
+    targetUserId,
+  })) {
+    throw httpError(400, 'La empresa debe conservar al menos un admin')
   }
 }
 
@@ -717,8 +745,8 @@ router.patch('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async 
       return res.status(403).json({ error: 'No tienes permisos para asignar ese rol' })
     }
 
-    if (membership.role === 'manager' && role !== 'manager') {
-      await assertCompanyKeepsManager(companyId, userId)
+    if (membership.role === 'admin' && role !== 'admin') {
+      await assertCompanyKeepsAdmin(companyId, userId, role)
     }
 
     const { error } = await supabaseAdmin
@@ -755,8 +783,8 @@ router.delete('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async
       return res.status(403).json({ error: 'No tienes permisos para gestionar este acceso' })
     }
 
-    if (membership.role === 'manager') {
-      await assertCompanyKeepsManager(companyId, userId)
+    if (membership.role === 'admin') {
+      await assertCompanyKeepsAdmin(companyId, userId, null)
     }
 
     const { error } = await supabaseAdmin
