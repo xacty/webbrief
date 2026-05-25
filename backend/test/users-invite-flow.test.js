@@ -2,16 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { generateInviteLinkAndSendEmail } from '../src/lib/users.js'
 
-function makeMockSupabaseClient({ generateLinkResponse }) {
-  return {
-    auth: {
-      admin: {
-        generateLink: async (_args) => generateLinkResponse,
-      },
-    },
-  }
-}
-
 test('generateInviteLinkAndSendEmail: success path returns actionLink + user + emailSent=true', async () => {
   const calls = { generateLink: [], emailSender: [] }
   const supabaseClient = {
