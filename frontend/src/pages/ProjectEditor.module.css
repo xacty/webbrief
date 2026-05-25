@@ -89,21 +89,28 @@
      divider — we don't touch those because they're shared with the
      rest of the document and overriding them creates side effects.
      The divider's job is to add the cross-section SEPARATION gap above
-     itself; 24px above is enough to feel like a clean break from the
-     previous section, and 8px below is just enough to let the next
-     element's natural margin-top dominate without crowding the label. */
+     itself; 64px above is enough to feel like a clean break from the
+     previous section, and 8px below stays out of the way so the next
+     element's natural margin-top dominates without crowding the label. */
   padding: 0;
-  margin: var(--wb-space-6, 24px) 0 var(--wb-space-2, 8px);
+  margin: var(--wb-space-16, 64px) 0 var(--wb-space-2, 8px);
   border-top: 1px solid var(--wb-border);
 }
 
-/* First sectionDivider of the document doesn't get the 24px top margin
-   — the canvas already has its own padding-top to separate content from
-   the page's top edge, so adding 24px on top of that would create an
-   over-large gap before the very first section. NodeViewWrapper carries
-   the [data-section-divider] attribute; the styled .sectionDivider is
-   its direct child. */
-:global([data-section-divider]:first-child) .sectionDivider {
+/* First sectionDivider of the document doesn't get the 64px top margin
+   — the canvas already has its own padding-top, so 64px on top of that
+   would create an over-large gap before the very first section.
+
+   Targeting note: TipTap's React node view renders the structure:
+       .ProseMirror
+         > .react-renderer.node-sectionDivider     ← top-level child
+           > [data-section-divider]                ← always first child of wrapper
+             > .sectionDivider
+   `[data-section-divider]:first-child` matches every divider (because
+   it is always the only child of its react-renderer wrapper). We need
+   `.node-sectionDivider:first-child`, which only matches when the
+   wrapper itself is the first top-level child of .ProseMirror. */
+:global(.node-sectionDivider:first-child) .sectionDivider {
   margin-top: 0;
 }
 
