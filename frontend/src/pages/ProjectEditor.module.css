@@ -394,6 +394,43 @@
   background: var(--wb-border);
 }
 
+/* Animated container for the handoff audience toggle. The wrap stays
+   mounted in the DOM so both entry AND exit transitions can run; CSS
+   controls visibility via max-width/opacity/margin so React doesn't
+   have to coordinate unmount timing.
+   - max-width 0 + overflow:hidden clips the content visually.
+   - margin-left: calc(-1 * gap) absorbs the parent .floatingBar's
+     10px gap when closed so the wrap takes zero visual space
+     (otherwise an empty 10px gap stays visible after the modes).
+   - Easing: cubic-bezier(0.16, 1, 0.3, 1) is "ease-out-quint", reads
+     as a confident reveal that decelerates into place. */
+.floatingAudienceWrap {
+  display: inline-flex;
+  align-items: center;
+  max-width: 0;
+  margin-left: -10px;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-width 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    margin-left 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 200ms ease 60ms;
+}
+
+.floatingAudienceWrapOpen {
+  /* Generous upper bound — fits divider + 30px button + text padding
+     comfortably; the actual rendered width is auto-sized by content. */
+  max-width: 180px;
+  margin-left: 0;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floatingAudienceWrap {
+    transition: none;
+  }
+}
+
 /* Segment is a pure grouping wrapper — no own pill background so the
    outer .floatingBar reads as a single rounded container with a thin
    divider between the mode group and the audience sub-toggle. */

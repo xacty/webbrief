@@ -4811,29 +4811,33 @@ function FloatingEditorBar({
         })}
       </div>
 
-      {editorMode === 'handoff' && (
-        <>
-          <div className={styles.floatingDivider} />
-          <div className={styles.floatingSegment} aria-label="Audiencia de handoff">
-            <button
-              type="button"
-              className={cx(styles.floatingModeBtn, handoffAudience === 'designer' && styles.floatingAudienceBtnActive)}
-              onClick={() => onHandoffAudienceChange('designer')}
-            >
-              <Palette size={14} />
-              Designer
-            </button>
-            <button
-              type="button"
-              className={cx(styles.floatingModeBtn, handoffAudience === 'dev' && styles.floatingAudienceBtnActive)}
-              onClick={() => onHandoffAudienceChange('dev')}
-            >
-              <Code2 size={14} />
-              Dev
-            </button>
-          </div>
-        </>
-      )}
+      {/* Audience toggle — always rendered so the CSS transition handles
+          both reveal (entering Handoff mode) and collapse (leaving it)
+          smoothly. The .floatingAudienceWrap animates max-width / opacity
+          / margin-left so the surrounding modes don't suffer a layout
+          jump when the toggle appears or disappears. */}
+      <div
+        className={cx(
+          styles.floatingAudienceWrap,
+          editorMode === 'handoff' && styles.floatingAudienceWrapOpen
+        )}
+        aria-hidden={editorMode !== 'handoff'}
+      >
+        <div className={styles.floatingDivider} />
+        <button
+          type="button"
+          className={cx(styles.floatingModeBtn, styles.floatingAudienceBtnActive)}
+          onClick={() => onHandoffAudienceChange(handoffAudience === 'designer' ? 'dev' : 'designer')}
+          aria-label={`Audiencia: ${handoffAudience === 'designer' ? 'Designer' : 'Dev'}. Click para cambiar.`}
+          // Tab-skip when collapsed so keyboard users don't focus an
+          // invisible button while not in Handoff mode.
+          tabIndex={editorMode === 'handoff' ? 0 : -1}
+          disabled={editorMode !== 'handoff'}
+        >
+          {handoffAudience === 'designer' ? <Palette size={14} /> : <Code2 size={14} />}
+          {handoffAudience === 'designer' ? 'Des' : 'Dev'}
+        </button>
+      </div>
     </div>
   )
 }
