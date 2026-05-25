@@ -3,6 +3,9 @@ import { Camera, Download } from 'lucide-react'
 import { Button, Input, Select, Modal, Badge } from '../ui'
 import { apiDownloadToFile, apiFetch } from '../../lib/api'
 import { isAdmin } from '../../lib/roleCapabilities'
+import { canSetPassword } from '../../lib/passwordPermissions'
+import PasswordSection from './PasswordSection'
+import SessionsList from './SessionsList'
 import {
   COMPANY_ROLE_ORDER,
   MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
@@ -76,6 +79,10 @@ export default function UserEditModal({
   const [avatarPreview, setAvatarPreview] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // selectedSessionIds is the lifted state shared between SessionsList (where
+  // the checkboxes live) and PasswordSection (which reads them when the admin
+  // saves a new password — selected sessions are revoked as part of that flow).
+  const [selectedSessionIds, setSelectedSessionIds] = useState(() => new Set())
 
   // Reset form whenever the target user changes (modal opened with a new user).
   useEffect(() => {
@@ -97,6 +104,7 @@ export default function UserEditModal({
     setAvatarFile(null)
     setAvatarPreview(user.avatarUrl || '')
     setError('')
+    setSelectedSessionIds(new Set())
   }, [user, scope, companyId])
 
   if (!user) return null
@@ -353,6 +361,25 @@ export default function UserEditModal({
           </Button>
         </div>
       </form>
+
+      {/* Password + Sessions sections (PR 4). OUTSIDE the form so they don't
+          submit on Enter and don't share submit state with the identity form.
+          Gated by canSetPassword to mirror the backend permission check. */}
+      {canSetPassword(currentUser, user) && (
+        <>
+          <SessionsList
+            targetUserId={user.id}
+            selectedIds={selectedSessionIds}
+            onSelectionChange={setSelectedSessionIds}
+            onRevoked={() => { /* SessionsList clears its own selection */ }}
+          />
+          <PasswordSection
+            targetUser={{ id: user.id, fullName: user.fullName, email: user.email }}
+            selectedSessionIdsToRevoke={Array.from(selectedSessionIds)}
+            onChanged={() => { setSelectedSessionIds(new Set()) }}
+          />
+        </>
+      )}
     </Modal>
   )
 }

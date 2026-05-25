@@ -5,12 +5,35 @@ import { apiFetch } from '../lib/api'
 const AuthContext = createContext(null)
 const ROLE_PREVIEW_STORAGE_KEY = 'webrief:role-preview'
 
-function applyRolePreview(user, previewRole) {
-  if (!user || user.platformRole !== 'admin' || !previewRole || previewRole === 'admin') return user
+// Normalize legacy unprefixed values from localStorage to the new
+// 'platform:*' / 'company:*' format introduced when company-admin role
+// was added (PR 3 made both PLATFORM and COMPANY contain 'admin').
+function normalizeLegacyPreview(stored) {
+  if (!stored) return 'platform:admin'
+  if (stored.startsWith('platform:') || stored.startsWith('company:') || stored === 'public_viewer') return stored
+  if (stored === 'admin') return 'platform:admin'
+  if (stored === 'qa') return 'platform:qa'
+  if (['manager', 'editor', 'content_writer', 'designer', 'developer'].includes(stored)) {
+    return `company:${stored}`
+  }
+  return 'platform:admin'
+}
 
-  const companyRole = previewRole === 'manager' ? 'manager' : previewRole
-  const memberships = (user.memberships?.length ? user.memberships : [{ companyId: '', role: companyRole }])
-    .map((membership) => ({ ...membership, role: companyRole }))
+function applyRolePreview(user, previewRole) {
+  if (!user || user.platformRole !== 'admin' || !previewRole) return user
+  // 'platform:admin' = no preview (admin sees the app as themselves).
+  if (previewRole === 'platform:admin') return user
+
+  // Extract the inner role from the prefix. Defensive: unknown formats fall
+  // through unchanged (which the company-branch handles by stamping that
+  // string into memberships — best-effort, won't crash).
+  let innerRole
+  if (previewRole.startsWith('platform:')) innerRole = previewRole.slice('platform:'.length)
+  else if (previewRole.startsWith('company:')) innerRole = previewRole.slice('company:'.length)
+  else innerRole = previewRole
+
+  const memberships = (user.memberships?.length ? user.memberships : [{ companyId: '', role: innerRole }])
+    .map((membership) => ({ ...membership, role: innerRole }))
 
   return {
     ...user,
@@ -26,9 +49,15 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [rolePreview, setRolePreviewState] = useState(() => {
     try {
-      return window.localStorage.getItem(ROLE_PREVIEW_STORAGE_KEY) || 'admin'
+      const stored = window.localStorage.getItem(ROLE_PREVIEW_STORAGE_KEY)
+      const normalized = normalizeLegacyPreview(stored)
+      // Persist the normalized form so future loads skip the migration path.
+      if (stored !== normalized) {
+        try { window.localStorage.setItem(ROLE_PREVIEW_STORAGE_KEY, normalized) } catch { /* ignore */ }
+      }
+      return normalized
     } catch {
-      return 'admin'
+      return 'platform:admin'
     }
   })
   const [loading, setLoading] = useState(true)
@@ -179,7 +208,7 @@ export function AuthProvider({ children }) {
   }
 
   function setRolePreview(nextRole) {
-    const role = nextRole || 'admin'
+    const role = nextRole || 'platform:admin'
     setRolePreviewState(role)
     try {
       window.localStorage.setItem(ROLE_PREVIEW_STORAGE_KEY, role)
