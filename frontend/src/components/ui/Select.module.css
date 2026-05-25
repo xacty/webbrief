@@ -1,3 +1,14 @@
+/*
+  Select — custom listbox dropdown.
+
+  Replaces the previous native <select> wrapper. The trigger is a button
+  that visually matches an input field; the listbox is rendered through
+  a React portal at the body level so it is not clipped by ancestor
+  overflow:hidden, transforms, or stacking contexts.
+
+  All values come from shell tokens (no hardcoded colors / radii / shadows).
+*/
+
 .field {
   display: inline-flex;
   flex-direction: column;
@@ -15,6 +26,7 @@
   font-weight: var(--wb-weight-medium);
   line-height: var(--wb-leading-sm);
   color: var(--wb-color-neutral-700);
+  cursor: pointer;
 }
 
 .required {
@@ -22,46 +34,162 @@
   margin-left: var(--wb-space-1);
 }
 
-/*
-  Chevron contract: base.css owns the global rule for `select:not([multiple])`
-  and paints the chevron via the existing CSS variables. Per UI-SPEC §3 Select,
-  we MUST preserve this. This module deliberately does not set padding-right,
-  the chevron asset, or the appearance reset — those live in base.css.
-*/
-.select {
+/* ── Trigger button ─────────────────────────────────────────────────── */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
-  height: calc(var(--wb-space-8) + var(--wb-space-2)); /* 40px per UI-SPEC arithmetic */
-  padding: 0 var(--wb-space-4);
+  height: calc(var(--wb-space-8) + var(--wb-space-2)); /* 40px */
+  padding: 0 var(--wb-space-3) 0 var(--wb-space-4);
   border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-2);
   background-color: var(--wb-surface);
-  color: var(--wb-color-neutral-800);
+  color: var(--wb-text);
   font-family: inherit;
   font-size: var(--wb-text-base);
   line-height: var(--wb-leading-base);
+  cursor: pointer;
+  text-align: left;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-.select:focus-visible {
-  outline: none;
+.trigger:hover:not(:disabled) {
   border-color: var(--wb-border-strong);
+}
+
+.triggerOpen,
+.trigger:focus-visible {
+  outline: none;
+  border-color: var(--wb-color-primary-600);
   box-shadow: 0 0 0 3px var(--wb-color-primary-200);
 }
 
-.select:disabled {
+.trigger:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   background-color: var(--wb-color-neutral-50);
 }
 
+.triggerLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.triggerPlaceholder {
+  color: var(--wb-text-muted);
+}
+
+.triggerChevron {
+  flex-shrink: 0;
+  margin-left: var(--wb-space-2);
+  color: var(--wb-text-muted);
+  transition: transform 150ms ease;
+}
+
+.triggerOpen .triggerChevron {
+  transform: rotate(180deg);
+}
+
 /* Error state */
-.hasError .select {
+.hasError .trigger {
   border-color: var(--wb-color-danger-600);
 }
 
-.hasError .select:focus-visible {
+.hasError .trigger:focus-visible,
+.hasError .triggerOpen {
   box-shadow: 0 0 0 3px var(--wb-color-danger-100);
 }
+
+/* ── Listbox panel ──────────────────────────────────────────────────── */
+
+.listbox {
+  z-index: var(--wb-z-popover);
+  min-width: 160px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--wb-space-1);
+  list-style: none;
+  background-color: var(--wb-surface);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-md);
+  font-family: var(--wb-font-sans);
+}
+
+.groupLabel {
+  padding: var(--wb-space-2) var(--wb-space-3) var(--wb-space-1);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-semibold);
+  line-height: var(--wb-leading-normal);
+  color: var(--wb-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Option ─────────────────────────────────────────────────────────── */
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-2);
+  width: 100%;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-radius: var(--wb-radius-xs);
+  background: transparent;
+  border: none;
+  color: var(--wb-text);
+  font-family: inherit;
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+.optionLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.option:hover:not(.optionDisabled),
+.optionFocused {
+  background-color: var(--wb-surface-muted);
+}
+
+.optionSelected {
+  background-color: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
+  font-weight: var(--wb-weight-semibold);
+}
+
+.optionSelected:hover:not(.optionDisabled),
+.optionSelected.optionFocused {
+  background-color: var(--wb-color-primary-100);
+}
+
+.optionDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.optionCheckmark {
+  flex-shrink: 0;
+  color: var(--wb-color-primary-600);
+}
+
+/* ── Helper / error text ────────────────────────────────────────────── */
 
 .helper {
   font-size: var(--wb-text-xs);
@@ -75,7 +203,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .select {
+  .trigger,
+  .triggerChevron,
+  .option {
     transition: none;
   }
 }
