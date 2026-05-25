@@ -4786,23 +4786,44 @@ function FloatingEditorBar({
   disabled,
 }) {
   const modeOptions = [
-    { id: 'brief', label: 'Brief', icon: FileText },
-    { id: 'handoff', label: 'Handoff', icon: Send },
-    { id: 'preview', label: 'Preview', icon: Eye },
-  ].filter((mode) => availableModes.includes(mode.id))
+    { value: 'brief', label: 'Brief', icon: FileText },
+    { value: 'handoff', label: 'Handoff', icon: Send },
+    { value: 'preview', label: 'Preview', icon: Eye },
+  ].filter((mode) => availableModes.includes(mode.value))
+
+  // Indicator position for the mode segmented control. findIndex returns
+  // -1 if the current mode isn't in availableModes (edge case); clamp to
+  // 0 so the indicator parks at the first segment instead of off-screen.
+  const modeIndex = Math.max(0, modeOptions.findIndex((m) => m.value === editorMode))
+
+  const audienceOptions = [
+    { value: 'designer', label: 'Des', icon: Palette },
+    { value: 'dev', label: 'Dev', icon: Code2 },
+  ]
+  const audienceIndex = handoffAudience === 'dev' ? 1 : 0
 
   return (
     <div className={styles.floatingBar} aria-label="Controles de editor">
-      <div className={styles.floatingSegment} aria-label="Modo del editor">
+      {/* Mode segmented control — sliding indicator pill (Tesla-style)
+          marks the active mode; all three options are always visible. */}
+      <div
+        className={styles.segmentedControl}
+        style={{ '--seg-count': modeOptions.length, '--seg-index': modeIndex }}
+        role="tablist"
+        aria-label="Modo del editor"
+      >
+        <div className={styles.segmentedIndicator} aria-hidden="true" />
         {modeOptions.map((mode) => {
           const Icon = mode.icon
-          const active = editorMode === mode.id
+          const active = editorMode === mode.value
           return (
             <button
-              key={mode.id}
+              key={mode.value}
               type="button"
-              className={cx(styles.floatingModeBtn, active && styles.floatingModeBtnActive)}
-              onClick={() => onEditorModeChange(mode.id)}
+              role="tab"
+              aria-selected={active}
+              className={cx(styles.segmentedOption, active && styles.segmentedOptionActive)}
+              onClick={() => onEditorModeChange(mode.value)}
             >
               <Icon size={14} />
               {mode.label}
@@ -4811,11 +4832,9 @@ function FloatingEditorBar({
         })}
       </div>
 
-      {/* Audience toggle — always rendered so the CSS transition handles
-          both reveal (entering Handoff mode) and collapse (leaving it)
-          smoothly. The .floatingAudienceWrap animates max-width / opacity
-          / margin-left so the surrounding modes don't suffer a layout
-          jump when the toggle appears or disappears. */}
+      {/* Audience switcher — animated wrap reveals/collapses when
+          entering/leaving Handoff mode. Inside, another segmented
+          control with the indicator sliding between Des and Dev. */}
       <div
         className={cx(
           styles.floatingAudienceWrap,
@@ -4824,19 +4843,35 @@ function FloatingEditorBar({
         aria-hidden={editorMode !== 'handoff'}
       >
         <div className={styles.floatingDivider} />
-        <button
-          type="button"
-          className={cx(styles.floatingModeBtn, styles.floatingAudienceBtnActive)}
-          onClick={() => onHandoffAudienceChange(handoffAudience === 'designer' ? 'dev' : 'designer')}
-          aria-label={`Audiencia: ${handoffAudience === 'designer' ? 'Designer' : 'Dev'}. Click para cambiar.`}
-          // Tab-skip when collapsed so keyboard users don't focus an
-          // invisible button while not in Handoff mode.
-          tabIndex={editorMode === 'handoff' ? 0 : -1}
-          disabled={editorMode !== 'handoff'}
+        <div
+          className={styles.segmentedControl}
+          style={{ '--seg-count': 2, '--seg-index': audienceIndex }}
+          role="tablist"
+          aria-label="Audiencia de handoff"
         >
-          {handoffAudience === 'designer' ? <Palette size={14} /> : <Code2 size={14} />}
-          {handoffAudience === 'designer' ? 'Des' : 'Dev'}
-        </button>
+          <div className={styles.segmentedIndicator} aria-hidden="true" />
+          {audienceOptions.map((opt) => {
+            const Icon = opt.icon
+            const active = handoffAudience === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={cx(styles.segmentedOption, active && styles.segmentedOptionActive)}
+                onClick={() => onHandoffAudienceChange(opt.value)}
+                // Tab-skip + disable while the wrap is collapsed so
+                // keyboard users don't focus invisible buttons.
+                tabIndex={editorMode === 'handoff' ? 0 : -1}
+                disabled={editorMode !== 'handoff'}
+              >
+                <Icon size={14} />
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
