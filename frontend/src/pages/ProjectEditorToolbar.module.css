@@ -13,7 +13,17 @@
    area starts below it) — no sticky needed. */
 .toolbar {
   position: relative;
-  z-index: var(--wb-z-sticky);
+  /* The toolbar creates a stacking context (position:relative + z-index,
+     AND backdrop-filter which always creates one per spec). Anything
+     inside — including .dropdown — is trapped in this context, so the
+     dropdown's own z-index only competes against siblings inside the
+     toolbar. When the toolbar's context is compared to the canvas's
+     .typeLabelBubbleRow (also at --wb-z-sticky = 200), DOM order wins
+     and the bubble row, being later in the document, paints over the
+     toolbar's dropdown. Bumping the toolbar to --wb-z-overlay (900)
+     lifts the whole context above the bubble row (200) while still
+     staying below modals (1000), popovers (1100), and tooltips (1200). */
+  z-index: var(--wb-z-overlay);
   display: flex;
   align-items: center;
   gap: var(--wb-space-2);
