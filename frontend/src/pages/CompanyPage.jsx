@@ -74,6 +74,20 @@ function roleLabel(role) {
   return getCompanyRoleLabelShared(role)
 }
 
+function buildMembersCounter(members) {
+  const counts = members.reduce((acc, m) => {
+    acc[m.role] = (acc[m.role] || 0) + 1
+    return acc
+  }, {})
+  const parts = []
+  if (counts.admin) parts.push(`${counts.admin} ${counts.admin === 1 ? 'admin' : 'admins'}`)
+  if (counts.manager) parts.push(`${counts.manager} ${counts.manager === 1 ? 'manager' : 'managers'}`)
+  if (counts.editor) parts.push(`${counts.editor} ${counts.editor === 1 ? 'editor' : 'editores'}`)
+  const workerCount = (counts.content_writer || 0) + (counts.designer || 0) + (counts.developer || 0)
+  if (workerCount) parts.push(`${workerCount} ${workerCount === 1 ? 'colaborador' : 'colaboradores'}`)
+  return parts.join(' · ')
+}
+
 function projectTypeLabel(projectType) {
   if (projectType === 'document') return 'Artículo'
   if (projectType === 'faq') return 'FAQs'
@@ -110,17 +124,23 @@ export default function CompanyPage() {
   const canCreateProjects = canCreateProjectsForRole(currentUser, company?.membershipRole)
   const inviteRoles = getInviteRoleOptions(currentUser, company?.membershipRole)
   const isAdminUser = isAdmin(currentUser)
+  const isCompanyAdmin = company?.membershipRole === 'admin'
   const isCompanyManager = company?.membershipRole === 'manager'
 
   function canManageMember(member) {
     if (!member) return false
     if (isAdminUser) return true
+    // Company-admin can manage any peer below admin rank.
+    if (isCompanyAdmin) return member.role !== 'admin'
     if (!isCompanyManager) return false
-    return member.role !== 'manager'
+    return member.role !== 'manager' && member.role !== 'admin'
   }
 
   function getMemberRoleOptions(member) {
     if (isAdminUser) return COMPANY_ROLE_ORDER
+    // Company-admin in the active company can assign anything including 'admin'.
+    const actorMembership = (currentUser?.memberships || []).find((m) => m.companyId === companyId)
+    if (actorMembership?.role === 'admin') return COMPANY_ROLE_ORDER
     const baseOptions = MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER
     return member && baseOptions.includes(member.role)
       ? baseOptions
@@ -783,6 +803,11 @@ export default function CompanyPage() {
                   <Badge variant="neutral" size="sm">{members.length}</Badge>
                 </div>
 
+                {members.length > 0 && (() => {
+                  const counter = buildMembersCounter(members)
+                  return counter ? <p className={styles.membersCounter}>{counter}</p> : null
+                })()}
+
                 {members.length === 0 ? (
                   <div className={styles.emptyStateCompact}>
                     Aún no hay miembros registrados para esta empresa.
@@ -799,7 +824,12 @@ export default function CompanyPage() {
                           </div>
 
                           <div className={styles.memberMeta}>
-                            <span className={styles.memberRole}>{roleLabel(member.role)}</span>
+                            <Badge
+                              variant={member.role === 'admin' ? 'warning' : 'neutral'}
+                              size="sm"
+                            >
+                              {roleLabel(member.role)}
+                            </Badge>
                             <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
                           </div>
 
