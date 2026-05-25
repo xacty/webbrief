@@ -6261,6 +6261,25 @@ function TableGridPicker({ disabled, open, onToggle, onClose, onInsert }) {
   )
 }
 
+// Local button used inside TableContextBar — auto-width, muted by default,
+// indigo-tinted on hover. Matches the formatting toolbar pattern but lives
+// in this module so the table bar can vary the width per label.
+function TableCtxBtn({ children, onClick, title, danger = false }) {
+  return (
+    <button
+      type="button"
+      className={cx(styles.tableCtxBtn, danger && styles.tableCtxBtnDanger)}
+      // Same anti-blur trick as ToolBtn — preserve the editor selection
+      // so commands like deleteTable target the right cell.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      data-wb-tooltip={title}
+    >
+      {children}
+    </button>
+  )
+}
+
 // Barra contextual para operaciones de tabla (solo visible cuando cursor está en tabla)
 function TableContextBar({ editor }) {
   const [, forceUpdate] = useState(0)
@@ -6276,33 +6295,39 @@ function TableContextBar({ editor }) {
 
   return (
     <div className={styles.tableContextBar}>
-      <ToolBtn onClick={() => editor.chain().focus().addColumnBefore().run()} title="Columna antes">
-        <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Izq</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Columna después">
-        <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Der</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().deleteColumn().run()} title="Eliminar columna">
-        <Columns3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
-      </ToolBtn>
+      <div className={styles.tableCtxGroup}>
+        <TableCtxBtn onClick={() => editor.chain().focus().addColumnBefore().run()} title="Columna antes">
+          <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Izq</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Columna después">
+          <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Der</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().deleteColumn().run()} title="Eliminar columna">
+          <Columns3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
+        </TableCtxBtn>
+      </div>
 
-      <div className={styles.toolbarSep} />
+      <div className={styles.tableCtxDivider} />
 
-      <ToolBtn onClick={() => editor.chain().focus().addRowBefore().run()} title="Fila antes">
-        <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Arriba</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Fila después">
-        <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Abajo</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().deleteRow().run()} title="Eliminar fila">
-        <Rows3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
-      </ToolBtn>
+      <div className={styles.tableCtxGroup}>
+        <TableCtxBtn onClick={() => editor.chain().focus().addRowBefore().run()} title="Fila antes">
+          <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Arriba</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Fila después">
+          <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Abajo</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().deleteRow().run()} title="Eliminar fila">
+          <Rows3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
+        </TableCtxBtn>
+      </div>
 
-      <div className={styles.toolbarSep} />
+      <div className={styles.tableCtxDivider} />
 
-      <ToolBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Eliminar tabla">
-        <Trash2 size={14} color="#ef4444" />
-      </ToolBtn>
+      <div className={styles.tableCtxGroup}>
+        <TableCtxBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Eliminar tabla" danger>
+          <Trash2 size={14} />
+        </TableCtxBtn>
+      </div>
     </div>
   )
 }

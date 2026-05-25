@@ -774,24 +774,93 @@
   color: var(--wb-text);
 }
 
+/* Table contextual toolbar — sibling of the main formatting toolbar.
+   Matches the glass/floating pattern (var(--wb-glass-*) + radius/blur)
+   so the two bars feel like a family. Lavender bg shows through behind
+   the blur. */
 .tableContextBar {
+  position: relative;
+  z-index: var(--wb-z-sticky);
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 4px 16px;
-  background: #fafafa;
-  border-bottom: 1px solid #e8e8e8;
+  gap: var(--wb-space-2);
+  margin: var(--wb-space-2) var(--wb-space-4) 0;
+  padding: var(--wb-space-1) var(--wb-space-3);
+  background: var(--wb-glass-bg);
+  border: 1px solid var(--wb-glass-border);
+  border-radius: var(--wb-radius-3);
+  box-shadow: var(--wb-glass-shadow);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
   flex-shrink: 0;
+  overflow: visible;
+}
+
+/* Group container — clusters of related table-op buttons (matches the
+   formatting toolbar pattern). */
+.tableCtxGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+}
+
+/* Subtle vertical divider between groups — mirrors .toolbarDivider in
+   ProjectEditorToolbar.module.css. */
+.tableCtxDivider {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--wb-space-1);
+  flex-shrink: 0;
+  background: var(--wb-border);
+}
+
+/* Local button matching the formatting-toolbar look: muted by default,
+   indigo-tinted on hover. Auto-width so + Izq / + Der labels fit. */
+.tableCtxBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 var(--wb-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.tableCtxBtn:hover {
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
+  border-color: var(--wb-color-primary-100);
 }
 
 .tableCtxLabel {
   margin-left: 2px;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
+  color: inherit;
 }
 
 .tableCtxLabelDanger {
-  color: var(--wb-color-danger-500);
+  color: var(--wb-color-danger-600);
+  font-weight: 700;
+}
+
+/* Destructive variant — red on hover (delete-table sits in its own group). */
+.tableCtxBtnDanger {
+  color: var(--wb-color-danger-600);
+}
+
+.tableCtxBtnDanger:hover {
+  background: var(--wb-color-danger-50);
+  color: var(--wb-color-danger-700);
+  border-color: var(--wb-color-danger-100);
 }
 
 .tableCtxMenu {
@@ -801,9 +870,10 @@
   z-index: var(--wb-z-popover);
   min-width: 180px;
   padding: 4px 0;
-  border-radius: 8px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--wb-shadow-md);
 }
 
 .tableCtxMenuItem {
@@ -812,41 +882,54 @@
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .tableCtxMenuItem:hover {
-  background: #f0f4f9;
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
 }
 
 .tableCtxMenuItemDanger {
-  color: var(--wb-color-danger-500);
+  color: var(--wb-color-danger-600);
 }
 
 .tableCtxMenuItemDanger:hover {
   background: var(--wb-color-danger-50);
+  color: var(--wb-color-danger-700);
 }
 
 .tableCtxMenuDivider {
   height: 1px;
   margin: 4px 0;
-  background: #e8e8e8;
+  background: var(--wb-border);
 }
 
+/* Edge handles on a table — additive (+) uses indigo soft, destructive
+   (−) uses danger soft. Both feel like part of the shell palette. */
 .tableInlineBtn {
   position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--wb-border);
-  border-radius: 4px;
-  background: #f0f0f0;
-  color: var(--wb-text-muted);
+  border: 1px solid var(--wb-color-primary-100);
+  border-radius: var(--wb-radius-xs);
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.15s, background-color 0.15s;
+  opacity: 0.7;
+  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease, color 120ms ease;
   z-index: var(--wb-z-sticky);
+}
+
+.tableInlineBtn:hover {
+  background: var(--wb-color-primary-100);
+  border-color: var(--wb-color-primary-200);
+  color: var(--wb-color-primary-800);
+  opacity: 1;
 }
 
 .tableInlineBtnCol {
@@ -865,12 +948,14 @@
 
 .tableInlineBtnRemove {
   background: var(--wb-color-danger-50);
-  color: var(--wb-color-danger-500);
-  border-color: var(--wb-color-danger-200);
+  color: var(--wb-color-danger-600);
+  border-color: var(--wb-color-danger-100);
 }
 
 .tableInlineBtnRemove:hover {
   background: var(--wb-color-danger-100);
+  border-color: var(--wb-color-danger-200);
+  color: var(--wb-color-danger-700);
   opacity: 1;
 }
 
