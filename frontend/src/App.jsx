@@ -25,11 +25,13 @@ const SecurityErrorsPage = lazy(() => import('./pages/SecurityErrorsPage'))
 const SecurityBlocksPage = lazy(() => import('./pages/SecurityBlocksPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 
+// Prefixed values disambiguate platform-admin vs company-admin (both label as
+// "Admin" historically, value === 'admin' would collide on the <select>).
 const ROLE_PREVIEW_OPTIONS = [
   ...PLATFORM_ROLE_ORDER
     .filter((role) => role !== 'user')
-    .map((role) => ({ value: role, label: getPlatformRoleLabel(role) })),
-  ...COMPANY_ROLE_ORDER.map((role) => ({ value: role, label: getCompanyRoleLabel(role) })),
+    .map((role) => ({ value: `platform:${role}`, label: getPlatformRoleLabel(role) })),
+  ...COMPANY_ROLE_ORDER.map((role) => ({ value: `company:${role}`, label: getCompanyRoleLabel(role) })),
   { value: 'public_viewer', label: 'Cliente sin cuenta' },
 ]
 
@@ -95,7 +97,7 @@ function AppRoutes() {
           <select
             id="global-role-preview-select"
             style={rolePreviewStyles.select}
-            value={rolePreview || 'admin'}
+            value={rolePreview || 'platform:admin'}
             onChange={(event) => setRolePreview(event.target.value)}
           >
             {ROLE_PREVIEW_OPTIONS.map((option) => (

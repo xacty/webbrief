@@ -25,7 +25,7 @@ export function getCompanyRoleRank(role) {
 export const GLOBAL_PLATFORM_ROLES = new Set(PLATFORM_ROLE_ORDER.filter((role) => role !== 'user'))
 
 export const PLATFORM_ROLE_LABELS = {
-  admin: 'Admin',
+  admin: 'WeBrief Admin',
   qa: 'QA',
   user: 'Usuario',
 }
@@ -37,7 +37,7 @@ export const PLATFORM_ROLE_TITLES = {
 }
 
 export const COMPANY_ROLE_LABELS = {
-  admin: 'Admin',
+  admin: 'Company Admin',
   manager: 'Manager',
   editor: 'Editor',
   content_writer: 'Content Writer',
