@@ -238,15 +238,17 @@ export async function inviteUserToCompany({ email, fullName, companyId, role, pl
   const profile = await ensureUserProfile({ email, fullName, platformRole, req })
   await assignUserToCompany({ companyId, userId: profile.userId, role })
 
-  // Plan C: notify when an existing active user is promoted to manager.
-  // notifyManagerAssigned is best-effort and never throws (failures log
-  // to application_errors via Plan D). The membership row is already
-  // committed; this only affects notification delivery.
+  // Plan C: notify when an existing active user is promoted to a high-rank
+  // role (manager or company-admin). notifyManagerAssigned is best-effort
+  // and never throws (failures log to application_errors via Plan D). The
+  // membership row is already committed; this only affects notification
+  // delivery. PR3 QA extended this to include the new admin role.
   if (shouldNotifyManagerAssigned({ role, action: profile.action })) {
     await notifyManagerAssigned({
       targetUserId: profile.userId,
       companyId,
       actor: req?.currentUser || null,
+      role,
       req,
     })
   }

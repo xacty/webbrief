@@ -8,9 +8,18 @@ import { logApplicationError } from './applicationErrors.js'
 
 const DEFAULT_FRONTEND_URL = 'http://localhost:5173'
 
+// PR3 QA: also notify for the new company-admin role. The original Plan C
+// shipped before company-admin existed and only handled role='manager'.
+const NOTIFIED_ROLES = new Set(['manager', 'admin'])
+
+const ROLE_LABEL_ES = {
+  manager: 'manager',
+  admin: 'admin',
+}
+
 export function shouldNotifyManagerAssigned(input) {
   if (!input || typeof input !== 'object') return false
-  return input.role === 'manager' && input.action === 'assigned_existing'
+  return NOTIFIED_ROLES.has(input.role) && input.action === 'assigned_existing'
 }
 
 export function buildAddedByLabel(actor) {
@@ -23,21 +32,22 @@ export function buildCompanyUrl({ companyId, frontendUrl }) {
   return `${base}/companies/${companyId}`
 }
 
-export function buildManagerNotificationRow({ targetUserId, companyId, companyName, actor }) {
+export function buildManagerNotificationRow({ targetUserId, companyId, companyName, actor, role = 'manager' }) {
   const addedByLabel = buildAddedByLabel(actor)
+  const roleLabel = ROLE_LABEL_ES[role] || 'miembro'
   const body = addedByLabel
-    ? `${addedByLabel} te agregó a ${companyName} como manager.`
-    : `Te agregaron a ${companyName} como manager.`
+    ? `${addedByLabel} te agregó a ${companyName} como ${roleLabel}.`
+    : `Te agregaron a ${companyName} como ${roleLabel}.`
 
   return {
     user_id: targetUserId,
     project_id: null,
     event_type: 'company_membership_added',
-    title: 'Te agregaron como manager',
+    title: `Te agregaron como ${roleLabel}`,
     body,
     metadata: {
       companyId,
-      role: 'manager',
+      role,
       addedBy: actor?.id || null,
       companyName,
     },
@@ -46,7 +56,9 @@ export function buildManagerNotificationRow({ targetUserId, companyId, companyNa
 
 // Fires the notification + email. Best-effort: any failure logs to
 // application_errors and returns silently. Never throws.
-export async function notifyManagerAssigned({ targetUserId, companyId, actor, req = null }) {
+// PR3 QA: accepts `role` so we can render copy for either manager or
+// company-admin assignments (defaults to manager for backward compat).
+export async function notifyManagerAssigned({ targetUserId, companyId, actor, role = 'manager', req = null }) {
   try {
     if (!targetUserId || !companyId) return { skipped: true, reason: 'missing_ids' }
 
@@ -80,6 +92,7 @@ export async function notifyManagerAssigned({ targetUserId, companyId, actor, re
         companyId,
         companyName: company.name,
         actor,
+        role,
       })
       const { error } = await supabaseAdmin.from('notifications').insert(row)
       if (error) throw error
@@ -104,6 +117,7 @@ export async function notifyManagerAssigned({ targetUserId, companyId, actor, re
         companyName: company.name,
         addedByLabel: buildAddedByLabel(actor),
         companyUrl,
+        role,
       })
       emailSent = Boolean(result?.sent)
       if (!result?.sent && result?.reason && result.reason !== 'no_api_key' && result.reason !== 'missing_recipient') {

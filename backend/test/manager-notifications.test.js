@@ -13,9 +13,18 @@ test('shouldNotifyManagerAssigned: true when role=manager AND action=assigned_ex
   assert.equal(shouldNotifyManagerAssigned({ role: 'manager', action: 'assigned_existing' }), true)
 })
 
-test('shouldNotifyManagerAssigned: false when role is not manager', () => {
+test('shouldNotifyManagerAssigned: false when role is not manager or admin', () => {
   assert.equal(shouldNotifyManagerAssigned({ role: 'editor', action: 'assigned_existing' }), false)
   assert.equal(shouldNotifyManagerAssigned({ role: 'designer', action: 'assigned_existing' }), false)
+})
+
+// PR3 QA: company-admin assignments also notify.
+test('shouldNotifyManagerAssigned: true when role=admin AND action=assigned_existing', () => {
+  assert.equal(shouldNotifyManagerAssigned({ role: 'admin', action: 'assigned_existing' }), true)
+})
+
+test('shouldNotifyManagerAssigned: false for role=admin with action=invited (fresh invite covered by invite email)', () => {
+  assert.equal(shouldNotifyManagerAssigned({ role: 'admin', action: 'invited' }), false)
 })
 
 test('shouldNotifyManagerAssigned: false when action is invited/reinvited', () => {
@@ -69,6 +78,20 @@ test('buildManagerNotificationRow: actor null uses generic label', () => {
   })
   assert.match(row.body, /agregaron/)
   assert.equal(row.metadata.addedBy, null)
+})
+
+// PR3 QA: row renders for role=admin too.
+test('buildManagerNotificationRow: role=admin renders admin copy', () => {
+  const row = buildManagerNotificationRow({
+    targetUserId: 'u-target',
+    companyId: 'c-1',
+    companyName: 'ACME',
+    actor: { id: 'u-admin', fullName: 'Adrián', email: 'admin@example.com' },
+    role: 'admin',
+  })
+  assert.equal(row.title, 'Te agregaron como admin')
+  assert.match(row.body, /como admin/)
+  assert.equal(row.metadata.role, 'admin')
 })
 
 // -------- buildCompanyUrl --------

@@ -835,20 +835,24 @@ router.post('/:id/removal-requests', rateLimiters.sensitiveAction, async (req, r
       return res.status(404).json({ error: 'No se encontró el usuario o la empresa para esta solicitud' })
     }
 
-    const { data: managerMemberships, error: managersError } = await supabaseAdmin
+    // PR3: removal-request recipients include both admin and manager roles.
+    // Pre-PR3, only managers received the notification — but after PR 3 a
+    // company's primary authority figure is its admin, so admin-only or
+    // admin-light companies would otherwise have zero recipients.
+    const { data: authorityMemberships, error: managersError } = await supabaseAdmin
       .from('company_memberships')
       .select('user_id')
       .eq('company_id', companyId)
-      .eq('role', 'manager')
+      .in('role', ['admin', 'manager'])
 
     if (managersError) throw managersError
 
-    const recipients = (managerMemberships || [])
+    const recipients = (authorityMemberships || [])
       .map((membership) => membership.user_id)
       .filter((userId) => userId && userId !== req.currentUser.id)
 
     if (recipients.length === 0) {
-      return res.status(400).json({ error: 'No hay managers disponibles para revisar esta solicitud' })
+      return res.status(400).json({ error: 'No hay admins o managers disponibles para revisar esta solicitud' })
     }
 
     const timestamp = new Date().toISOString()
