@@ -75,7 +75,10 @@ console.log('\nauth/mcpToken.js — checkMcpToken');
 
 await test('returns null when token is set', () => {
   const original = process.env.WEBRIEF_MCP_TOKEN;
-  process.env.WEBRIEF_MCP_TOKEN = 'mcpt_test_token';
+  // Test fixture only — handlers just check that the env var is non-empty.
+  // Avoid the real-token shape (mcpt_ prefix + entropy) so secret scanners
+  // like GitGuardian don't flag this as a leaked credential.
+  process.env.WEBRIEF_MCP_TOKEN = 'test-fixture-not-a-real-token';
   const result = checkMcpToken('test.tool');
   process.env.WEBRIEF_MCP_TOKEN = original;
   assert.equal(result, null);
@@ -225,7 +228,7 @@ await test('handler does not mutate state when token is missing', async () => {
 // Backend URL defaults to http://localhost:3000 (see webbriefClient.js).
 
 const BACKEND_BASE = 'http://localhost:3000/api';
-const TEST_MCP_TOKEN = 'mcpt_test_success_path';
+const TEST_MCP_TOKEN = 'test-fixture-not-a-real-token-success-path';
 
 function makeFetchResponse({ ok = true, status = 200, statusText = 'OK', body = null }) {
   return {

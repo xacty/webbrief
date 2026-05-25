@@ -38,7 +38,7 @@ function assertStructuredError(result, code) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const BACKEND_BASE = 'http://localhost:3000/api';
-process.env.WEBRIEF_MCP_TOKEN = 'mcpt_fase4_token';
+process.env.WEBRIEF_MCP_TOKEN = 'test-fixture-not-a-real-token-fase4';
 
 function makeResp({ ok = true, status = 200, body = null }) {
   return {
