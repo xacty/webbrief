@@ -125,15 +125,29 @@ export async function sendInviteEmail(args) {
   }
 }
 
-export function buildManagerAssignedEmailPayload({ to, fullName, companyName, addedByLabel, companyUrl }) {
+// PR3 QA: role-aware copy so company-admin assignments render correctly.
+const ROLE_COPY_ES = {
+  manager: {
+    label: 'manager',
+    powers: 'Como manager podés invitar usuarios, crear proyectos y gestionar la empresa.',
+  },
+  admin: {
+    label: 'admin',
+    powers: 'Como admin de la empresa podés invitar a cualquier rol (incluso otros admins), gestionar todo el equipo y administrar la empresa.',
+  },
+}
+
+export function buildManagerAssignedEmailPayload({ to, fullName, companyName, addedByLabel, companyUrl, role = 'manager' }) {
   const safeName = fullName?.trim() || ''
   const greeting = safeName ? `Hola ${safeName}` : 'Hola'
   const safeAddedBy = addedByLabel?.trim() || ''
-  const subject = `Te agregaron como manager en ${companyName || 'WeBrief'}`
+  const copy = ROLE_COPY_ES[role] || ROLE_COPY_ES.manager
+  const roleLabel = copy.label
+  const subject = `Te agregaron como ${roleLabel} en ${companyName || 'WeBrief'}`
 
   const introLine = safeAddedBy
-    ? `${safeAddedBy} te asignó como manager en ${companyName}.`
-    : `Te agregaron como manager en ${companyName} (nuevo manager asignado).`
+    ? `${safeAddedBy} te asignó como ${roleLabel} en ${companyName}.`
+    : `Te agregaron como ${roleLabel} en ${companyName} (nuevo ${roleLabel} asignado).`
 
   const html = `
     <!doctype html>
@@ -143,7 +157,7 @@ export function buildManagerAssignedEmailPayload({ to, fullName, companyName, ad
         ${escapeHtml(introLine)}
       </p>
       <p style="font-size:15px;line-height:1.5;margin:0 0 16px">
-        Como manager podés invitar usuarios, crear proyectos y gestionar la empresa.
+        ${escapeHtml(copy.powers)}
       </p>
       <p style="margin:24px 0">
         <a href="${escapeHtml(companyUrl)}"
@@ -165,7 +179,7 @@ export function buildManagerAssignedEmailPayload({ to, fullName, companyName, ad
     greeting + '.',
     '',
     introLine,
-    'Como manager podés invitar usuarios, crear proyectos y gestionar la empresa.',
+    copy.powers,
     '',
     'Abrí la empresa en:',
     companyUrl,

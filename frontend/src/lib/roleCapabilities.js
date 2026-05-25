@@ -1,6 +1,7 @@
 import {
   COMPANY_ROLE_ORDER,
   getInviteRoleOptionsForMembership,
+  getCompanyRoleRank,
 } from '../../../shared/userRoles.js'
 
 // Admin check that works both in normal mode and in role-preview mode.
@@ -64,9 +65,10 @@ export function canManageCompanyLifecycle(currentUser, membershipRole) {
   return isAdmin(currentUser) || membershipRole === 'manager'
 }
 
-// "Enviar acceso" — admin can target any user except self;
-// manager can target users who share at least one company where the actor is manager;
-// QA, editor, content_writer, designer, developer, user → no.
+// "Enviar acceso" — admin global can target any user except self;
+// company-admin or manager can target users with LOWER company role in the same company;
+// peer-rank (admin↔admin, manager↔manager) is forbidden;
+// QA, editor, content_writer, designer, developer → cannot send access.
 // Mirrors backend canSendAccess in backend/src/lib/sendAccess.js for symmetric gating.
 export function canSendAccess(currentUser, targetUser) {
   if (!currentUser || !targetUser) return false
@@ -77,21 +79,28 @@ export function canSendAccess(currentUser, targetUser) {
   const platformRole = currentUser.realPlatformRole || currentUser.platformRole
   if (platformRole === 'qa') return false
 
-  const actorManagerCompanies = new Set(
-    (currentUser.memberships || [])
-      .filter((m) => m.role === 'manager')
-      .map((m) => m.companyId)
-  )
-  if (actorManagerCompanies.size === 0) return false
+  // Map actor's memberships to a {companyId: role} dict
+  const actorRoleByCompany = new Map()
+  for (const m of (currentUser.memberships || [])) {
+    actorRoleByCompany.set(m.companyId, m.role)
+  }
+  if (actorRoleByCompany.size === 0) return false
 
-  const targetCompanies = new Set(
-    (targetUser.companies || []).map((c) => c.companyId).filter(Boolean)
-  )
-
-  for (const cid of actorManagerCompanies) {
-    if (targetCompanies.has(cid)) return true
+  // For each target company, check if actor outranks target there.
+  for (const targetCompany of (targetUser.companies || [])) {
+    const actorRole = actorRoleByCompany.get(targetCompany.companyId)
+    if (!actorRole) continue
+    if (getCompanyRoleRank(actorRole) > getCompanyRoleRank(targetCompany.role)) return true
   }
   return false
+}
+
+// "Can the current user promote anyone to company-admin in this company?"
+// Used by UI to gate the 'Admin' option in role selects.
+export function canPromoteToAdmin(currentUser, companyId) {
+  if (isAdmin(currentUser)) return true
+  const m = (currentUser?.memberships || []).find((mm) => mm.companyId === companyId)
+  return m?.role === 'admin'
 }
 
 export function getProjectEditorCapabilities(currentUser, companyId) {

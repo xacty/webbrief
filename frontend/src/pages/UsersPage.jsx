@@ -241,7 +241,11 @@ export default function UsersPage() {
   }
 
   function membershipRoleOptions(company) {
-    return isAdminUser ? COMPANY_ROLE_ORDER : MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER.filter((role) => (
+    if (isAdminUser) return COMPANY_ROLE_ORDER
+    // Company-admin in this company can assign anything including 'admin'.
+    const actorMembership = (currentUser?.memberships || []).find((m) => m.companyId === company.companyId)
+    if (actorMembership?.role === 'admin') return COMPANY_ROLE_ORDER
+    return MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER.filter((role) => (
       role === company.role || role !== 'manager'
     ))
   }

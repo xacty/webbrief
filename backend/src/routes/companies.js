@@ -404,13 +404,17 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: error.message })
     }
 
+    // Note: local variable is named `manager` for API-response backward compat
+    // (the response shape is `{ company, manager }` and clients consume body.manager).
+    // The user is actually created as company-admin (role: 'admin') as of PR 3 of
+    // the auth-team-fixes bundle.
     let manager = null
     if (!createAsTest) {
       try {
         manager = await inviteUserToCompany({
           email: normalizedManagerEmail,
           fullName: managerFullName || managerName || '',
-          role: 'manager',
+          role: 'admin',
           companyId: company.id,
           req,
         })
@@ -432,7 +436,7 @@ router.post('/', async (req, res) => {
         companyId: company.id,
         targetUserId: manager.id,
         metadata: {
-          role: 'manager',
+          role: 'admin',
           inviteSent: manager.inviteSent,
           decisionAction: manager.action,
           via: 'company_create',

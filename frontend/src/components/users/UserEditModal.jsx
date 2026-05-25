@@ -107,12 +107,17 @@ export default function UserEditModal({
     return managedCompanyIds.includes(company.companyId) && company.role !== 'manager'
   }
   function membershipRoleOptions(company) {
-    return isAdminUser
-      ? COMPANY_ROLE_ORDER
-      : MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER.filter((role) => role === company.role || role !== 'manager')
+    if (isAdminUser) return COMPANY_ROLE_ORDER
+    // Company-admin in THIS company can assign anything in this company (incl. peer admin).
+    const actorMembership = (currentUser?.memberships || []).find((m) => m.companyId === company.companyId)
+    if (actorMembership?.role === 'admin') return COMPANY_ROLE_ORDER
+    return MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER.filter((role) => role === company.role || role !== 'manager')
   }
   function singleCompanyRoleOptions() {
     if (isAdminUser) return COMPANY_ROLE_ORDER
+    // Company-admin in the active company can assign anything including 'admin'.
+    const actorMembership = (currentUser?.memberships || []).find((m) => m.companyId === companyId)
+    if (actorMembership?.role === 'admin') return COMPANY_ROLE_ORDER
     const base = MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER
     return base.includes(editForm.singleRole)
       ? base

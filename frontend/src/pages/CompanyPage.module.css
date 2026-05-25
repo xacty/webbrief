@@ -345,6 +345,12 @@
   color: var(--wb-text);
 }
 
+.membersCounter {
+  margin: 0;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text-muted);
+}
+
 .membersList {
   display: flex;
   flex-direction: column;
