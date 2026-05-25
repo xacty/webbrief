@@ -3,6 +3,9 @@
    Off-canon neutrals and indigo focus collapsed to primary-900 — flagged
    in 04-03-SUMMARY.md. rgba and rgb(... / NN%) alpha overlays kept literal
    per UI-SPEC Color (alpha-on-dark/light). */
+/* Side panels sit on the lavender .root background — keep them white,
+   but pick up the indigo-tinted card shadow so they read as floating
+   cards in the shell, not flat columns. */
 .leftPanel {
   width: 290px;
   flex-shrink: 0;
@@ -12,6 +15,7 @@
   overflow: hidden;
   background: var(--wb-surface);
   border-right: 1px solid var(--wb-border);
+  box-shadow: var(--wb-shadow-card);
 }
 
 .rightPanel {
@@ -28,6 +32,7 @@
   padding: 12px 30px 30px;
   background: var(--wb-surface);
   border-left: 1px solid var(--wb-border);
+  box-shadow: var(--wb-shadow-card);
 }
 
 .panelHeader {
@@ -1044,10 +1049,15 @@
   border-radius: 8px;
   cursor: pointer;
   user-select: none;
+  transition: background-color 120ms ease;
+}
+
+.activityGroupRow:hover {
+  background: var(--wb-primary-soft);
 }
 
 .activityGroupRow:hover .activityGroupName {
-  color: var(--wb-color-primary-900);
+  color: var(--wb-color-primary-700);
 }
 
 .activityGroupMain {
@@ -1163,7 +1173,7 @@
 }
 
 .activityHistoryItem:hover {
-  background: var(--wb-color-neutral-50);
+  background: var(--wb-primary-soft);
 }
 
 .activityHistoryItemActive {

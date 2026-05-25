@@ -10,12 +10,15 @@
    rgb(... / NN%) and rgba(...) alpha overlays stay literal
    per UI-SPEC Color (alpha-on-dark / alpha-on-light).
    ============================================================ */
+/* Editor outer chrome — lavender, same Modern SaaS tint as the admin shell.
+   Canvas stays paper-white (locked), so the lavender shows around the
+   canvas as a soft margin and through the floating glass toolbar. */
 .root {
   display: flex;
   flex-direction: column;
   height: 100vh;
   font-family: 'Inter', system-ui, sans-serif;
-  background: #f8f8f8; /* off-canon neutral, kept literal */
+  background: var(--wb-bg);
   overflow: hidden;
   color: var(--wb-text);
 }
@@ -28,7 +31,7 @@
   justify-content: center;
   gap: 12px;
   font-family: 'Inter', system-ui, sans-serif;
-  background: #f8f8f8;
+  background: var(--wb-bg);
   color: var(--wb-text);
 }
 
@@ -42,12 +45,15 @@
   overflow: hidden;
 }
 
+/* Canvas column wrapper — transparent so the lavender from .root shows
+   around the white canvas and behind the floating glass toolbar. The
+   canvas itself stays white via the .canvas class (invariant). */
 .centerPanel {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f2f2f2;
+  background: transparent;
 }
 
 /* Canvas — TipTap editing surface. Always paper-light regardless of
@@ -89,7 +95,7 @@
   left: 0;
   padding: 0 var(--wb-space-2, 8px);
   background: var(--wb-canvas-bg, #fff);
-  color: var(--wb-text-muted);
+  color: var(--wb-color-primary-600);
   font-size: var(--wb-text-xs, 11px);
   font-weight: var(--wb-weight-bold, 700);
   letter-spacing: 0.06em;
@@ -614,10 +620,10 @@
   min-width: 30px;
   height: 22px;
   padding: 0 var(--wb-space-2);
-  border: 1px solid var(--wb-border);
+  border: 1px solid var(--wb-color-primary-100);
   border-radius: var(--wb-radius-full);
-  background: var(--wb-color-neutral-50);
-  color: var(--wb-color-neutral-500);
+  background: var(--wb-primary-soft);
+  color: var(--wb-color-primary-700);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px;
   font-weight: var(--wb-weight-semibold, 600);
@@ -627,9 +633,9 @@
 }
 
 .typeLabelBtn:hover {
-  background: var(--wb-color-primary-50);
+  background: var(--wb-color-primary-100);
   border-color: var(--wb-color-primary-200);
-  color: var(--wb-color-primary-700);
+  color: var(--wb-color-primary-800);
 }
 
 .typeLabelBtnDisabled {
