@@ -8436,21 +8436,33 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
           <h2 className={styles.handoffTitle}>{page?.name || 'Página'}</h2>
         </div>
         <div className={styles.handoffHeaderActions}>
-          <button className={styles.handoffActionBtn} onClick={() => handleCopy('Página copiada', { text: pageText, html: pageHtml })}>
-            <Copy size={14} />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Copy size={14} />}
+            onClick={() => handleCopy('Página copiada', { text: pageText, html: pageHtml })}
+          >
             Copiar página
-          </button>
+          </Button>
           {selectedImageCount > 0 && (
-            <button className={styles.handoffActionBtn} onClick={() => openBulkImageExport(selectedImages)}>
-              <Download size={14} />
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Download size={14} />}
+              onClick={() => openBulkImageExport(selectedImages)}
+            >
               Exportar {selectedImageCount} imagen{selectedImageCount === 1 ? '' : 'es'}
-            </button>
+            </Button>
           )}
           {audience === 'dev' && (
-            <button className={styles.handoffActionBtn} onClick={() => handleCopy('Markdown copiado', { text: pageMarkdown })}>
-              <Code2 size={14} />
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Code2 size={14} />}
+              onClick={() => handleCopy('Markdown copiado', { text: pageMarkdown })}
+            >
               Markdown
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -8478,10 +8490,14 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
             <section key={section.id} className={styles.handoffSection} data-handoff-section-id={section.id}>
               <div className={styles.handoffSectionHeader}>
                 <h3 className={styles.handoffSectionTitle}>{section.name}</h3>
-                <button className={styles.handoffGhostBtn} onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}>
-                  <Copy size={13} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Copy size={13} />}
+                  onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}
+                >
                   {groupButtonLabel}
-                </button>
+                </Button>
               </div>
 
               <div className={styles.handoffBlockList}>
@@ -8907,10 +8923,14 @@ function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest,
           <p className={styles.handoffEyebrow}>Preview</p>
           <h2 className={styles.handoffTitle}>{page?.name || 'Página'}</h2>
         </div>
-        <button className={styles.handoffActionBtn} onClick={() => window.print()}>
-          <FileText size={14} />
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<FileText size={14} />}
+          onClick={() => window.print()}
+        >
           Exportar PDF
-        </button>
+        </Button>
       </div>
       <div ref={scrollRef} className={styles.previewScroll}>
         <article
