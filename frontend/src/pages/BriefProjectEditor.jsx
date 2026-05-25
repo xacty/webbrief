@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft, Bookmark, MessageSquare } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
-import { Button } from '../components/ui'
+import { Button, Select } from '../components/ui'
 import styles from './BriefProjectEditor.module.css'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -72,15 +72,16 @@ function QuestionEditor({ question, index, total, onChange, onRemove, onMoveUp, 
     <div className={`${styles.questionCard} ${question.type === 'section_header' ? styles.questionCardSection : ''}`}>
       <div className={styles.questionCardTop}>
         <span className={styles.questionIndex}>{index + 1}</span>
-        <select
+        <Select
           className={styles.typeSelect}
+          fullWidth={false}
           value={question.type}
           onChange={(e) => onChange({ ...question, type: e.target.value, options: [] })}
         >
           {ADD_QUESTION_TYPES.map((t) => (
             <option key={t} value={t}>{QUESTION_TYPE_LABELS[t]}</option>
           ))}
-        </select>
+        </Select>
         <div className={styles.questionCardActions}>
           <button
             className={styles.iconBtn}

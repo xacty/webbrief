@@ -325,26 +325,6 @@
 
 .typeSelect {
   flex: 1;
-  padding: 7px 11px;
-  font-size: 12px;
-  font-weight: var(--wb-weight-semibold);
-  font-family: inherit;
-  color: var(--wb-text);
-  background: var(--wb-surface);
-  border: 1px solid var(--wb-border);
-  border-radius: var(--wb-radius-sm);
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.typeSelect:hover {
-  border-color: var(--wb-color-primary-200);
-}
-
-.typeSelect:focus {
-  border-color: var(--wb-color-primary-600);
-  box-shadow: 0 0 0 3px var(--wb-primary-soft);
 }
 
 .questionCardActions {

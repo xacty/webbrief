@@ -40,7 +40,7 @@ import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
-import { Modal, Button } from '../components/ui'
+import { Modal, Button, Select } from '../components/ui'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -8695,11 +8695,11 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
               <div className={styles.exportFieldGrid}>
                 <label className={styles.exportField}>
                   <span>Formato</span>
-                  <select className={styles.exportInput} value={exportModal.format} onChange={(event) => updateExportField('format', event.target.value)}>
+                  <Select className={styles.exportInput} value={exportModal.format} onChange={(event) => updateExportField('format', event.target.value)}>
                     <option value="webp">WebP</option>
                     <option value="jpg">JPG</option>
                     <option value="png">PNG</option>
-                  </select>
+                  </Select>
                 </label>
                 {exportModal.mode === 'bulk' ? (
                   <div className={styles.exportField}>
@@ -9430,15 +9430,16 @@ function UpdatesPanel({
                 onChange={(event) => setDeliverableTitle(event.target.value)}
                 placeholder="Nuevo entregable"
               />
-              <select
+              <Select
                 className={styles.deliverableSelect}
+                fullWidth={false}
                 value={deliverableServiceType}
                 onChange={(event) => setDeliverableServiceType(event.target.value)}
               >
                 {DELIVERABLE_SERVICE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
-              </select>
+              </Select>
               <button className={panelStyles.deliverableButton} type="submit" disabled={deliverableSubmitting || !deliverableTitle.trim()}>
                 {deliverableSubmitting ? 'Creando...' : 'Crear'}
               </button>
@@ -9458,15 +9459,16 @@ function UpdatesPanel({
                     <span className={panelStyles.deliverableMeta}>{item.serviceType} · {deliverableStatusLabel(item.status)}</span>
                   </div>
                   {canManageProjectMeta ? (
-                    <select
+                    <Select
                       className={styles.deliverableStatusSelect}
+                      fullWidth={false}
                       value={item.status}
                       onChange={(event) => onUpdateDeliverableStatus?.(item.id, event.target.value)}
                     >
                       {DELIVERABLE_STATUS_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   ) : (
                     <span className={panelStyles.deliverableMeta}>{deliverableStatusLabel(item.status)}</span>
                   )}

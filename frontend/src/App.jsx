@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import AppShell from './components/layout/AppShell'
+import { Select } from './components/ui'
 import {
   COMPANY_ROLE_ORDER,
   PLATFORM_ROLE_ORDER,
@@ -92,16 +93,16 @@ function AppRoutes() {
       {canPreviewRoles && (
         <div style={{ ...rolePreviewStyles.wrap, ...(isEditorRoute ? rolePreviewStyles.wrapEditor : {}) }}>
           <label style={rolePreviewStyles.label} htmlFor="global-role-preview-select">Ver como</label>
-          <select
+          <Select
             id="global-role-preview-select"
-            style={rolePreviewStyles.select}
+            fullWidth={false}
             value={rolePreview || 'admin'}
             onChange={(event) => setRolePreview(event.target.value)}
           >
             {ROLE_PREVIEW_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
     </Suspense>
@@ -132,15 +133,6 @@ const rolePreviewStyles = {
     fontSize: 12,
     fontWeight: 700,
     color: 'var(--wb-color-neutral-500)',
-  },
-  select: {
-    border: '1px solid var(--wb-glass-border)',
-    borderRadius: 9,
-    padding: '7px 30px 7px 9px',
-    background: 'var(--wb-surface)',
-    color: 'var(--wb-text)',
-    fontSize: 13,
-    fontWeight: 700,
   },
 }
 
