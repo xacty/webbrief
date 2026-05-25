@@ -114,7 +114,12 @@ const rolePreviewStyles = {
     position: 'fixed',
     right: 18,
     bottom: 18,
-    zIndex: 3000,
+    // Lower than --wb-z-popover (1100) so the Select listbox inside the
+    // pill opens ABOVE the pill chrome (otherwise the dropdown is
+    // visually behind the pill and hovering options closes it). Still
+    // above sticky content (200) so the pill floats above the editor
+    // and admin shell. Matches the --wb-z-overlay (900) token value.
+    zIndex: 900,
     display: 'flex',
     alignItems: 'center',
     gap: 8,
