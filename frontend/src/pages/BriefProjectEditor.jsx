@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
+import { Button } from '../components/ui'
 import styles from './BriefProjectEditor.module.css'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -197,13 +198,16 @@ function TemplateSavePanel({ companyId, formTitle, formDescription, questions })
           value={templateName}
           onChange={(e) => setTemplateName(e.target.value)}
         />
-        <button
-          className={styles.generateBtn}
+        <Button
+          variant="primary"
+          size="sm"
           type="submit"
-          disabled={saving || !templateName.trim()}
+          fullWidth
+          loading={saving}
+          disabled={!templateName.trim()}
         >
-          {saving ? 'Guardando...' : 'Guardar estructura actual'}
-        </button>
+          Guardar estructura actual
+        </Button>
       </form>
       {feedback && <p className={styles.sideNote} style={{ color: feedback.startsWith('No') ? '#dc2626' : '#16a34a' }}>{feedback}</p>}
       <p className={styles.sideNote}>La plantilla queda disponible al crear nuevos Briefs en esta empresa.</p>
@@ -276,24 +280,26 @@ function SharePanel({ projectId, initialToken }) {
               {copied ? <span className={styles.copiedBadge}>✓</span> : <Copy size={14} />}
             </button>
           </div>
-          <button
-            className={styles.revokeBtn}
+          <Button
+            variant="danger"
+            size="sm"
             onClick={handleRevoke}
             disabled={loading}
-            type="button"
+            loading={loading}
           >
-            {loading ? 'Revocando...' : 'Revocar link'}
-          </button>
+            Revocar link
+          </Button>
         </>
       ) : (
-        <button
-          className={styles.generateBtn}
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleGenerate}
           disabled={loading}
-          type="button"
+          loading={loading}
         >
-          {loading ? 'Generando...' : 'Generar link de envío'}
-        </button>
+          Generar link de envío
+        </Button>
       )}
       {error && <p className={styles.sideError}>{error}</p>}
       <p className={styles.sideNote}>
@@ -581,14 +587,15 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
           {isDirty && !isSaving && !saveMessage && (
             <span className={styles.navbarDirty}>Sin guardar</span>
           )}
-          <button
-            className={styles.saveBtn}
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleSave}
             disabled={!isDirty || isSaving}
-            type="button"
+            loading={isSaving}
           >
-            {isSaving ? 'Guardando...' : 'Guardar'}
-          </button>
+            Guardar
+          </Button>
         </div>
       </header>
 
