@@ -1,21 +1,23 @@
 # Auth + Team Management Fixes — Design Spec
 
 - Date: 2026-05-25
-- Status: Draft (pending user review)
+- Status: Draft v2 (pending user review)
 - Author: Adrián + Claude
-- Scope: 1 bug fix + 1 feature + 1 refactor, shipped as 3 separate PRs
+- Scope: 1 bug fix + 1 feature + 1 refactor + 1 new role, shipped as 4 separate PRs
 
 ---
 
 ## Problem Statement
 
-Three issues reported after the v1.1 auth-hardening milestone went live:
+Three issues reported after the v1.1 auth-hardening milestone went live, plus one role-model gap surfaced during design discussion:
 
 1. **Bug — Invite link lands on `/login`**: when an admin creates a new company, the manager receives an invitation email whose CTA link redirects to `/login` instead of `/auth/set-password`. The manager cannot proceed until the admin manually goes to the Users page and clicks "Enviar acceso" — which sends a different email that lands correctly.
 
 2. **Missing feature — Admins/managers cannot set passwords directly**: the only password recovery path is "send a recovery email". There is no WordPress-like flow where an admin can generate a temporary password (or type a custom one) for a user and hand it over manually.
 
 3. **Partial coverage — Company team modal lacks parity with Users modal**: the password/access actions added in the Users page do not exist in the Company team sidecard. A manager editing a member from CompanyPage sees only Name + Role, no envelope action, no password actions.
+
+4. **Role-model gap — No "company-admin" role (Google Workspace-style)**: WeBrief currently has `platform_role='admin'` (WeBrief team, sees everything) and `company_memberships.role={manager|editor|viewer}`. There is no role that represents "the admin OF a company" — the person who handles billing (future), promotes/demotes managers, reveals sensitive data like IPs of session devices, and generally owns the tenant. Today the highest in-company role is `manager`, but two peer managers have no authority over each other, which creates awkward gaps (cannot reset each other's password, no clear "owner" for billing/permissions when it lands).
 
 ---
 
@@ -168,34 +170,78 @@ Apply to **Dev + Prod** via MCP `apply_migration` BEFORE deploying backend code.
 
 `backend/src/lib/passwordPermissions.js` (new):
 
+This module assumes the `admin` company-membership role from Section D exists. The PR sequence is **PR 4 → PR 3** for the permission code to compile against the expanded role set. Until PR 4 lands, code only references `manager|editor|viewer` and the matrix below collapses to its pre-company-admin rows.
+
 ```javascript
+// Membership role hierarchy: admin > manager > editor > viewer
+function highestRoleInShared(actorMemberships, targetCompanyId) {
+  return (actorMemberships || [])
+    .filter((m) => m.companyId === targetCompanyId)
+    .map((m) => m.role)
+    .sort((a, b) => roleRank(b) - roleRank(a))[0] || null
+}
+
+function roleRank(role) {
+  return { admin: 4, manager: 3, editor: 2, viewer: 1 }[role] || 0
+}
+
 export function canSetPassword({ actor, target, actorMemberships, targetMemberships }) {
   if (!actor || !target) return false
-  if (actor.id === target.id) return false                       // never self
+  if (actor.id === target.id) return false                       // never self via this flow
   if (actor.platformRole === 'qa') return false                  // QA defensive guard
-  if (actor.platformRole === 'admin') {
-    if (target.platformRole === 'admin' && target.id !== actor.id) return true  // admin can edit other admins
-    return true
-  }
-  // Manager path: must share at least one company AS MANAGER, target must not be platform-admin, target must not be a manager-peer in any shared company.
+  if (actor.platformRole === 'admin') return true                // platform-admin: omnipotent
+
+  // Target is platform-admin and actor is not? Block.
   if (target.platformRole === 'admin') return false
-  const actorManagedCompanies = new Set(
-    (actorMemberships || []).filter((m) => m.role === 'manager').map((m) => m.companyId)
+
+  // Per-company evaluation. Actor must out-rank target in at least one shared company.
+  const sharedCompanyIds = new Set(
+    (actorMemberships || []).map((m) => m.companyId)
   )
-  if (actorManagedCompanies.size === 0) return false
-  const sharedCompanies = (targetMemberships || []).filter((m) => actorManagedCompanies.has(m.companyId))
-  if (sharedCompanies.length === 0) return false
-  if (sharedCompanies.some((m) => m.role === 'manager')) return false  // no peer-manager overwrite
-  return true
+  for (const tm of (targetMemberships || [])) {
+    if (!sharedCompanyIds.has(tm.companyId)) continue
+    const actorRole = highestRoleInShared(actorMemberships, tm.companyId)
+    if (!actorRole) continue
+    // Strict out-rank: company-admin can edit manager/editor/viewer in same company; manager can edit editor/viewer only.
+    if (roleRank(actorRole) > roleRank(tm.role)) return true
+  }
+  return false
 }
 
 export function canViewSessions(args) {
-  // Same gating as canSetPassword (admin/manager-of-shared-company, not self, not peer-manager).
+  // Same gating as canSetPassword.
   return canSetPassword(args)
+}
+
+export function canRevealIp({ actor, target, actorMemberships, targetMemberships }) {
+  // Only platform-admin or company-admin (of shared company where target is a member).
+  if (!actor || !target) return false
+  if (actor.platformRole === 'admin') return true
+  if (actor.platformRole === 'qa') return false
+  const adminCompanies = new Set(
+    (actorMemberships || []).filter((m) => m.role === 'admin').map((m) => m.companyId)
+  )
+  return (targetMemberships || []).some((m) => adminCompanies.has(m.companyId))
 }
 ```
 
 Mirror in `frontend/src/lib/permissions.js`.
+
+**Resulting matrix:**
+
+| Actor role | Target role (in shared company) | canSetPassword | canRevealIp |
+|------------|----------------------------------|----------------|-------------|
+| platform-admin | anyone (except self) | ✓ | ✓ |
+| company-admin X | company-admin Y (peer, X≠Y) | ✗ (peer) | ✓ |
+| company-admin X | manager | ✓ | ✓ |
+| company-admin X | editor / viewer | ✓ | ✓ |
+| manager | company-admin | ✗ | ✗ |
+| manager | manager (peer) | ✗ (peer) | ✗ |
+| manager | editor / viewer | ✓ | ✗ |
+| editor / viewer | anyone | ✗ | ✗ |
+| QA | anyone | ✗ | ✗ |
+
+"Peer" = same role in same company = no authority over each other. Only platform-admin overrides this.
 
 #### B.3 — Password Generator
 
@@ -252,9 +298,11 @@ Mirror in `frontend/src/lib/userAgent.js`. Tests: 5-6 cases (Chrome/Safari/Firef
 - Load target profile + memberships
 - `canViewSessions({ actor, target, actorMemberships, targetMemberships })` → 403 if false
 - `supabaseAdmin.rpc('list_user_sessions', { p_user_id: targetId })`
-- Map each row to `{ id, deviceLabel: formatDeviceLabel(user_agent), ip: maskIpForActor(ip, actor), lastRefreshAt: refreshed_at || updated_at, createdAt: created_at }`
-  - `maskIpForActor`: admin sees full IP; manager sees `192.168.*.*` (last two octets masked for v4, similar for v6)
-- Return `{ sessions: [...], total: sessions.length }`
+- Map each row to `{ id, deviceLabel: formatDeviceLabel(user_agent), ip: maskedIp, ipFull: null | string, lastRefreshAt: refreshed_at || updated_at, createdAt: created_at }`
+  - `maskedIp`: always masked (`192.168.*.*` for v4, `2001:db8::***` for v6)
+  - `ipFull`: included ONLY when `canRevealIp(actor, target, ...)` returns true; null otherwise
+  - The frontend "eye" toggle uses `ipFull` when present, otherwise the eye icon is hidden
+- Return `{ sessions: [...], total: sessions.length, canRevealIp: boolean }`
 
 **`POST /api/users/:id/sessions/revoke`** — same file
 
@@ -279,7 +327,7 @@ Mirror in `frontend/src/lib/userAgent.js`. Tests: 5-6 cases (Chrome/Safari/Firef
 - `wrapSupabaseAuthCall(() => supabaseAdmin.auth.admin.updateUserById(targetId, { password: finalPassword }))`
 - Invalidate `password_reset_requests`: `UPDATE password_reset_requests SET used_at=now() WHERE user_id=$1 AND used_at IS NULL`
 - If `revokeSessionIds?.length > 0`: `supabaseAdmin.rpc('revoke_user_sessions', { p_user_id: targetId, p_session_ids: revokeSessionIds })` → capture `revokedCount`. The RPC's `WHERE user_id=$1 AND id=ANY(...)` ensures IDs from other users are silently filtered (no leak, no error).
-- `logSecurityEvent` action `password_set_by_admin` metadata `{ method: mode, sessionsRevokedCount: revokedCount || 0, viaSendAccess: false }`
+- `logSecurityEvent` action `password_changed` metadata `{ initiator: 'other', method: mode, sessionsRevokedCount: revokedCount || 0, actorRole: actor.platformRole === 'admin' ? 'platform_admin' : highestSharedRole(actor, target) }`. This neutral action name lets the future self-service password-change flow ride the same bucket with `initiator: 'self'`.
 - Response:
   - `mode='generate'`: `{ ok: true, password: finalPassword, revokedCount }`
   - `mode='custom'`: `{ ok: true, revokedCount }`
@@ -396,37 +444,192 @@ Mismo handler que UsersPage (extraer si conviene a un hook compartido).
 
 ---
 
+### Section D — Company-Admin Role (Google Workspace-style)
+
+#### D.1 — Concept
+
+Introduce `company_memberships.role = 'admin'` as a new value. This is the company-level administrator: the person who owns the tenant inside WeBrief — separate from `profiles.platform_role = 'admin'` (the WeBrief team).
+
+**Hierarchy inside a company:** `admin > manager > editor > viewer`
+
+**Why now:** the gaps in Section B's permission matrix (peer-manager cannot reset peer-manager, no IP-reveal authority, no clear owner for future billing) all dissolve when this role exists. Permission matrix in B.2 is written assuming this role; landing it as PR 4 of this bundle keeps the matrix internally consistent.
+
+#### D.2 — Migration
+
+`supabase/migrations/20260525_company_admin_role.sql`:
+
+```sql
+-- 1. Allow 'admin' as a valid role value.
+-- The column is text without CHECK constraint today (verified via MCP describe_table).
+-- No DDL needed — frontend/backend just need to accept the new value.
+-- (If a CHECK constraint is added later, it must include 'admin'.)
+
+-- 2. Backfill: for each company that has NO admin yet, promote the earliest manager
+-- (by created_at ASC, id ASC as tiebreaker) to admin. Idempotent: re-running this
+-- statement does nothing once every eligible company has an admin.
+WITH companies_without_admin AS (
+  SELECT id FROM companies c
+  WHERE NOT EXISTS (
+    SELECT 1 FROM company_memberships m
+    WHERE m.company_id = c.id AND m.role = 'admin'
+  )
+),
+first_managers AS (
+  SELECT DISTINCT ON (company_id) id, company_id
+  FROM company_memberships
+  WHERE role = 'manager' AND company_id IN (SELECT id FROM companies_without_admin)
+  ORDER BY company_id, created_at ASC, id ASC
+)
+UPDATE company_memberships
+SET role = 'admin', updated_at = now()
+WHERE id IN (SELECT id FROM first_managers);
+
+-- 3. Companies with no managers at all (admin-only test companies, edge case)
+-- get no automatic admin. Platform-admins can manually promote later.
+```
+
+**Validate column type** before applying: if `company_memberships.role` has a CHECK constraint that enumerates `(manager|editor|viewer)`, the migration must `ALTER TABLE ... DROP CONSTRAINT ...` and re-add it including `admin`. Confirm via `describe_table` MCP before deploy.
+
+Apply to **Dev + Prod** via MCP `apply_migration` before deploying code.
+
+#### D.3 — Backend changes
+
+**`shared/userRoles.js`** — add `'admin'` to valid membership roles array (if defined there); update any validators.
+
+**`backend/src/routes/companies.js`** — `POST /api/companies`:
+- Change line where the manager email is assigned: `role: 'manager'` → `role: 'admin'`
+- Update success log / response label
+- For `testMode=true` companies (admin-created without invite), no change (no membership created at creation time)
+
+**`backend/src/routes/users.js`** — `PATCH /api/users/:id/memberships/:companyId`:
+- Accept `'admin'` in the role validator
+- Enforce **last-admin protection**: if request would change role of last admin in company to non-admin, return 422 with `{ error: 'No se puede dejar la empresa sin administrador' }`
+- Enforce **promote authority**: only platform-admin or current company-admin can promote anyone to `admin`. Managers cannot promote.
+- Enforce **demote authority**: only platform-admin or another company-admin can demote a company-admin. (Self-demote allowed if last-admin protection passes.)
+
+**`backend/src/lib/sendAccess.js`** — extend `canSendAccess` matrix mirror of `canSetPassword` so company-admins gain send-access power within their company.
+
+**`backend/src/routes/users.js`** — `GET /api/users/:id/sessions`:
+- Compute `canRevealIp` via the helper
+- If true, return `ipFull` in each session row alongside `ip` (masked)
+
+**New endpoint:** `POST /api/users/:id/sessions/:sessionId/reveal-ip`
+- Auth + `rateLimiters.sensitiveAction`
+- Permission: `canRevealIp(actor, target, ...)`
+- Returns `{ ipFull }` for the specific session
+- `logSecurityEvent` action `ip_revealed` metadata `{ sessionId, viewerRole: 'platform_admin' | 'company_admin' }`
+
+Note on UX trade-off: alternative is to return all `ipFull` values in `GET /sessions` (one less round-trip) but then every list-fetch logs an `ip_revealed` event per session — too noisy. Per-session reveal endpoint = one audit event per actual reveal click. The list response includes `ipFull: null` and the frontend calls the reveal endpoint only when the eye is clicked.
+
+#### D.4 — Frontend changes
+
+**`frontend/src/lib/userRoles.js`** — `roleLabel`, `getMemberRoleOptions`:
+- Add `admin` → "Admin" label
+- `getMemberRoleOptions` returns `[admin, manager, editor, viewer]` if actor can promote to admin, else `[manager, editor, viewer]`
+
+**`frontend/src/lib/permissions.js`** — mirror of backend `canRevealIp`, `canSetPassword`, `canSendAccess` (updated matrix).
+
+**`frontend/src/pages/CompanyPage.jsx`**:
+- Team row badge: render "Admin" badge (color: violet or amber, distinct from "Manager" gray) for `member.role === 'admin'`
+- "Invitar usuario" form's role select: add Admin option (gated by `canPromoteToAdmin` helper)
+- Counter at top: "Equipo: 1 admin · 2 managers · 3 editores"
+
+**`frontend/src/components/users/SessionsList.jsx`** (already new in Section B.6):
+- Each session row: render IP masked + small eye icon AFTER the IP if `sessionsResponse.canRevealIp === true`
+- Click eye → POST `/sessions/:id/reveal-ip` → swap masked IP for full IP + toggle eye to "eye-off"
+- Click again → re-mask (frontend-only, no API call)
+- The actual reveal only happens once per session per modal lifecycle (cache the ipFull in component state after first reveal)
+
+**`frontend/src/pages/UsersPage.jsx`** — per-company column:
+- Show admin badge for companies where target is admin
+- "Roles por empresa" section in `UserEditModal`: row label for admin role
+
+#### D.5 — Tests
+
+- **Migration test**: apply on a seed dataset with 3 companies (one with 2 managers, one with only 1 manager, one with no managers); assert backfill picks the right manager in each case; assert re-running is a no-op.
+- **`backend/test/passwordPermissions.test.js`**: expand matrix to ≥18 cases covering admin × {admin-peer, manager, editor, viewer, platform-admin, self} and manager × {admin, manager-peer, editor, viewer, platform-admin, self}.
+- **`backend/test/lastAdminProtection.test.js`**: 4 cases (demote last admin → 422; demote non-last admin → 200; promote to admin → 200 if authority; promote without authority → 403).
+- **`backend/test/revealIp.test.js`**: 3 cases (platform-admin reveals → audit; company-admin reveals → audit; manager attempts → 403).
+- **E2E manual**: create new company → verify first member is `admin` (not `manager`); promote a manager to admin → verify; try to demote sole admin → expect error.
+
+#### D.6 — Files affected
+
+| File | Action |
+|------|--------|
+| `supabase/migrations/20260525_company_admin_role.sql` | **New** — value backfill |
+| `shared/userRoles.js` | Extend valid roles with `admin` |
+| `backend/src/routes/companies.js` | `POST` creates `role='admin'` instead of `manager` |
+| `backend/src/routes/users.js` | Memberships PATCH validates + last-admin protection; sessions GET includes `canRevealIp` flag; new reveal-ip endpoint |
+| `backend/src/lib/sendAccess.js` | `canSendAccess` updated for company-admin |
+| `backend/src/lib/passwordPermissions.js` | Already updated in Section B.2 (assumes admin role exists) |
+| `frontend/src/lib/userRoles.js` | `roleLabel`, `getMemberRoleOptions` |
+| `frontend/src/lib/permissions.js` | Mirror backend matrix |
+| `frontend/src/pages/CompanyPage.jsx` | Admin badge + role select option + counter |
+| `frontend/src/components/users/SessionsList.jsx` | Eye icon + reveal-ip call |
+| `frontend/src/pages/UsersPage.jsx` | Admin badge in per-company column |
+
+#### D.7 — Risks / Watch
+
+- **Constraint drift**: if `company_memberships.role` is constrained (CHECK or enum) in Prod but not Dev (or vice versa, given the schema-sync session 18 history), the migration will fail. Run `describe_table` on both before applying.
+- **Backfill side-effect**: existing companies suddenly have a member whose role changed from manager to admin. This is an upgrade (more powers), not a downgrade, but the user may not expect it. Add a one-time `application_errors` log line per promotion with `level='info'` for forensics if needed, or skip and rely on `company_memberships.updated_at`.
+- **Send-access matrix interaction**: today `canSendAccess` allows manager-of-shared-company. After PR 4, that becomes "admin-or-manager-of-shared-company, except cannot send-access to a peer or higher". Need to update Plan B's `canSendAccess` tests.
+- **Existing tests for "no last-manager downgrade"**: the rule from CONTEXT.min.md (`watch: no last-manager downgrade`) becomes outdated. Replace with "no last-admin downgrade".
+
+---
+
 ## PR Sequencing
 
 | PR | Scope | Approx LOC | Dependencies |
 |----|-------|-----------|--------------|
-| **PR 1** | Section A — bug fix | ~80 LOC backend + ~40 LOC tests | None |
+| **PR 1** | Section A — bug fix (Resend unification) | ~80 LOC backend + ~40 LOC tests | None |
 | **PR 2** | Section C without password/sessions — pure refactor (shared modal + envelope on team row) | ~250 LOC new + ~150 LOC deleted | Independent of PR 1; can merge in parallel |
-| **PR 3** | Section B — set-password + sessions feature (mounted in shared modal) | ~400 LOC backend + ~300 LOC frontend + 1 migration | Soft-depends on PR 2 for team-modal coverage |
+| **PR 3** | Section D — company-admin role + migration + last-admin protection + reveal-ip endpoint | ~300 LOC backend + ~200 LOC frontend + 1 migration | Independent of PR 1 and PR 2; but **must merge before PR 4** because PR 4's permission helpers reference the admin role |
+| **PR 4** | Section B — set-password + sessions feature (mounted in shared modal, with company-admin gating live) | ~400 LOC backend + ~300 LOC frontend + 1 migration | Hard-depends on PR 3 (permission matrix). Soft-depends on PR 2 for team-modal coverage. |
 
-Each PR is independently shippable. PR 1 and PR 2 are fully independent and can ship in any order. PR 3 is technically independent too, but if it ships without PR 2 merged, the password/sessions UI only lives in the UsersPage modal — the CompanyPage team modal stays without those actions until PR 2 lands. Strict ordering recommended: PR 1 → PR 2 → PR 3.
+**Recommended order: PR 1 → PR 2 → PR 3 → PR 4.**
+
+- PR 1 can ship immediately and unblocks new-user invites.
+- PR 2 is a pure refactor; safe to land any time after PR 1.
+- PR 3 introduces the role, which is a behavior change visible everywhere a member role is shown. Worth shipping alone so any regression is isolated.
+- PR 4 is the password/sessions feature, built on top of the new role's gating.
+
+Skipping or reordering PR 3 before PR 4 means PR 4's permission code has to be written in a "company-admin doesn't exist yet" mode and rewritten when PR 3 lands — wasted effort.
 
 ---
 
 ## Deploy Checklist
 
-For **PR 3** (the only one with a migration):
+For **PR 1** and **PR 2**: standard deploy without migration step. Git pull + backend restart (PR 1) and frontend rebuild (PR 2).
+
+For **PR 3** (company-admin role + reveal-ip endpoint):
+
+1. Run MCP `describe_table` on `company_memberships` in Dev AND Prod; confirm whether `role` column has a CHECK constraint that needs updating
+2. Apply migration `20260525_company_admin_role.sql` to Supabase Dev via MCP `apply_migration`
+3. Spot-check: `SELECT company_id, role, count(*) FROM company_memberships GROUP BY 1,2 ORDER BY 1` — each previously-managed company should now have exactly 1 admin
+4. Run backend tests locally against Dev
+5. Apply same migration to Supabase Prod via MCP `apply_migration` + repeat spot-check
+6. Push code to `main`
+7. VPS: `git pull && cd backend && npm install && pm2 restart webrief-backend --update-env && cd ../frontend && npm install && npm run build`
+8. Smoke test on `https://webrief.app`: open any existing company → verify previously-manager user now shows "Admin" badge; try to demote sole admin → expect error; eye icon on a session → IP reveals + new event in `/security`
+
+For **PR 4** (set-password + sessions feature):
 
 1. Apply migration `20260525_user_sessions_rpcs.sql` to Supabase Dev via MCP `apply_migration`
-2. Run backend tests locally against Dev
-3. Apply same migration to Supabase Prod via MCP `apply_migration`
-4. Push code to `main`
-5. SSH to VPS: `cd /var/www/webrief && git pull && cd backend && npm install && pm2 restart webrief-backend && cd ../frontend && npm install && npm run build`
-6. Smoke test on `https://webrief.app`: open Users edit modal, verify password + sessions sections render; open CompanyPage team modal, verify same; trigger generate-password + revoke-sessions; verify audit logs in `/security`
-
-For **PR 1** and **PR 2**: standard deploy without migration step.
+2. Verify RPC grants: `SELECT proname, proacl FROM pg_proc WHERE proname IN ('list_user_sessions','revoke_user_sessions')` — should show `service_role=X/postgres` only
+3. Run backend tests locally against Dev
+4. Apply same migration to Supabase Prod via MCP `apply_migration`
+5. Push code to `main`
+6. VPS: same deploy commands as PR 3
+7. Smoke test: open Users edit modal → verify password + sessions sections render; trigger generate-password → password shown once; trigger custom password → toast confirms; checkboxes select sessions → revoke flow works; open CompanyPage team modal → same functionality via shared modal; verify `password_changed` events in `/security`
 
 ---
 
 ## Out of Scope
 
-- Self-service password change for the actor (admin changing their own password) — falls back to the existing recovery flow.
-- 2FA / MFA enrollment for users (separate milestone).
-- IP geolocation or device fingerprinting beyond user_agent parsing.
-- Session expiry policy changes (out of scope; Supabase defaults stay).
-- Email template redesign (the unification to Resend lands as-is; visual polish in a future UI pass).
+- **Self-service password change** for the actor (any user changing their own password from a profile menu) — falls back to the existing recovery-email flow. The `password_changed` action name + metadata is forward-compatible for when this lands.
+- **Billing / subscription powers for company-admin** — the role lands here with its permission surface (members, passwords, IPs). Billing UI and Stripe integration is a future milestone; the role is the prerequisite.
+- **2FA / MFA enrollment** for users (separate milestone).
+- **IP geolocation or device fingerprinting** beyond user_agent parsing.
+- **Session expiry policy changes** (Supabase defaults stay).
+- **Email template redesign** — the unification to Resend lands as-is; visual polish in a future UI pass.
+- **Multi-admin invite from create-company flow** — `POST /api/companies` creates one admin. Adding more admins is done from the team management UI afterward.
