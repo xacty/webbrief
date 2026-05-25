@@ -1,8 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, ChevronDown, ChevronRight, Download, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { apiDownloadToFile, apiFetch } from '../lib/api'
-import { supabase } from '../lib/supabase'
+import { apiFetch } from '../lib/api'
 import { canSendAccess, getCompanyRole, getInviteRoleOptions, isAdmin } from '../lib/roleCapabilities'
 import {
   COMPANY_ROLE_ORDER,
@@ -12,7 +11,7 @@ import {
   getPlatformRoleLabel,
   isGlobalPlatformRole,
 } from '../../../shared/userRoles.js'
-import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
+import { Button, Input, Select, Card, Badge } from '../components/ui'
 import UserEditModal from '../components/users/UserEditModal'
 import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
 import styles from './UsersPage.module.css'
@@ -35,11 +34,6 @@ function formatDate(isoDate) {
     month: 'short',
     year: 'numeric',
   })
-}
-
-async function downloadAvatarExport(userId, preset) {
-  const path = `/api/users/${userId}/avatar/export?preset=${encodeURIComponent(preset)}`
-  await apiDownloadToFile(path, { suggestedFileName: 'avatar' })
 }
 
 function roleLabel(role) {

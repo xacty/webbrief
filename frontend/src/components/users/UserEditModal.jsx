@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Camera, Download } from 'lucide-react'
 import { Button, Input, Select, Modal, Badge } from '../ui'
-import { apiFetch } from '../../lib/api'
+import { apiDownloadToFile, apiFetch } from '../../lib/api'
 import { isAdmin } from '../../lib/roleCapabilities'
 import {
   COMPANY_ROLE_ORDER,
@@ -27,12 +27,12 @@ function userInitials(user) {
   return (email[0] || '?').toUpperCase()
 }
 
-// Avatar download helper — uses apiFetch under the hood via raw fetch with bearer.
-async function downloadAvatarExport(userId, variant) {
-  // Lazy import to avoid bundle-pulling supabase in modules that don't need it.
-  // Falls back to opening URL if direct download is unavailable.
-  const url = `/api/users/${userId}/avatar/export/${variant}`
-  window.open(url, '_blank', 'noopener')
+// Avatar download helper — uses apiDownloadToFile so the bearer token rides
+// the request (the backend `/api/users/:id/avatar/export` endpoint is auth-gated).
+// `preset` maps to the backend query param; values: 'original' | 'web' | 'jpg' | 'png'.
+async function downloadAvatarExport(userId, preset) {
+  const path = `/api/users/${userId}/avatar/export?preset=${encodeURIComponent(preset)}`
+  await apiDownloadToFile(path, { suggestedFileName: 'avatar' })
 }
 
 /**
