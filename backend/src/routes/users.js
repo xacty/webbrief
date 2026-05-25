@@ -1160,6 +1160,10 @@ router.post('/:id/sessions/revoke', rateLimiters.sensitiveAction, async (req, re
   if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
     return res.status(400).json({ error: 'sessionIds debe ser un array no vacío' })
   }
+  // Cap to prevent oversized payloads (typical user has < 20 active sessions).
+  if (sessionIds.length > 100) {
+    return res.status(400).json({ error: 'demasiados sessionIds (máx 100)' })
+  }
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!sessionIds.every((id) => typeof id === 'string' && UUID_RE.test(id))) {
     return res.status(400).json({ error: 'sessionIds inválidos' })
@@ -1298,6 +1302,9 @@ router.post('/:id/set-password', rateLimiters.passwordReset, async (req, res) =>
     }
   }
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (revokeSessionIds.length > 100) {
+    return res.status(400).json({ error: 'demasiados revokeSessionIds (máx 100)' })
+  }
   if (revokeSessionIds.length > 0 && !revokeSessionIds.every((id) => typeof id === 'string' && UUID_RE.test(id))) {
     return res.status(400).json({ error: 'revokeSessionIds inválidos' })
   }
