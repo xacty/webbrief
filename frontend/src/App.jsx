@@ -126,13 +126,11 @@ const rolePreviewStyles = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 10,
-    // 48px = .floatingBar min-height. Inner Select trigger is 32px
-    // (size="sm" matches the toolbar's .blockSelectButton), so vertical
-    // padding is 8px to keep total height at exactly 48 (8 + 32 + 8 = 48).
-    // Horizontal 16px left gives the "Ver como" label breathing room;
-    // 8px right matches the sm-trigger's natural padding-right.
-    minHeight: 48,
-    padding: '8px 8px 8px 16px',
+    // Tight padding so the pill size-hugs its content (matches the
+    // editor's .floatingBar after the trim). Inner Select trigger is
+    // 32px → with 4px vertical padding total height is 40px. No
+    // min-height; let content drive.
+    padding: '4px 4px 4px 12px',
     border: '1px solid var(--wb-border)',
     // Container-tier radius (matches .floatingBar and the toolbar).
     // Full-radius is reserved for labels / status pills — pills that
