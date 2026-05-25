@@ -1,10 +1,21 @@
 /* CommentMarginCards — Google Docs–style cards en el margen derecho del canvas.
    Idle: solo contenido, mínimo. Active: + reply composer + acciones. */
 
+/* Las cards viven pegadas al borde derecho del canvas. El cardsLayer se
+   ancla en términos del `editorPageRow` (max-width 890px) que se centra
+   en la content-box del scrollArea (con padding asimétrico de 10px left +
+   290px right cuando hay comments). Por la asimetría, el centro de la row
+   está ~140px a la izquierda del centro de la padding-box (que es donde
+   se mide `left: 50%`). Para anclar las cards al borde derecho de la row:
+     row_right = (50% del padding-box) + (mitad de row 445) - 140 (asymm)
+   Resultado: left = calc(50% + 445px - 140px + 16px gap) = calc(50% + 321px)
+   con un clamp `min()` para que en viewports angostos las cards no se
+   salgan del scroll area: nunca cards_left > 100% - 296 (= card width
+   + 16 air). Esto mantiene attachment visual con el canvas sin overflow. */
 .cardsLayer {
   position: absolute;
   top: 0;
-  right: 8px;
+  left: min(calc(50% + 321px), calc(100% - 296px));
   width: 280px;
   pointer-events: none;
   z-index: var(--wb-z-sticky);

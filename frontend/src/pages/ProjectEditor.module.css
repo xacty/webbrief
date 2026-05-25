@@ -620,9 +620,9 @@
   min-width: 30px;
   height: 22px;
   padding: 0 var(--wb-space-2);
-  border: 1px solid var(--wb-color-primary-100);
+  border: 1px solid var(--wb-color-primary-200);
   border-radius: var(--wb-radius-full);
-  background: var(--wb-primary-soft);
+  background: var(--wb-surface);
   color: var(--wb-color-primary-700);
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11px;
@@ -633,8 +633,8 @@
 }
 
 .typeLabelBtn:hover {
-  background: var(--wb-color-primary-100);
-  border-color: var(--wb-color-primary-200);
+  background: var(--wb-color-primary-50);
+  border-color: var(--wb-color-primary-300);
   color: var(--wb-color-primary-800);
 }
 
@@ -703,7 +703,7 @@
 /* Subtle visual hint for the trigger label while the bubble row is open */
 .typeLabelBtnOpen {
   background: var(--wb-color-primary-50);
-  border-color: var(--wb-color-primary-200);
+  border-color: var(--wb-color-primary-300);
   color: var(--wb-color-primary-700);
 }
 
@@ -974,11 +974,13 @@
   transition: padding-right 200ms ease;
 }
 
-/* Cuando hay comments anclados visibles, reservamos ~300px de gutter a la
-   derecha para que las cards floten sin solaparse con los activity bells
-   de la columna derecha del canvas. */
+/* Cuando hay comments anclados visibles, reservamos un gutter a la derecha
+   para que las cards floten sin solaparse con los activity bells de la
+   columna derecha del canvas. El gutter es ~290px (≈280px de la card +
+   ~10px de aire) para que las cards se sientan ancladas al borde del
+   canvas en lugar de flotar lejos en una columna propia. */
 .editorScrollAreaWithMargin {
-  padding-right: 300px;
+  padding-right: 290px;
 }
 
 .canvasAddSectionWrap {

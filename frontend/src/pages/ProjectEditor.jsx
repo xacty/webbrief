@@ -9197,10 +9197,10 @@ function HistoryDiffModal({ entry, onClose, onRestore }) {
           )}
         </div>
         <div className={panelStyles.diffModalActions}>
-          <button type="button" className={panelStyles.diffModalClose} onClick={onClose}>Cerrar</button>
-          <button
-            type="button"
-            className={panelStyles.diffModalRestore}
+          <Button variant="ghost" size="md" onClick={onClose}>Cerrar</Button>
+          <Button
+            variant="primary"
+            size="md"
             onClick={() => {
               if (window.confirm('Restaurar el contenido de esta sección a este estado? El cambio queda en el editor; recuerda guardar para que sea permanente.')) {
                 onRestore?.(entry.htmlAfter)
@@ -9208,7 +9208,7 @@ function HistoryDiffModal({ entry, onClose, onRestore }) {
             }}
           >
             Restaurar esta versión
-          </button>
+          </Button>
         </div>
       </div>
     </div>

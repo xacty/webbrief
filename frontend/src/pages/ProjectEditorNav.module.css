@@ -3,15 +3,15 @@
    Off-canon neutrals kept as literals pending dedicated decision (no
    Phase-1 exact match). rgb(... / NN%) alpha overlays kept literal per
    UI-SPEC Color (alpha-on-dark). See 04-03-SUMMARY.md for full mapping. */
-/* Editor navbar — lavender background to match the shell. Border-bottom
-   uses the same indigo-tinted border the shell sidebar uses, so the
-   transition from navbar to canvas reads as same-product chrome. */
+/* Editor navbar — white surface (same as CompanyPage's pageHeader band).
+   El navbar es chrome distinto del body lavender; con border-bottom indigo
+   se separa limpiamente del canvas/body sin mezclarse con el fondo. */
 .navbar {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr);
   align-items: center;
   min-height: 70px;
-  background: var(--wb-bg);
+  background: var(--wb-surface);
   border-bottom: 1px solid var(--wb-border);
   flex-shrink: 0;
   padding: 6px 24px;
