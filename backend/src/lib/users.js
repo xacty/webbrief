@@ -252,6 +252,9 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
   }
 }
 
+// Reinvite path for users that exist in auth.users but never activated.
+// Unlike Case A (which has a race-fallback that demands inline error handling),
+// this path has no fallback — any helper error propagates directly to the caller.
 async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req) {
   const { error, actionLink, emailSent } = await generateInviteLinkAndSendEmail({
     email: normalizedEmail,
