@@ -4101,9 +4101,9 @@ export default function ProjectEditor() {
     return (
       <div className={styles.loadingState}>
         <p className={styles.loadingErrorText}>{projectError}</p>
-        <button className={styles.confirmCancelBtn} onClick={() => navigate('/dashboard')}>
+        <Button variant="secondary" size="md" onClick={() => navigate('/dashboard')}>
           Volver al dashboard
-        </button>
+        </Button>
       </div>
     )
   }
@@ -4194,8 +4194,8 @@ export default function ProjectEditor() {
             </p>
             <p className={styles.confirmSubtext}>Esta acción no se puede deshacer.</p>
             <div className={styles.confirmActions}>
-              <button className={styles.confirmCancelBtn} onClick={() => setDeletePageConfirm(null)}>Cancelar</button>
-              <button className={styles.confirmDeleteBtn} onClick={() => deletePage(deletePageConfirm)}>Eliminar</button>
+              <Button variant="ghost" size="md" onClick={() => setDeletePageConfirm(null)}>Cancelar</Button>
+              <Button variant="danger" size="md" onClick={() => deletePage(deletePageConfirm)}>Eliminar</Button>
             </div>
           </div>
         </div>
@@ -8727,8 +8727,8 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
               </label>
 
               <div className={styles.exportActions}>
-                <button type="button" className={styles.exportSecondaryBtn} onClick={closeImageExport}>Cancelar</button>
-                <button type="submit" className={styles.exportPrimaryBtn}>Exportar imagen</button>
+                <Button variant="ghost" size="md" onClick={closeImageExport}>Cancelar</Button>
+                <Button variant="primary" size="md" type="submit">Exportar imagen</Button>
               </div>
             </form>
           </>
@@ -9407,12 +9407,12 @@ function UpdatesPanel({
             )}
             {canReviewDesignerProposals ? (
               <div className={panelStyles.proposalActions}>
-                <button className={panelStyles.deliverableButton} onClick={onApproveDesignerProposal}>
+                <Button variant="primary" size="sm" onClick={onApproveDesignerProposal}>
                   Aprobar
-                </button>
-                <button className={panelStyles.proposalSecondaryButton} onClick={onRejectDesignerProposal}>
+                </Button>
+                <Button variant="secondary" size="sm" onClick={onRejectDesignerProposal}>
                   Pedir cambios
-                </button>
+                </Button>
               </div>
             ) : isDesigner ? (
               <p className={panelStyles.deliverablesEmpty}>Puedes seguir editando y guardando sobre esta propuesta.</p>
