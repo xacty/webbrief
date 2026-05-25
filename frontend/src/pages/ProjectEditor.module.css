@@ -370,7 +370,10 @@
   flex-wrap: wrap;
   padding: var(--wb-space-2);
   border: 1px solid var(--wb-border);
-  border-radius: var(--wb-radius-full);
+  /* Container-tier radius (matches the toolbar). Full-radius is reserved
+     for labels and status pills — elements that hold buttons or inputs
+     should use the moderate container radius instead. */
+  border-radius: var(--wb-radius-3);
   background: var(--wb-surface);
   box-shadow: var(--wb-shadow-lg);
   backdrop-filter: blur(12px);
@@ -436,7 +439,10 @@
   height: 30px;
   padding: var(--wb-space-1) var(--wb-space-3);
   border: none;
-  border-radius: var(--wb-radius-full);
+  /* Button-tier radius — matches .toolBtn in the toolbar. Full-radius
+     was overkill for a button; keeping consistency with the rest of
+     the app's clickable controls. */
+  border-radius: var(--wb-radius-2);
   background: transparent;
   color: var(--wb-color-neutral-500);
   font-family: inherit;

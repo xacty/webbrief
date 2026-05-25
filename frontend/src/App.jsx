@@ -134,7 +134,11 @@ const rolePreviewStyles = {
     minHeight: 48,
     padding: '8px 8px 8px 16px',
     border: '1px solid var(--wb-border)',
-    borderRadius: 'var(--wb-radius-full)',
+    // Container-tier radius (matches .floatingBar and the toolbar).
+    // Full-radius is reserved for labels / status pills — pills that
+    // contain a Select/Button get the moderate radius like the rest of
+    // the app's clickable surfaces.
+    borderRadius: 'var(--wb-radius-3)',
     background: 'var(--wb-surface)',
     boxShadow: 'var(--wb-shadow-lg)',
     WebkitBackdropFilter: 'blur(12px)',
