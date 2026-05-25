@@ -246,14 +246,30 @@ const Select = forwardRef(function Select(
     const next = computePosition();
     if (next) setPosition(next);
 
-    function closeOnViewportChange() {
+    function closeOnScroll(event) {
+      // CRITICAL: ignore scroll events that originate from inside the
+      // listbox itself. The focus-on-hover handler triggers
+      // scrollIntoView on options, which fires a scroll event. With the
+      // capture flag below, this listener catches those internal
+      // scrolls and would close the dropdown — making it impossible to
+      // hover options. Only close on scrolls of ancestor scroll
+      // containers (page scroll, modal body scroll, etc.).
+      const listbox = listboxRef.current;
+      if (listbox && (listbox === event.target || listbox.contains(event.target))) {
+        return;
+      }
       setOpen(false);
     }
-    window.addEventListener('scroll', closeOnViewportChange, true);
-    window.addEventListener('resize', closeOnViewportChange);
+
+    function closeOnResize() {
+      setOpen(false);
+    }
+
+    window.addEventListener('scroll', closeOnScroll, true);
+    window.addEventListener('resize', closeOnResize);
     return () => {
-      window.removeEventListener('scroll', closeOnViewportChange, true);
-      window.removeEventListener('resize', closeOnViewportChange);
+      window.removeEventListener('scroll', closeOnScroll, true);
+      window.removeEventListener('resize', closeOnResize);
     };
   }, [open, computePosition]);
 
