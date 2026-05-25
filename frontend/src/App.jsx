@@ -113,23 +113,31 @@ const rolePreviewStyles = {
   wrap: {
     position: 'fixed',
     right: 18,
-    bottom: 18,
+    // Match .floatingBar (Brief/Handoff/Preview) bottom so both pills
+    // align horizontally at the same baseline in the editor.
+    bottom: 22,
     // Lower than --wb-z-popover (1100) so the Select listbox inside the
     // pill opens ABOVE the pill chrome (otherwise the dropdown is
     // visually behind the pill and hovering options closes it). Still
     // above sticky content (200) so the pill floats above the editor
     // and admin shell. Matches the --wb-z-overlay (900) token value.
     zIndex: 900,
-    display: 'flex',
+    display: 'inline-flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '8px 10px',
-    border: '1px solid var(--wb-glass-border)',
-    borderRadius: 12,
-    background: 'var(--wb-glass-bg)',
-    boxShadow: 'var(--wb-glass-shadow)',
-    WebkitBackdropFilter: 'saturate(180%) blur(14px)',
-    backdropFilter: 'saturate(180%) blur(14px)',
+    gap: 10,
+    // 48px = .floatingBar min-height. Inner Select trigger is 40px
+    // (--wb-space-8 + --wb-space-2), so vertical padding is 4px to keep
+    // total height at exactly 48 (4 + 40 + 4 = 48). Horizontal 20px
+    // left gives the "Ver como" label breathing room; 12px right
+    // matches the trigger's natural padding-right + chevron geometry.
+    minHeight: 48,
+    padding: '4px 12px 4px 20px',
+    border: '1px solid var(--wb-border)',
+    borderRadius: 'var(--wb-radius-full)',
+    background: 'var(--wb-surface)',
+    boxShadow: 'var(--wb-shadow-lg)',
+    WebkitBackdropFilter: 'blur(12px)',
+    backdropFilter: 'blur(12px)',
   },
   wrapEditor: {
     right: 318,
@@ -138,6 +146,7 @@ const rolePreviewStyles = {
     fontSize: 12,
     fontWeight: 700,
     color: 'var(--wb-color-neutral-500)',
+    whiteSpace: 'nowrap',
   },
 }
 
