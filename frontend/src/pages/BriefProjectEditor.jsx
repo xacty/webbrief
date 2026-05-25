@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft, Bookmark, MessageSquare } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '../components/ui'
@@ -189,8 +189,11 @@ function TemplateSavePanel({ companyId, formTitle, formDescription, questions })
 
   return (
     <div className={styles.sideCard}>
-      <h2 className={styles.sideCardTitle}>Guardar como plantilla</h2>
-      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <h2 className={styles.sideCardTitle}>
+        <Bookmark size={16} aria-hidden="true" />
+        Guardar como plantilla
+      </h2>
+      <form onSubmit={handleSave} className={styles.templateForm}>
         <input
           className={styles.templateInput}
           type="text"
@@ -209,7 +212,11 @@ function TemplateSavePanel({ companyId, formTitle, formDescription, questions })
           Guardar estructura actual
         </Button>
       </form>
-      {feedback && <p className={styles.sideNote} style={{ color: feedback.startsWith('No') ? '#dc2626' : '#16a34a' }}>{feedback}</p>}
+      {feedback && (
+        <p className={feedback.startsWith('No') ? styles.sideError : styles.sideSuccess}>
+          {feedback}
+        </p>
+      )}
       <p className={styles.sideNote}>La plantilla queda disponible al crear nuevos Briefs en esta empresa.</p>
     </div>
   )
@@ -337,7 +344,10 @@ function ResponsesPanel({ projectId, questions }) {
 
   return (
     <div className={styles.sideCard}>
-      <h2 className={styles.sideCardTitle}>Respuestas</h2>
+      <h2 className={styles.sideCardTitle}>
+        <MessageSquare size={16} aria-hidden="true" />
+        Respuestas
+      </h2>
 
       {loading && <p className={styles.sideNote}>Cargando...</p>}
       {error && <p className={styles.sideError}>{error}</p>}
@@ -535,18 +545,18 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
             <span className={styles.navbarBadge}>Vista de cliente</span>
           </div>
           <div className={styles.navbarRight}>
-            <span style={{ fontSize: 12, color: '#64748b' }}>
+            <span className={styles.previewHelpText}>
               Estás viendo el brief como lo vería un cliente sin cuenta.
             </span>
           </div>
         </header>
-        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div className={styles.previewFrameWrap}>
           {previewError ? (
-            <div style={{ margin: 'auto', padding: 24, color: '#dc2626' }}>
+            <div className={styles.previewError}>
               {previewError}
             </div>
           ) : !previewToken ? (
-            <div style={{ margin: 'auto', padding: 24, color: '#64748b' }}>
+            <div className={styles.previewLoading}>
               Cargando vista de cliente…
             </div>
           ) : (
@@ -554,7 +564,7 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
               key={previewToken}
               src={`/b/${previewToken}`}
               title="Vista de cliente"
-              style={{ flex: 1, border: 0, background: '#fff' }}
+              className={styles.previewFrame}
             />
           )}
         </div>
