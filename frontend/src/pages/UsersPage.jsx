@@ -13,6 +13,8 @@ import {
   isGlobalPlatformRole,
 } from '../../../shared/userRoles.js'
 import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
+import UserEditModal from '../components/users/UserEditModal'
+import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
 import styles from './UsersPage.module.css'
 
 const PAGE_SIZE = 10
@@ -92,9 +94,6 @@ export default function UsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteForm, setInviteForm] = useState(EMPTY_INVITE_FORM)
   const [editingUser, setEditingUser] = useState(null)
-  const [editForm, setEditForm] = useState({ fullName: '', email: '', platformRole: 'user', companyRoles: {} })
-  const [avatarFile, setAvatarFile] = useState(null)
-  const [avatarPreview, setAvatarPreview] = useState('')
   const [expandedUserId, setExpandedUserId] = useState('')
 
   const isAdminUser = isAdmin(currentUser)
@@ -285,104 +284,14 @@ export default function UsersPage() {
   }
 
   function openEditUser(user) {
-    const initialCompanyRoles = (user.companies || []).reduce((accumulator, company) => {
-      accumulator[company.companyId] = company.role
-      return accumulator
-    }, {})
-
     setEditingUser(user)
-    setEditForm({
-      fullName: user.fullName || '',
-      email: user.email || '',
-      platformRole: user.platformRole || 'user',
-      companyRoles: initialCompanyRoles,
-    })
-    setAvatarFile(null)
-    setAvatarPreview(user.avatarUrl || '')
     setActionMessage('')
     setError('')
   }
 
-  function closeEditUser() {
-    setEditingUser(null)
-    setAvatarFile(null)
-    setAvatarPreview('')
-  }
-
-  function handleAvatarFileChange(event) {
-    const file = event.target.files?.[0] || null
-    setAvatarFile(file)
-
-    if (!file) {
-      setAvatarPreview(editingUser?.avatarUrl || '')
-      return
-    }
-
-    const reader = new FileReader()
-    reader.onload = () => {
-      setAvatarPreview(String(reader.result || ''))
-    }
-    reader.readAsDataURL(file)
-  }
-
-  async function handleEditUser(event) {
-    event.preventDefault()
-    if (!editingUser) return
-
-    const profileBody = isAdminUser
-      ? {
-          fullName: editForm.fullName,
-          email: editForm.email,
-          platformRole: editForm.platformRole,
-        }
-      : { fullName: editForm.fullName }
-
-    const targetPlatformRole = isAdminUser ? editForm.platformRole : editingUser.platformRole
-    const companyRoleChanges = targetPlatformRole === 'user'
-      ? (editingUser.companies || []).filter((company) => {
-          const nextRole = editForm.companyRoles?.[company.companyId]
-          if (!nextRole || nextRole === company.role) return false
-          return canManageMembership(company)
-        })
-      : []
-
-    setBusyKey(`edit:${editingUser.id}`)
-    setError('')
-    setActionMessage('')
-
-    try {
-      await apiFetch(`/api/users/${editingUser.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(profileBody),
-      })
-
-      for (const company of companyRoleChanges) {
-        const nextRole = editForm.companyRoles[company.companyId]
-        await apiFetch(`/api/users/${editingUser.id}/memberships/${company.companyId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ role: nextRole }),
-        })
-      }
-
-      if (avatarFile) {
-        setActionMessage('Subiendo avatar...')
-        const formData = new FormData()
-        formData.append('avatar', avatarFile)
-
-        await apiFetch(`/api/users/${editingUser.id}/avatar`, {
-          method: 'POST',
-          body: formData,
-        })
-      }
-
-      await loadUsers()
-      closeEditUser()
-      setActionMessage('Usuario actualizado')
-    } catch (err) {
-      setError(err.message || 'No se pudo actualizar el usuario')
-    } finally {
-      setBusyKey('')
-    }
+  function handleUserSaved() {
+    loadUsers()
+    setActionMessage('Usuario actualizado')
   }
 
   async function handleMembershipRoleChange(userId, companyId, role) {
@@ -429,46 +338,17 @@ export default function UsersPage() {
     setError('')
     setActionMessage('')
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const headers = new Headers({ 'Content-Type': 'application/json' })
-      if (session?.access_token) {
-        headers.set('Authorization', `Bearer ${session.access_token}`)
-      }
+    const result = await sendAccessRequest(user)
 
-      const response = await fetch(`/api/users/${user.id}/send-access`, {
-        method: 'POST',
-        headers,
-      })
-
-      if (response.status === 429) {
-        const retryAfterHeader = response.headers.get('Retry-After')
-        const seconds = Number(retryAfterHeader) || 900 // default 15 min
-        const minutes = Math.max(1, Math.ceil(seconds / 60))
-        setActionMessage(`Demasiados intentos. Esperá ~${minutes} minutos.`)
-        return
-      }
-
-      const body = await response.json().catch(() => ({}))
-
-      if (!response.ok) {
-        const idHint = body.errorId ? ` (ID: ${body.errorId})` : ''
-        setError(body.error ? `${body.error}${idHint}` : `No se pudo enviar acceso${idHint}`)
-        return
-      }
-
-      const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null
-      const expiresLabel = expiresAt
-        ? expiresAt.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
-        : ''
-      const actionLabel = body.action === 'invite_resent' ? 'Invitación reenviada' : 'Email de restablecimiento enviado'
-      const tail = body.emailSent ? `, caduca ${expiresLabel}` : ' (link generado, email no entregado)'
-      setActionMessage(`${actionLabel}${tail}`)
-    } catch (err) {
-      setError(err?.message || 'Error de red enviando acceso')
-    } finally {
-      setBusyKey('')
+    if (result.ok) {
+      setActionMessage(result.message)
+    } else if (result.kind === 'rate_limited') {
+      setActionMessage(result.message)
+    } else {
+      setError(result.message)
     }
+
+    setBusyKey('')
   }
 
   async function handleRemoveMembership(userId, companyId) {
@@ -909,148 +789,15 @@ export default function UsersPage() {
         </div>
       </footer>
 
-      <Modal
+      <UserEditModal
         open={Boolean(editingUser)}
-        onClose={closeEditUser}
-        title="Editar usuario"
-        size="lg"
-        ariaDescribedBy="edit-user-description"
-      >
-        {editingUser && (() => {
-          const editTargetCompanies = editingUser.companies || []
-          const effectivePlatformRole = isAdminUser ? editForm.platformRole : (editingUser.platformRole || 'user')
-          const editTargetIsGlobal = isGlobalPlatformRole(effectivePlatformRole)
-          const hasManageableMembership = editTargetCompanies.some((company) => canManageMembership(company))
-          const showCompanyRolesSection = !editTargetIsGlobal && editTargetCompanies.length > 0 && (isAdminUser || hasManageableMembership)
-          const modalSubtitle = isAdminUser
-            ? 'Actualiza identidad, email, rol de plataforma y roles por empresa.'
-            : hasManageableMembership
-              ? 'Actualiza el nombre y los roles por empresa.'
-              : 'Actualiza el nombre visible del usuario.'
-
-          return (
-            <>
-              <p id="edit-user-description" className={styles.panelText}>{modalSubtitle}</p>
-
-              <form className={styles.modalForm} onSubmit={handleEditUser}>
-                <div className={styles.avatarEditor}>
-                  <span className={styles.avatarPreview}>
-                    {avatarPreview ? (
-                      <img className={styles.avatarImage} src={avatarPreview} alt="" />
-                    ) : (
-                      <span className={styles.avatarInitials}>{userInitials(editingUser)}</span>
-                    )}
-                  </span>
-                  <div className={styles.avatarActionGroup}>
-                    <label className={styles.fileInputLabel}>
-                      <Camera size={16} aria-hidden="true" />
-                      <span>Cambiar imagen</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        onChange={handleAvatarFileChange}
-                      />
-                    </label>
-                    {editingUser?.avatarUrl && (
-                      <>
-                        <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(editingUser.id, 'original')}>
-                          Original
-                        </Button>
-                        <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(editingUser.id, 'web')}>
-                          WebP
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <Input
-                  label="Nombre"
-                  type="text"
-                  value={editForm.fullName}
-                  onChange={(event) => setEditForm((current) => ({ ...current, fullName: event.target.value }))}
-                  placeholder="Nombre completo"
-                />
-
-                {isAdminUser && (
-                  <>
-                    <Input
-                      label="Email"
-                      type="email"
-                      value={editForm.email}
-                      onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
-                      required
-                    />
-
-                    <Select
-                      label="Rol plataforma"
-                      value={editForm.platformRole}
-                      onChange={(event) => setEditForm((current) => ({ ...current, platformRole: event.target.value }))}
-                    >
-                      {PLATFORM_ROLE_ORDER.map((role) => (
-                        <option key={role} value={role}>{platformRoleLabel(role)}</option>
-                      ))}
-                    </Select>
-
-                    {editForm.platformRole !== 'user' && (
-                      <p className={styles.formNote}>Admin y QA usan acceso global, sin rol por empresa.</p>
-                    )}
-                  </>
-                )}
-
-                {showCompanyRolesSection && (
-                  <div className={styles.membershipSection}>
-                    <p className={styles.membershipTitle}>Roles por empresa</p>
-                    <div className={styles.membershipList}>
-                      {editTargetCompanies.map((company) => {
-                        const manageable = canManageMembership(company)
-                        const currentRole = editForm.companyRoles?.[company.companyId] ?? company.role
-                        return (
-                          <div key={`${editingUser.id}-edit-${company.companyId}`} className={styles.membershipRow}>
-                            <div>
-                              <p className={styles.membershipCompany}>{company.companyName}</p>
-                              <p className={styles.membershipMeta}>/{company.companySlug}</p>
-                            </div>
-                            {manageable ? (
-                              <Select
-                                value={currentRole}
-                                onChange={(event) => {
-                                  const nextRole = event.target.value
-                                  setEditForm((current) => ({
-                                    ...current,
-                                    companyRoles: { ...current.companyRoles, [company.companyId]: nextRole },
-                                  }))
-                                }}
-                                fullWidth={false}
-                                className={styles.roleSelectWrap}
-                              >
-                                {membershipRoleOptions(company).map((role) => (
-                                  <option key={role} value={role}>{roleLabel(role)}</option>
-                                ))}
-                              </Select>
-                            ) : (
-                              <Badge variant="neutral" size="sm">{roleLabel(company.role)}</Badge>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className={styles.formActions}>
-                  <Button type="button" variant="ghost" onClick={closeEditUser}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit" variant="primary" disabled={busyKey === `edit:${editingUser.id}`} loading={busyKey === `edit:${editingUser.id}`}>
-                    {busyKey === `edit:${editingUser.id}` ? 'Guardando...' : 'Guardar cambios'}
-                  </Button>
-                </div>
-              </form>
-            </>
-          )
-        })()}
-      </Modal>
+        user={editingUser}
+        currentUser={currentUser}
+        scope="global"
+        managedCompanyIds={managedCompanyIds}
+        onClose={() => setEditingUser(null)}
+        onSaved={handleUserSaved}
+      />
     </div>
   )
 }
