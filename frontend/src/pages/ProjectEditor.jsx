@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense, Fragment as RFragment } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -5726,10 +5726,37 @@ function parseTooltipTitle(title) {
 // ---------------------------------------------------------------------------
 // Toolbar — barra de herramientas compartida
 // ---------------------------------------------------------------------------
+// Ordered list of toolbar group ids, left → right. Drives the overflow
+// calculation (groups overflow from the right) and gates the order in
+// which they appear inside the "more" popover. Keep in sync with the
+// groups array built inside the Toolbar component.
+const TOOLBAR_GROUP_ORDER = ['history', 'block', 'text', 'color', 'align', 'insert']
+
+
 function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment = false }) {
   const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
   const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
+
+  // ── Overflow handling (Google Docs-style "more" menu) ────────────────
+  // The toolbar holds 6 groups separated by dividers. When the container
+  // is narrower than total content width, we hide groups from the right
+  // and surface them in a popover behind a 3-dot button.
+  // Strategy:
+  //   1. Render all groups in the toolbar (hidden ones via display:none).
+  //   2. Measure each group's width ONCE on first mount (cached in a ref;
+  //      widths are stable for this toolbar since contents are mostly
+  //      icon buttons with fixed sizes).
+  //   3. On container resize, compute which groups fit from left to right
+  //      reserving space for the "more" button + its divider.
+  //   4. Overflowed groups stay hidden in the toolbar (still in DOM for
+  //      future measurement / accessibility) AND get re-rendered inside
+  //      the popover when it's open.
+  const groupRefs = useRef({})
+  const moreBtnRef = useRef(null)
+  const groupWidthsRef = useRef({})
+  const [overflowedGroupIds, setOverflowedGroupIds] = useState([])
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!editor) return
@@ -5749,6 +5776,97 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [openToolbarMenu])
+
+  // ── Measure groups + compute overflow on container resize ────────────
+  useLayoutEffect(() => {
+    if (!toolbarRef.current) return undefined
+
+    // Capture each group's natural width the first time we see it (and
+    // only while it's currently visible in the toolbar — display:none
+    // gives 0 width). Once cached, we never re-measure: contents are
+    // stable enough that the small drift (e.g. "Párrafo" vs "H1" label)
+    // doesn't matter for the overflow decision.
+    function captureWidths() {
+      Object.entries(groupRefs.current).forEach(([id, el]) => {
+        if (!el) return
+        const w = el.offsetWidth
+        if (w > 0 && !(id in groupWidthsRef.current)) {
+          groupWidthsRef.current[id] = w
+        }
+      })
+    }
+
+    function computeOverflow() {
+      const container = toolbarRef.current
+      if (!container) return
+      const containerWidth = container.clientWidth
+      const widths = groupWidthsRef.current
+      const order = TOOLBAR_GROUP_ORDER
+
+      // Subtract horizontal padding (var(--wb-space-2) var(--wb-space-3)
+      // = 8px top/bottom, 12px left/right → 24px horizontal).
+      const padding = 24
+      // Divider geometry: 1px width + 4px margin each side = 9px.
+      const dividerWidth = 9
+      // Approx width of the "more" button (32px ToolBtn).
+      const moreBtnWidth = 32
+
+      // Sum widths assuming ALL groups visible (no more button needed).
+      let totalAll = 0
+      order.forEach((id, idx) => {
+        totalAll += widths[id] || 0
+        if (idx > 0) totalAll += dividerWidth
+      })
+
+      if (totalAll + padding <= containerWidth) {
+        setOverflowedGroupIds((prev) => (prev.length === 0 ? prev : []))
+        return
+      }
+
+      // Some overflow — reserve room for the more button + its leading
+      // divider. Fit as many groups as possible from the left.
+      const availForGroups = containerWidth - padding - moreBtnWidth - dividerWidth
+      let used = 0
+      const overflowed = []
+      order.forEach((id, idx) => {
+        const w = (widths[id] || 0) + (idx > 0 ? dividerWidth : 0)
+        if (used + w > availForGroups) overflowed.push(id)
+        else used += w
+      })
+      setOverflowedGroupIds((prev) => {
+        if (prev.length === overflowed.length && prev.every((id, i) => id === overflowed[i])) return prev
+        return overflowed
+      })
+    }
+
+    // Initial capture happens before any overflow split (all groups
+    // start visible) so we get accurate widths. Then run the first
+    // overflow calculation.
+    captureWidths()
+    computeOverflow()
+
+    const ro = new ResizeObserver(() => {
+      captureWidths()
+      computeOverflow()
+    })
+    ro.observe(toolbarRef.current)
+    return () => ro.disconnect()
+    // We intentionally don't depend on overflowedGroupIds — the observer
+    // is set up once on mount; the captureWidths() inside the callback
+    // updates the cache opportunistically (it's a no-op once cached).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Close the more menu when clicking outside the toolbar.
+  useEffect(() => {
+    if (!moreMenuOpen) return undefined
+    function onDown(event) {
+      if (moreBtnRef.current?.contains(event.target)) return
+      setMoreMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [moreMenuOpen])
 
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
@@ -5930,35 +6048,28 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
     { value: 'justify', label: 'Justificado', icon: <AlignJustify size={16} />, tooltip: 'Justificar (Ctrl+Shift+J)' },
   ]
 
-  return (
-    <div
-      ref={toolbarRef}
-      className={toolbarStyles.toolbar}
-      onPointerDownCapture={(event) => {
-        if (!openToolbarMenu) return
-        if (event.target.closest?.('[data-toolbar-menu]')) return
-        setOpenToolbarMenu(null)
-      }}
-    >
-      {/* Group: Historial (undo/redo — not in spec's 5 groups, kept as leading group) */}
-      <div className={toolbarStyles.toolbarGroup}>
-        <ToolBtn
-          disabled={disabled}
-          onClick={onUndo}
-          title="Deshacer (Ctrl+Z)"
-        ><Undo2 size={16} /></ToolBtn>
-
-        <ToolBtn
-          disabled={disabled}
-          onClick={onRedo}
-          title="Rehacer (Ctrl+Y)"
-        ><Redo2 size={16} /></ToolBtn>
-      </div>
-
-      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
-
-      {/* Group 1: Bloque — block selector */}
-      <div className={toolbarStyles.toolbarGroup}>
+  // Build each group's inner JSX once per render. Each entry's `node`
+  // is what goes inside the group's wrapper `<div className="toolbarGroup">`
+  // both in the toolbar AND in the overflow popover. The wrapper itself
+  // is added by the render loop below so the same group can be placed
+  // in either location without re-authoring the markup.
+  const groups = [
+    {
+      id: 'history',
+      node: (
+        <>
+          <ToolBtn disabled={disabled} onClick={onUndo} title="Deshacer (Ctrl+Z)">
+            <Undo2 size={16} />
+          </ToolBtn>
+          <ToolBtn disabled={disabled} onClick={onRedo} title="Rehacer (Ctrl+Y)">
+            <Redo2 size={16} />
+          </ToolBtn>
+        </>
+      ),
+    },
+    {
+      id: 'block',
+      node: (
         <div className={toolbarStyles.menu} data-toolbar-menu="">
           <button
             type="button"
@@ -5992,248 +6103,305 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
             </div>
           )}
         </div>
-      </div>
-
-      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
-
-      {/* Group 2: Texto — bold, italic, underline, strike */}
-      <div className={toolbarStyles.toolbarGroup}>
-        <ToolBtn
-          active={editor?.isActive('bold')}
-          disabled={disabled}
-          onClick={() => editor?.chain().focus().toggleBold().run()}
-          title="Negrita (Ctrl+B)"
-        ><b>B</b></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('italic')}
-          disabled={disabled}
-          onClick={() => editor?.chain().focus().toggleItalic().run()}
-          title="Cursiva (Ctrl+I)"
-        ><i>I</i></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('underline')}
-          disabled={disabled}
-          onClick={() => editor?.chain().focus().toggleUnderline().run()}
-          title="Subrayado (Ctrl+U)"
-        ><u>U</u></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('strike')}
-          disabled={disabled}
-          onClick={() => editor?.chain().focus().toggleStrike().run()}
-          title="Tachado (Ctrl+Shift+X)"
-        ><Strikethrough size={16} /></ToolBtn>
-      </div>
-
-      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
-
-      {/* Group 3: Color — text color, highlight */}
-      <div className={toolbarStyles.toolbarGroup}>
-        <label
-          className={cx(
-            toolbarStyles.toolLabel,
-            toolbarStyles.toolLabelRelative,
-            disabled && toolbarStyles.toolLabelDisabled,
-          )}
-          data-wb-tooltip="Color de texto"
-        >
-          <span className={toolbarStyles.colorTrigger}>
-            <Palette size={14} />
-            <span className={toolbarStyles.textColorSample}>A</span>
-          </span>
-          <input
-            type="color"
-            className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
-            onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
-          />
-        </label>
-
-        <label
-          className={cx(
-            toolbarStyles.toolLabel,
-            toolbarStyles.toolLabelRelative,
-            disabled && toolbarStyles.toolLabelDisabled,
-          )}
-          data-wb-tooltip="Color de resaltado"
-        >
-          <span className={toolbarStyles.highlightSample}>H</span>
-          <input
-            type="color"
-            className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
-            defaultValue="#fef08a"
-            onChange={(e) => editor?.chain().focus().setHighlight({ color: e.target.value }).run()}
-          />
-        </label>
-      </div>
-
-      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
-
-      {/* Group 4: Alineación — alignment, spacing, indent, lists, quote */}
-      <div className={toolbarStyles.toolbarGroup}>
-        <div className={toolbarStyles.menu} data-toolbar-menu="">
+      ),
+    },
+    {
+      id: 'text',
+      node: (
+        <>
           <ToolBtn
-            active={openToolbarMenu === 'align'}
+            active={editor?.isActive('bold')}
             disabled={disabled}
-            onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
-            title="Alineación de texto"
+            onClick={() => editor?.chain().focus().toggleBold().run()}
+            title="Negrita (Ctrl+B)"
+          ><b>B</b></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('italic')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
+            title="Cursiva (Ctrl+I)"
+          ><i>I</i></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('underline')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleUnderline().run()}
+            title="Subrayado (Ctrl+U)"
+          ><u>U</u></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('strike')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleStrike().run()}
+            title="Tachado (Ctrl+Shift+X)"
+          ><Strikethrough size={16} /></ToolBtn>
+        </>
+      ),
+    },
+    {
+      id: 'color',
+      node: (
+        <>
+          <label
+            className={cx(
+              toolbarStyles.toolLabel,
+              toolbarStyles.toolLabelRelative,
+              disabled && toolbarStyles.toolLabelDisabled,
+            )}
+            data-wb-tooltip="Color de texto"
           >
-            {getAlignmentIcon(activeAlignment)}
-            <ChevronDown size={12} />
-          </ToolBtn>
-          {openToolbarMenu === 'align' && (
-            <div className={toolbarStyles.dropdown}>
-              {alignmentOptions.map((option) => (
+            <span className={toolbarStyles.colorTrigger}>
+              <Palette size={14} />
+              <span className={toolbarStyles.textColorSample}>A</span>
+            </span>
+            <input
+              type="color"
+              className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
+              onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
+            />
+          </label>
+          <label
+            className={cx(
+              toolbarStyles.toolLabel,
+              toolbarStyles.toolLabelRelative,
+              disabled && toolbarStyles.toolLabelDisabled,
+            )}
+            data-wb-tooltip="Color de resaltado"
+          >
+            <span className={toolbarStyles.highlightSample}>H</span>
+            <input
+              type="color"
+              className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
+              defaultValue="#fef08a"
+              onChange={(e) => editor?.chain().focus().setHighlight({ color: e.target.value }).run()}
+            />
+          </label>
+        </>
+      ),
+    },
+
+    {
+      id: 'align',
+      node: (
+        <>
+          <div className={toolbarStyles.menu} data-toolbar-menu="">
+            <ToolBtn
+              active={openToolbarMenu === 'align'}
+              disabled={disabled}
+              onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
+              title="Alineación de texto"
+            >
+              {getAlignmentIcon(activeAlignment)}
+              <ChevronDown size={12} />
+            </ToolBtn>
+            {openToolbarMenu === 'align' && (
+              <div className={toolbarStyles.dropdown}>
+                {alignmentOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={cx(
+                      toolbarStyles.dropdownItem,
+                      activeAlignment === option.value && toolbarStyles.dropdownItemActive,
+                    )}
+                    onClick={() => {
+                      editor?.chain().focus().setTextAlign(option.value).run()
+                      setOpenToolbarMenu(null)
+                    }}
+                    data-wb-tooltip={option.tooltip}
+                  >
+                    {option.icon}
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className={toolbarStyles.menu} data-toolbar-menu="">
+            <ToolBtn
+              active={openToolbarMenu === 'spacing'}
+              disabled={disabled}
+              onClick={() => setOpenToolbarMenu((value) => value === 'spacing' ? null : 'spacing')}
+              title="Interlineado y espacio de párrafo"
+            >
+              <ListCollapse size={16} />
+              <ChevronDown size={12} />
+            </ToolBtn>
+            {openToolbarMenu === 'spacing' && (
+              <div className={toolbarStyles.dropdown}>
                 <button
-                  key={option.value}
                   type="button"
                   className={cx(
                     toolbarStyles.dropdownItem,
-                    activeAlignment === option.value && toolbarStyles.dropdownItemActive,
+                    getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
                   )}
-                  onClick={() => {
-                    editor?.chain().focus().setTextAlign(option.value).run()
-                    setOpenToolbarMenu(null)
-                  }}
-                  data-wb-tooltip={option.tooltip}
-                >
-                  {option.icon}
-                  <span>{option.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className={toolbarStyles.menu} data-toolbar-menu="">
-          <ToolBtn
-            active={openToolbarMenu === 'spacing'}
-            disabled={disabled}
-            onClick={() => setOpenToolbarMenu((value) => value === 'spacing' ? null : 'spacing')}
-            title="Interlineado y espacio de párrafo"
-          >
-            <ListCollapse size={16} />
-            <ChevronDown size={12} />
-          </ToolBtn>
-          {openToolbarMenu === 'spacing' && (
-            <div className={toolbarStyles.dropdown}>
-              <button
-                type="button"
-                className={cx(
-                  toolbarStyles.dropdownItem,
-                  getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
-                )}
-                onClick={() => applyBlockSpacing('')}
-                data-wb-tooltip="Espaciado predeterminado"
-              >
-                <ListCollapse size={16} />
-                <span>Predeterminado</span>
-              </button>
-              {Object.entries(BLOCK_SPACING_PRESETS).map(([key, preset]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={cx(
-                    toolbarStyles.dropdownItem,
-                    getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
-                  )}
-                  onClick={() => applyBlockSpacing(key)}
-                  data-wb-tooltip={`Espaciado ${preset.label.toLowerCase()}`}
+                  onClick={() => applyBlockSpacing('')}
+                  data-wb-tooltip="Espaciado predeterminado"
                 >
                   <ListCollapse size={16} />
-                  <span>{preset.label}</span>
+                  <span>Predeterminado</span>
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
+                {Object.entries(BLOCK_SPACING_PRESETS).map(([key, preset]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={cx(
+                      toolbarStyles.dropdownItem,
+                      getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
+                    )}
+                    onClick={() => applyBlockSpacing(key)}
+                    data-wb-tooltip={`Espaciado ${preset.label.toLowerCase()}`}
+                  >
+                    <ListCollapse size={16} />
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-        <ToolBtn
-          disabled={disabled}
-          onClick={() => applyIndent(-1)}
-          title="Disminuir sangría"
-        ><IndentDecrease size={16} /></ToolBtn>
-
-        <ToolBtn
-          disabled={disabled}
-          onClick={() => applyIndent(1)}
-          title="Aumentar sangría"
-        ><IndentIncrease size={16} /></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('bulletList')}
-          disabled={disabled}
-          onClick={() => editor?.chain().focus().toggleBulletList().run()}
-          title="Lista sin orden"
-        ><List size={16} /></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('orderedList')}
-          disabled={disabled}
-          onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-          title="Lista ordenada"
-        ><ListOrdered size={16} /></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('blockquote')}
-          disabled={disabled}
-          onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-          title="Cita"
-        ><Quote size={16} /></ToolBtn>
-      </div>
-
-      <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
-
-      {/* Group 5: Insertar — table, link, comment, CTA, image */}
-      <div className={toolbarStyles.toolbarGroup}>
-        <TableGridPicker
-          disabled={disabled}
-          open={openToolbarMenu === 'table'}
-          onToggle={() => setOpenToolbarMenu((value) => value === 'table' ? null : 'table')}
-          onClose={() => setOpenToolbarMenu(null)}
-          onInsert={(rows, cols) => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()}
-        />
-
-        <ToolBtn
-          active={editor?.isActive('link')}
-          disabled={disabled}
-          onClick={handleLink}
-          title="Insertar enlace"
-        ><Link2 size={16} /></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('comment')}
-          disabled={disabled || !canComment || (editor?.state?.selection?.empty ?? true)}
-          onClick={() => {
-            if (!editor || editor.state.selection.empty) return
-            onAddComment?.()
-          }}
-          title="Agregar comentario"
-        ><MessageSquare size={16} /></ToolBtn>
-
-        <ToolBtn
-          active={editor?.isActive('ctaButton')}
-          disabled={disabled}
-          onClick={handleCtaInsert}
-          title="Insertar CTA/button"
-        ><MousePointerClick size={16} /></ToolBtn>
-
-        <label
-          className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
-          data-wb-tooltip="Insertar imagen"
-        >
-          <ImageIcon size={16} />
-          <input
-            type="file"
-            accept="image/*"
-            className={toolbarStyles.hiddenFileInput}
-            onChange={handleImageUpload}
+          <ToolBtn disabled={disabled} onClick={() => applyIndent(-1)} title="Disminuir sangría">
+            <IndentDecrease size={16} />
+          </ToolBtn>
+          <ToolBtn disabled={disabled} onClick={() => applyIndent(1)} title="Aumentar sangría">
+            <IndentIncrease size={16} />
+          </ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('bulletList')}
             disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}
+            title="Lista sin orden"
+          ><List size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('orderedList')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+            title="Lista ordenada"
+          ><ListOrdered size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('blockquote')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+            title="Cita"
+          ><Quote size={16} /></ToolBtn>
+        </>
+      ),
+    },
+    {
+      id: 'insert',
+      node: (
+        <>
+          <TableGridPicker
+            disabled={disabled}
+            open={openToolbarMenu === 'table'}
+            onToggle={() => setOpenToolbarMenu((value) => value === 'table' ? null : 'table')}
+            onClose={() => setOpenToolbarMenu(null)}
+            onInsert={(rows, cols) => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()}
           />
-        </label>
-      </div>
+          <ToolBtn
+            active={editor?.isActive('link')}
+            disabled={disabled}
+            onClick={handleLink}
+            title="Insertar enlace"
+          ><Link2 size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('comment')}
+            disabled={disabled || !canComment || (editor?.state?.selection?.empty ?? true)}
+            onClick={() => {
+              if (!editor || editor.state.selection.empty) return
+              onAddComment?.()
+            }}
+            title="Agregar comentario"
+          ><MessageSquare size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('ctaButton')}
+            disabled={disabled}
+            onClick={handleCtaInsert}
+            title="Insertar CTA/button"
+          ><MousePointerClick size={16} /></ToolBtn>
+          <label
+            className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
+            data-wb-tooltip="Insertar imagen"
+          >
+            <ImageIcon size={16} />
+            <input
+              type="file"
+              accept="image/*"
+              className={toolbarStyles.hiddenFileInput}
+              onChange={handleImageUpload}
+              disabled={disabled}
+            />
+          </label>
+        </>
+      ),
+    },
+  ]
 
+  const overflowedSet = new Set(overflowedGroupIds)
+  const hasOverflow = overflowedGroupIds.length > 0
+
+  return (
+    <div
+      ref={toolbarRef}
+      className={toolbarStyles.toolbar}
+      onPointerDownCapture={(event) => {
+        if (!openToolbarMenu) return
+        if (event.target.closest?.('[data-toolbar-menu]')) return
+        setOpenToolbarMenu(null)
+      }}
+    >
+      {/* All groups rendered inline. Overflowed ones get .toolbarGroupHidden
+          (display:none) — they stay in the DOM so their refs remain valid
+          for re-measurement on resize. Dividers only render BETWEEN
+          adjacent visible groups so the toolbar reads cleanly. */}
+      {groups.map((group, idx) => {
+        const isHidden = overflowedSet.has(group.id)
+        const prevGroup = idx > 0 ? groups[idx - 1] : null
+        const showDividerBefore = idx > 0 && !isHidden && prevGroup && !overflowedSet.has(prevGroup.id)
+        return (
+          <RFragment key={group.id}>
+            {showDividerBefore && <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />}
+            <div
+              ref={(el) => { groupRefs.current[group.id] = el }}
+              className={cx(toolbarStyles.toolbarGroup, isHidden && toolbarStyles.toolbarGroupHidden)}
+              data-toolbar-group={group.id}
+            >
+              {group.node}
+            </div>
+          </RFragment>
+        )
+      })}
+
+      {hasOverflow && (
+        <>
+          <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
+          <div className={toolbarStyles.toolbarMoreWrap} data-toolbar-menu="" ref={moreBtnRef}>
+            <ToolBtn
+              active={moreMenuOpen}
+              disabled={disabled}
+              onClick={() => setMoreMenuOpen((value) => !value)}
+              title="Más herramientas"
+            >
+              <MoreVertical size={16} />
+            </ToolBtn>
+            {moreMenuOpen && (
+              <div className={toolbarStyles.moreMenuPopover}>
+                {/* Re-render the overflowed groups inside the popover.
+                    Same JSX as the toolbar copy → clicks fire the same
+                    editor actions; dropdowns inside groups open relative
+                    to their .menu container as they normally do. */}
+                {groups
+                  .filter((g) => overflowedSet.has(g.id))
+                  .map((group, idx) => (
+                    <RFragment key={group.id}>
+                      {idx > 0 && <div className={toolbarStyles.moreMenuDivider} />}
+                      <div className={toolbarStyles.moreMenuGroup}>{group.node}</div>
+                    </RFragment>
+                  ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }

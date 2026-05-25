@@ -35,8 +35,71 @@
   box-shadow: var(--wb-glass-shadow);
   -webkit-backdrop-filter: saturate(180%) blur(14px);
   backdrop-filter: saturate(180%) blur(14px);
-  flex-shrink: 0;
+  /* Allow the toolbar to shrink in narrow containers so the overflow
+     logic in JS can decide which groups to hide (rather than the
+     toolbar spilling outside the canvas column). min-width: 0 is
+     required inside a flex parent for the shrink to actually happen. */
+  flex-shrink: 1;
+  min-width: 0;
   overflow: visible;
+}
+
+/* Hide a toolbar group via display:none. The element stays in the DOM
+   (ref remains valid) but takes no layout space — and crucially won't
+   show its content nor trigger interactions. The overflow JS toggles
+   this class based on measured widths. */
+.toolbarGroupHidden {
+  display: none;
+}
+
+/* "More" button wrapper — same pattern as .menu (relative parent for
+   the popover positioned inside it). */
+.toolbarMoreWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Overflow popover — opens below the "more" button, anchored to its
+   right edge so it never extends past the toolbar's right side. Holds
+   the overflowed groups stacked as horizontal mini-rows, the same
+   visual unit as in the toolbar itself. */
+.moreMenuPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  max-width: 320px;
+  padding: var(--wb-space-2);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-md);
+  /* Match .dropdown's tier so it sits above the toolbar's bubble row
+     and other canvas chrome, but below modals/tooltips. */
+  z-index: var(--wb-z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  /* Internal dropdowns (block selector, alignment, spacing) need to
+     extend past the popover's bounds when opened. */
+  overflow: visible;
+}
+
+/* Each overflowed group renders as a horizontal mini-toolbar row. */
+.moreMenuGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  flex-wrap: wrap;
+}
+
+/* Subtle separator between groups inside the popover. */
+.moreMenuDivider {
+  height: 1px;
+  background: var(--wb-border);
+  margin: 0;
 }
 
 /* Group container: clusters related buttons with tight internal spacing */
