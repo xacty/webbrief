@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { inviteUserToCompany } from '../lib/users.js'
-import { canManageCompanyUsers } from '../lib/projectAccess.js'
 import { canAssignRoleRanked } from '../lib/membershipPermissions.js'
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
@@ -37,14 +36,13 @@ router.post('/invite-user', requireAuth, rateLimiters.inviteUser, async (req, re
   }
 
   // PR3 QA fix: align this endpoint with the rank-aware permission model used by
-  // /api/users routes. The legacy canInviteCompanyRole helper does not know about
+  // POST /api/users. The legacy canInviteCompanyRole helper does not know about
   // the company-admin role (would silently reject company-admins inviting anyone
-  // and would refuse role='admin' for everyone). Use the same gate as POST /api/users.
+  // and would refuse role='admin' for every actor). Mirror POST /api/users:
+  // single check via canAssignRoleRanked (which enforces strict-outrank and
+  // covers admin/manager/editor → lower-ranked invitations consistently).
   if (!COMPANY_ROLE_SET.has(role)) {
     return res.status(400).json({ error: 'Rol invalido' })
-  }
-  if (!canManageCompanyUsers(req.currentUser, targetCompanyId)) {
-    return res.status(403).json({ error: 'No tienes permisos para invitar a esta empresa' })
   }
   if (!canAssignRoleRanked({
     actorPlatformRole: req.currentUser?.platformRole,
