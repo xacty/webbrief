@@ -222,14 +222,16 @@ const Select = forwardRef(function Select(
       );
     }
 
-    const finalHeight = Math.min(maxHeight, estimatedHeight);
-
+    // For bottom placement we anchor the listbox TOP at trigger.bottom + GAP.
+    // For top placement we anchor the listbox BOTTOM at vh - (trigger.top -
+    // GAP) — using `bottom` instead of `top` so the listbox's actual rendered
+    // height (which is shorter than our worst-case estimate) does not leave
+    // a phantom gap above the trigger. CSS `bottom` lets the box size itself
+    // from its content; `top` would lock in the estimated height.
     return {
       placement,
-      top:
-        placement === 'bottom'
-          ? rect.bottom + LISTBOX_GAP
-          : Math.max(LISTBOX_GAP, rect.top - finalHeight - LISTBOX_GAP),
+      top: placement === 'bottom' ? rect.bottom + LISTBOX_GAP : null,
+      bottom: placement === 'top' ? vh - rect.top + LISTBOX_GAP : null,
       left: rect.left,
       width: rect.width,
       maxHeight,
@@ -444,7 +446,11 @@ const Select = forwardRef(function Select(
   const listboxStyle = position
     ? {
         position: 'fixed',
-        top: position.top,
+        // Either `top` (bottom placement) or `bottom` (top placement) is
+        // set — never both. The unset one is omitted so CSS auto-sizes the
+        // listbox height to its actual content.
+        ...(position.top !== null ? { top: position.top } : {}),
+        ...(position.bottom !== null ? { bottom: position.bottom } : {}),
         left: position.left,
         width: position.width,
         maxHeight: position.maxHeight,
