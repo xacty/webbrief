@@ -84,12 +84,30 @@
   position: relative;
   display: flex;
   align-items: center;
-  /* Tight to the section it labels (below) — generous gap from previous
-     section above. The label belongs to the section that follows the
-     divider, so visual proximity must match: ~24px above, ~12px below. */
+  /* Gestalt proximity: the divider+label belong to the section that
+     FOLLOWS them, so the gap below the line must be visibly smaller
+     than the gap above. Note these margins collapse with adjacent block
+     siblings; the rule below (.canvas [data-section-divider] + *) also
+     zeroes the margin-top of whatever heading/paragraph comes next so
+     the below-gap is fully controlled here, not stolen by an h2's own
+     1.15em margin-top. */
   padding: 0;
-  margin: var(--wb-space-6, 24px) 0 var(--wb-space-3, 12px);
+  margin: var(--wb-space-6, 24px) 0 var(--wb-space-2, 8px);
   border-top: 1px solid var(--wb-border);
+}
+
+/* Reset the top margin of whatever block directly follows a section
+   divider (NodeViewWrapper carries [data-section-divider]). The
+   following element — usually an <h2>, occasionally <h1>/<h3>/<p> —
+   has its own margin-top that would otherwise be added to the divider's
+   margin-bottom and dominate (h2 = 1.15em ≈ 28px > our 8px). Zeroing
+   it here lets .sectionDivider's margin-bottom alone govern the gap so
+   the label clearly groups with its section.
+   Specificity: `.canvas` (0,1,0) + `[data-section-divider] + *` (0,1,0)
+   = (0,2,0), which wins over the global `.ProseMirror h2` rule (0,1,1)
+   thanks to .canvas being a class higher in the cascade selector. */
+.canvas :global([data-section-divider] + *) {
+  margin-top: 0;
 }
 
 .sectionDividerLabel {
