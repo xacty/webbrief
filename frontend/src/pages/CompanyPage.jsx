@@ -1,22 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, ArrowRight, Building2, Copy, Pencil, Trash2, Plus } from 'lucide-react'
+import { Archive, ArrowRight, Building2, Copy, Mail, Pencil, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
   canCreateProjects as canCreateProjectsForRole,
   canInviteMembers,
   canManageProjectLifecycle as canManageProjectLifecycleForRole,
+  canSendAccess,
   getInviteRoleOptions,
   isAdmin,
 } from '../lib/roleCapabilities'
 import {
-  COMPANY_ROLE_ORDER,
-  MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
-import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
+import { Button, Input, Select, Card, Badge, KebabMenu } from '../components/ui'
+import UserEditModal from '../components/users/UserEditModal'
+import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
 import MoveToCompanyModal from '../components/MoveToCompanyModal'
 import styles from './CompanyPage.module.css'
 
@@ -97,9 +98,9 @@ export default function CompanyPage() {
   const [inviteFeedback, setInviteFeedback] = useState('')
   const [inviting, setInviting] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
-  const [editForm, setEditForm] = useState({ fullName: '', role: 'editor' })
-  const [editError, setEditError] = useState('')
-  const [editBusy, setEditBusy] = useState(false)
+  const [accessBusyId, setAccessBusyId] = useState('')
+  const [accessMessage, setAccessMessage] = useState('')
+  const [accessError, setAccessError] = useState('')
   const [moveModalIds, setMoveModalIds] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -117,16 +118,6 @@ export default function CompanyPage() {
     if (isAdminUser) return true
     if (!isCompanyManager) return false
     return member.role !== 'manager'
-  }
-
-  function getMemberRoleOptions(member) {
-    if (isAdminUser) return COMPANY_ROLE_ORDER
-    const baseOptions = MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER
-    return member && baseOptions.includes(member.role)
-      ? baseOptions
-      : member?.role
-        ? [member.role, ...baseOptions.filter((role) => role !== member.role)]
-        : baseOptions
   }
 
   useEffect(() => {
@@ -233,64 +224,36 @@ export default function CompanyPage() {
 
   function openEditMember(member) {
     setEditingMember(member)
-    setEditForm({
-      fullName: member.fullName || '',
-      role: member.role || 'editor',
-    })
-    setEditError('')
+    setAccessMessage('')
+    setAccessError('')
   }
 
-  function closeEditMember() {
-    setEditingMember(null)
-    setEditError('')
-  }
-
-  async function handleSaveEditMember(e) {
-    e.preventDefault()
+  function handleMemberSaved(updates) {
     if (!editingMember) return
+    const nextMembers = members.map((existing) => (
+      existing.userId === editingMember.userId
+        ? { ...existing, fullName: updates.fullName, role: updates.role || existing.role }
+        : existing
+    ))
+    setMembers(nextMembers)
+    if (company) writeCompanyCache(companyId, { company, projects, members: nextMembers })
+  }
 
-    const trimmedName = String(editForm.fullName || '').trim()
-    const nextRole = editForm.role
-    const nameChanged = trimmedName !== (editingMember.fullName || '')
-    const roleChanged = nextRole !== editingMember.role
+  async function handleSendAccessForMember(member) {
+    if (!member?.userId) return
+    setAccessBusyId(member.userId)
+    setAccessError('')
+    setAccessMessage('')
 
-    if (!nameChanged && !roleChanged) {
-      closeEditMember()
-      return
+    const targetUser = { id: member.userId, email: member.email, companies: [{ companyId }] }
+    const result = await sendAccessRequest(targetUser)
+
+    if (result.ok || result.kind === 'rate_limited') {
+      setAccessMessage(result.message)
+    } else {
+      setAccessError(result.message)
     }
-
-    setEditBusy(true)
-    setEditError('')
-
-    try {
-      if (nameChanged) {
-        await apiFetch(`/api/users/${editingMember.userId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ fullName: trimmedName }),
-        })
-      }
-
-      if (roleChanged) {
-        await apiFetch(`/api/users/${editingMember.userId}/memberships/${companyId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ role: nextRole }),
-        })
-      }
-
-      const nextMembers = members.map((existing) => (
-        existing.userId === editingMember.userId
-          ? { ...existing, fullName: trimmedName, role: nextRole }
-          : existing
-      ))
-      setMembers(nextMembers)
-      if (company) writeCompanyCache(companyId, { company, projects, members: nextMembers })
-
-      closeEditMember()
-    } catch (err) {
-      setEditError(err.message || 'No se pudo actualizar al miembro')
-    } finally {
-      setEditBusy(false)
-    }
+    setAccessBusyId('')
   }
 
   function openProject(projectId) {
@@ -778,6 +741,8 @@ export default function CompanyPage() {
               {inviteFeedback && <p className={styles.feedback}>{inviteFeedback}</p>}
 
               <div className={styles.membersSection}>
+                {accessMessage && <p style={{ color: 'var(--wb-color-success-600)', margin: '8px 0' }}>{accessMessage}</p>}
+                {accessError && <p style={{ color: 'var(--wb-color-danger-600)', margin: '8px 0' }}>{accessError}</p>}
                 <div className={styles.membersHeader}>
                   <h3 className={styles.membersTitle}>Miembros</h3>
                   <Badge variant="neutral" size="sm">{members.length}</Badge>
@@ -803,6 +768,17 @@ export default function CompanyPage() {
                             <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
                           </div>
 
+                          {canSendAccess(currentUser, { id: member.userId, companies: [{ companyId }] }) && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              icon={<Mail size={16} />}
+                              onClick={() => handleSendAccessForMember(member)}
+                              disabled={accessBusyId === member.userId}
+                              title="Enviar acceso (invitación o restablecimiento)"
+                            />
+                          )}
                           {memberManageable && (
                             <Button
                               type="button"
@@ -825,54 +801,23 @@ export default function CompanyPage() {
         </>
       )}
 
-      <Modal
+      <UserEditModal
         open={Boolean(editingMember)}
-        onClose={closeEditMember}
-        title="Editar miembro"
-        size="md"
-        ariaDescribedBy="edit-member-description"
-      >
-        <p id="edit-member-description" className={styles.modalSubtitle}>
-          {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
-        </p>
-
-        {editingMember && (
-          <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
-            <Input
-              label="Nombre"
-              type="text"
-              value={editForm.fullName}
-              onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
-              placeholder="Nombre completo"
-            />
-
-            <Select
-              label={`Rol en ${company?.name || 'empresa'}`}
-              value={editForm.role}
-              onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
-            >
-              {getMemberRoleOptions(editingMember).map((role) => (
-                <option key={role} value={role}>{roleLabel(role)}</option>
-              ))}
-            </Select>
-
-            <p className={styles.fieldHint}>
-              Email: {editingMember.email || 'Sin email'}
-            </p>
-
-            {editError && <p className={styles.modalError}>{editError}</p>}
-
-            <div className={styles.modalActions}>
-              <Button type="button" variant="secondary" onClick={closeEditMember}>
-                Cancelar
-              </Button>
-              <Button type="submit" variant="primary" disabled={editBusy} loading={editBusy}>
-                {editBusy ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+        user={editingMember ? {
+          id: editingMember.userId,
+          fullName: editingMember.fullName,
+          email: editingMember.email,
+          avatarUrl: editingMember.avatarUrl || '',
+          platformRole: 'user',
+          companies: [{ companyId, companyName: company?.name, role: editingMember.role }],
+        } : null}
+        currentUser={currentUser}
+        scope="company"
+        companyId={companyId}
+        companyName={company?.name || 'empresa'}
+        onClose={() => setEditingMember(null)}
+        onSaved={handleMemberSaved}
+      />
 
       <MoveToCompanyModal
         open={Boolean(moveModalIds && moveModalIds.length > 0)}
