@@ -18,6 +18,9 @@ import {
 } from '../../../shared/userRoles.js'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
 import MoveToCompanyModal from '../components/MoveToCompanyModal'
+import PasswordSection from '../components/users/PasswordSection'
+import SessionsList from '../components/users/SessionsList'
+import { canSetPassword } from '../lib/passwordPermissions'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -114,6 +117,7 @@ export default function CompanyPage() {
   const [editForm, setEditForm] = useState({ fullName: '', role: 'editor' })
   const [editError, setEditError] = useState('')
   const [editBusy, setEditBusy] = useState(false)
+  const [selectedSessionIds, setSelectedSessionIds] = useState(() => new Set())
   const [moveModalIds, setMoveModalIds] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -253,6 +257,7 @@ export default function CompanyPage() {
 
   function openEditMember(member) {
     setEditingMember(member)
+    setSelectedSessionIds(new Set())
     setEditForm({
       fullName: member.fullName || '',
       role: member.role || 'editor',
@@ -901,6 +906,29 @@ export default function CompanyPage() {
               </Button>
             </div>
           </form>
+        )}
+
+        {editingMember && canSetPassword(currentUser, {
+          id: editingMember.userId,
+          // CompanyPage members are always platform 'user' (admins/QAs use UsersPage).
+          platformRole: 'user',
+          companies: [{ companyId, role: editingMember.role }],
+        }) && (
+          <>
+            <SessionsList
+              targetUserId={editingMember.userId}
+              selectedIds={selectedSessionIds}
+              onSelectionChange={setSelectedSessionIds}
+              onRevoked={() => { /* selection cleared inside SessionsList after revoke */ }}
+            />
+            <PasswordSection
+              targetUser={{ id: editingMember.userId, fullName: editingMember.fullName, email: editingMember.email }}
+              selectedSessionIdsToRevoke={Array.from(selectedSessionIds)}
+              onChanged={() => {
+                setSelectedSessionIds(new Set())
+              }}
+            />
+          </>
         )}
       </Modal>
 

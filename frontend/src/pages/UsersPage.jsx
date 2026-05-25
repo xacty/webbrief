@@ -13,6 +13,9 @@ import {
   isGlobalPlatformRole,
 } from '../../../shared/userRoles.js'
 import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
+import PasswordSection from '../components/users/PasswordSection'
+import SessionsList from '../components/users/SessionsList'
+import { canSetPassword } from '../lib/passwordPermissions'
 import styles from './UsersPage.module.css'
 
 const PAGE_SIZE = 10
@@ -96,6 +99,7 @@ export default function UsersPage() {
   const [avatarFile, setAvatarFile] = useState(null)
   const [avatarPreview, setAvatarPreview] = useState('')
   const [expandedUserId, setExpandedUserId] = useState('')
+  const [selectedSessionIds, setSelectedSessionIds] = useState(() => new Set())
 
   const isAdminUser = isAdmin(currentUser)
   const primaryCompanyRole = getCompanyRole(currentUser)
@@ -295,6 +299,7 @@ export default function UsersPage() {
     }, {})
 
     setEditingUser(user)
+    setSelectedSessionIds(new Set())
     setEditForm({
       fullName: user.fullName || '',
       email: user.email || '',
@@ -1051,6 +1056,24 @@ export default function UsersPage() {
                   </Button>
                 </div>
               </form>
+
+              {canSetPassword(currentUser, editingUser) && (
+                <>
+                  <SessionsList
+                    targetUserId={editingUser.id}
+                    selectedIds={selectedSessionIds}
+                    onSelectionChange={setSelectedSessionIds}
+                    onRevoked={() => { /* selection cleared inside SessionsList after revoke */ }}
+                  />
+                  <PasswordSection
+                    targetUser={{ id: editingUser.id, fullName: editingUser.fullName, email: editingUser.email }}
+                    selectedSessionIdsToRevoke={Array.from(selectedSessionIds)}
+                    onChanged={() => {
+                      setSelectedSessionIds(new Set())
+                    }}
+                  />
+                </>
+              )}
             </>
           )
         })()}
