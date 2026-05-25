@@ -699,7 +699,7 @@ await test('multiple ops applied in order', () => {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const BACKEND_BASE = 'http://localhost:3000/api';
-const TEST_MCP_TOKEN = 'mcpt_fase3_token';
+const TEST_MCP_TOKEN = 'test-fixture-not-a-real-token-fase3';
 process.env.WEBRIEF_MCP_TOKEN = TEST_MCP_TOKEN;
 
 function makeFetchResponse({ ok = true, status = 200, statusText = 'OK', body = null }) {
