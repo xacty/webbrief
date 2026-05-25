@@ -4,6 +4,79 @@ import { sendInviteEmail } from './authEmails.js'
 import { wrapSupabaseAuthCall } from './applicationErrors.js'
 import { notifyManagerAssigned, shouldNotifyManagerAssigned } from './managerNotifications.js'
 
+/**
+ * Generates an invite action_link via Supabase Auth admin.generateLink,
+ * then sends it via the provided email sender (defaults to Resend).
+ *
+ * Supports BOTH "fresh user" (no auth row yet — Supabase creates it) and
+ * "reinvite existing user" flows. Pure-input/output for unit testing.
+ *
+ * @param {object} args
+ * @param {object} [args.supabaseClient]  Supabase Admin client (defaults to supabaseAdmin)
+ * @param {function} [args.emailSender]   Email sender function (defaults to sendInviteEmail)
+ * @param {string} args.email             Target email (must be normalized)
+ * @param {string} args.fullName          Full name for user_metadata + email greeting
+ * @param {string} args.redirectTo        Absolute URL of the SetPassword frontend route
+ * @param {object|null} args.req          Express req for wrapSupabaseAuthCall (or null)
+ * @param {string} [args.operationName]   Tag for application_errors logging
+ * @returns {Promise<{error: Error|null, actionLink: string|null, user: object|null, emailSent: boolean}>}
+ */
+export async function generateInviteLinkAndSendEmail({
+  supabaseClient,
+  emailSender,
+  email,
+  fullName,
+  redirectTo,
+  req = null,
+  operationName = 'generateLink:invite',
+}) {
+  const client = supabaseClient || supabaseAdmin
+  const sender = emailSender || sendInviteEmail
+
+  const { data, error } = await wrapSupabaseAuthCall({
+    operation: () => client.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: {
+        redirectTo,
+        data: { full_name: fullName || '' },
+      },
+    }),
+    operationName,
+    req,
+    args: { email, type: 'invite' },
+  })
+
+  if (error) {
+    return { error, actionLink: null, user: null, emailSent: false }
+  }
+
+  const actionLink = data?.properties?.action_link
+  const user = data?.user || null
+
+  if (!actionLink) {
+    return {
+      error: new Error('No se pudo generar el link de invitación'),
+      actionLink: null,
+      user,
+      emailSent: false,
+    }
+  }
+
+  const emailResult = await sender({
+    to: email,
+    fullName,
+    actionLink,
+  })
+
+  return {
+    error: null,
+    actionLink,
+    user,
+    emailSent: Boolean(emailResult?.sent),
+  }
+}
+
 export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
 }
