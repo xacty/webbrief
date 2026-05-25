@@ -136,3 +136,35 @@ test('generateInviteLinkAndSendEmail: email send failure does not throw, returns
   assert.equal(result.user.id, 'u1')
   assert.equal(result.emailSent, false)
 })
+
+test('generateInviteLinkAndSendEmail: thrown exception from supabaseClient is caught, returned as error', async () => {
+  const calls = { emailSender: [] }
+  const supabaseClient = {
+    auth: {
+      admin: {
+        generateLink: async () => {
+          throw new Error('Network down')
+        },
+      },
+    },
+  }
+  const emailSender = async (payload) => {
+    calls.emailSender.push(payload)
+    return { sent: true }
+  }
+
+  const result = await generateInviteLinkAndSendEmail({
+    supabaseClient,
+    emailSender,
+    email: 'x@y.com',
+    fullName: '',
+    redirectTo: 'https://webrief.app/auth/set-password',
+    req: null,
+  })
+
+  assert.equal(result.error.message, 'Network down')
+  assert.equal(result.actionLink, null)
+  assert.equal(result.user, null)
+  assert.equal(result.emailSent, false)
+  assert.equal(calls.emailSender.length, 0)
+})

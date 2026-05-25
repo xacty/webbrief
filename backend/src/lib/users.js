@@ -20,6 +20,7 @@ import { notifyManagerAssigned, shouldNotifyManagerAssigned } from './managerNot
  * @param {object|null} args.req          Express req for wrapSupabaseAuthCall (or null)
  * @param {string} [args.operationName]   Tag for application_errors logging
  * @returns {Promise<{error: Error|null, actionLink: string|null, user: object|null, emailSent: boolean}>}
+ *   Never throws — Supabase exceptions are caught and returned in the result's `error` field.
  */
 export async function generateInviteLinkAndSendEmail({
   supabaseClient,
@@ -33,19 +34,30 @@ export async function generateInviteLinkAndSendEmail({
   const client = supabaseClient || supabaseAdmin
   const sender = emailSender || sendInviteEmail
 
-  const { data, error } = await wrapSupabaseAuthCall({
-    operation: () => client.auth.admin.generateLink({
-      type: 'invite',
-      email,
-      options: {
-        redirectTo,
-        data: { full_name: fullName || '' },
-      },
-    }),
-    operationName,
-    req,
-    args: { email, type: 'invite' },
-  })
+  let data, error
+  try {
+    const result = await wrapSupabaseAuthCall({
+      operation: () => client.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: {
+          redirectTo,
+          data: { full_name: fullName || '' },
+        },
+      }),
+      operationName,
+      req,
+      args: { email, type: 'invite' },
+    })
+    data = result.data
+    error = result.error
+  } catch (thrownError) {
+    // wrapSupabaseAuthCall rethrows on caught operation() exceptions. We
+    // catch here to preserve the helper's "never throws, returns errors in
+    // result object" contract. The applicationErrorId (if set by the
+    // wrapper) is preserved on the thrown error for trace correlation.
+    return { error: thrownError, actionLink: null, user: null, emailSent: false }
+  }
 
   if (error) {
     return { error, actionLink: null, user: null, emailSent: false }
