@@ -46,8 +46,9 @@ import styles from './Select.module.css';
  *   - Hidden `<input type="hidden" name>` mirrors the current value so
  *     native form submit keeps working (native <select> did this for free).
  */
-const LISTBOX_MAX_HEIGHT = 280; // px — matches .listbox max-height
-const LISTBOX_OPTION_HEIGHT = 36; // estimate per option for placement math
+const LISTBOX_MAX_HEIGHT = 360; // px — keep in sync with .listbox max-height
+const LISTBOX_OPTION_HEIGHT = 40; // estimate per option (matches real
+//   ~37-40px = --wb-space-2 padding + --wb-text-sm × --wb-leading-sm)
 const LISTBOX_PADDING = 8; // 2x var(--wb-space-1) (top + bottom padding)
 const LISTBOX_GAP = 4; // gap between trigger and listbox
 

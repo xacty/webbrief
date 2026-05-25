@@ -21,7 +21,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 13px;
-  color: var(--wb-surface);
+  color: var(--wb-text);
   cursor: pointer;
   text-align: left;
   font-family: inherit;
@@ -29,7 +29,7 @@
 
 .item:hover:not(:disabled),
 .item:focus-visible:not(:disabled) {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
   outline: none;
 }
 

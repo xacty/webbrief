@@ -84,8 +84,11 @@
   position: relative;
   display: flex;
   align-items: center;
-  padding: var(--wb-space-2, 8px) 0;
-  margin: var(--wb-space-4, 16px) 0 12px;
+  /* Tight to the section it labels (below) — generous gap from previous
+     section above. The label belongs to the section that follows the
+     divider, so visual proximity must match: ~24px above, ~12px below. */
+  padding: 0;
+  margin: var(--wb-space-6, 24px) 0 var(--wb-space-3, 12px);
   border-top: 1px solid var(--wb-border);
 }
 

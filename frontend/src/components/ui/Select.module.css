@@ -110,7 +110,11 @@
 .listbox {
   z-index: var(--wb-z-popover);
   min-width: 160px;
-  max-height: 280px;
+  /* 360px fits ~9 options at ~37px each (--wb-text-sm + --wb-leading-sm +
+     --wb-space-2 padding). Larger than 280px was — covers common role/
+     status dropdowns without phantom scroll. Beyond ~10 items scroll is
+     expected. Keep in sync with LISTBOX_MAX_HEIGHT in Select.jsx. */
+  max-height: 360px;
   overflow-y: auto;
   margin: 0;
   padding: var(--wb-space-1);
