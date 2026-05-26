@@ -123,8 +123,6 @@
 }
 
 .content {
-  max-width: var(--wb-content-width);
-  margin: 0 auto;
   padding: var(--wb-space-8) var(--wb-space-6) var(--wb-space-12);
 }
 

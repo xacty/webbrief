@@ -1,0 +1,107 @@
+/* Shared divided page header for Security pages — matches CompanyPage
+   values exactly so the three Security routes feel like tabs of one page.
+   padding-bottom: 0 lets the active tab's color underline overlap the
+   band's 1px border-bottom via the tab's -1px margin-bottom. */
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-3);
+  min-height: 180px;
+  margin: calc(var(--wb-space-8) * -1) calc(var(--wb-space-6) * -1) 0;
+  padding: var(--wb-space-5) var(--wb-space-6) 0;
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.pageHeaderInner {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--wb-space-5);
+  flex-wrap: wrap;
+}
+
+.headerMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  min-width: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--wb-text-3xl);
+  font-weight: var(--wb-weight-bold);
+  line-height: var(--wb-leading-tight);
+  letter-spacing: -0.02em;
+  color: var(--wb-text);
+}
+
+.headerMeta {
+  margin: 0;
+  max-width: 820px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-snug);
+}
+
+.tabBar {
+  display: flex;
+  gap: 0;
+  margin-top: auto;
+}
+
+.tab {
+  padding: var(--wb-space-3) var(--wb-space-4);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+  font-family: var(--wb-font-sans);
+}
+
+.tab:hover {
+  color: var(--wb-text);
+}
+
+.tabActive {
+  color: var(--wb-primary);
+  font-weight: var(--wb-weight-semibold);
+  border-bottom-color: var(--wb-primary);
+}
+
+.tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.refreshIconLoading {
+  animation: securityRefreshSpin 0.8s linear infinite;
+}
+
+@keyframes securityRefreshSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

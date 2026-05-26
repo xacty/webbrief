@@ -38,6 +38,33 @@ const TAB_OPTIONS = [
   { value: 'projects', label: 'Proyectos', type: 'project' },
 ]
 
+// TEMP demo items for visual preview. They render normally but Restaurar/
+// Borrar are intercepted to show a toast (the fake IDs would 404 on the
+// real API). Disappear automatically as soon as real archived/trashed
+// items exist for the current mode.
+const DEMO_TRASH = {
+  archived: {
+    companies: [
+      { id: 'demo-c-arch-1', name: 'Studio Manifiesto', slug: 'studio-manifiesto', archivedAt: '2026-05-06T10:00:00Z', _demo: true },
+      { id: 'demo-c-arch-2', name: 'Naranja Digital',   slug: 'naranja-digital',   archivedAt: '2026-04-12T09:00:00Z', _demo: true },
+    ],
+    projects: [
+      { id: 'demo-p-arch-1', name: 'Landing Q1 2026', companyName: 'Agencia Creativa Norte', client: 'Plenna', businessType: 'Página Web', archivedAt: '2026-05-09T15:00:00Z', _demo: true },
+      { id: 'demo-p-arch-2', name: 'Brief Pricing',    companyName: 'Studio Manifiesto',     client: 'Capilea', businessType: 'Brief',      archivedAt: '2026-05-02T11:00:00Z', _demo: true },
+      { id: 'demo-p-arch-3', name: 'FAQ Soporte',      companyName: 'Naranja Digital',       client: 'NexxFinance', businessType: 'FAQs',   archivedAt: '2026-04-25T14:00:00Z', _demo: true },
+    ],
+  },
+  trashed: {
+    companies: [
+      { id: 'demo-c-trash-1', name: 'Pixel & Form', slug: 'pixel-form', trashedAt: '2026-05-19T12:00:00Z', deleteAfter: '2026-06-18T12:00:00Z', _demo: true },
+    ],
+    projects: [
+      { id: 'demo-p-trash-1', name: 'Página corporativa', companyName: 'Krea Studio', client: 'Avinova',      businessType: 'Página Web', trashedAt: '2026-05-18T10:00:00Z', deleteAfter: '2026-06-17T10:00:00Z', _demo: true },
+      { id: 'demo-p-trash-2', name: 'Artículo lanzamiento', companyName: 'Studio Manifiesto', client: 'Plenna', businessType: 'Artículo',  trashedAt: '2026-05-13T16:30:00Z', deleteAfter: '2026-06-12T16:30:00Z', _demo: true },
+    ],
+  },
+}
+
 function formatDate(isoDate) {
   if (!isoDate) return 'Sin fecha'
 
@@ -119,13 +146,16 @@ export default function TrashPage({ mode = 'trashed' }) {
     loadItems()
   }, [mode])
 
+  const displayCompanies = companies.length > 0 ? companies : (DEMO_TRASH[mode]?.companies || [])
+  const displayProjects = projects.length > 0 ? projects : (DEMO_TRASH[mode]?.projects || [])
+
   const filteredCompanies = useMemo(() => (
-    companies.filter((item) => matchesDateFilter(item, mode, dateFilter))
-  ), [companies, dateFilter, mode])
+    displayCompanies.filter((item) => matchesDateFilter(item, mode, dateFilter))
+  ), [displayCompanies, dateFilter, mode])
 
   const filteredProjects = useMemo(() => (
-    projects.filter((item) => matchesDateFilter(item, mode, dateFilter))
-  ), [projects, dateFilter, mode])
+    displayProjects.filter((item) => matchesDateFilter(item, mode, dateFilter))
+  ), [displayProjects, dateFilter, mode])
 
   const totalItems = filteredCompanies.length + filteredProjects.length
 
@@ -154,6 +184,10 @@ export default function TrashPage({ mode = 'trashed' }) {
   }
 
   async function restoreItem(type, id) {
+    if (typeof id === 'string' && id.startsWith('demo-')) {
+      window.alert('Demo: este es un elemento de muestra. Restaurar funciona cuando hay elementos reales.')
+      return
+    }
     const key = `${type}:${id}:restore`
     setBusyKey(key)
     try {
@@ -173,6 +207,10 @@ export default function TrashPage({ mode = 'trashed' }) {
   }
 
   async function deleteItem(type, id) {
+    if (typeof id === 'string' && id.startsWith('demo-')) {
+      window.alert('Demo: este es un elemento de muestra. Borrar funciona cuando hay elementos reales.')
+      return
+    }
     if (!window.confirm('¿Borrar este elemento permanentemente? Esta acción no se puede deshacer.')) return
 
     const key = `${type}:${id}:delete`
@@ -195,78 +233,74 @@ export default function TrashPage({ mode = 'trashed' }) {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>{pageCopy.eyebrow}</p>
-          <h1 className={styles.title}>{pageCopy.title}</h1>
-          <p className={styles.subtitle}>{pageCopy.subtitle}</p>
+      <header className={styles.pageHeader}>
+        <div className={styles.pageHeaderInner}>
+          <div className={styles.titleRow}>
+            <div className={styles.headerMain}>
+              <h1 className={styles.title}>{pageCopy.title}</h1>
+              <p className={styles.headerMeta}>
+                {totalItems} elemento{totalItems === 1 ? '' : 's'}
+                {' · '}
+                {pageCopy.subtitle}
+              </p>
+            </div>
+            <div className={styles.headerActions}>
+              <Select
+                value={dateFilter}
+                onChange={(event) => setDateFilter(event.target.value)}
+                fullWidth={false}
+                className={styles.dateFilterField}
+                aria-label="Filtrar por fecha"
+              >
+                {DATE_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                icon={<RefreshCw size={16} className={loading ? styles.refreshIconLoading : undefined} />}
+                onClick={loadItems}
+                disabled={loading}
+                aria-label="Actualizar elementos"
+                title="Actualizar"
+              >
+                Actualizar
+              </Button>
+            </div>
+          </div>
+
+          <div
+            className={styles.tabBar}
+            role="tablist"
+            aria-label={`Tipo de ${pageCopy.title.toLowerCase()}`}
+            onKeyDown={handleTabKeyDown}
+          >
+            {TAB_OPTIONS.map((tab) => {
+              const selected = activeTab === tab.value
+
+              return (
+                <button
+                  key={tab.value}
+                  id={tabId(mode, tab.value)}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls={panelId(mode, tab.value)}
+                  tabIndex={selected ? 0 : -1}
+                  className={selected ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+                  onClick={() => setActiveTab(tab.value)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </header>
 
-      <section className={styles.sectionHeader}>
-        <div>
-          <h2 className={styles.sectionTitle}>{pageCopy.sectionTitle}</h2>
-          <p className={styles.sectionMeta}>
-            {totalItems} elemento{totalItems === 1 ? '' : 's'} en este filtro
-          </p>
-        </div>
-      </section>
-
-      <section className={styles.controls}>
-        <div
-          className={styles.tabs}
-          role="tablist"
-          aria-label={`Tipo de ${pageCopy.title.toLowerCase()}`}
-          onKeyDown={handleTabKeyDown}
-        >
-          {TAB_OPTIONS.map((tab) => {
-            const selected = activeTab === tab.value
-
-            return (
-              <button
-                key={tab.value}
-                id={tabId(mode, tab.value)}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                aria-controls={panelId(mode, tab.value)}
-                tabIndex={selected ? 0 : -1}
-                className={selected ? `${styles.tabButton} ${styles.tabButtonActive}` : styles.tabButton}
-                onClick={() => setActiveTab(tab.value)}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
-
-        <div className={styles.toolbarActions}>
-          <Select
-            label="Fecha"
-            value={dateFilter}
-            onChange={(event) => setDateFilter(event.target.value)}
-            fullWidth={false}
-            className={styles.dateFilterField}
-          >
-            {DATE_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </Select>
-
-          <Button
-            type="button"
-            variant="secondary"
-            size="md"
-            icon={<RefreshCw size={16} className={loading ? styles.refreshIconLoading : undefined} />}
-            onClick={loadItems}
-            disabled={loading}
-            aria-label="Actualizar elementos"
-            title="Actualizar"
-          >
-            Actualizar
-          </Button>
-        </div>
-      </section>
+      <div className={styles.pageBody}>
 
       {TAB_OPTIONS.map((tab) => {
         const selected = activeTab === tab.value
@@ -305,6 +339,7 @@ export default function TrashPage({ mode = 'trashed' }) {
           </section>
         )
       })}
+      </div>
     </div>
   )
 }

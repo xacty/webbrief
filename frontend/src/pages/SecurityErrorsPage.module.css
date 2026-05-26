@@ -1,50 +1,16 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--wb-space-5);
+  gap: var(--wb-space-6);
 }
 
-.header {
+.pageBody {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--wb-space-5);
-}
-
-.eyebrow {
-  margin: 0 0 var(--wb-space-2);
-  color: var(--wb-text-muted);
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-semibold);
-}
-
-.title {
-  margin: 0;
-  font-size: var(--wb-text-4xl);
-  line-height: var(--wb-leading-tight);
-  color: var(--wb-text);
-}
-
-.subtitle {
-  max-width: 820px;
-  margin: var(--wb-space-3) 0 0;
-  color: var(--wb-text-muted);
-  line-height: var(--wb-leading-relaxed);
-}
-
-.inlineLink {
-  color: var(--wb-color-primary-700);
-  text-decoration: underline;
-}
-
-.inlineLink:hover {
-  color: var(--wb-color-primary-800);
-}
-
-.headerActions {
-  display: flex;
-  gap: var(--wb-space-2);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: var(--wb-space-6);
 }
 
 .warningBox,
@@ -77,6 +43,16 @@
   grid-template-columns: 160px 160px 200px minmax(0, 1fr) auto;
   gap: var(--wb-space-3);
   align-items: end;
+}
+
+/* Submit button sits in its own grid cell without a label above, so by
+ * default it would visually expand to feel taller than the labeled
+ * Input/Select fields next to it. Pin its height to the same Input field
+ * height (40px) — and force box-sizing — so all controls line up. */
+.filters > button[type="submit"] {
+  height: calc(var(--wb-space-8) + var(--wb-space-2));
+  box-sizing: border-box;
+  align-self: end;
 }
 
 .loading {

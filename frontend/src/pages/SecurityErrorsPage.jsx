@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, ShieldAlert } from 'lucide-react'
+import { ShieldAlert } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { Button, Card, Badge, Select, Input, Modal } from '../components/ui'
+import SecurityShell from '../components/SecurityShell'
 import styles from './SecurityErrorsPage.module.css'
 
 const LEVEL_OPTIONS = [
@@ -39,8 +39,21 @@ function formatDate(iso) {
   })
 }
 
+// TEMP demo errors for visual preview when the API returns empty.
+// Clicking a row opens the detail modal — for demo rows, the fetch of
+// the detail endpoint will 404 silently; the modal still shows what
+// fields are available from the row data.
+const DEMO_ERRORS = [
+  { id: 'demo-err-1', created_at: '2026-05-20T08:42:17Z', level: 'error', source: 'supabase_auth', method: 'POST', route: '/auth/invite', error_code: 'over_email_send_rate_limit', error_message: 'Email rate limit exceeded for invite endpoint (Supabase Auth)', _demo: true },
+  { id: 'demo-err-2', created_at: '2026-05-20T06:15:02Z', level: 'error', source: 'unhandled',     method: 'POST', route: '/api/projects/bulk/move-company', error_code: 'TypeError',                error_message: "Cannot read properties of undefined (reading 'target_company_id')", _demo: true },
+  { id: 'demo-err-3', created_at: '2026-05-19T22:08:55Z', level: 'warn',  source: 'route',         method: 'GET',  route: '/api/companies/9a31', error_code: 'NotFound',                              error_message: 'Company not found or archived', _demo: true },
+  { id: 'demo-err-4', created_at: '2026-05-19T18:30:11Z', level: 'error', source: 'email',         method: null,   route: null, error_code: 'RESEND_API_ERROR',                                       error_message: 'Resend returned 422: invalid recipient',                                             _demo: true },
+  { id: 'demo-err-5', created_at: '2026-05-19T11:02:00Z', level: 'warn',  source: 'external_api',  method: 'GET',  route: '/api/share/abc-token', error_code: 'TimeoutError',                         error_message: 'Upstream timeout (8s) reading share token from Supabase',                            _demo: true },
+  { id: 'demo-err-6', created_at: '2026-05-18T16:44:23Z', level: 'error', source: 'route',         method: 'PATCH',route: '/api/users/uid/memberships/cid', error_code: 'ForbiddenError',                error_message: 'Manager cannot escalate target user to manager role',                                _demo: true },
+  { id: 'demo-err-7', created_at: '2026-05-17T19:20:04Z', level: 'warn',  source: 'route',         method: 'POST', route: '/api/auth/login', error_code: 'RateLimitExceeded',                         error_message: 'Login rate limit reached for ip 34.218.7.221',                                       _demo: true },
+]
+
 export default function SecurityErrorsPage() {
-  const navigate = useNavigate()
   const [errors, setErrors] = useState([])
   const [warnings, setWarnings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -83,6 +96,13 @@ export default function SecurityErrorsPage() {
   }, [days, level, source])
 
   async function openDetail(errorId) {
+    if (typeof errorId === 'string' && errorId.startsWith('demo-')) {
+      const demo = DEMO_ERRORS.find((e) => e.id === errorId)
+      setSelectedError(errorId)
+      setErrorDetail(demo || null)
+      setDetailLoading(false)
+      return
+    }
     setSelectedError(errorId)
     setErrorDetail(null)
     setDetailLoading(true)
@@ -103,38 +123,14 @@ export default function SecurityErrorsPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Admin · Seguridad</p>
-          <h1 className={styles.title}>Errores técnicos</h1>
-          <p className={styles.subtitle}>
-            Errores no manejados, fallos de Supabase Auth y errores de APIs externas. Para eventos
-            de seguridad (logins, bloqueos, intentos denegados), ver la pestaña Eventos en
-            <Link to="/security" className={styles.inlineLink}> Seguridad</Link>.
-          </p>
-        </div>
-        <div className={styles.headerActions}>
-          <Button
-            variant="secondary"
-            size="md"
-            icon={<ArrowLeft size={16} />}
-            type="button"
-            onClick={() => navigate('/security')}
-          >
-            Volver a Seguridad
-          </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            icon={<RefreshCw size={16} />}
-            type="button"
-            onClick={fetchErrors}
-            disabled={loading}
-          >
-            Actualizar
-          </Button>
-        </div>
-      </header>
+      <SecurityShell
+        title="Errores técnicos"
+        meta="Errores no manejados, fallos de Supabase Auth y errores de APIs externas. Para eventos de seguridad (logins, bloqueos, intentos denegados), usá la pestaña Eventos."
+        onRefresh={fetchErrors}
+        refreshing={loading}
+      />
+
+      <div className={styles.pageBody}>
 
       {warnings.length > 0 && (
         <section className={styles.warningBox}>
@@ -194,9 +190,11 @@ export default function SecurityErrorsPage() {
         </Button>
       </form>
 
-      {loading ? (
+      {(() => {
+        const displayErrors = errors.length === 0 && !loading ? DEMO_ERRORS : errors
+        return loading ? (
         <p className={styles.loading}>Cargando...</p>
-      ) : errors.length === 0 ? (
+      ) : displayErrors.length === 0 ? (
         <Card padding="lg" radius="md" className={styles.empty}>
           <p>Sin errores en los últimos {days} día(s). Todo bien.</p>
         </Card>
@@ -215,7 +213,7 @@ export default function SecurityErrorsPage() {
                 </tr>
               </thead>
               <tbody>
-                {errors.map((err) => (
+                {displayErrors.map((err) => (
                   <tr
                     key={err.id}
                     className={styles.row}
@@ -246,7 +244,9 @@ export default function SecurityErrorsPage() {
             </table>
           </div>
         </Card>
-      )}
+      )
+      })()}
+      </div>
 
       <Modal
         open={Boolean(selectedError)}

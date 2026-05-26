@@ -1,112 +1,122 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--wb-space-5);
+  gap: var(--wb-space-6);
 }
 
-.header {
+/* Divided page header — matches CompanyPage values exactly (has tabs).
+   padding-bottom: 0 so the tabBar's active underline overlaps the band's
+   border-bottom via the tab's -1px margin-bottom. */
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-3);
+  min-height: 180px;
+  margin: calc(var(--wb-space-8) * -1) calc(var(--wb-space-6) * -1) 0;
+  padding: var(--wb-space-5) var(--wb-space-6) 0;
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.pageHeaderInner {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+.pageBody {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-6);
+}
+
+.titleRow {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   gap: var(--wb-space-5);
+  flex-wrap: wrap;
 }
 
-.eyebrow {
-  margin: 0 0 var(--wb-space-2);
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-semibold);
-  color: var(--wb-text-muted);
+.headerMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  min-width: 0;
 }
 
 .title {
   margin: 0;
-  font-size: var(--wb-text-4xl);
+  font-size: var(--wb-text-3xl);
+  font-weight: var(--wb-weight-bold);
   line-height: var(--wb-leading-tight);
+  letter-spacing: -0.02em;
   color: var(--wb-text);
 }
 
-.subtitle {
-  margin: var(--wb-space-3) 0 0;
-  max-width: 720px;
-  color: var(--wb-text-muted);
-  line-height: var(--wb-leading-relaxed);
-}
-
-.sectionHeader {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--wb-space-4);
-}
-
-.sectionTitle {
+.headerMeta {
   margin: 0;
-  font-size: var(--wb-text-2xl);
-  color: var(--wb-text);
-}
-
-.sectionMeta {
-  margin: var(--wb-space-1) 0 0;
   color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
 }
 
-.controls {
+/* Header actions cluster — Fecha select + Actualizar button on the right
+   side of the title row. Lets TrashPage's pageHeader stay at 2 content
+   rows (titleRow + tabBar) like CompanyPage, keeping the 180px target. */
+.headerActions {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--wb-space-4);
+  align-items: center;
+  gap: var(--wb-space-2);
   flex-wrap: wrap;
 }
 
-.tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wb-space-1);
-  border: 1px solid var(--wb-border);
-  border-radius: var(--wb-radius-md);
-  padding: var(--wb-space-1);
-  background: var(--wb-surface);
-  box-shadow: var(--wb-shadow-sm);
+.dateFilterField {
+  min-width: 180px;
 }
 
-.tabButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  border: none;
-  border-radius: var(--wb-radius-2);
-  padding: 0 var(--wb-space-4);
-  background: transparent;
-  color: var(--wb-text-muted);
+/* Underline-style tabs — same as CompanyPage tabBar. The 2px transparent
+   border + -1px margin-bottom makes the active tab's color underline
+   overlap the pageHeader's 1px border-bottom for a "punch-through" effect. */
+.tabBar {
+  display: flex;
+  gap: 0;
+  margin-top: auto;
+}
+
+.tab {
+  padding: var(--wb-space-3) var(--wb-space-4);
   font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-semibold);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
+  transition: color 150ms ease, border-color 150ms ease;
+  font-family: var(--wb-font-sans);
 }
 
-.tabButton:hover {
+.tab:hover {
   color: var(--wb-text);
 }
 
-.tabButtonActive {
-  background: var(--wb-color-neutral-100);
-  color: var(--wb-text);
+.tabActive {
+  color: var(--wb-primary);
+  font-weight: var(--wb-weight-semibold);
+  border-bottom-color: var(--wb-primary);
 }
 
-.tabButton:focus-visible {
+.tab:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--wb-color-primary-200);
-}
-
-.toolbarActions {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--wb-space-3);
-}
-
-.dateFilterField {
-  min-width: 200px;
 }
 
 .refreshIconLoading {
@@ -122,6 +132,16 @@
   display: flex;
   flex-direction: column;
   gap: var(--wb-space-4);
+}
+
+/* The `hidden` HTML attribute's default `display: none` (from user-agent
+ * stylesheet) is overridden by .listSection's `display: flex`. Without
+ * this override, the inactive tab panel still occupies a slot in
+ * .pageBody's flex column and the gap is applied to it — pushing the
+ * visible content down. Restoring `display: none` removes the hidden
+ * section from layout. */
+.listSection[hidden] {
+  display: none;
 }
 
 .cardsGrid {

@@ -344,41 +344,45 @@ export default function CompaniesPage() {
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>
-        <div className={styles.titleRow}>
-          <div className={styles.headerMain}>
-            <h1 className={styles.title}>Empresas</h1>
-            <p className={styles.headerMeta}>
-              {filteredCompanies.length} empresa{filteredCompanies.length === 1 ? '' : 's'} · Home principal del admin
-            </p>
+        <div className={styles.pageHeaderInner}>
+          <div className={styles.titleRow}>
+            <div className={styles.headerMain}>
+              <h1 className={styles.title}>Empresas</h1>
+              <p className={styles.headerMeta}>
+                {filteredCompanies.length} empresa{filteredCompanies.length === 1 ? '' : 's'} · Home principal del admin
+              </p>
+            </div>
+            {canCreateCompanies && (
+              <Button variant="primary" icon={<Plus size={16} />} onClick={openModal}>
+                Nueva empresa
+              </Button>
+            )}
           </div>
-          {canCreateCompanies && (
-            <Button variant="primary" icon={<Plus size={16} />} onClick={openModal}>
-              Nueva empresa
-            </Button>
-          )}
-        </div>
 
-        <div className={styles.toolbar}>
-          <Input
-            id="company-search"
-            type="search"
-            placeholder="Buscar por nombre"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+          <div className={styles.toolbar}>
+            <Input
+              id="company-search"
+              type="search"
+              placeholder="Buscar por nombre"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
 
-          <Select
-            id="company-filter"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          >
-            <option value="all">Todas</option>
-            <option value="clients">Clientes</option>
-            <option value="test">Pruebas</option>
-            <option value="internal">Internas</option>
-          </Select>
+            <Select
+              id="company-filter"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="all">Todas</option>
+              <option value="clients">Clientes</option>
+              <option value="test">Pruebas</option>
+              <option value="internal">Internas</option>
+            </Select>
+          </div>
         </div>
       </header>
+
+      <div className={styles.pageBody}>
 
       {canManageAnyCompany && selectedIds.size > 0 && (
         <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
@@ -458,8 +462,7 @@ export default function CompaniesPage() {
 
       {!loading && !error && paginatedCompanies.length > 0 && (
         <div className={styles.cardsGrid}>
-          {paginatedCompanies.map((company) => {
-            const badge = companyTypeBadge(company)
+          {paginatedCompanies.map((company) => {            const badge = companyTypeBadge(company)
             const selectable = isCompanySelectable(company)
             const showKebab = (isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal
             const isSelected = selectedIds.has(company.id)
@@ -562,6 +565,12 @@ export default function CompaniesPage() {
               </Card>
             )
           })}
+          {canCreateCompanies && (
+            <button type="button" className={styles.addCard} onClick={openModal}>
+              <Plus size={20} />
+              <span>Nueva empresa</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -591,6 +600,8 @@ export default function CompaniesPage() {
           </Button>
         </div>
       </footer>
+
+      </div>
 
       <Modal
         open={modalOpen}

@@ -511,153 +511,64 @@ export default function UsersPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>{isAdminUser ? 'Admin' : 'Manager'}</p>
-          <h1 className={styles.title}>Usuarios</h1>
-          <p className={styles.subtitle}>
-            {isAdminUser
-              ? 'Gestiona cuentas, roles de plataforma y accesos por empresa.'
-              : canManageRoles
-                ? 'Gestiona invitaciones y accesos de las empresas donde tienes rol manager.'
-                : 'Consulta los usuarios de tus empresas y administra tu propio perfil.'}
-          </p>
-        </div>
-
-        {canInviteUsers && canManageUsers && (companies.length > 0 || isAdminUser) && (
-          <Button variant="primary" icon={<Plus size={16} />} onClick={() => setInviteOpen(true)}>
-            Agregar usuario
-          </Button>
-        )}
-      </header>
-
-      {inviteOpen && (
-        <Card padding="md" shadow="sm" radius="lg" className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <h2 className={styles.panelTitle}>Agregar usuario</h2>
-              <p className={styles.panelText}>Invita una cuenta nueva o asigna un usuario existente a una empresa.</p>
+      <header className={styles.pageHeader}>
+        <div className={styles.pageHeaderInner}>
+          <div className={styles.titleRow}>
+            <div className={styles.headerMain}>
+              <h1 className={styles.title}>Usuarios</h1>
+              <p className={styles.headerMeta}>
+                {filteredUsers.length} usuario{filteredUsers.length === 1 ? '' : 's'}
+                {' · '}
+                {isAdminUser
+                  ? 'Gestiona cuentas, roles de plataforma y accesos por empresa.'
+                  : canManageRoles
+                    ? 'Gestiona invitaciones y accesos de las empresas donde tienes rol manager.'
+                    : 'Consulta los usuarios de tus empresas y administra tu propio perfil.'}
+              </p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setInviteOpen(false)} aria-label="Cerrar">
-              ×
-            </Button>
+            {canInviteUsers && canManageUsers && (companies.length > 0 || isAdminUser) && (
+              <Button variant="primary" icon={<Plus size={16} />} onClick={() => setInviteOpen(true)}>
+                Agregar usuario
+              </Button>
+            )}
           </div>
 
-          <form className={styles.inviteGrid} onSubmit={handleInvite}>
+          <div className={styles.toolbar}>
             <Input
-              label="Nombre"
-              type="text"
-              value={inviteForm.fullName}
-              onChange={(event) => setInviteForm((current) => ({ ...current, fullName: event.target.value }))}
-              placeholder="Nombre completo"
+              id="users-search"
+              type="search"
+              placeholder="Nombre, email, empresa o rol"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
             />
 
-            <Input
-              label="Email"
-              type="email"
-              value={inviteForm.email}
-              onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))}
-              placeholder="email@empresa.com"
-              required
-            />
+            <Select
+              id="users-company-filter"
+              value={companyFilter}
+              onChange={(event) => setCompanyFilter(event.target.value)}
+            >
+              <option value="all">Todas las empresas</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}{company.isInternal ? ' · Interna' : ''}
+                </option>
+              ))}
+            </Select>
 
-            {isAdminUser && (
-              <Select
-                label="Rol plataforma"
-                value={inviteForm.platformRole}
-                onChange={(event) => setInviteForm((current) => ({ ...current, platformRole: event.target.value }))}
-              >
-                {PLATFORM_ROLE_ORDER.map((role) => (
-                  <option key={role} value={role}>{platformRoleLabel(role)}</option>
-                ))}
-              </Select>
-            )}
-
-            {inviteNeedsCompany ? (
-              <>
-                <Select
-                  label="Empresa"
-                  value={inviteForm.companyId}
-                  onChange={(event) => setInviteForm((current) => ({ ...current, companyId: event.target.value }))}
-                  required={inviteNeedsCompany}
-                >
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.name}{company.isInternal ? ' · Interna' : ''}
-                    </option>
-                  ))}
-                </Select>
-
-                <Select
-                  label="Rol en empresa"
-                  value={inviteForm.role}
-                  onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))}
-                >
-                  {inviteRoleOptions.map((role) => (
-                    <option key={role} value={role}>{roleLabel(role)}</option>
-                  ))}
-                </Select>
-              </>
-            ) : (
-              <p className={`${styles.formNote} ${styles.inviteFormNote}`}>Admin y QA usan acceso global, sin rol por empresa.</p>
-            )}
-
-            <div className={`${styles.formActions} ${styles.inviteFormActions}`}>
-              <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" variant="primary" disabled={busyKey === 'invite'} loading={busyKey === 'invite'}>
-                {busyKey === 'invite' ? 'Agregando...' : 'Agregar usuario'}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      <section className={styles.toolbar}>
-        <Input
-          id="users-search"
-          label="Buscar"
-          type="search"
-          placeholder="Nombre, email, empresa o rol"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-
-        <Select
-          id="users-company-filter"
-          label="Empresa"
-          value={companyFilter}
-          onChange={(event) => setCompanyFilter(event.target.value)}
-        >
-          <option value="all">Todas</option>
-          {companies.map((company) => (
-            <option key={company.id} value={company.id}>
-              {company.name}{company.isInternal ? ' · Interna' : ''}
-            </option>
-          ))}
-        </Select>
-
-        <Select
-          id="users-sort"
-          label="Ordenar"
-          value={sortBy}
-          onChange={(event) => setSortBy(event.target.value)}
-        >
-          <option value="name">Por nombre</option>
-          <option value="recent">Recientes</option>
-          <option value="company">Por empresa</option>
-        </Select>
-      </section>
-
-      <section className={styles.sectionHeader}>
-        <div>
-          <h2 className={styles.sectionTitle}>Usuarios</h2>
-          <p className={styles.sectionMeta}>
-            {filteredUsers.length} usuario{filteredUsers.length === 1 ? '' : 's'}
-          </p>
+            <Select
+              id="users-sort"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+            >
+              <option value="name">Por nombre</option>
+              <option value="recent">Recientes</option>
+              <option value="company">Por empresa</option>
+            </Select>
+          </div>
         </div>
-      </section>
+      </header>
+
+      <div className={styles.pageBody}>
 
       {actionMessage && <p className={styles.success}>{actionMessage}</p>}
       {loading && <p className={styles.info}>Cargando usuarios...</p>}
@@ -908,6 +819,87 @@ export default function UsersPage() {
           </Button>
         </div>
       </footer>
+      </div>
+
+      <Modal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Agregar usuario"
+        size="md"
+      >
+        <p className={styles.modalSubtitle}>
+          Invita una cuenta nueva o asigna un usuario existente a una empresa.
+        </p>
+
+        <form className={styles.inviteGrid} onSubmit={handleInvite}>
+          <Input
+            label="Nombre"
+            type="text"
+            value={inviteForm.fullName}
+            onChange={(event) => setInviteForm((current) => ({ ...current, fullName: event.target.value }))}
+            placeholder="Nombre completo"
+          />
+
+          <Input
+            label="Email"
+            type="email"
+            value={inviteForm.email}
+            onChange={(event) => setInviteForm((current) => ({ ...current, email: event.target.value }))}
+            placeholder="email@empresa.com"
+            required
+          />
+
+          {isAdminUser && (
+            <Select
+              label="Rol plataforma"
+              value={inviteForm.platformRole}
+              onChange={(event) => setInviteForm((current) => ({ ...current, platformRole: event.target.value }))}
+            >
+              {PLATFORM_ROLE_ORDER.map((role) => (
+                <option key={role} value={role}>{platformRoleLabel(role)}</option>
+              ))}
+            </Select>
+          )}
+
+          {inviteNeedsCompany ? (
+            <>
+              <Select
+                label="Empresa"
+                value={inviteForm.companyId}
+                onChange={(event) => setInviteForm((current) => ({ ...current, companyId: event.target.value }))}
+                required={inviteNeedsCompany}
+              >
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}{company.isInternal ? ' · Interna' : ''}
+                  </option>
+                ))}
+              </Select>
+
+              <Select
+                label="Rol en empresa"
+                value={inviteForm.role}
+                onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))}
+              >
+                {inviteRoleOptions.map((role) => (
+                  <option key={role} value={role}>{roleLabel(role)}</option>
+                ))}
+              </Select>
+            </>
+          ) : (
+            <p className={styles.formNote}>Admin y QA usan acceso global, sin rol por empresa.</p>
+          )}
+
+          <div className={styles.modalActions}>
+            <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" variant="primary" disabled={busyKey === 'invite'} loading={busyKey === 'invite'}>
+              {busyKey === 'invite' ? 'Agregando...' : 'Agregar usuario'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         open={Boolean(editingUser)}
@@ -930,7 +922,7 @@ export default function UsersPage() {
 
           return (
             <>
-              <p id="edit-user-description" className={styles.panelText}>{modalSubtitle}</p>
+              <p id="edit-user-description" className={styles.modalSubtitle}>{modalSubtitle}</p>
 
               <form className={styles.modalForm} onSubmit={handleEditUser}>
                 <div className={styles.avatarEditor}>
