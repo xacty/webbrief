@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import AppShell from './components/layout/AppShell'
+import { Select } from './components/ui'
 import {
   COMPANY_ROLE_ORDER,
   PLATFORM_ROLE_ORDER,
@@ -94,16 +95,17 @@ function AppRoutes() {
       {canPreviewRoles && (
         <div style={{ ...rolePreviewStyles.wrap, ...(isEditorRoute ? rolePreviewStyles.wrapEditor : {}) }}>
           <label style={rolePreviewStyles.label} htmlFor="global-role-preview-select">Ver como</label>
-          <select
+          <Select
             id="global-role-preview-select"
-            style={rolePreviewStyles.select}
+            fullWidth={false}
+            size="sm"
             value={rolePreview || 'platform:admin'}
             onChange={(event) => setRolePreview(event.target.value)}
           >
             {ROLE_PREVIEW_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
     </Suspense>
@@ -114,16 +116,33 @@ const rolePreviewStyles = {
   wrap: {
     position: 'fixed',
     right: 18,
-    bottom: 18,
-    zIndex: 3000,
-    display: 'flex',
+    // Match .floatingBar (Brief/Handoff/Preview) bottom so both pills
+    // align horizontally at the same baseline in the editor.
+    bottom: 22,
+    // Lower than --wb-z-popover (1100) so the Select listbox inside the
+    // pill opens ABOVE the pill chrome (otherwise the dropdown is
+    // visually behind the pill and hovering options closes it). Still
+    // above sticky content (200) so the pill floats above the editor
+    // and admin shell. Matches the --wb-z-overlay (900) token value.
+    zIndex: 900,
+    display: 'inline-flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '8px 10px',
-    border: '1px solid #d9e1ec',
-    borderRadius: 12,
-    background: '#fff',
-    boxShadow: '0 12px 30px rgba(15, 23, 42, 0.16)',
+    gap: 10,
+    // Tight padding so the pill size-hugs its content (matches the
+    // editor's .floatingBar after the trim). Inner Select trigger is
+    // 32px → with 4px vertical padding total height is 40px. No
+    // min-height; let content drive.
+    padding: '4px 4px 4px 12px',
+    border: '1px solid var(--wb-border)',
+    // Container-tier radius (matches .floatingBar and the toolbar).
+    // Full-radius is reserved for labels / status pills — pills that
+    // contain a Select/Button get the moderate radius like the rest of
+    // the app's clickable surfaces.
+    borderRadius: 'var(--wb-radius-3)',
+    background: 'var(--wb-surface)',
+    boxShadow: 'var(--wb-shadow-lg)',
+    WebkitBackdropFilter: 'blur(12px)',
+    backdropFilter: 'blur(12px)',
   },
   wrapEditor: {
     right: 318,
@@ -131,16 +150,8 @@ const rolePreviewStyles = {
   label: {
     fontSize: 12,
     fontWeight: 700,
-    color: '#64748b',
-  },
-  select: {
-    border: '1px solid #d9e1ec',
-    borderRadius: 9,
-    padding: '7px 30px 7px 9px',
-    background: '#fff',
-    color: '#091223',
-    fontSize: 13,
-    fontWeight: 700,
+    color: 'var(--wb-color-neutral-500)',
+    whiteSpace: 'nowrap',
   },
 }
 

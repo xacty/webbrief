@@ -3,6 +3,9 @@
    Off-canon neutrals and indigo focus collapsed to primary-900 — flagged
    in 04-03-SUMMARY.md. rgba and rgb(... / NN%) alpha overlays kept literal
    per UI-SPEC Color (alpha-on-dark/light). */
+/* Side panels sit on the lavender .root background — keep them white,
+   but pick up the indigo-tinted card shadow so they read as floating
+   cards in the shell, not flat columns. */
 .leftPanel {
   width: 290px;
   flex-shrink: 0;
@@ -11,7 +14,8 @@
   min-height: 0;
   overflow: hidden;
   background: var(--wb-surface);
-  border-right: 1px solid var(--wb-editor-bg);
+  border-right: 1px solid var(--wb-border);
+  box-shadow: var(--wb-shadow-card);
 }
 
 .rightPanel {
@@ -22,9 +26,13 @@
   position: relative;
   min-height: 0;
   overflow: hidden;
-  padding: 30px;
+  /* top reduced so the tabs align vertically with the left panel header
+     ("Page sections"). Tab padding-top is var(--wb-space-3) ≈ 12px, plus
+     this 12px panel top = 24px, matching .panelHeader's padding-top. */
+  padding: 12px 30px 30px;
   background: var(--wb-surface);
-  border-left: 1px solid var(--wb-editor-bg);
+  border-left: 1px solid var(--wb-border);
+  box-shadow: var(--wb-shadow-card);
 }
 
 .panelHeader {
@@ -36,32 +44,43 @@
 }
 
 .panelTitle {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
 
 .panelAddBtn {
-  padding: 0;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-text-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.panelAddBtn:hover {
+  background: var(--wb-primary-soft);
+  color: var(--wb-primary);
+  border-color: var(--wb-color-primary-100);
 }
 
 .seoPanelButton {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 30px 14px;
+  margin: 0 var(--wb-space-3) 14px;
   padding: 8px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -69,7 +88,7 @@
 }
 
 .seoPanelButtonActive {
-  border-color: var(--wb-editor-bg);
+  border-color: var(--wb-surface);
   background: var(--wb-color-neutral-50);
 }
 
@@ -79,14 +98,14 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 30px 30px;
+  gap: var(--wb-space-1);
+  padding: 0 var(--wb-space-3) var(--wb-space-6);
 }
 
 .emptyMsg {
   margin: 0;
   padding-top: 8px;
-  color: var(--wb-editor-text-on-dark-muted);
+  color: var(--wb-text-muted);
   font-size: 13px;
 }
 
@@ -99,7 +118,7 @@
   gap: 8px;
   border-radius: 6px;
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   text-align: left;
   cursor: pointer;
   font: inherit;
@@ -110,7 +129,7 @@
 }
 
 .outlineItemActive {
-  border: 1px solid var(--wb-editor-bg);
+  border: 1px solid var(--wb-surface);
   background: var(--wb-surface);
 }
 
@@ -139,7 +158,7 @@
   padding: 10px;
   border-radius: 6px;
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   text-align: left;
   cursor: pointer;
   font: inherit;
@@ -150,7 +169,7 @@
 }
 
 .faqItemActive {
-  border: 1px solid var(--wb-editor-bg);
+  border: 1px solid var(--wb-surface);
   background: var(--wb-surface);
 }
 
@@ -197,26 +216,33 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
-  border-radius: 6px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  min-height: 40px;
+  border-radius: var(--wb-radius-2);
   cursor: pointer;
   background: transparent;
+  border: none;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .sectionNavBtn {
-  border: 1px solid transparent;
+  color: var(--wb-text-muted);
 }
 
 .sectionNavBtn:hover {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
+  color: var(--wb-text);
 }
 
 .sectionNavBtnActive {
-  border: 1px solid var(--wb-editor-bg);
+  background: var(--wb-primary-soft);
+  color: var(--wb-primary);
+  font-weight: var(--wb-weight-semibold);
 }
 
 .sectionNavBtnActive:hover {
-  background: #f0f4f9;
+  background: var(--wb-primary-soft);
+  color: var(--wb-primary);
 }
 
 .sectionNavLeft {
@@ -233,7 +259,15 @@
   padding: 2px 0;
   margin-right: -2px;
   cursor: grab;
-  opacity: 0.4;
+  color: var(--wb-text-muted);
+  transition: color 120ms ease;
+}
+
+.sectionNavBtn:hover .dragHandle,
+.sectionNavBtn:focus-within .dragHandle,
+.sectionNavBtnActive:hover .dragHandle,
+.sectionNavBtnActive:focus-within .dragHandle {
+  color: var(--wb-text);
 }
 
 .sectionNameWrap {
@@ -248,9 +282,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--wb-editor-text);
-  font-size: 15px;
-  font-weight: 500;
+  color: inherit;
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
 }
 
 .sectionSubtitle {
@@ -272,7 +306,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
 }
 
 .h1Divider:hover .h1DividerText {
@@ -292,7 +326,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -305,7 +339,7 @@
   border: 1px solid var(--wb-color-primary-900);
   border-radius: 3px;
   outline: none;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
   font-size: 15px;
   font-weight: 500;
@@ -333,7 +367,7 @@
   margin-top: 4px;
   min-width: 140px;
   overflow: hidden;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 6px;
   background: var(--wb-surface);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
@@ -342,7 +376,7 @@
 
 .menuItem {
   padding: 10px 16px;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 13px;
   cursor: pointer;
 }
@@ -362,11 +396,11 @@
   margin-bottom: 1px;
   padding-left: 10px;
   cursor: pointer;
-  border-left: 2px solid #e0e0e0;
+  border-left: 2px solid var(--wb-border);
 }
 
 .sectionHeadingItemActive {
-  border-left-color: var(--wb-color-primary-900);
+  border-left-color: var(--wb-primary);
 }
 
 .sectionHeadingText {
@@ -376,7 +410,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: none;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -411,7 +445,7 @@
   gap: 10px;
   flex-shrink: 0;
   padding-bottom: 0;
-  border-bottom: 1px solid var(--wb-color-neutral-200);
+  border-bottom: 1px solid var(--wb-border);
 }
 
 .rightPanelScroll {
@@ -444,7 +478,7 @@
 
 .markReadBtn,
 .proposalSecondaryButton {
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 999px;
   background: var(--wb-surface);
   color: var(--wb-color-neutral-500);
@@ -458,7 +492,7 @@
 .markReadBtn:hover:not(:disabled),
 .proposalSecondaryButton:hover:not(:disabled) {
   background: #f0f4f9;
-  border-color: var(--wb-editor-text-on-dark-muted);
+  border-color: var(--wb-text-muted);
 }
 
 .markReadBtn:disabled,
@@ -478,20 +512,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: transparent;
-  color: var(--wb-color-neutral-500);
+  color: var(--wb-text-muted);
   cursor: pointer;
-  transition: background 120ms, color 120ms;
+  transition: color 120ms ease, border-color 120ms ease;
 }
 
 .updatesRefreshBtn:hover:not(:disabled) {
-  background: #f0f4f9;
-  color: var(--wb-editor-text);
+  color: var(--wb-primary);
+  border-color: var(--wb-color-primary-100);
 }
 
 .updatesRefreshBtn:disabled {
@@ -531,11 +565,12 @@
 .proposalBox,
 .deliverablesBox,
 .shareBox {
-  margin-top: 16px;
-  padding: 12px;
-  border: 1px solid var(--wb-editor-border);
-  border-radius: 8px;
+  margin-top: var(--wb-space-4);
+  padding: var(--wb-space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-md);
   background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-card);
 }
 
 .pendingBox {
@@ -544,10 +579,10 @@
 
 .pendingTitle {
   display: block;
-  margin-bottom: 8px;
-  color: var(--wb-editor-text);
-  font-size: 12px;
-  font-weight: 600;
+  margin: 0 0 var(--wb-space-3);
+  color: var(--wb-text);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-semibold);
 }
 
 .pendingItem {
@@ -590,8 +625,8 @@
   min-height: 34px;
   border: none;
   border-radius: 8px;
-  background: var(--wb-editor-bg);
-  color: var(--wb-editor-text-on-dark);
+  background: var(--wb-surface);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
@@ -620,9 +655,9 @@
   min-width: 0;
   height: 34px;
   padding: 0 10px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 8px;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
   font-size: 13px;
 }
@@ -669,7 +704,7 @@
 }
 
 .deliverableTitle {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 13px;
   font-weight: 600;
 }
@@ -718,7 +753,7 @@
 
 .updatesEmpty {
   margin: 16px 0 0;
-  color: var(--wb-editor-text-on-dark-muted);
+  color: var(--wb-text-muted);
   font-size: 14px;
 }
 
@@ -749,71 +784,54 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--wb-editor-border);
+  padding: var(--wb-space-3) 0;
+  border-bottom: 1px solid var(--wb-border);
 }
 
 .tabsBar {
-  display: inline-flex;
-  gap: 18px;
+  display: flex;
+  gap: 0;
   align-items: center;
 }
 
 .tab {
-  position: relative;
-  padding: 6px 0;
+  padding: var(--wb-space-3) var(--wb-space-4);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  background: transparent;
   border: none;
-  background: transparent;
-  color: var(--wb-color-neutral-400);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   cursor: pointer;
-  transition: color 120ms;
-}
-
-.tab::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: transparent;
-  border-radius: 2px 2px 0 0;
-  transition: background 120ms;
+  font-family: var(--wb-font-sans);
+  transition: color 150ms ease, border-color 150ms ease;
 }
 
 .tab:hover {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
 }
 
 .tabActive {
-  color: var(--wb-editor-text);
-}
-
-.tabActive::after {
-  background: var(--wb-editor-bg);
+  color: var(--wb-primary);
+  font-weight: var(--wb-weight-semibold);
+  border-bottom-color: var(--wb-primary);
 }
 
 .tabActive:hover {
-  color: var(--wb-editor-text);
+  color: var(--wb-primary);
 }
 
 .historyList {
   list-style: none;
   margin: 12px 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .historyItem {
-  padding: 10px 12px;
-  border: 1px solid var(--wb-color-neutral-200);
-  border-radius: 8px;
-  background: var(--wb-surface);
+  padding: var(--wb-space-3) 0;
+  border-bottom: 1px solid var(--wb-border);
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -828,7 +846,7 @@
 }
 
 .historyItemSection {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 13px;
   font-weight: 600;
   min-width: 0;
@@ -854,20 +872,22 @@
 
 .historyDiffBtn,
 .historyRestoreBtn {
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--wb-editor-border);
-  background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--wb-primary);
   font: inherit;
   font-size: 12px;
+  font-weight: var(--wb-weight-medium);
   cursor: pointer;
-  transition: background 120ms, border-color 120ms;
+  transition: color 120ms;
 }
 
 .historyDiffBtn:hover,
 .historyRestoreBtn:hover {
-  background: #f0f4f9;
+  color: var(--wb-color-primary-700);
+  text-decoration: underline;
 }
 
 .historyEmpty {
@@ -893,7 +913,7 @@
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
 }
 
 .diffModalMeta {
@@ -951,8 +971,8 @@
 
 .diffModalClose {
   background: var(--wb-surface);
-  border: 1px solid var(--wb-editor-border);
-  color: var(--wb-editor-text);
+  border: 1px solid var(--wb-border);
+  color: var(--wb-text);
 }
 
 .diffModalClose:hover {
@@ -960,8 +980,8 @@
 }
 
 .diffModalRestore {
-  background: var(--wb-editor-bg);
-  color: var(--wb-editor-text-on-dark);
+  background: var(--wb-surface);
+  color: var(--wb-text);
 }
 
 .diffModalRestore:hover {
@@ -973,8 +993,8 @@
   margin-right: -10px;
   padding-left: 10px;
   padding-right: 10px;
-  border-radius: 8px;
-  background: #fff7ed;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-primary-soft);
 }
 
 .updatesItemButton {
@@ -988,20 +1008,20 @@
 }
 
 .updatesField {
-  color: var(--wb-editor-text);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--wb-text);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
 }
 
 .updatesDescription {
-  color: var(--wb-color-neutral-500);
-  font-size: 12px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
   line-height: 1.4;
 }
 
 .updatesDatetime {
-  color: var(--wb-editor-text-on-dark-muted);
-  font-size: 12px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
 }
 
 .markReadBtn {
@@ -1018,7 +1038,7 @@
 }
 
 .activityGroup {
-  border-bottom: 1px solid var(--wb-editor-border);
+  border-bottom: 1px solid var(--wb-border);
 }
 
 .activityGroupRow {
@@ -1029,10 +1049,15 @@
   border-radius: 8px;
   cursor: pointer;
   user-select: none;
+  transition: background-color 120ms ease;
+}
+
+.activityGroupRow:hover {
+  background: var(--wb-primary-soft);
 }
 
 .activityGroupRow:hover .activityGroupName {
-  color: var(--wb-color-primary-900);
+  color: var(--wb-color-primary-700);
 }
 
 .activityGroupMain {
@@ -1050,7 +1075,7 @@
 }
 
 .activityGroupName {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
@@ -1072,7 +1097,7 @@
 }
 
 .activityGroupSub {
-  color: var(--wb-editor-text-on-dark-muted);
+  color: var(--wb-text-muted);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -1148,7 +1173,7 @@
 }
 
 .activityHistoryItem:hover {
-  background: var(--wb-color-neutral-50);
+  background: var(--wb-primary-soft);
 }
 
 .activityHistoryItemActive {
@@ -1160,7 +1185,7 @@
 }
 
 .activityHistoryDesc {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;

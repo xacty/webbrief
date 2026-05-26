@@ -3,7 +3,7 @@
      Color palette — shades 50-900
      Decisions: .planning/intel/decisions.md (Color)
      - Grays: cool-tinted (slate family)
-     - Primary base: #091223 at -900 (preserves --wb-primary)
+     - Primary (Indigo): #4f46e5 at -600 (--wb-primary)
      - Body text on white: use --wb-color-neutral-700 or darker (WCAG AA 4.5:1)
      ============================================================ */
 
@@ -19,17 +19,17 @@
   --wb-color-neutral-800: #1e293b;
   --wb-color-neutral-900: #0f172a;
 
-  /* Primary (cool blue, base = #091223) */
-  --wb-color-primary-50:  #f1f5f9;
-  --wb-color-primary-100: #e2e8f0;
-  --wb-color-primary-200: #cbd5e1;
-  --wb-color-primary-300: #94a3b8;
-  --wb-color-primary-400: #475569;
-  --wb-color-primary-500: #1e293b;
-  --wb-color-primary-600: #111827;
-  --wb-color-primary-700: #0b1220;
-  --wb-color-primary-800: #0a111e;
-  --wb-color-primary-900: #091223; /* current --wb-primary */
+  /* Primary (Indigo — #4f46e5 at -600) */
+  --wb-color-primary-50:  #eef2ff;
+  --wb-color-primary-100: #e0e7ff;
+  --wb-color-primary-200: #c7d2fe;
+  --wb-color-primary-300: #a5b4fc;
+  --wb-color-primary-400: #818cf8;
+  --wb-color-primary-500: #6366f1;
+  --wb-color-primary-600: #4f46e5; /* main accent */
+  --wb-color-primary-700: #4338ca;
+  --wb-color-primary-800: #3730a3;
+  --wb-color-primary-900: #312e81;
 
   /* Success (green) */
   --wb-color-success-50:  #f0fdf4;
@@ -70,16 +70,16 @@
   /* Legacy aliases — preserve current computed values for back-compat.
      Plans 02-05 of this milestone will gradually migrate consumers
      to the new --wb-color-* tokens; do NOT remove these aliases yet. */
-  --wb-bg: var(--wb-color-neutral-50);            /* was #f8fafc */
+  --wb-bg: #f3f2ff;                               /* Modern SaaS lavender tint */
   --wb-surface: #ffffff;                          /* no canonical needed */
   --wb-surface-muted: var(--wb-color-neutral-100);/* was #f1f5f9 */
   --wb-border: #dbe3f0;                           /* keep literal — between 200 and 300 */
   --wb-border-strong: #c7d2e5;                    /* keep literal */
-  --wb-text: var(--wb-color-primary-900);         /* was #091223 */
-  --wb-text-muted: var(--wb-color-neutral-500);   /* was #64748b */
-  --wb-primary: var(--wb-color-primary-900);      /* was #091223 */
-  --wb-primary-hover: var(--wb-color-primary-500);/* was #1e293b */
-  --wb-primary-soft: var(--wb-color-neutral-200); /* was #e2e8f0 */
+  --wb-text: var(--wb-color-neutral-900);         /* #0f172a — slate, NOT blue */
+  --wb-text-muted: var(--wb-color-neutral-500);   /* #64748b */
+  --wb-primary: var(--wb-color-primary-600);      /* #4f46e5 — Indigo */
+  --wb-primary-hover: var(--wb-color-primary-700);/* #1d4ed8 */
+  --wb-primary-soft: var(--wb-color-primary-50);  /* #eff6ff */
   --wb-success: #0f766e;                          /* keep literal — Phase 1 preserves teal accent */
   --wb-danger: var(--wb-color-danger-600);        /* was #dc2626 */
 
@@ -180,33 +180,32 @@
   --wb-radius-lg: 18px;
   --wb-content-width: 1180px;
 
+  /* Card elevation — indigo-tinted (light mode only; dark overrides below) */
+  --wb-shadow-card:       0 4px 16px rgba(79, 70, 229, 0.10), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --wb-shadow-card-hover: 0 8px 24px rgba(79, 70, 229, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06);
+
   /* ============================================================
      Editor sub-tokens (Phase 4)
      Decisions: .planning/intel/decisions.md (Editor)
      UI-SPEC:   .planning/phases/04-editor-unification/04-UI-SPEC.md (Editor Sub-Tokens)
-     Scope:     consumed exclusively by frontend/src/pages/ProjectEditor*,
-                frontend/src/pages/BriefProjectEditor*, and
-                frontend/src/components/editor/*. The rest of the app
-                must NOT reference --wb-editor-* / --wb-tooltip-* /
-                --wb-comment-* / --wb-section-*.
-     Goal:      eliminate the parallel dark palette hardcoded across the
-                editor (`#212222 / #2a2a2a / #d9d9d9 / #1d4ed8 / #2563eb`)
-                while preserving the dark editor look exactly.
+     Scope:     canvas-internal tokens only (tooltip, comment highlight,
+                section flash). Chrome surfaces now use shell tokens
+                (--wb-surface, --wb-border, --wb-text, etc.) so they
+                invert correctly with the AppShell theme toggle.
      ============================================================ */
 
-  /* Editor surfaces (dark chrome) */
-  --wb-editor-bg:               #212222; /* navbar / toolbar / floating bar / dark dropdowns */
-  --wb-editor-surface:          #2a2a2a; /* one step lighter; toolbar segments, dropdown items, dark text on light */
-  --wb-editor-surface-elevated: #1a1a1a; /* slightly darker than --wb-editor-bg; elevated dark popovers (image/table context menu) */
-
-  /* Editor borders */
-  --wb-editor-border:           #d9d9d9; /* light-mode border inside editor canvas (between sections, around cards, light dropdowns on dark chrome) */
-  --wb-editor-border-strong:    #b8b8b8; /* hover/active border on light editor controls */
-
-  /* Editor text */
-  --wb-editor-text-on-dark:        #ffffff; /* white text on dark chrome */
-  --wb-editor-text-on-dark-muted:  #aaaaaa; /* muted/disabled text on dark chrome (collapses #888/#999/#aaa/#bdc1c6/#c7c7c7/#d0d0d0) */
-  --wb-editor-text:                #2a2a2a; /* dark text on light editor surfaces (sections panel labels, type labels) */
+  /* DEPRECATED — chrome editor tokens removed in editor visual refresh
+     (spec 2026-05-24). Kept only for reference; no longer consumed by
+     any chrome surface. Do not reintroduce in chrome surfaces; use shell
+     tokens instead. Migration map: Task 2 of editor visual refresh plan.
+     --wb-editor-bg               → --wb-surface
+     --wb-editor-surface          → --wb-surface-muted
+     --wb-editor-surface-elevated → --wb-surface + box-shadow: var(--wb-shadow-md)
+     --wb-editor-border           → --wb-border
+     --wb-editor-border-strong    → --wb-border-strong
+     --wb-editor-text-on-dark     → --wb-text
+     --wb-editor-text-on-dark-muted → --wb-text-muted
+     --wb-editor-text             → --wb-text */
 
   /* Floating tooltip (Google-Docs style — must stay this exact hex) */
   --wb-tooltip-bg:                 #3c4043;
@@ -219,4 +218,97 @@
 
   /* Section flash animation (re-uses base.css @keyframes wb-section-flash) */
   --wb-section-flash:              rgba(254, 240, 138, 0.6);
+
+  /* ============================================================
+     Glass surfaces (Vision OS / iOS 17 / macOS Sonoma style)
+     Translucent backgrounds intended for sticky/floating chrome
+     surfaces (formatting toolbar, future popovers). Pair with
+     backdrop-filter: blur(...) on the consumer rule.
+     ============================================================ */
+  --wb-glass-bg:                  rgba(255, 255, 255, 0.72);
+  --wb-glass-border:              rgba(15, 23, 42, 0.08);
+  --wb-glass-shadow:              0 8px 24px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.06);
+
+  /* ============================================================
+     Canvas lock — values that stay paper-white regardless of theme.
+     Used inside .canvas to keep the TipTap surface light when the rest
+     of the chrome inverts. Mimics Google Docs / Word in dark mode.
+     Per editor visual refresh spec F1: canvas siempre claro, chrome
+     sigue toggle. DO NOT add overrides in [data-theme="dark"].
+     ============================================================ */
+  --wb-canvas-bg:            #ffffff;
+  --wb-canvas-text:          #0f172a;        /* slate-900 */
+  --wb-canvas-text-muted:    #475569;        /* slate-600 — reserved for canvas-internal muted text */
+  --wb-canvas-border:        #e2e8f0;        /* slate-200 */
+  --wb-canvas-surface-muted: #f8fafc;        /* slate-50 — reserved for canvas callouts */
+  --wb-canvas-link:          #4338ca;        /* indigo-700, permanent */
+  --wb-canvas-selection-bg:  #e0e7ff;        /* indigo-100, permanent */
+}
+
+/* ============================================================
+   Dark mode overrides
+   Applied by setting data-theme="dark" on <html>.
+   Toggle persists to localStorage; applied before paint via
+   inline script in index.html to avoid flash.
+   ============================================================ */
+[data-theme="dark"] {
+  /* Semantic surfaces and text */
+  --wb-bg:            #0a0a0c;
+  --wb-surface:       #18181b;
+  --wb-surface-muted: #111114;
+  --wb-border:        #2a2a2e;
+  --wb-border-strong: #3f3f46;
+  --wb-text:          #fafafa;
+  --wb-text-muted:    #a1a1aa;
+
+  /* Semantic accents — lightened for WCAG AA on dark surfaces */
+  --wb-success:       #34d399;
+  --wb-danger:        #f87171;
+
+  /* Primary on dark: lighter shades for contrast on dark surfaces.
+     Higher numbers (800/900) flip to light indigos so text on primary
+     backgrounds stays readable. */
+  --wb-color-primary-50:  #1e1b4b;
+  --wb-color-primary-100: #312e81;
+  --wb-color-primary-200: #4338ca;
+  --wb-color-primary-600: #818cf8;
+  --wb-color-primary-700: #a5b4fc;
+  --wb-color-primary-800: #c7d2fe;
+  --wb-color-primary-900: #e0e7ff;
+  --wb-primary:           var(--wb-color-primary-600);
+  --wb-primary-hover:     var(--wb-color-primary-700);
+  --wb-primary-soft:      var(--wb-color-primary-50);
+
+  /* Flipped neutral scale — light-to-dark in light mode becomes
+     dark-to-light in dark mode. Components that reference the raw
+     neutral tokens (Input labels, Button secondary, Card, etc.)
+     pick up the correct contrast automatically. */
+  --wb-color-neutral-50:  #18181b;
+  --wb-color-neutral-100: #1f1f23;
+  --wb-color-neutral-200: #2a2a2e;
+  --wb-color-neutral-300: #3f3f46;
+  --wb-color-neutral-400: #71717a;
+  --wb-color-neutral-500: #a1a1aa;
+  --wb-color-neutral-600: #d4d4d8;
+  --wb-color-neutral-700: #e4e4e7;
+  --wb-color-neutral-800: #f4f4f5;
+  --wb-color-neutral-900: #fafafa;
+
+  /* Danger background tints (used by Button danger hover, error helpers) */
+  --wb-color-danger-100: #450a0a;
+  --wb-color-danger-700: #fca5a5;
+
+  /* Neutral shadow — no blue tint on dark backgrounds */
+  --wb-shadow-card:       0 4px 16px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --wb-shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.36);
+  --wb-shadow-xs:         0 1px 2px rgba(0, 0, 0, 0.40);
+  --wb-shadow-sm:         0 2px 4px rgba(0, 0, 0, 0.40);
+  --wb-shadow-md:         0 4px 8px rgba(0, 0, 0, 0.40);
+  --wb-shadow-lg:         0 8px 16px rgba(0, 0, 0, 0.45);
+  --wb-shadow-xl:         0 16px 32px rgba(0, 0, 0, 0.50);
+
+  /* Glass overrides — translucent dark slab for floating chrome on dark theme */
+  --wb-glass-bg:          rgba(24, 24, 27, 0.66);
+  --wb-glass-border:      rgba(255, 255, 255, 0.08);
+  --wb-glass-shadow:      0 8px 24px rgba(0, 0, 0, 0.50), 0 1px 3px rgba(0, 0, 0, 0.40);
 }

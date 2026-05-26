@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Send } from 'lucide-react'
 import styles from './CommentsUI.module.css'
+import Button from '../ui/Button'
 import MentionsAutocomplete, {
   detectMentionQuery,
   filterMembers,
@@ -174,15 +175,17 @@ export default function CommentComposerPopover({
         onKeyDown={handleKey}
       />
       <div className={styles.composerActions}>
-        <button type="button" className={styles.cancelBtn} onClick={onCancel}>Cancelar</button>
-        <button
-          type="button"
-          className={styles.submitBtn}
+        <Button variant="ghost" size="sm" onClick={onCancel}>Cancelar</Button>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Send size={12} />}
           onClick={handleSubmit}
           disabled={!body.trim() || submitting}
+          loading={submitting}
         >
-          <Send size={12} /> {submitLabel}
-        </button>
+          {submitLabel}
+        </Button>
       </div>
       {mentionsAnchor && (
         <MentionsAutocomplete

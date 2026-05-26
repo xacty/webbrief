@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, MoreHorizontal, RotateCcw, Send, Trash2, Pencil, Link as LinkIcon } from 'lucide-react'
 import styles from './CommentsUI.module.css'
 import marginStyles from './CommentMarginCards.module.css'
+import Button from '../ui/Button'
 import MentionsAutocomplete, {
   detectMentionQuery,
   filterMembers,
@@ -351,22 +352,23 @@ export function ReplyComposer({ onSubmit, currentUser, members = [], disabled })
         rows={2}
       />
       <div className={marginStyles.replyComposerActions}>
-        <button
-          type="button"
-          className={marginStyles.cancelBtn}
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={handleCancel}
           disabled={submitting}
         >
           Cancelar
-        </button>
-        <button
-          type="button"
-          className={marginStyles.submitBtn}
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleSubmit}
           disabled={!value.trim() || submitting || disabled}
+          loading={submitting}
         >
           Responder
-        </button>
+        </Button>
       </div>
       {mentionsAnchor && (
         <MentionsAutocomplete

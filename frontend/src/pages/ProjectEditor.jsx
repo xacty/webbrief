@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense, Fragment as RFragment } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -35,12 +35,12 @@ import {
   groupCommentsIntoThreads,
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Search, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RotateCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
-import { Modal } from '../components/ui'
+import { Modal, Button, Select } from '../components/ui'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -4101,9 +4101,9 @@ export default function ProjectEditor() {
     return (
       <div className={styles.loadingState}>
         <p className={styles.loadingErrorText}>{projectError}</p>
-        <button className={styles.confirmCancelBtn} onClick={() => navigate('/dashboard')}>
+        <Button variant="secondary" size="md" onClick={() => navigate('/dashboard')}>
           Volver al dashboard
-        </button>
+        </Button>
       </div>
     )
   }
@@ -4194,8 +4194,8 @@ export default function ProjectEditor() {
             </p>
             <p className={styles.confirmSubtext}>Esta acción no se puede deshacer.</p>
             <div className={styles.confirmActions}>
-              <button className={styles.confirmCancelBtn} onClick={() => setDeletePageConfirm(null)}>Cancelar</button>
-              <button className={styles.confirmDeleteBtn} onClick={() => deletePage(deletePageConfirm)}>Eliminar</button>
+              <Button variant="ghost" size="md" onClick={() => setDeletePageConfirm(null)}>Cancelar</Button>
+              <Button variant="danger" size="md" onClick={() => deletePage(deletePageConfirm)}>Eliminar</Button>
             </div>
           </div>
         </div>
@@ -4602,13 +4602,16 @@ function TemplatesDropdown({ companyId, pages, disabled = false }) {
               onChange={(e) => setName(e.target.value)}
               autoFocus
             />
-            <button
+            <Button
               type="submit"
-              className={navStyles.templatesSubmit}
-              disabled={saving || !name.trim()}
+              variant="primary"
+              size="sm"
+              fullWidth
+              loading={saving}
+              disabled={!name.trim()}
             >
-              {saving ? 'Guardando…' : 'Guardar estructura actual'}
-            </button>
+              Guardar estructura actual
+            </Button>
           </form>
           {feedback && <p className={navStyles.templatesFeedback}>{feedback}</p>}
           <p className={navStyles.templatesHint}>
@@ -4694,15 +4697,23 @@ function Navbar({
 
       {/* Columna derecha: Iconos + Save */}
       <div className={navStyles.navRight}>
-        <span className={navStyles.navSaveStatus}>{saveLabel}</span>
-        <button
-          type="button"
-          className={`${navStyles.navSaveBtn} ${isSaving ? navStyles.navSaveBtnDisabled : ''}`}
+        {isDirty && !isSaving ? (
+          <span className={navStyles.saveStatusChip} aria-live="polite">
+            <span className={navStyles.saveStatusDot} aria-hidden="true" />
+            {saveMessage || 'Sin guardar'}
+          </span>
+        ) : (
+          <span className={navStyles.navSaveStatus}>{saveLabel}</span>
+        )}
+        <Button
+          variant="primary"
+          size="sm"
+          loading={isSaving}
+          disabled={!canSave}
           onClick={onSave}
-          disabled={isSaving || !canSave}
         >
-          {isSaving ? 'Guardando...' : 'Guardar'}
-        </button>
+          Guardar
+        </Button>
         <div className={navStyles.navIcons}>
           <button className={navStyles.navIconBtn} title="Ajustes de cuenta" onClick={onSettings}>
             <User size={20} color="#2a2a2a" />
@@ -4775,23 +4786,44 @@ function FloatingEditorBar({
   disabled,
 }) {
   const modeOptions = [
-    { id: 'brief', label: 'Brief', icon: FileText },
-    { id: 'handoff', label: 'Handoff', icon: MousePointerClick },
-    { id: 'preview', label: 'Preview', icon: Eye },
-  ].filter((mode) => availableModes.includes(mode.id))
+    { value: 'brief', label: 'Brief', icon: FileText },
+    { value: 'handoff', label: 'Handoff', icon: Send },
+    { value: 'preview', label: 'Preview', icon: Eye },
+  ].filter((mode) => availableModes.includes(mode.value))
+
+  // Indicator position for the mode segmented control. findIndex returns
+  // -1 if the current mode isn't in availableModes (edge case); clamp to
+  // 0 so the indicator parks at the first segment instead of off-screen.
+  const modeIndex = Math.max(0, modeOptions.findIndex((m) => m.value === editorMode))
+
+  const audienceOptions = [
+    { value: 'designer', label: 'Des', icon: Palette },
+    { value: 'dev', label: 'Dev', icon: Code2 },
+  ]
+  const audienceIndex = handoffAudience === 'dev' ? 1 : 0
 
   return (
     <div className={styles.floatingBar} aria-label="Controles de editor">
-      <div className={styles.floatingSegment} aria-label="Modo del editor">
+      {/* Mode segmented control — sliding indicator pill (Tesla-style)
+          marks the active mode; all three options are always visible. */}
+      <div
+        className={styles.segmentedControl}
+        style={{ '--seg-count': modeOptions.length, '--seg-index': modeIndex }}
+        role="tablist"
+        aria-label="Modo del editor"
+      >
+        <div className={styles.segmentedIndicator} aria-hidden="true" />
         {modeOptions.map((mode) => {
           const Icon = mode.icon
-          const active = editorMode === mode.id
+          const active = editorMode === mode.value
           return (
             <button
-              key={mode.id}
+              key={mode.value}
               type="button"
-              className={cx(styles.floatingModeBtn, active && styles.floatingModeBtnActive)}
-              onClick={() => onEditorModeChange(mode.id)}
+              role="tab"
+              aria-selected={active}
+              className={cx(styles.segmentedOption, active && styles.segmentedOptionActive)}
+              onClick={() => onEditorModeChange(mode.value)}
             >
               <Icon size={14} />
               {mode.label}
@@ -4800,29 +4832,47 @@ function FloatingEditorBar({
         })}
       </div>
 
-      {editorMode === 'handoff' && (
-        <>
-          <div className={styles.floatingDivider} />
-          <div className={styles.floatingSegment} aria-label="Audiencia de handoff">
-            <button
-              type="button"
-              className={cx(styles.floatingModeBtn, handoffAudience === 'designer' && styles.floatingModeBtnActive)}
-              onClick={() => onHandoffAudienceChange('designer')}
-            >
-              <Palette size={14} />
-              Designer
-            </button>
-            <button
-              type="button"
-              className={cx(styles.floatingModeBtn, handoffAudience === 'dev' && styles.floatingModeBtnActive)}
-              onClick={() => onHandoffAudienceChange('dev')}
-            >
-              <Code2 size={14} />
-              Dev
-            </button>
-          </div>
-        </>
-      )}
+      {/* Audience switcher — animated wrap reveals/collapses when
+          entering/leaving Handoff mode. Inside, another segmented
+          control with the indicator sliding between Des and Dev. */}
+      <div
+        className={cx(
+          styles.floatingAudienceWrap,
+          editorMode === 'handoff' && styles.floatingAudienceWrapOpen
+        )}
+        aria-hidden={editorMode !== 'handoff'}
+      >
+        <div className={styles.floatingDivider} />
+        <div
+          className={styles.segmentedControl}
+          style={{ '--seg-count': 2, '--seg-index': audienceIndex }}
+          role="tablist"
+          aria-label="Audiencia de handoff"
+        >
+          <div className={styles.segmentedIndicator} aria-hidden="true" />
+          {audienceOptions.map((opt) => {
+            const Icon = opt.icon
+            const active = handoffAudience === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={cx(styles.segmentedOption, active && styles.segmentedOptionActive)}
+                onClick={() => onHandoffAudienceChange(opt.value)}
+                // Tab-skip + disable while the wrap is collapsed so
+                // keyboard users don't focus invisible buttons.
+                tabIndex={editorMode === 'handoff' ? 0 : -1}
+                disabled={editorMode !== 'handoff'}
+              >
+                <Icon size={14} />
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }
@@ -4929,15 +4979,16 @@ function AddFaqModal({ onConfirm, onSkip, onClose }) {
           }}
         />
         <div className={styles.modalActions}>
-          <button
-            className={styles.modalBtnPrimary}
+          <Button
+            variant="primary"
+            fullWidth
             onClick={() => onConfirm(value.trim())}
           >
             Agregar
-          </button>
-          <button className={styles.modalBtnSecondary} onClick={onSkip}>
+          </Button>
+          <Button variant="ghost" fullWidth onClick={onSkip}>
             Saltar
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -4981,15 +5032,16 @@ function AddSectionModal({ onConfirm, onSkip, onClose, projectType = 'page' }) {
           />
         )}
         <div className={styles.modalActions}>
-          <button
-            className={styles.modalBtnPrimary}
+          <Button
+            variant="primary"
+            fullWidth
             onClick={() => onConfirm(value.trim())}
           >
             Agregar
-          </button>
-          <button className={styles.modalBtnSecondary} onClick={onSkip}>
+          </Button>
+          <Button variant="ghost" fullWidth onClick={onSkip}>
             Saltar
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -5006,7 +5058,7 @@ function SeoPanelButton({ active = false, onClick }) {
       className={cx(panelStyles.seoPanelButton, active && panelStyles.seoPanelButtonActive)}
       onClick={onClick}
     >
-      <Search size={16} />
+      <Globe size={16} />
       <span>SEO metadata</span>
     </button>
   )
@@ -5077,11 +5129,11 @@ function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId,
         <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {canManageSections && (
             <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar pregunta">
-              <Plus size={24} color="#2a2a2a" />
+              <Plus size={14} />
             </button>
           )}
           <button className={panelStyles.panelAddBtn} onClick={onExportCsv} title="Exportar CSV">
-            <Download size={20} color="#2a2a2a" />
+            <Download size={14} />
           </button>
         </div>
       </div>
@@ -5196,7 +5248,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
         <span className={panelStyles.panelTitle}>Page sections</span>
         {canManageSections && (
           <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar sección">
-            <Plus size={24} color="#2a2a2a" />
+            <Plus size={14} />
           </button>
         )}
       </div>
@@ -5287,10 +5339,10 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               onDragEnd={onDragEnd}
               className={panelStyles.dragHandle}
             >
-              <GripVertical size={16} color="#999" />
+              <GripVertical size={16} />
             </div>
           )}
-          <Tag size={18} color="#2a2a2a" strokeWidth={1.8} />
+          <Tag size={18} strokeWidth={1.8} />
           {editing ? (
             <input
               className={panelStyles.sectionNameInput}
@@ -5327,7 +5379,7 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
               title="Opciones"
             >
-              <MoreVertical size={24} color="#2a2a2a" />
+              <MoreVertical size={24} />
             </button>
           )}
           {canManageSection && menuOpen && (
@@ -5522,40 +5574,66 @@ function TypeLabelsColumn({ wrapperRef, editor }) {
     return TEXT_OPTIONS
   }
 
+  // Horizontal bubble picker labels (Phase 2b — issue 5).
+  // Show ALL options as bubbles; mark the current one as active rather than
+  // filtering it out. "Párrafo" abbreviates to "¶" so the bubble row stays
+  // visually tight and matches the existing block-label glyph for paragraphs.
+  function bubbleDisplayLabel(opt) {
+    if (opt === 'Párrafo') return '¶'
+    return opt
+  }
+
+  function isActiveOption(currentLabel, opt) {
+    if (currentLabel === '¶' && opt === 'Párrafo') return true
+    return currentLabel === opt
+  }
+
   return (
     <div ref={columnRef} className={styles.typeLabelsCol}>
-      {labels.map((item, idx) => (
-        <div
-          key={idx}
-          className={styles.typeLabelItem}
-          ref={(node) => setCssVars(node, { '--type-label-top': item.top })}
-        >
-          <button
-            className={cx(styles.typeLabelBtn, ['t', 'img', 'CTA'].includes(item.label) && styles.typeLabelBtnDisabled)}
-            onClick={(e) => { e.stopPropagation(); if (['t', 'img', 'CTA'].includes(item.label)) return; setOpenIdx(idx === openIdx ? -1 : idx) }}
-            title={`Tipo actual: ${item.label}`}
+      {labels.map((item, idx) => {
+        const isInteractive = !['t', 'img', 'CTA'].includes(item.label)
+        const isOpen = openIdx === idx && isInteractive
+        const options = isInteractive ? getOptionsForLabel(item.label) : []
+        return (
+          <div
+            key={idx}
+            className={styles.typeLabelItem}
+            ref={(node) => setCssVars(node, { '--type-label-top': item.top })}
           >
-            {item.label}
-          </button>
+            <button
+              className={cx(
+                styles.typeLabelBtn,
+                !isInteractive && styles.typeLabelBtnDisabled,
+                isOpen && styles.typeLabelBtnOpen,
+              )}
+              onClick={(e) => { e.stopPropagation(); if (!isInteractive) return; setOpenIdx(idx === openIdx ? -1 : idx) }}
+              title={`Tipo actual: ${item.label}`}
+            >
+              {item.label}
+            </button>
 
-          {openIdx === idx && !['t', 'img', 'CTA'].includes(item.label) && (
-            <div ref={dropdownRef} className={styles.typeLabelDropdown}>
-              {getOptionsForLabel(item.label).filter((opt) => {
-                if (item.label === '¶') return opt !== 'Párrafo'
-                return opt !== item.label
-              }).map((opt) => (
-                <div
-                  key={opt}
-                  className={styles.typeLabelOption}
-                  onClick={() => applyType(opt === 'Párrafo' ? 'paragraph' : opt, item.blockEl, item.label)}
-                >
-                  {opt}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+            {isOpen && (
+              <div ref={idx === openIdx ? dropdownRef : null} className={styles.typeLabelBubbleRow} role="menu">
+                {options.map((opt, i) => {
+                  const active = isActiveOption(item.label, opt)
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      role="menuitem"
+                      className={cx(styles.typeLabelBubble, active && styles.typeLabelBubbleActive)}
+                      style={{ ['--bubble-delay']: `${i * 30}ms` }}
+                      onClick={() => applyType(opt === 'Párrafo' ? 'paragraph' : opt, item.blockEl, item.label)}
+                    >
+                      {bubbleDisplayLabel(opt)}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -5648,10 +5726,37 @@ function parseTooltipTitle(title) {
 // ---------------------------------------------------------------------------
 // Toolbar — barra de herramientas compartida
 // ---------------------------------------------------------------------------
+// Ordered list of toolbar group ids, left → right. Drives the overflow
+// calculation (groups overflow from the right) and gates the order in
+// which they appear inside the "more" popover. Keep in sync with the
+// groups array built inside the Toolbar component.
+const TOOLBAR_GROUP_ORDER = ['history', 'block', 'text', 'color', 'align', 'insert']
+
+
 function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment = false }) {
   const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
   const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
+
+  // ── Overflow handling (Google Docs-style "more" menu) ────────────────
+  // The toolbar holds 6 groups separated by dividers. When the container
+  // is narrower than total content width, we hide groups from the right
+  // and surface them in a popover behind a 3-dot button.
+  // Strategy:
+  //   1. Render all groups in the toolbar (hidden ones via display:none).
+  //   2. Measure each group's width ONCE on first mount (cached in a ref;
+  //      widths are stable for this toolbar since contents are mostly
+  //      icon buttons with fixed sizes).
+  //   3. On container resize, compute which groups fit from left to right
+  //      reserving space for the "more" button + its divider.
+  //   4. Overflowed groups stay hidden in the toolbar (still in DOM for
+  //      future measurement / accessibility) AND get re-rendered inside
+  //      the popover when it's open.
+  const groupRefs = useRef({})
+  const moreBtnRef = useRef(null)
+  const groupWidthsRef = useRef({})
+  const [overflowedGroupIds, setOverflowedGroupIds] = useState([])
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!editor) return
@@ -5671,6 +5776,124 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
     document.addEventListener('pointerdown', handlePointerDown)
     return () => document.removeEventListener('pointerdown', handlePointerDown)
   }, [openToolbarMenu])
+
+  // ── Measure groups + compute overflow on container resize ────────────
+  useLayoutEffect(() => {
+    if (!toolbarRef.current) return undefined
+
+    // Capture each group's natural width the first time we see it (and
+    // only while it's currently visible in the toolbar — display:none
+    // gives 0 width). Once cached, we never re-measure: contents are
+    // stable enough that the small drift (e.g. "Párrafo" vs "H1" label)
+    // doesn't matter for the overflow decision.
+    function captureWidths() {
+      Object.entries(groupRefs.current).forEach(([id, el]) => {
+        if (!el) return
+        const w = el.offsetWidth
+        if (w > 0 && !(id in groupWidthsRef.current)) {
+          groupWidthsRef.current[id] = w
+        }
+      })
+    }
+
+    function computeOverflow() {
+      const container = toolbarRef.current
+      if (!container) return
+      const containerWidth = container.clientWidth
+      const widths = groupWidthsRef.current
+      const order = TOOLBAR_GROUP_ORDER
+
+      // Geometry constants — must match the toolbar's actual flex layout
+      // or the math is off and items spill past the edge.
+      const padding = 24       // .toolbar horizontal padding (12px×2)
+      const gap = 8            // .toolbar `gap: var(--wb-space-2)` between children
+      const dividerWidth = 9   // 1px line + 4px margin each side
+      const moreBtnWidth = 32  // .toolBtn fixed size
+
+      // The flex `gap` applies BETWEEN every pair of adjacent children,
+      // and dividers themselves are flex children. So between two visible
+      // groups the actual spacing is: gap + divider + gap = 25px.
+      // The earlier version of this code used only `dividerWidth` (9)
+      // and silently underestimated by 16px per separator — which is why
+      // items spilled past the edge before the reduction triggered.
+      const betweenGroups = gap + dividerWidth + gap  // 25
+      // Slot reserved for the "more" button when overflow exists:
+      // gap + divider + gap + button = 57px.
+      const moreSlot = gap + dividerWidth + gap + moreBtnWidth  // 57
+
+      // Pre-emptive buffer: react to resize BEFORE items spill past
+      // the toolbar edge. Without this, the JS recompute lands a frame
+      // after the resize paints, so the user sees a flash of overflow.
+      const safetyBuffer = 8
+
+      // Natural width of the toolbar with ALL groups visible (no more
+      // button). Independent of current overflow state so the math
+      // stays stable across re-renders.
+      let totalAll = padding
+      order.forEach((id, idx) => {
+        totalAll += widths[id] || 0
+        if (idx > 0) totalAll += betweenGroups
+      })
+
+      // Case 1: everything fits with the safety buffer. Reset state
+      // unconditionally via functional update — reading from a closure
+      // here would be stale (the reason expand-then-fit used to get
+      // stuck). The setter no-ops if prev is already empty.
+      if (totalAll + safetyBuffer <= containerWidth) {
+        setOverflowedGroupIds((prev) => (prev.length === 0 ? prev : []))
+        return
+      }
+
+      // Case 2: doesn't fit. Walk groups left-to-right, keeping those
+      // that still fit AFTER reserving the more slot AND the safety
+      // buffer. Once a group fails to fit, every subsequent group is
+      // also marked overflowed (contiguous suffix — no visual gaps).
+      const availForGroups = containerWidth - padding - moreSlot - safetyBuffer
+      let used = 0
+      const overflowed = []
+      order.forEach((id, idx) => {
+        const w = (widths[id] || 0) + (idx > 0 ? betweenGroups : 0)
+        if (overflowed.length > 0 || used + w > availForGroups) {
+          overflowed.push(id)
+        } else {
+          used += w
+        }
+      })
+
+      setOverflowedGroupIds((prev) => {
+        if (prev.length === overflowed.length && prev.every((id, i) => id === overflowed[i])) return prev
+        return overflowed
+      })
+    }
+
+    // Initial capture happens before any overflow split (all groups
+    // start visible) so we get accurate widths. Then run the first
+    // overflow calculation.
+    captureWidths()
+    computeOverflow()
+
+    const ro = new ResizeObserver(() => {
+      captureWidths()
+      computeOverflow()
+    })
+    ro.observe(toolbarRef.current)
+    return () => ro.disconnect()
+    // We intentionally don't depend on overflowedGroupIds — the observer
+    // is set up once on mount; the captureWidths() inside the callback
+    // updates the cache opportunistically (it's a no-op once cached).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Close the more menu when clicking outside the toolbar.
+  useEffect(() => {
+    if (!moreMenuOpen) return undefined
+    function onDown(event) {
+      if (moreBtnRef.current?.contains(event.target)) return
+      setMoreMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [moreMenuOpen])
 
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
@@ -5852,6 +6075,297 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
     { value: 'justify', label: 'Justificado', icon: <AlignJustify size={16} />, tooltip: 'Justificar (Ctrl+Shift+J)' },
   ]
 
+  // Build each group's inner JSX once per render. Each entry's `node`
+  // is what goes inside the group's wrapper `<div className="toolbarGroup">`
+  // both in the toolbar AND in the overflow popover. The wrapper itself
+  // is added by the render loop below so the same group can be placed
+  // in either location without re-authoring the markup.
+  const groups = [
+    {
+      id: 'history',
+      node: (
+        <>
+          <ToolBtn disabled={disabled} onClick={onUndo} title="Deshacer (Ctrl+Z)">
+            <Undo2 size={16} />
+          </ToolBtn>
+          <ToolBtn disabled={disabled} onClick={onRedo} title="Rehacer (Ctrl+Y)">
+            <Redo2 size={16} />
+          </ToolBtn>
+        </>
+      ),
+    },
+    {
+      id: 'block',
+      node: (
+        <div className={toolbarStyles.menu} data-toolbar-menu="">
+          <button
+            type="button"
+            className={cx(
+              toolbarStyles.blockSelectButton,
+              disabled && toolbarStyles.blockSelectButtonDisabled,
+            )}
+            disabled={disabled}
+            onClick={() => setOpenToolbarMenu((value) => value === 'block' ? null : 'block')}
+            data-wb-tooltip="Estilo de texto"
+          >
+            <span>{blockOptions.find((option) => option.value === activeBlockType)?.label || 'Párrafo'}</span>
+            <ChevronDown size={12} />
+          </button>
+          {openToolbarMenu === 'block' && (
+            <div className={cx(toolbarStyles.dropdown, toolbarStyles.dropdownBlock)}>
+              {blockOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={cx(
+                    toolbarStyles.dropdownItem,
+                    activeBlockType === option.value && toolbarStyles.dropdownItemActive,
+                  )}
+                  onClick={() => applyBlockType(option.value)}
+                  data-wb-tooltip={option.tooltip}
+                >
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'text',
+      node: (
+        <>
+          <ToolBtn
+            active={editor?.isActive('bold')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleBold().run()}
+            title="Negrita (Ctrl+B)"
+          ><b>B</b></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('italic')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleItalic().run()}
+            title="Cursiva (Ctrl+I)"
+          ><i>I</i></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('underline')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleUnderline().run()}
+            title="Subrayado (Ctrl+U)"
+          ><u>U</u></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('strike')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleStrike().run()}
+            title="Tachado (Ctrl+Shift+X)"
+          ><Strikethrough size={16} /></ToolBtn>
+        </>
+      ),
+    },
+    {
+      id: 'color',
+      node: (
+        <>
+          <label
+            className={cx(
+              toolbarStyles.toolLabel,
+              toolbarStyles.toolLabelRelative,
+              disabled && toolbarStyles.toolLabelDisabled,
+            )}
+            data-wb-tooltip="Color de texto"
+          >
+            <span className={toolbarStyles.colorTrigger}>
+              <Palette size={14} />
+              <span className={toolbarStyles.textColorSample}>A</span>
+            </span>
+            <input
+              type="color"
+              className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
+              onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
+            />
+          </label>
+          <label
+            className={cx(
+              toolbarStyles.toolLabel,
+              toolbarStyles.toolLabelRelative,
+              disabled && toolbarStyles.toolLabelDisabled,
+            )}
+            data-wb-tooltip="Color de resaltado"
+          >
+            <span className={toolbarStyles.highlightSample}>H</span>
+            <input
+              type="color"
+              className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
+              defaultValue="#fef08a"
+              onChange={(e) => editor?.chain().focus().setHighlight({ color: e.target.value }).run()}
+            />
+          </label>
+        </>
+      ),
+    },
+
+    {
+      id: 'align',
+      node: (
+        <>
+          <div className={toolbarStyles.menu} data-toolbar-menu="">
+            <ToolBtn
+              active={openToolbarMenu === 'align'}
+              disabled={disabled}
+              onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
+              title="Alineación de texto"
+            >
+              {getAlignmentIcon(activeAlignment)}
+              <ChevronDown size={12} />
+            </ToolBtn>
+            {openToolbarMenu === 'align' && (
+              <div className={toolbarStyles.dropdown}>
+                {alignmentOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={cx(
+                      toolbarStyles.dropdownItem,
+                      activeAlignment === option.value && toolbarStyles.dropdownItemActive,
+                    )}
+                    onClick={() => {
+                      editor?.chain().focus().setTextAlign(option.value).run()
+                      setOpenToolbarMenu(null)
+                    }}
+                    data-wb-tooltip={option.tooltip}
+                  >
+                    {option.icon}
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className={toolbarStyles.menu} data-toolbar-menu="">
+            <ToolBtn
+              active={openToolbarMenu === 'spacing'}
+              disabled={disabled}
+              onClick={() => setOpenToolbarMenu((value) => value === 'spacing' ? null : 'spacing')}
+              title="Interlineado y espacio de párrafo"
+            >
+              <ListCollapse size={16} />
+              <ChevronDown size={12} />
+            </ToolBtn>
+            {openToolbarMenu === 'spacing' && (
+              <div className={toolbarStyles.dropdown}>
+                <button
+                  type="button"
+                  className={cx(
+                    toolbarStyles.dropdownItem,
+                    getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
+                  )}
+                  onClick={() => applyBlockSpacing('')}
+                  data-wb-tooltip="Espaciado predeterminado"
+                >
+                  <ListCollapse size={16} />
+                  <span>Predeterminado</span>
+                </button>
+                {Object.entries(BLOCK_SPACING_PRESETS).map(([key, preset]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={cx(
+                      toolbarStyles.dropdownItem,
+                      getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
+                    )}
+                    onClick={() => applyBlockSpacing(key)}
+                    data-wb-tooltip={`Espaciado ${preset.label.toLowerCase()}`}
+                  >
+                    <ListCollapse size={16} />
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <ToolBtn disabled={disabled} onClick={() => applyIndent(-1)} title="Disminuir sangría">
+            <IndentDecrease size={16} />
+          </ToolBtn>
+          <ToolBtn disabled={disabled} onClick={() => applyIndent(1)} title="Aumentar sangría">
+            <IndentIncrease size={16} />
+          </ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('bulletList')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleBulletList().run()}
+            title="Lista sin orden"
+          ><List size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('orderedList')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+            title="Lista ordenada"
+          ><ListOrdered size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('blockquote')}
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+            title="Cita"
+          ><Quote size={16} /></ToolBtn>
+        </>
+      ),
+    },
+    {
+      id: 'insert',
+      node: (
+        <>
+          <TableGridPicker
+            disabled={disabled}
+            open={openToolbarMenu === 'table'}
+            onToggle={() => setOpenToolbarMenu((value) => value === 'table' ? null : 'table')}
+            onClose={() => setOpenToolbarMenu(null)}
+            onInsert={(rows, cols) => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()}
+          />
+          <ToolBtn
+            active={editor?.isActive('link')}
+            disabled={disabled}
+            onClick={handleLink}
+            title="Insertar enlace"
+          ><Link2 size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('comment')}
+            disabled={disabled || !canComment || (editor?.state?.selection?.empty ?? true)}
+            onClick={() => {
+              if (!editor || editor.state.selection.empty) return
+              onAddComment?.()
+            }}
+            title="Agregar comentario"
+          ><MessageSquare size={16} /></ToolBtn>
+          <ToolBtn
+            active={editor?.isActive('ctaButton')}
+            disabled={disabled}
+            onClick={handleCtaInsert}
+            title="Insertar CTA/button"
+          ><MousePointerClick size={16} /></ToolBtn>
+          <label
+            className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
+            data-wb-tooltip="Insertar imagen"
+          >
+            <ImageIcon size={16} />
+            <input
+              type="file"
+              accept="image/*"
+              className={toolbarStyles.hiddenFileInput}
+              onChange={handleImageUpload}
+              disabled={disabled}
+            />
+          </label>
+        </>
+      ),
+    },
+  ]
+
+  const overflowedSet = new Set(overflowedGroupIds)
+  const hasOverflow = overflowedGroupIds.length > 0
+
   return (
     <div
       ref={toolbarRef}
@@ -5862,286 +6376,59 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
         setOpenToolbarMenu(null)
       }}
     >
-      <ToolBtn
-        disabled={disabled}
-        onClick={onUndo}
-        title="Deshacer (Ctrl+Z)"
-      ><Undo2 size={16} /></ToolBtn>
-
-      <ToolBtn
-        disabled={disabled}
-        onClick={onRedo}
-        title="Rehacer (Ctrl+Y)"
-      ><Redo2 size={16} /></ToolBtn>
-
-      <div className={toolbarStyles.separator} />
-
-      <div className={toolbarStyles.menu} data-toolbar-menu="">
-        <button
-          type="button"
-          className={cx(
-            toolbarStyles.blockSelectButton,
-            disabled && toolbarStyles.blockSelectButtonDisabled,
-          )}
-          disabled={disabled}
-          onClick={() => setOpenToolbarMenu((value) => value === 'block' ? null : 'block')}
-          data-wb-tooltip="Estilo de texto"
-        >
-          <span>{blockOptions.find((option) => option.value === activeBlockType)?.label || 'Párrafo'}</span>
-          <ChevronDown size={12} />
-        </button>
-        {openToolbarMenu === 'block' && (
-          <div className={cx(toolbarStyles.dropdown, toolbarStyles.dropdownBlock)}>
-            {blockOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={cx(
-                  toolbarStyles.dropdownItem,
-                  activeBlockType === option.value && toolbarStyles.dropdownItemActive,
-                )}
-                onClick={() => applyBlockType(option.value)}
-                data-wb-tooltip={option.tooltip}
-              >
-                <span>{option.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className={toolbarStyles.separator} />
-
-      <ToolBtn
-        active={editor?.isActive('bold')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBold().run()}
-        title="Negrita (Ctrl+B)"
-      ><b>B</b></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('italic')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleItalic().run()}
-        title="Cursiva (Ctrl+I)"
-      ><i>I</i></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('underline')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleUnderline().run()}
-        title="Subrayado (Ctrl+U)"
-      ><u>U</u></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('strike')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleStrike().run()}
-        title="Tachado (Ctrl+Shift+X)"
-      ><Strikethrough size={16} /></ToolBtn>
-
-      <div className={toolbarStyles.separator} />
-
-      <label
-        className={cx(
-          toolbarStyles.toolLabel,
-          toolbarStyles.toolLabelRelative,
-          disabled && toolbarStyles.toolLabelDisabled,
-        )}
-        data-wb-tooltip="Color de texto"
-      >
-        <span className={toolbarStyles.colorTrigger}>
-          <Palette size={14} />
-          <span className={toolbarStyles.textColorSample}>A</span>
-        </span>
-        <input
-          type="color"
-          className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
-          onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
-        />
-      </label>
-
-      <label
-        className={cx(
-          toolbarStyles.toolLabel,
-          toolbarStyles.toolLabelRelative,
-          disabled && toolbarStyles.toolLabelDisabled,
-        )}
-        data-wb-tooltip="Color de resaltado"
-      >
-        <span className={toolbarStyles.highlightSample}>H</span>
-        <input
-          type="color"
-          className={cx(toolbarStyles.colorInput, disabled && toolbarStyles.colorInputDisabled)}
-          defaultValue="#fef08a"
-          onChange={(e) => editor?.chain().focus().setHighlight({ color: e.target.value }).run()}
-        />
-      </label>
-
-      <div className={toolbarStyles.separator} />
-
-      <div className={toolbarStyles.menu} data-toolbar-menu="">
-        <ToolBtn
-          active={openToolbarMenu === 'align'}
-          disabled={disabled}
-          onClick={() => setOpenToolbarMenu((value) => value === 'align' ? null : 'align')}
-          title="Alineación de texto"
-        >
-          {getAlignmentIcon(activeAlignment)}
-          <ChevronDown size={12} />
-        </ToolBtn>
-        {openToolbarMenu === 'align' && (
-          <div className={toolbarStyles.dropdown}>
-            {alignmentOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={cx(
-                  toolbarStyles.dropdownItem,
-                  activeAlignment === option.value && toolbarStyles.dropdownItemActive,
-                )}
-                onClick={() => {
-                  editor?.chain().focus().setTextAlign(option.value).run()
-                  setOpenToolbarMenu(null)
-                }}
-                data-wb-tooltip={option.tooltip}
-              >
-                {option.icon}
-                <span>{option.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className={toolbarStyles.menu} data-toolbar-menu="">
-        <ToolBtn
-          active={openToolbarMenu === 'spacing'}
-          disabled={disabled}
-          onClick={() => setOpenToolbarMenu((value) => value === 'spacing' ? null : 'spacing')}
-          title="Interlineado y espacio de párrafo"
-        >
-          <ListCollapse size={16} />
-          <ChevronDown size={12} />
-        </ToolBtn>
-        {openToolbarMenu === 'spacing' && (
-          <div className={toolbarStyles.dropdown}>
-            <button
-              type="button"
-              className={cx(
-                toolbarStyles.dropdownItem,
-                getActiveBlockSpacing() === '' && toolbarStyles.dropdownItemActive,
-              )}
-              onClick={() => applyBlockSpacing('')}
-              data-wb-tooltip="Espaciado predeterminado"
+      {/* All groups rendered inline. Overflowed ones get .toolbarGroupHidden
+          (display:none) — they stay in the DOM so their refs remain valid
+          for re-measurement on resize. Dividers only render BETWEEN
+          adjacent visible groups so the toolbar reads cleanly. */}
+      {groups.map((group, idx) => {
+        const isHidden = overflowedSet.has(group.id)
+        const prevGroup = idx > 0 ? groups[idx - 1] : null
+        const showDividerBefore = idx > 0 && !isHidden && prevGroup && !overflowedSet.has(prevGroup.id)
+        return (
+          <RFragment key={group.id}>
+            {showDividerBefore && <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />}
+            <div
+              ref={(el) => { groupRefs.current[group.id] = el }}
+              className={cx(toolbarStyles.toolbarGroup, isHidden && toolbarStyles.toolbarGroupHidden)}
+              data-toolbar-group={group.id}
             >
-              <ListCollapse size={16} />
-              <span>Predeterminado</span>
-            </button>
-            {Object.entries(BLOCK_SPACING_PRESETS).map(([key, preset]) => (
-              <button
-                key={key}
-                type="button"
-                className={cx(
-                  toolbarStyles.dropdownItem,
-                  getActiveBlockSpacing() === key && toolbarStyles.dropdownItemActive,
-                )}
-                onClick={() => applyBlockSpacing(key)}
-                data-wb-tooltip={`Espaciado ${preset.label.toLowerCase()}`}
-              >
-                <ListCollapse size={16} />
-                <span>{preset.label}</span>
-              </button>
-            ))}
+              {group.node}
+            </div>
+          </RFragment>
+        )
+      })}
+
+      {hasOverflow && (
+        <>
+          <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
+          <div className={toolbarStyles.toolbarMoreWrap} data-toolbar-menu="" ref={moreBtnRef}>
+            <ToolBtn
+              active={moreMenuOpen}
+              disabled={disabled}
+              onClick={() => setMoreMenuOpen((value) => !value)}
+              title="Más herramientas"
+            >
+              <MoreVertical size={16} />
+            </ToolBtn>
+            {moreMenuOpen && (
+              <div className={toolbarStyles.moreMenuPopover}>
+                {/* Re-render the overflowed groups inside the popover.
+                    Same JSX as the toolbar copy → clicks fire the same
+                    editor actions; dropdowns inside groups open relative
+                    to their .menu container as they normally do. */}
+                {groups
+                  .filter((g) => overflowedSet.has(g.id))
+                  .map((group, idx) => (
+                    <RFragment key={group.id}>
+                      {idx > 0 && <div className={toolbarStyles.moreMenuDivider} />}
+                      <div className={toolbarStyles.moreMenuGroup}>{group.node}</div>
+                    </RFragment>
+                  ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-
-      <ToolBtn
-        disabled={disabled}
-        onClick={() => applyIndent(-1)}
-        title="Disminuir sangría"
-      ><IndentDecrease size={16} /></ToolBtn>
-
-      <ToolBtn
-        disabled={disabled}
-        onClick={() => applyIndent(1)}
-        title="Aumentar sangría"
-      ><IndentIncrease size={16} /></ToolBtn>
-
-      <div className={toolbarStyles.separator} />
-
-      <ToolBtn
-        active={editor?.isActive('bulletList')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBulletList().run()}
-        title="Lista sin orden"
-      ><List size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('orderedList')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-        title="Lista ordenada"
-      ><ListOrdered size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('blockquote')}
-        disabled={disabled}
-        onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-        title="Cita"
-      ><Quote size={16} /></ToolBtn>
-
-      <div className={toolbarStyles.separator} />
-
-      <TableGridPicker
-        disabled={disabled}
-        open={openToolbarMenu === 'table'}
-        onToggle={() => setOpenToolbarMenu((value) => value === 'table' ? null : 'table')}
-        onClose={() => setOpenToolbarMenu(null)}
-        onInsert={(rows, cols) => editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()}
-      />
-
-      <div className={toolbarStyles.separator} />
-
-      <ToolBtn
-        active={editor?.isActive('link')}
-        disabled={disabled}
-        onClick={handleLink}
-        title="Insertar enlace"
-      ><Link2 size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('comment')}
-        disabled={disabled || !canComment || (editor?.state?.selection?.empty ?? true)}
-        onClick={() => {
-          if (!editor || editor.state.selection.empty) return
-          onAddComment?.()
-        }}
-        title="Agregar comentario"
-      ><MessageSquare size={16} /></ToolBtn>
-
-      <ToolBtn
-        active={editor?.isActive('ctaButton')}
-        disabled={disabled}
-        onClick={handleCtaInsert}
-        title="Insertar CTA/button"
-      ><MousePointerClick size={16} /></ToolBtn>
-
-      <label
-        className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
-        data-wb-tooltip="Insertar imagen"
-      >
-        <ImageIcon size={16} />
-        <input
-          type="file"
-          accept="image/*"
-          className={toolbarStyles.hiddenFileInput}
-          onChange={handleImageUpload}
-          disabled={disabled}
-        />
-      </label>
-
+        </>
+      )}
     </div>
   )
 }
@@ -6208,6 +6495,25 @@ function TableGridPicker({ disabled, open, onToggle, onClose, onInsert }) {
   )
 }
 
+// Local button used inside TableContextBar — auto-width, muted by default,
+// indigo-tinted on hover. Matches the formatting toolbar pattern but lives
+// in this module so the table bar can vary the width per label.
+function TableCtxBtn({ children, onClick, title, danger = false }) {
+  return (
+    <button
+      type="button"
+      className={cx(styles.tableCtxBtn, danger && styles.tableCtxBtnDanger)}
+      // Same anti-blur trick as ToolBtn — preserve the editor selection
+      // so commands like deleteTable target the right cell.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      data-wb-tooltip={title}
+    >
+      {children}
+    </button>
+  )
+}
+
 // Barra contextual para operaciones de tabla (solo visible cuando cursor está en tabla)
 function TableContextBar({ editor }) {
   const [, forceUpdate] = useState(0)
@@ -6223,33 +6529,39 @@ function TableContextBar({ editor }) {
 
   return (
     <div className={styles.tableContextBar}>
-      <ToolBtn onClick={() => editor.chain().focus().addColumnBefore().run()} title="Columna antes">
-        <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Izq</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Columna después">
-        <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Der</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().deleteColumn().run()} title="Eliminar columna">
-        <Columns3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
-      </ToolBtn>
+      <div className={styles.tableCtxGroup}>
+        <TableCtxBtn onClick={() => editor.chain().focus().addColumnBefore().run()} title="Columna antes">
+          <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Izq</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Columna después">
+          <Columns3 size={14} /><span className={styles.tableCtxLabel}>+ Der</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().deleteColumn().run()} title="Eliminar columna">
+          <Columns3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
+        </TableCtxBtn>
+      </div>
 
-      <div className={styles.toolbarSep} />
+      <div className={styles.tableCtxDivider} />
 
-      <ToolBtn onClick={() => editor.chain().focus().addRowBefore().run()} title="Fila antes">
-        <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Arriba</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Fila después">
-        <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Abajo</span>
-      </ToolBtn>
-      <ToolBtn onClick={() => editor.chain().focus().deleteRow().run()} title="Eliminar fila">
-        <Rows3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
-      </ToolBtn>
+      <div className={styles.tableCtxGroup}>
+        <TableCtxBtn onClick={() => editor.chain().focus().addRowBefore().run()} title="Fila antes">
+          <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Arriba</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Fila después">
+          <Rows3 size={14} /><span className={styles.tableCtxLabel}>+ Abajo</span>
+        </TableCtxBtn>
+        <TableCtxBtn onClick={() => editor.chain().focus().deleteRow().run()} title="Eliminar fila">
+          <Rows3 size={14} /><span className={cx(styles.tableCtxLabel, styles.tableCtxLabelDanger)}>−</span>
+        </TableCtxBtn>
+      </div>
 
-      <div className={styles.toolbarSep} />
+      <div className={styles.tableCtxDivider} />
 
-      <ToolBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Eliminar tabla">
-        <Trash2 size={14} color="#ef4444" />
-      </ToolBtn>
+      <div className={styles.tableCtxGroup}>
+        <TableCtxBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Eliminar tabla" danger>
+          <Trash2 size={14} />
+        </TableCtxBtn>
+      </div>
     </div>
   )
 }
@@ -7225,7 +7537,7 @@ function EditorPanel({
             onMouseDown={focusEditorFromPage}
             data-flash-container=""
           >
-            <div ref={wrapperRef} className={seoRulesStyles.editorCanvasContent}>
+            <div ref={wrapperRef} className={`${seoRulesStyles.editorCanvasContent} ${styles.canvas}`}>
               <EditorContent editor={editor} />
               <TableInlineButtons editor={editor} wrapperRef={wrapperRef} />
               <TableRightClickMenu editor={editor} />
@@ -7239,7 +7551,9 @@ function EditorPanel({
                     className={styles.canvasAddSectionBtn}
                     onClick={() => onOpenAddSectionAfter?.(activeSectionId)}
                   >
-                    <Plus size={14} color="#2a2a2a" />
+                    <span className={styles.canvasAddSectionIconWrap} aria-hidden="true">
+                      <Plus size={14} />
+                    </span>
                     Agregar sección debajo
                   </button>
                 </div>
@@ -7331,7 +7645,7 @@ function SeoMetadataPanel({ metadata, contentRules, expanded, onExpandedChange, 
         aria-expanded={expanded}
         aria-controls={panelId}
       >
-        <Search size={15} />
+        <Globe size={15} />
         <span>SEO metadata</span>
         <span className={seoRulesStyles.seoToggleMeta}>
           {metadata?.titleTag || metadata?.metaDescription || metadata?.urlSlug ? 'Completo' : 'Sin completar'}
@@ -8356,21 +8670,33 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
           <h2 className={styles.handoffTitle}>{page?.name || 'Página'}</h2>
         </div>
         <div className={styles.handoffHeaderActions}>
-          <button className={styles.handoffActionBtn} onClick={() => handleCopy('Página copiada', { text: pageText, html: pageHtml })}>
-            <Copy size={14} />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Copy size={14} />}
+            onClick={() => handleCopy('Página copiada', { text: pageText, html: pageHtml })}
+          >
             Copiar página
-          </button>
+          </Button>
           {selectedImageCount > 0 && (
-            <button className={styles.handoffActionBtn} onClick={() => openBulkImageExport(selectedImages)}>
-              <Download size={14} />
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Download size={14} />}
+              onClick={() => openBulkImageExport(selectedImages)}
+            >
               Exportar {selectedImageCount} imagen{selectedImageCount === 1 ? '' : 'es'}
-            </button>
+            </Button>
           )}
           {audience === 'dev' && (
-            <button className={styles.handoffActionBtn} onClick={() => handleCopy('Markdown copiado', { text: pageMarkdown })}>
-              <Code2 size={14} />
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Code2 size={14} />}
+              onClick={() => handleCopy('Markdown copiado', { text: pageMarkdown })}
+            >
               Markdown
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -8398,10 +8724,14 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
             <section key={section.id} className={styles.handoffSection} data-handoff-section-id={section.id}>
               <div className={styles.handoffSectionHeader}>
                 <h3 className={styles.handoffSectionTitle}>{section.name}</h3>
-                <button className={styles.handoffGhostBtn} onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}>
-                  <Copy size={13} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Copy size={13} />}
+                  onClick={() => handleCopy(groupCopyLabel, { text: sectionText, html: sectionHtml })}
+                >
                   {groupButtonLabel}
-                </button>
+                </Button>
               </div>
 
               <div className={styles.handoffBlockList}>
@@ -8615,11 +8945,11 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
               <div className={styles.exportFieldGrid}>
                 <label className={styles.exportField}>
                   <span>Formato</span>
-                  <select className={styles.exportInput} value={exportModal.format} onChange={(event) => updateExportField('format', event.target.value)}>
+                  <Select className={styles.exportInput} value={exportModal.format} onChange={(event) => updateExportField('format', event.target.value)}>
                     <option value="webp">WebP</option>
                     <option value="jpg">JPG</option>
                     <option value="png">PNG</option>
-                  </select>
+                  </Select>
                 </label>
                 {exportModal.mode === 'bulk' ? (
                   <div className={styles.exportField}>
@@ -8647,8 +8977,8 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
               </label>
 
               <div className={styles.exportActions}>
-                <button type="button" className={styles.exportSecondaryBtn} onClick={closeImageExport}>Cancelar</button>
-                <button type="submit" className={styles.exportPrimaryBtn}>Exportar imagen</button>
+                <Button variant="ghost" size="md" onClick={closeImageExport}>Cancelar</Button>
+                <Button variant="primary" size="md" type="submit">Exportar imagen</Button>
               </div>
             </form>
           </>
@@ -8827,10 +9157,14 @@ function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest,
           <p className={styles.handoffEyebrow}>Preview</p>
           <h2 className={styles.handoffTitle}>{page?.name || 'Página'}</h2>
         </div>
-        <button className={styles.handoffActionBtn} onClick={() => window.print()}>
-          <FileText size={14} />
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<FileText size={14} />}
+          onClick={() => window.print()}
+        >
           Exportar PDF
-        </button>
+        </Button>
       </div>
       <div ref={scrollRef} className={styles.previewScroll}>
         <article
@@ -8922,30 +9256,34 @@ function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, 
               {copied ? <span className={styles.shareLinkCopiedBadge}>✓</span> : <Copy size={14} />}
             </button>
           </div>
-          <button
-            type="button"
-            className={styles.shareLinkOpenBtn}
+          <Button
+            variant="primary"
+            size="sm"
+            fullWidth
             onClick={() => window.open(shareUrl, '_blank', 'noopener')}
           >
             Abrir en nueva pestaña
-          </button>
-          <button
-            type="button"
-            className={styles.shareLinkRevokeBtn}
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            fullWidth
             onClick={onRevoke}
+            className={styles.shareLinkRevokeSpacer}
           >
             Revocar link
-          </button>
+          </Button>
         </>
       ) : (
-        <button
-          type="button"
-          className={styles.shareLinkOpenBtn}
+        <Button
+          variant="primary"
+          size="sm"
+          fullWidth
+          loading={busy}
           onClick={handleCreate}
-          disabled={busy}
         >
-          {busy ? 'Creando…' : 'Crear link privado'}
-        </button>
+          Crear link privado
+        </Button>
       )}
       <p className={panelStyles.deliverablesEmpty} style={{ marginTop: 4 }}>
         Comparte este link con el cliente para que vea y comente el contenido.
@@ -9113,10 +9451,10 @@ function HistoryDiffModal({ entry, onClose, onRestore }) {
           )}
         </div>
         <div className={panelStyles.diffModalActions}>
-          <button type="button" className={panelStyles.diffModalClose} onClick={onClose}>Cerrar</button>
-          <button
-            type="button"
-            className={panelStyles.diffModalRestore}
+          <Button variant="ghost" size="md" onClick={onClose}>Cerrar</Button>
+          <Button
+            variant="primary"
+            size="md"
             onClick={() => {
               if (window.confirm('Restaurar el contenido de esta sección a este estado? El cambio queda en el editor; recuerda guardar para que sea permanente.')) {
                 onRestore?.(entry.htmlAfter)
@@ -9124,7 +9462,7 @@ function HistoryDiffModal({ entry, onClose, onRestore }) {
             }}
           >
             Restaurar esta versión
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -9289,7 +9627,7 @@ function UpdatesPanel({
           data-wb-tooltip="Actualizar"
           aria-label={isRefreshing ? 'Actualizando' : 'Actualizar'}
         >
-          <RotateCw size={14} className={isRefreshing ? panelStyles.updatesRefreshSpinner : undefined} />
+          <RefreshCw size={14} className={isRefreshing ? panelStyles.updatesRefreshSpinner : undefined} />
         </button>
       </div>
       <div className={cx(panelStyles.rightPanelScroll, projectType === 'document' && panelStyles.rightPanelScrollWithDock)}>
@@ -9323,12 +9661,12 @@ function UpdatesPanel({
             )}
             {canReviewDesignerProposals ? (
               <div className={panelStyles.proposalActions}>
-                <button className={panelStyles.deliverableButton} onClick={onApproveDesignerProposal}>
+                <Button variant="primary" size="sm" onClick={onApproveDesignerProposal}>
                   Aprobar
-                </button>
-                <button className={panelStyles.proposalSecondaryButton} onClick={onRejectDesignerProposal}>
+                </Button>
+                <Button variant="secondary" size="sm" onClick={onRejectDesignerProposal}>
                   Pedir cambios
-                </button>
+                </Button>
               </div>
             ) : isDesigner ? (
               <p className={panelStyles.deliverablesEmpty}>Puedes seguir editando y guardando sobre esta propuesta.</p>
@@ -9346,15 +9684,16 @@ function UpdatesPanel({
                 onChange={(event) => setDeliverableTitle(event.target.value)}
                 placeholder="Nuevo entregable"
               />
-              <select
+              <Select
                 className={styles.deliverableSelect}
+                fullWidth={false}
                 value={deliverableServiceType}
                 onChange={(event) => setDeliverableServiceType(event.target.value)}
               >
                 {DELIVERABLE_SERVICE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
-              </select>
+              </Select>
               <button className={panelStyles.deliverableButton} type="submit" disabled={deliverableSubmitting || !deliverableTitle.trim()}>
                 {deliverableSubmitting ? 'Creando...' : 'Crear'}
               </button>
@@ -9374,15 +9713,16 @@ function UpdatesPanel({
                     <span className={panelStyles.deliverableMeta}>{item.serviceType} · {deliverableStatusLabel(item.status)}</span>
                   </div>
                   {canManageProjectMeta ? (
-                    <select
+                    <Select
                       className={styles.deliverableStatusSelect}
+                      fullWidth={false}
                       value={item.status}
                       onChange={(event) => onUpdateDeliverableStatus?.(item.id, event.target.value)}
                     >
                       {DELIVERABLE_STATUS_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   ) : (
                     <span className={panelStyles.deliverableMeta}>{deliverableStatusLabel(item.status)}</span>
                   )}

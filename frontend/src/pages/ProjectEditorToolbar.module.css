@@ -1,30 +1,136 @@
 /* Migrated to tokens 2026-05-09 (plan 04-03). NOTE: this file
    currently implements a LIGHT toolbar (background: var(--wb-surface),
-   border: var(--wb-editor-border)) — UI-SPEC §Color §Dark-chrome
+   border: var(--wb-border)) — UI-SPEC §Color §Dark-chrome
    prescribes a dark toolbar. The "zero visual regression" invariant
    takes precedence; UI-SPEC vs. impl discrepancy flagged in
    04-03-SUMMARY.md for product decision. Off-canon neutrals
    (#f0f4f9 / #e8f0fe / #d2e3fc / #e0f0ff / #e5e7eb) kept as literals
    pending dedicated palette decision. */
+/* Floating glass toolbar (Phase 2a — issue 4): visually detached from the
+   center-column edges with horizontal margin, a translucent background
+   and backdrop blur. The toolbar still anchors to the top of the canvas
+   column (it sits before the editor scroll area in the DOM, so the scroll
+   area starts below it) — no sticky needed. */
 .toolbar {
   position: relative;
-  z-index: var(--wb-z-sticky);
+  /* The toolbar creates a stacking context (position:relative + z-index,
+     AND backdrop-filter which always creates one per spec). Anything
+     inside — including .dropdown — is trapped in this context, so the
+     dropdown's own z-index only competes against siblings inside the
+     toolbar. When the toolbar's context is compared to the canvas's
+     .typeLabelBubbleRow (also at --wb-z-sticky = 200), DOM order wins
+     and the bubble row, being later in the document, paints over the
+     toolbar's dropdown. Bumping the toolbar to --wb-z-overlay (900)
+     lifts the whole context above the bubble row (200) while still
+     staying below modals (1000), popovers (1100), and tooltips (1200). */
+  z-index: var(--wb-z-overlay);
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 16px;
-  background: var(--wb-surface);
-  border-bottom: 1px solid var(--wb-editor-border);
-  flex-shrink: 0;
+  gap: var(--wb-space-2);
+  margin: var(--wb-space-3) var(--wb-space-4) 0;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  background: var(--wb-glass-bg);
+  border: 1px solid var(--wb-glass-border);
+  border-radius: var(--wb-radius-3);
+  box-shadow: var(--wb-glass-shadow);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+  /* Allow the toolbar to shrink in narrow containers so the overflow
+     logic in JS can decide which groups to hide (rather than the
+     toolbar spilling outside the canvas column). min-width: 0 is
+     required inside a flex parent for the shrink to actually happen. */
+  flex-shrink: 1;
+  min-width: 0;
   overflow: visible;
 }
 
+/* Hide a toolbar group via display:none. The element stays in the DOM
+   (ref remains valid) but takes no layout space — and crucially won't
+   show its content nor trigger interactions. The overflow JS toggles
+   this class based on measured widths.
+
+   Double-class selector (.toolbarGroup.toolbarGroupHidden) raises
+   specificity to (0,2,0) so this wins over .toolbarGroup's
+   `display: inline-flex` regardless of declaration order. The earlier
+   single-class version lost the cascade because .toolbarGroup is
+   declared LATER in this file. */
+.toolbarGroup.toolbarGroupHidden {
+  display: none;
+}
+
+/* "More" button wrapper — same pattern as .menu (relative parent for
+   the popover positioned inside it). */
+.toolbarMoreWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Overflow popover — opens below the "more" button, anchored to its
+   right edge so it never extends past the toolbar's right side. Holds
+   the overflowed groups stacked as horizontal mini-rows, the same
+   visual unit as in the toolbar itself. */
+.moreMenuPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  max-width: 320px;
+  padding: var(--wb-space-2);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-md);
+  /* Match .dropdown's tier so it sits above the toolbar's bubble row
+     and other canvas chrome, but below modals/tooltips. */
+  z-index: var(--wb-z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  /* Internal dropdowns (block selector, alignment, spacing) need to
+     extend past the popover's bounds when opened. */
+  overflow: visible;
+}
+
+/* Each overflowed group renders as a horizontal mini-toolbar row. */
+.moreMenuGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  flex-wrap: wrap;
+}
+
+/* Subtle separator between groups inside the popover. */
+.moreMenuDivider {
+  height: 1px;
+  background: var(--wb-border);
+  margin: 0;
+}
+
+/* Group container: clusters related buttons with tight internal spacing */
+.toolbarGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+}
+
+/* Subtle vertical divider between groups (spec S2) */
+.toolbarDivider {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--wb-space-1);
+  flex-shrink: 0;
+  background: var(--wb-border);
+}
+
+/* Legacy separator (still used inside table contextual toolbar etc.) */
 .separator {
   width: 1px;
   height: 20px;
   margin: 0 4px;
   flex-shrink: 0;
-  background: var(--wb-editor-border);
+  background: var(--wb-border);
 }
 
 .menu {
@@ -37,17 +143,21 @@
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  min-width: 160px;
-  padding: 6px;
-  border: 1px solid var(--wb-editor-border);
-  border-radius: 8px;
+  min-width: 180px;
+  padding: var(--wb-space-1);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: var(--wb-z-sticky);
+  box-shadow: var(--wb-shadow-md);
+  /* Must beat the canvas's .typeLabelBubbleRow (--wb-z-sticky = 200);
+     --wb-z-dropdown (100) was losing to it. --wb-z-popover (1100) is
+     the right tier for click-opened menus that need to clear sticky
+     content but stay below modals. */
+  z-index: var(--wb-z-popover);
 }
 
 .dropdownBlock {
-  min-width: 118px;
+  min-width: 140px;
 }
 
 .dropdownItem {
@@ -55,52 +165,65 @@
   min-height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px;
+  gap: var(--wb-space-2);
+  padding: 0 var(--wb-space-3);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--wb-radius-xs);
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--wb-text-sm);
   text-align: left;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .dropdownItem:hover {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
 }
 
 .dropdownItemActive {
-  background: #e8f0fe;
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
   font-weight: 600;
 }
 
 .dropdownItemActive:hover {
-  background: #d2e3fc;
+  background: var(--wb-color-primary-100);
 }
 
+/* Square 32x32 power-use buttons (spec S2) */
 .toolBtn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 4px 10px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--wb-radius-2);
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 14px;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
 .toolBtn:hover:not(.toolBtnDisabled) {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
 }
 
+/* Indigo active state per spec S2 */
 .toolBtnActive {
-  background: #e8f0fe;
-  border-color: transparent;
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
+  border-color: var(--wb-color-primary-100);
+}
+
+.toolBtnActive:hover:not(.toolBtnDisabled) {
+  background: var(--wb-color-primary-100);
 }
 
 .toolBtnDisabled {
@@ -116,22 +239,27 @@
   position: relative;
 }
 
+/* toolLabel kept as auto-width to host color pickers / file input with icons */
 .toolLabel {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
-  padding: 4px 10px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--wb-space-2);
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--wb-radius-2);
   background: transparent;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
   font-size: 14px;
   cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
 .toolLabel:hover:not(.toolLabelDisabled) {
-  background: #f0f4f9;
+  background: var(--wb-surface-muted);
 }
 
 .toolLabelDisabled {
@@ -143,20 +271,25 @@
 }
 
 .blockSelectButton {
-  min-width: 92px;
-  min-height: 30px;
+  min-width: 110px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 10px;
-  border: 1px solid var(--wb-editor-border);
-  border-radius: 5px;
+  gap: var(--wb-space-2);
+  padding: 0 var(--wb-space-2);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--wb-text-sm);
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.blockSelectButton:hover:not(.blockSelectButtonDisabled) {
+  background: var(--wb-surface-muted);
 }
 
 .blockSelectButtonDisabled {
@@ -171,7 +304,7 @@
 }
 
 .textColorSample {
-  border-bottom: 3px solid var(--wb-editor-text);
+  border-bottom: 3px solid var(--wb-text);
   line-height: 1;
   padding-bottom: 1px;
 }
@@ -204,14 +337,14 @@
 
 .tablePickerDropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
-  padding: 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  padding: var(--wb-space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
   background: var(--wb-surface);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
-  z-index: var(--wb-z-sticky);
+  box-shadow: var(--wb-shadow-md);
+  z-index: var(--wb-z-dropdown);
 }
 
 .tablePickerLabel {
@@ -235,7 +368,7 @@
 .tablePickerCell {
   width: 18px;
   height: 18px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 2px;
   background: var(--wb-surface);
   cursor: pointer;

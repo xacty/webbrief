@@ -3,15 +3,18 @@
    Off-canon neutrals kept as literals pending dedicated decision (no
    Phase-1 exact match). rgb(... / NN%) alpha overlays kept literal per
    UI-SPEC Color (alpha-on-dark). See 04-03-SUMMARY.md for full mapping. */
+/* Editor navbar — white surface (same as CompanyPage's pageHeader band).
+   El navbar es chrome distinto del body lavender; con border-bottom indigo
+   se separa limpiamente del canvas/body sin mezclarse con el fondo. */
 .navbar {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(280px, 1fr) minmax(300px, 0.9fr);
   align-items: center;
-  height: 70px;
-  background: #f0f0f0;
-  border-bottom: 1px solid var(--wb-editor-bg);
+  min-height: 70px;
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
   flex-shrink: 0;
-  padding: 0 24px;
+  padding: 6px 24px;
 }
 
 .navLeft {
@@ -23,7 +26,7 @@
 
 .navLogo {
   font-size: 35px;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   line-height: 1;
   user-select: none;
@@ -40,10 +43,10 @@
 .navBackBtn {
   width: 32px;
   height: 32px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 999px;
   background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -54,7 +57,7 @@
 
 .navBackBtn:hover {
   background: #f0f4f9;
-  border-color: var(--wb-editor-text-on-dark-muted);
+  border-color: var(--wb-text-muted);
 }
 
 .projectNameBtn,
@@ -64,7 +67,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 15px;
   font-weight: 600;
   padding: 7px 9px;
@@ -88,10 +91,10 @@
   min-width: 180px;
   max-width: 280px;
   height: 34px;
-  border: 1px solid var(--wb-editor-bg);
+  border: 1px solid var(--wb-surface);
   border-radius: 8px;
   background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 15px;
   font-weight: 600;
   padding: 0 9px;
@@ -119,7 +122,7 @@
 }
 
 .navPillWrapperActive {
-  background: var(--wb-editor-bg);
+  background: var(--wb-color-primary-600);
 }
 
 .navPill,
@@ -138,7 +141,7 @@
 }
 
 .navPill {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-weight: 400;
 }
 
@@ -147,7 +150,7 @@
 }
 
 .navPillActive {
-  color: #f2f2f2;
+  color: #ffffff;
   font-weight: 500;
 }
 
@@ -173,11 +176,11 @@
 }
 
 .navPillMenuBtnActive {
-  color: #f2f2f2;
+  color: #ffffff;
 }
 
 .navPillMenuBtnInactive {
-  color: var(--wb-editor-text-on-dark-muted);
+  color: var(--wb-text-muted);
 }
 
 .navPillMenu {
@@ -203,7 +206,7 @@
 }
 
 .navPillMenuItem {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
 }
 
 .navPillMenuItem:hover {
@@ -235,11 +238,11 @@
 }
 
 .navPillInputActive {
-  color: #f2f2f2;
+  color: #ffffff;
 }
 
 .navPillInputInactive {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
 }
 
 .navPillInputTransparent {
@@ -279,30 +282,6 @@
   text-align: right;
 }
 
-.navSaveBtn {
-  min-width: 86px;
-  height: 34px;
-  padding: 0 14px;
-  background: var(--wb-color-primary-900);
-  color: var(--wb-editor-text-on-dark);
-  border: none;
-  border-radius: 9px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 120ms;
-}
-
-.navSaveBtn:hover:not(.navSaveBtnDisabled) {
-  background: var(--wb-primary-hover);
-}
-
-.navSaveBtnDisabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .navIcons {
   display: flex;
   align-items: center;
@@ -334,8 +313,8 @@
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: var(--wb-color-danger-500);
-  color: var(--wb-editor-text-on-dark);
+  background: var(--wb-color-primary-600);
+  color: #ffffff;
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
@@ -474,10 +453,10 @@
   gap: 4px;
   height: 30px;
   padding: 0 8px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 999px;
   background: var(--wb-surface);
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
@@ -506,7 +485,7 @@
 }
 
 .templatesMenuTitle {
-  color: var(--wb-editor-text);
+  color: var(--wb-text);
   font-size: 13px;
   font-weight: 600;
 }
@@ -520,7 +499,7 @@
 .templatesInput {
   height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--wb-editor-border);
+  border: 1px solid var(--wb-border);
   border-radius: 6px;
   font-family: inherit;
   font-size: 13px;
@@ -528,29 +507,7 @@
 }
 
 .templatesInput:focus {
-  border-color: var(--wb-editor-bg);
-}
-
-.templatesSubmit {
-  min-height: 32px;
-  border: none;
-  border-radius: 6px;
-  background: var(--wb-editor-bg);
-  color: var(--wb-editor-text-on-dark);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 120ms;
-}
-
-.templatesSubmit:hover:not(:disabled) {
-  background: #000;
-}
-
-.templatesSubmit:disabled {
-  opacity: 0.6;
-  cursor: default;
+  border-color: var(--wb-surface);
 }
 
 .templatesFeedback {
@@ -563,4 +520,28 @@
   margin: 0;
   font-size: 11px;
   color: var(--wb-color-neutral-400);
+}
+
+/* ── Save status chip ── */
+.saveStatusChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  padding: 4px 10px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-warning-50);
+  color: var(--wb-color-warning-700);
+  border: 1px solid var(--wb-color-warning-200);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-semibold);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.saveStatusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wb-color-warning-500);
+  flex-shrink: 0;
 }

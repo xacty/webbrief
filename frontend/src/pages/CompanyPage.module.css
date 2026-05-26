@@ -1,21 +1,90 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--wb-space-5);
+  gap: var(--wb-space-6);
 }
 
-.breadcrumbs {
+/* Divided page header — surface bg + bottom border, extends edge-to-edge
+   beyond the AppShell.content padding via negative margins. The tab bar
+   sits flush at the bottom so its active underline overlaps the border. */
+.pageHeader {
   display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-3);
+  min-height: 180px;
+  margin: calc(var(--wb-space-8) * -1) calc(var(--wb-space-6) * -1) 0;
+  padding: var(--wb-space-5) var(--wb-space-6) 0;
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
 }
 
-.header {
+.pageHeaderInner {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  flex: 1;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--wb-space-5);
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+.pageBody {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-6);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text-muted);
+}
+
+.breadcrumbLink {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--wb-primary);
+  cursor: pointer;
+  font-weight: var(--wb-weight-medium);
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbSep {
+  color: var(--wb-text-muted);
+  opacity: 0.6;
+}
+
+.breadcrumbCurrent {
+  color: var(--wb-text);
+  font-weight: var(--wb-weight-medium);
 }
 
 .titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--wb-space-5);
+  flex-wrap: wrap;
+}
+
+.headerMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-1);
+  min-width: 0;
+}
+
+.titleLine {
   display: flex;
   align-items: center;
   gap: var(--wb-space-3);
@@ -24,61 +93,26 @@
 
 .title {
   margin: 0;
-  font-size: var(--wb-text-4xl);
+  font-size: var(--wb-text-3xl);
+  font-weight: var(--wb-weight-bold);
   line-height: var(--wb-leading-tight);
+  letter-spacing: -0.02em;
   color: var(--wb-text);
 }
 
-.subtitle {
-  margin: var(--wb-space-3) 0 0;
-  color: var(--wb-text-muted);
-  line-height: var(--wb-leading-relaxed);
-}
-
-.summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--wb-space-3);
-}
-
-.summaryCard {
+.headerMeta {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--wb-space-2);
-  border: 1px solid var(--wb-border);
-}
-
-.summaryLabel {
-  font-size: var(--wb-text-xs);
-  font-weight: var(--wb-weight-semibold);
   color: var(--wb-text-muted);
-}
-
-.summaryValue {
-  font-size: var(--wb-text-base);
-  color: var(--wb-text);
-}
-
-.workspaceGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) 340px;
-  gap: var(--wb-space-5);
-  align-items: start;
+  font-size: var(--wb-text-sm);
+  flex-wrap: wrap;
 }
 
 .projectsSection {
   display: flex;
   flex-direction: column;
   gap: var(--wb-space-4);
-}
-
-.teamCard {
-  position: sticky;
-  top: var(--wb-space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--wb-space-4);
-  border: 1px solid var(--wb-border);
 }
 
 .sectionHeader {
@@ -112,12 +146,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--wb-space-4);
-  min-height: 220px;
-  padding: var(--wb-space-4);
+  min-height: 180px;
+  padding: var(--wb-space-5);
   border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-md);
   background: var(--wb-surface);
-  box-shadow: var(--wb-shadow-sm);
+  box-shadow: var(--wb-shadow-card);
   transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
   cursor: pointer;
 }
@@ -125,8 +159,8 @@
 .projectCard:hover,
 .projectCard:focus-visible {
   transform: translateY(-2px);
-  border-color: var(--wb-border-strong);
-  box-shadow: var(--wb-shadow-md);
+  border-color: var(--wb-color-primary-100);
+  box-shadow: var(--wb-shadow-card-hover);
   outline: none;
 }
 
@@ -234,74 +268,56 @@
 .projectTop {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--wb-space-3);
-  /* Reserve room for the absolute checkbox at top-right (32 px + gap)
-   * so the project name/client never collide with it. The kebab now lives
-   * in the action row below — no left-padding needed for the title. */
+  /* Reserve room for the absolute checkbox at top-right (32 px + gap). */
   padding-right: var(--wb-space-7);
+}
+
+.projectTypeChip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--wb-space-1) var(--wb-space-3);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-bold);
+  letter-spacing: 0.02em;
+}
+
+.projectKebabSlot {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.projectBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-1);
 }
 
 .projectName {
   margin: 0;
   font-size: var(--wb-text-lg);
+  font-weight: var(--wb-weight-bold);
   line-height: var(--wb-leading-snug);
   color: var(--wb-text);
 }
 
-.projectClient {
-  margin: var(--wb-space-1) 0 0;
+.projectTimestamp {
+  margin: 0;
   color: var(--wb-text-muted);
   font-size: var(--wb-text-sm);
-}
-
-.projectMetaList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wb-space-2);
-}
-
-.projectMetaRow {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--wb-space-3);
-  align-items: baseline;
-}
-
-.metaLabel {
-  font-size: var(--wb-text-xs);
-  font-weight: var(--wb-weight-semibold);
-  color: var(--wb-text-muted);
-}
-
-.metaValue {
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-semibold);
-  color: var(--wb-text);
-  text-align: right;
 }
 
 .projectActions {
-  /* Primary action cluster (Abrir + Duplicar) at the left; kebab pinned
-   * to the bottom-right via `margin-left: auto`. If there is no kebab
-   * (no manage perms) the buttons stay left-aligned. */
+  /* Action buttons live flush at the bottom of the card, no border separator —
+   * the chip at the top already provides visual structure. */
   display: flex;
   align-items: center;
   gap: var(--wb-space-2);
   margin-top: auto;
-  padding-top: var(--wb-space-3);
-  border-top: 1px solid var(--wb-border);
-}
-
-.projectActionsButtons {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wb-space-2);
-}
-
-.projectActionsKebab {
-  display: inline-flex;
-  margin-left: auto;
 }
 
 .inviteForm {
@@ -328,25 +344,32 @@
 .membersSection {
   display: flex;
   flex-direction: column;
-  gap: var(--wb-space-3);
-  padding-top: var(--wb-space-1);
+  gap: var(--wb-space-4);
 }
 
 .membersHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--wb-space-3);
 }
 
 .membersTitle {
   margin: 0;
-  font-size: var(--wb-text-base);
+  font-size: var(--wb-text-xl);
+  font-weight: var(--wb-weight-semibold);
   color: var(--wb-text);
 }
 
+.membersCount {
+  color: var(--wb-text-muted);
+  font-weight: var(--wb-weight-regular);
+}
+
+/* PR 3: role-breakdown line under the Miembros title
+   ("1 admin · 2 managers · 3 editores · 1 colaborador"). */
 .membersCounter {
-  margin: 0;
+  margin: var(--wb-space-1) 0 0;
   font-size: var(--wb-text-sm);
   color: var(--wb-text-muted);
 }
@@ -354,49 +377,164 @@
 .membersList {
   display: flex;
   flex-direction: column;
-  gap: var(--wb-space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-md);
+  background: var(--wb-surface);
+  overflow: hidden;
 }
 
 .memberRow {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: var(--wb-space-3);
-  padding: var(--wb-space-3);
-  border-radius: var(--wb-radius-md);
+  padding: var(--wb-space-3) var(--wb-space-4);
+  border-bottom: 1px solid var(--wb-border);
+  transition: background-color 120ms ease;
+}
+
+.memberRow:last-child {
+  border-bottom: none;
+}
+
+.memberRow:hover {
   background: var(--wb-surface-muted);
-  border: 1px solid var(--wb-border);
+}
+
+.memberAvatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-100);
+  color: var(--wb-color-primary-700);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-bold);
+  letter-spacing: 0.01em;
+}
+
+.memberInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .memberName {
-  margin: 0 0 var(--wb-space-1);
-  font-weight: var(--wb-weight-bold);
+  margin: 0;
+  font-weight: var(--wb-weight-semibold);
   font-size: var(--wb-text-sm);
   color: var(--wb-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .memberEmail {
   margin: 0;
   color: var(--wb-text-muted);
-  font-size: var(--wb-text-sm);
-}
-
-.memberMeta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--wb-space-1);
-}
-
-.memberRole {
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-bold);
-  color: var(--wb-text);
+  font-size: var(--wb-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .memberDate {
+  flex-shrink: 0;
+  min-width: 90px;
+  text-align: right;
   font-size: var(--wb-text-xs);
   color: var(--wb-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.memberKebabPlaceholder {
+  /* Reserve the same width as the KebabMenu trigger so rows align
+     whether or not the actions column is rendered. */
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+}
+
+.membersEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-12) var(--wb-space-6);
+  border: 1px dashed var(--wb-border);
+  border-radius: var(--wb-radius-md);
+  background: var(--wb-surface);
+}
+
+.membersEmptyIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-600);
+}
+
+.membersEmptyTitle {
+  margin: 0;
+  font-size: var(--wb-text-base);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-text);
+}
+
+.membersEmptyText {
+  margin: 0;
+  max-width: 360px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-snug);
+}
+
+.inviteRow {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: var(--wb-space-3);
+}
+
+@media (max-width: 600px) {
+  .inviteRow {
+    grid-template-columns: 1fr;
+  }
+
+  .memberDate {
+    display: none;
+  }
+}
+
+.addProjectCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wb-space-2);
+  min-height: 180px;
+  border: 1.5px dashed var(--wb-border);
+  border-radius: var(--wb-radius-md);
+  background: transparent;
+  color: var(--wb-text-muted);
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+
+.addProjectCard:hover {
+  border-color: var(--wb-primary);
+  color: var(--wb-primary);
+  background: var(--wb-primary-soft);
 }
 
 .emptyState {
@@ -474,16 +612,6 @@
   padding-top: var(--wb-space-1);
 }
 
-@media (max-width: 1040px) {
-  .workspaceGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .teamCard {
-    position: static;
-  }
-}
-
 @media (max-width: 960px) {
   .summary,
   .sectionHeader {
@@ -492,8 +620,7 @@
     align-items: stretch;
   }
 
-  .projectTop,
-  .memberRow {
+  .projectTop {
     flex-direction: column;
     align-items: stretch;
   }
@@ -501,4 +628,75 @@
   .projectGrid {
     grid-template-columns: 1fr;
   }
+}
+
+.tabBar {
+  display: flex;
+  gap: 0;
+  margin-top: auto;
+  /* margin-top: auto pushes the tabs to the bottom of the now taller
+     pageHeader (min-height 180px) so the active tab's 2px underline still
+     overlaps the .pageHeader border-bottom via the tab's -1px margin-bottom. */
+}
+
+.tab {
+  padding: var(--wb-space-3) var(--wb-space-4);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+  font-family: var(--wb-font-sans);
+}
+
+.tab:hover {
+  color: var(--wb-text);
+}
+
+.tabActive {
+  color: var(--wb-primary);
+  font-weight: var(--wb-weight-semibold);
+  border-bottom-color: var(--wb-primary);
+}
+
+.tabPanel {
+  /* full-width — no sidebar constraint */
+}
+
+.activityList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.activityItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-4);
+  padding: var(--wb-space-3) 0;
+  border-bottom: 1px solid var(--wb-border);
+  font-size: var(--wb-text-sm);
+}
+
+.activityItem:last-child {
+  border-bottom: none;
+}
+
+.activityType {
+  color: var(--wb-text);
+  font-weight: var(--wb-weight-medium);
+}
+
+.activityDate {
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+  flex-shrink: 0;
 }

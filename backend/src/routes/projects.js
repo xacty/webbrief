@@ -825,6 +825,8 @@ router.get('/:id', async (req, res) => {
     const currentRole = getCompanyRole(req.currentUser, project.company_id)
     const shouldOverlayDesignerProposal = currentRole === 'designer' && req.currentUser.platformRole !== 'admin'
 
+    const companyName = project.company?.name || ''
+
     return res.json({
       project: {
         id: project.id,
@@ -834,6 +836,7 @@ router.get('/:id', async (req, res) => {
         businessType: project.business_type,
         projectType: inferredProjectType,
         companyId: project.company_id,
+        companyName,
         archivedAt: project.archived_at,
         trashedAt: project.trashed_at,
         updatedAt: project.updated_at,

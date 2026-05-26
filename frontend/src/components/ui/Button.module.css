@@ -58,11 +58,11 @@
 
 /* Variant modifiers — colors locked by UI-SPEC §Color per-variant token map */
 .variant_primary {
-  background: var(--wb-color-primary-900);
+  background: var(--wb-color-primary-600);
   color: #ffffff;
 }
 .variant_primary:not(:disabled):hover {
-  background: var(--wb-color-primary-500);
+  background: var(--wb-color-primary-700);
 }
 
 .variant_secondary {

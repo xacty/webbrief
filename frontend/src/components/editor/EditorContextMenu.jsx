@@ -41,8 +41,15 @@ function Separator() {
 
 export default function EditorContextMenu({ open, position, editor, onClose, onAddComment, canComment = false, selectionSnapshot = null }) {
   const menuRef = useRef(null)
+  const submenuWrapperRef = useRef(null)
   const [submenu, setSubmenu] = useState(null) // 'block' | null
   const [adjustedPos, setAdjustedPos] = useState(null)
+  // Vertical distance from the "Tipo de bloque" row's bottom edge to the
+  // parent menu's bottom edge. Used to anchor the submenu's BOTTOM at the
+  // parent menu's BOTTOM, so the submenu always lives in the same vertical
+  // band as the parent and never clips below the viewport when the menu is
+  // near the bottom of the screen.
+  const [submenuBottomOffset, setSubmenuBottomOffset] = useState(0)
 
   useEffect(() => {
     if (!open) return
@@ -89,6 +96,15 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
     }
     const left = Math.max(MARGIN, Math.min(position.x, window.innerWidth - rect.width - MARGIN))
     setAdjustedPos({ left, top })
+
+    // Measure how far below the "Tipo de bloque" wrapper row the parent
+    // menu extends. This delta is invariant for a given menu structure
+    // (depends only on how many items are below the wrapper), so one
+    // measurement is enough — even if the menu later flips vertically.
+    if (submenuWrapperRef.current) {
+      const wrapperRect = submenuWrapperRef.current.getBoundingClientRect()
+      setSubmenuBottomOffset(Math.max(0, rect.bottom - wrapperRect.bottom))
+    }
   }, [open, position.x, position.y])
 
   const isMac = useMemo(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform), [])
@@ -254,6 +270,7 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
       />
       <Separator />
       <div
+        ref={submenuWrapperRef}
         className={styles.submenuWrapper}
         onMouseEnter={() => setSubmenu('block')}
         onMouseLeave={() => setSubmenu(null)}
@@ -266,7 +283,14 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
         {submenu === 'block' && (
           <div
             className={styles.submenu}
-            style={{ left: '100%', top: 0, width: SUBMENU_WIDTH }}
+            // `bottom: -submenuBottomOffset` anchors the submenu's bottom
+            // edge at the parent menu's bottom edge (offset is the gap
+            // between the wrapper row's bottom and the menu's bottom).
+            // The submenu then sizes upward from there — its top floats
+            // up automatically based on how many items it has — so the
+            // submenu and parent menu always share the same lower edge,
+            // and the submenu never clips below the viewport.
+            style={{ left: '100%', bottom: -submenuBottomOffset, width: SUBMENU_WIDTH }}
           >
             <MenuItem label="Párrafo" onSelect={() => handleBlockType('paragraph')} />
             <MenuItem label="Título 1" onSelect={() => handleBlockType('1')} />

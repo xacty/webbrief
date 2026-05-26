@@ -204,15 +204,21 @@ export default function IntegrationsPage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>Integraciones</h1>
-        <p className={styles.subtitle}>
-          Conectá WeBrief con tus herramientas para que tu agente de IA
-          pueda crear y editar contenido en tu nombre.
-        </p>
+      <header className={styles.pageHeader}>
+        <div className={styles.pageHeaderInner}>
+          <div className={styles.titleRow}>
+            <div className={styles.headerMain}>
+              <h1 className={styles.title}>Integraciones</h1>
+              <p className={styles.headerMeta}>
+                Conectá WeBrief con tus herramientas para que tu agente de IA
+                pueda crear y editar contenido en tu nombre.
+              </p>
+            </div>
+          </div>
+        </div>
       </header>
 
-      <div className={styles.content}>
+      <div className={styles.pageBody}>
         <Card as="section" padding="md" shadow="sm" radius="lg" className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>

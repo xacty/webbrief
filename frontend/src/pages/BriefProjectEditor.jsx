@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft, Bookmark, MessageSquare } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
+import { Button, Select } from '../components/ui'
 import styles from './BriefProjectEditor.module.css'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -71,15 +72,16 @@ function QuestionEditor({ question, index, total, onChange, onRemove, onMoveUp, 
     <div className={`${styles.questionCard} ${question.type === 'section_header' ? styles.questionCardSection : ''}`}>
       <div className={styles.questionCardTop}>
         <span className={styles.questionIndex}>{index + 1}</span>
-        <select
+        <Select
           className={styles.typeSelect}
+          fullWidth={false}
           value={question.type}
           onChange={(e) => onChange({ ...question, type: e.target.value, options: [] })}
         >
           {ADD_QUESTION_TYPES.map((t) => (
             <option key={t} value={t}>{QUESTION_TYPE_LABELS[t]}</option>
           ))}
-        </select>
+        </Select>
         <div className={styles.questionCardActions}>
           <button
             className={styles.iconBtn}
@@ -188,8 +190,11 @@ function TemplateSavePanel({ companyId, formTitle, formDescription, questions })
 
   return (
     <div className={styles.sideCard}>
-      <h2 className={styles.sideCardTitle}>Guardar como plantilla</h2>
-      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <h2 className={styles.sideCardTitle}>
+        <Bookmark size={16} aria-hidden="true" />
+        Guardar como plantilla
+      </h2>
+      <form onSubmit={handleSave} className={styles.templateForm}>
         <input
           className={styles.templateInput}
           type="text"
@@ -197,15 +202,22 @@ function TemplateSavePanel({ companyId, formTitle, formDescription, questions })
           value={templateName}
           onChange={(e) => setTemplateName(e.target.value)}
         />
-        <button
-          className={styles.generateBtn}
+        <Button
+          variant="primary"
+          size="sm"
           type="submit"
-          disabled={saving || !templateName.trim()}
+          fullWidth
+          loading={saving}
+          disabled={!templateName.trim()}
         >
-          {saving ? 'Guardando...' : 'Guardar estructura actual'}
-        </button>
+          Guardar estructura actual
+        </Button>
       </form>
-      {feedback && <p className={styles.sideNote} style={{ color: feedback.startsWith('No') ? '#dc2626' : '#16a34a' }}>{feedback}</p>}
+      {feedback && (
+        <p className={feedback.startsWith('No') ? styles.sideError : styles.sideSuccess}>
+          {feedback}
+        </p>
+      )}
       <p className={styles.sideNote}>La plantilla queda disponible al crear nuevos Briefs en esta empresa.</p>
     </div>
   )
@@ -276,24 +288,26 @@ function SharePanel({ projectId, initialToken }) {
               {copied ? <span className={styles.copiedBadge}>✓</span> : <Copy size={14} />}
             </button>
           </div>
-          <button
-            className={styles.revokeBtn}
+          <Button
+            variant="danger"
+            size="sm"
             onClick={handleRevoke}
             disabled={loading}
-            type="button"
+            loading={loading}
           >
-            {loading ? 'Revocando...' : 'Revocar link'}
-          </button>
+            Revocar link
+          </Button>
         </>
       ) : (
-        <button
-          className={styles.generateBtn}
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleGenerate}
           disabled={loading}
-          type="button"
+          loading={loading}
         >
-          {loading ? 'Generando...' : 'Generar link de envío'}
-        </button>
+          Generar link de envío
+        </Button>
       )}
       {error && <p className={styles.sideError}>{error}</p>}
       <p className={styles.sideNote}>
@@ -331,7 +345,10 @@ function ResponsesPanel({ projectId, questions }) {
 
   return (
     <div className={styles.sideCard}>
-      <h2 className={styles.sideCardTitle}>Respuestas</h2>
+      <h2 className={styles.sideCardTitle}>
+        <MessageSquare size={16} aria-hidden="true" />
+        Respuestas
+      </h2>
 
       {loading && <p className={styles.sideNote}>Cargando...</p>}
       {error && <p className={styles.sideError}>{error}</p>}
@@ -529,18 +546,18 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
             <span className={styles.navbarBadge}>Vista de cliente</span>
           </div>
           <div className={styles.navbarRight}>
-            <span style={{ fontSize: 12, color: '#64748b' }}>
+            <span className={styles.previewHelpText}>
               Estás viendo el brief como lo vería un cliente sin cuenta.
             </span>
           </div>
         </header>
-        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div className={styles.previewFrameWrap}>
           {previewError ? (
-            <div style={{ margin: 'auto', padding: 24, color: '#dc2626' }}>
+            <div className={styles.previewError}>
               {previewError}
             </div>
           ) : !previewToken ? (
-            <div style={{ margin: 'auto', padding: 24, color: '#64748b' }}>
+            <div className={styles.previewLoading}>
               Cargando vista de cliente…
             </div>
           ) : (
@@ -548,7 +565,7 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
               key={previewToken}
               src={`/b/${previewToken}`}
               title="Vista de cliente"
-              style={{ flex: 1, border: 0, background: '#fff' }}
+              className={styles.previewFrame}
             />
           )}
         </div>
@@ -581,14 +598,15 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
           {isDirty && !isSaving && !saveMessage && (
             <span className={styles.navbarDirty}>Sin guardar</span>
           )}
-          <button
-            className={styles.saveBtn}
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleSave}
             disabled={!isDirty || isSaving}
-            type="button"
+            loading={isSaving}
           >
-            {isSaving ? 'Guardando...' : 'Guardar'}
-          </button>
+            Guardar
+          </Button>
         </div>
       </header>
 

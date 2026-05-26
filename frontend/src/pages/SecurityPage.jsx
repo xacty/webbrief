@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Ban, RefreshCw, ShieldAlert, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Ban, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { Button, Input, Select, Modal, Card, Badge } from '../components/ui'
+import SecurityShell from '../components/SecurityShell'
 import styles from './SecurityPage.module.css'
 
 const DATE_OPTIONS = [
@@ -55,8 +55,45 @@ const emptyData = {
   warnings: [],
 }
 
+// TEMP demo dataset for visual preview. Used only when the API returns
+// nothing (e.g. fresh dev DB). Bloquear/Desbloquear on demo rows show an
+// alert instead of hitting the API.
+const DEMO_SECURITY = {
+  overview: {
+    events24h: 247,
+    logins24h: 38,
+    failures24h: 6,
+    activeBlocks: 2,
+    uniqueIps7d: 17,
+    criticalEvents24h: 1,
+  },
+  topIps: [],
+  recentCriticalEvents: [],
+  users: [
+    { userId: 'demo-u-1', email: 'ana.martinez@empresa.com',  lastLoginAt: '2026-05-20T08:42:00Z', ips: ['190.55.12.84'],                 failureCount: 0, block: null, _demo: true },
+    { userId: 'demo-u-2', email: 'juan.lopez@empresa.com',    lastLoginAt: '2026-05-20T07:15:00Z', ips: ['181.45.92.10', '181.45.92.11'], failureCount: 2, block: null, _demo: true },
+    { userId: 'demo-u-3', email: 'pedro.sanchez@empresa.com', lastLoginAt: '2026-05-19T22:08:00Z', ips: ['190.55.12.84'],                 failureCount: 0, block: null, _demo: true },
+    { userId: 'demo-u-4', email: 'sofia.r@externos.com',      lastLoginAt: '2026-05-18T11:30:00Z', ips: ['200.118.45.7'],                 failureCount: 5, block: { id: 'demo-b-1', type: 'manual' }, _demo: true },
+  ],
+  ips: [
+    { ipAddress: '190.55.12.84',  eventCount: 142, failureCount: 0,  users: [{ email: 'ana.martinez@empresa.com' }, { email: 'pedro.sanchez@empresa.com' }], lastSeenAt: '2026-05-20T08:42:00Z', block: null, _demo: true },
+    { ipAddress: '181.45.92.10',  eventCount: 67,  failureCount: 2,  users: [{ email: 'juan.lopez@empresa.com' }],                                            lastSeenAt: '2026-05-20T07:15:00Z', block: null, _demo: true },
+    { ipAddress: '200.118.45.7',  eventCount: 38,  failureCount: 12, users: [{ email: 'sofia.r@externos.com' }],                                              lastSeenAt: '2026-05-18T11:30:00Z', block: { id: 'demo-b-2', type: 'manual' }, _demo: true },
+    { ipAddress: '34.218.7.221',  eventCount: 15,  failureCount: 15, users: [],                                                                                lastSeenAt: '2026-05-17T19:20:00Z', block: { id: 'demo-b-3', type: 'rate_limit' }, _demo: true },
+  ],
+  events: [
+    { id: 'demo-e-1', source: 'webrief',       action: 'login',                outcome: 'success', actorEmail: 'ana.martinez@empresa.com', ipAddress: '190.55.12.84', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/124', createdAt: '2026-05-20T08:42:00Z' },
+    { id: 'demo-e-2', source: 'webrief',       action: 'login',                outcome: 'success', actorEmail: 'juan.lopez@empresa.com',   ipAddress: '181.45.92.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0) Firefox/125',          createdAt: '2026-05-20T07:15:00Z' },
+    { id: 'demo-e-3', source: 'webrief',       action: 'invite_sent',          outcome: 'success', actorEmail: 'admin@webrief.app',        ipAddress: '190.55.12.84', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X) Chrome/124', createdAt: '2026-05-20T06:50:00Z' },
+    { id: 'demo-e-4', source: 'supabase_auth', action: 'login',                outcome: 'failure', actorEmail: 'sofia.r@externos.com',     ipAddress: '200.118.45.7', userAgent: 'curl/8.4.0',                                          createdAt: '2026-05-19T23:11:00Z' },
+    { id: 'demo-e-5', source: 'webrief',       action: 'blocked_login',        outcome: 'failure', actorEmail: 'sofia.r@externos.com',     ipAddress: '200.118.45.7', userAgent: 'curl/8.4.0',                                          createdAt: '2026-05-19T23:05:00Z' },
+    { id: 'demo-e-6', source: 'webrief',       action: 'password_changed',     outcome: 'success', actorEmail: 'pedro.sanchez@empresa.com',ipAddress: '190.55.12.84', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4) Safari/605',createdAt: '2026-05-19T18:22:00Z' },
+    { id: 'demo-e-7', source: 'webrief',       action: 'rate_limit_triggered', outcome: 'failure', actorEmail: null,                       ipAddress: '34.218.7.221', userAgent: 'python-requests/2.31',                                createdAt: '2026-05-17T19:20:00Z' },
+  ],
+  warnings: ['Mostrando datos de muestra para preview visual'],
+}
+
 export default function SecurityPage() {
-  const navigate = useNavigate()
   const [days, setDays] = useState('7')
   const [outcome, setOutcome] = useState('')
   const [actionFilter, setActionFilter] = useState('')
@@ -106,7 +143,10 @@ export default function SecurityPage() {
     loadSecurity()
   }, [days, outcome, actionFilter])
 
-  const warnings = useMemo(() => [...new Set(data.warnings)], [data.warnings])
+  const isEmpty = !data.overview && data.users.length === 0 && data.events.length === 0
+  const displayData = !loading && isEmpty ? DEMO_SECURITY : data
+
+  const warnings = useMemo(() => [...new Set(displayData.warnings)], [displayData.warnings])
 
   function openBlockModal(payload) {
     setBlockModal(payload)
@@ -121,6 +161,11 @@ export default function SecurityPage() {
   async function submitBlock(event) {
     event.preventDefault()
     if (!blockModal || !blockReason.trim()) return
+    if (typeof blockModal.userId === 'string' && blockModal.userId.startsWith('demo-')) {
+      window.alert('Demo: este sujeto es de muestra. Bloquear funciona cuando hay datos reales.')
+      setBlockModal(null)
+      return
+    }
     setBusy('block')
     try {
       await apiFetch('/api/security/blocks', {
@@ -144,6 +189,10 @@ export default function SecurityPage() {
 
   async function revokeBlock(blockId) {
     if (!blockId) return
+    if (typeof blockId === 'string' && blockId.startsWith('demo-')) {
+      window.alert('Demo: este bloqueo es de muestra. Desbloquear funciona cuando hay datos reales.')
+      return
+    }
     setBusy(`revoke:${blockId}`)
     try {
       await apiFetch(`/api/security/blocks/${blockId}`, { method: 'DELETE' })
@@ -155,50 +204,18 @@ export default function SecurityPage() {
     }
   }
 
-  const overview = data.overview || {}
+  const overview = displayData.overview || {}
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>Admin</p>
-          <h1 className={styles.title}>Seguridad</h1>
-          <p className={styles.subtitle}>
-            Revisa actividad de autenticación, IPs asociadas, señales de abuso y bloqueos activos.
-            El bloqueo IP aplica al backend de WeBrief; Supabase Auth directo requiere hardening separado.
-          </p>
-        </div>
-        <div className={styles.headerActions}>
-          <Button
-            variant="secondary"
-            size="md"
-            icon={<ShieldOff size={16} />}
-            type="button"
-            onClick={() => navigate('/security/blocks')}
-          >
-            Bloqueos activos
-          </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            icon={<AlertTriangle size={16} />}
-            type="button"
-            onClick={() => navigate('/security/errors')}
-          >
-            Errores técnicos
-          </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            icon={<RefreshCw size={16} />}
-            type="button"
-            onClick={loadSecurity}
-            disabled={loading}
-          >
-            Actualizar
-          </Button>
-        </div>
-      </header>
+      <SecurityShell
+        title="Seguridad"
+        meta="Revisa actividad de autenticación, IPs asociadas, señales de abuso y bloqueos activos. El bloqueo IP aplica al backend de WeBrief; Supabase Auth directo requiere hardening separado."
+        onRefresh={loadSecurity}
+        refreshing={loading}
+      />
+
+      <div className={styles.pageBody}>
 
       {warnings.length > 0 && (
         <section className={styles.warningBox}>
@@ -245,7 +262,7 @@ export default function SecurityPage() {
       </section>
 
       <section className={styles.gridTwo}>
-        <Panel title="Usuarios" meta={`${data.users.length} usuarios con actividad`}>
+        <Panel title="Usuarios" meta={`${displayData.users.length} usuarios con actividad`}>
           <div className={styles.tableSurface}>
             <table className={styles.table}>
               <thead>
@@ -259,7 +276,7 @@ export default function SecurityPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.users.slice(0, 12).map((user) => (
+                {displayData.users.slice(0, 12).map((user) => (
                   <tr key={user.userId || user.email}>
                     <td>{user.email || user.userId || 'Usuario sin email'}</td>
                     <td>{formatDate(user.lastLoginAt)}</td>
@@ -284,7 +301,7 @@ export default function SecurityPage() {
           </div>
         </Panel>
 
-        <Panel title="IPs" meta={`${data.ips.length} IPs observadas`}>
+        <Panel title="IPs" meta={`${displayData.ips.length} IPs observadas`}>
           <div className={styles.tableSurface}>
             <table className={styles.table}>
               <thead>
@@ -298,7 +315,7 @@ export default function SecurityPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.ips.slice(0, 12).map((ip) => (
+                {displayData.ips.slice(0, 12).map((ip) => (
                   <tr key={ip.ipAddress}>
                     <td>{ip.ipAddress}</td>
                     <td>{ip.eventCount} · {ip.failureCount} fallos</td>
@@ -324,9 +341,9 @@ export default function SecurityPage() {
         </Panel>
       </section>
 
-      <Panel title="Eventos" meta={`${data.events.length} eventos en este filtro`}>
+      <Panel title="Eventos" meta={`${displayData.events.length} eventos en este filtro`}>
         <div className={styles.eventList}>
-          {data.events.map((event) => (
+          {displayData.events.map((event) => (
             <article className={styles.eventItem} key={`${event.source}:${event.id}`}>
               <div className={styles.eventIcon}>
                 {event.outcome === 'success' ? <ShieldCheck size={18} /> : <Ban size={18} />}
@@ -344,9 +361,10 @@ export default function SecurityPage() {
               </div>
             </article>
           ))}
-          {!loading && data.events.length === 0 && <p className={styles.empty}>No hay eventos para este filtro.</p>}
+          {!loading && displayData.events.length === 0 && <p className={styles.empty}>No hay eventos para este filtro.</p>}
         </div>
       </Panel>
+      </div>
 
       <Modal
         open={Boolean(blockModal)}

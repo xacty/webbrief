@@ -245,31 +245,35 @@ export default function UserEditModal({
     >
       <p id="user-edit-modal-description" className={styles.subtitle}>{subtitle}</p>
 
-      <form onSubmit={handleSubmit}>
-        {/* Avatar editor — both scopes */}
-        <div className="user-edit-avatar-editor" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56, borderRadius: '50%', background: 'var(--wb-color-neutral-200)', overflow: 'hidden' }}>
-            {avatarPreview ? (
-              <img src={avatarPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <span style={{ fontWeight: 600 }}>{userInitials(user)}</span>
-            )}
-          </span>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--wb-color-neutral-300)', cursor: 'pointer' }}>
-              <Camera size={16} aria-hidden="true" />
-              <span>Cambiar imagen</span>
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarFileChange} style={{ display: 'none' }} />
-            </label>
-            {user.avatarUrl && (
-              <>
-                <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(user.id, 'original')}>Original</Button>
-                <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(user.id, 'web')}>WebP</Button>
-              </>
-            )}
-          </div>
+      <div className={styles.avatarRow}>
+        <span className={styles.avatarPreview}>
+          {avatarPreview ? (
+            <img src={avatarPreview} alt="" className={styles.avatarImage} />
+          ) : (
+            <span>{userInitials(user)}</span>
+          )}
+        </span>
+        <div className={styles.avatarActions}>
+          <label className={styles.avatarChangeBtn}>
+            <Camera size={16} aria-hidden="true" />
+            <span>Cambiar imagen</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleAvatarFileChange}
+              className={styles.avatarFileInput}
+            />
+          </label>
+          {user.avatarUrl && (
+            <>
+              <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(user.id, 'original')}>Original</Button>
+              <Button type="button" variant="secondary" size="md" icon={<Download size={16} />} onClick={() => downloadAvatarExport(user.id, 'web')}>WebP</Button>
+            </>
+          )}
         </div>
+      </div>
 
+      <form className={styles.form} onSubmit={handleSubmit}>
         <Input
           label="Nombre"
           type="text"
@@ -305,17 +309,17 @@ export default function UserEditModal({
         )}
 
         {showMembershipsList && (
-          <div style={{ marginTop: '12px' }}>
-            <p style={{ fontWeight: 600, marginBottom: '8px' }}>Roles por empresa</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className={styles.membershipsBlock}>
+            <p className={styles.membershipsTitle}>Roles por empresa</p>
+            <div className={styles.membershipsList}>
               {(user.companies || []).map((company) => {
                 const manageable = canManageMembership(company)
                 const currentRole = editForm.companyRoles?.[company.companyId] ?? company.role
                 return (
-                  <div key={company.companyId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '8px 12px', border: '1px solid var(--wb-color-neutral-200)', borderRadius: '8px' }}>
+                  <div key={company.companyId} className={styles.membershipRow}>
                     <div>
-                      <p style={{ margin: 0, fontWeight: 600 }}>{company.companyName}</p>
-                      {company.companySlug && <p style={{ margin: 0, fontSize: '0.85em', color: 'var(--wb-color-neutral-600)' }}>/{company.companySlug}</p>}
+                      <p className={styles.membershipCompany}>{company.companyName}</p>
+                      {company.companySlug && <p className={styles.membershipSlug}>/{company.companySlug}</p>}
                     </div>
                     {manageable ? (
                       <Select

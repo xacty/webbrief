@@ -1,10 +1,21 @@
 /* CommentMarginCards — Google Docs–style cards en el margen derecho del canvas.
    Idle: solo contenido, mínimo. Active: + reply composer + acciones. */
 
+/* Las cards viven pegadas al borde derecho del canvas. El cardsLayer se
+   ancla en términos del `editorPageRow` (max-width 890px) que se centra
+   en la content-box del scrollArea (con padding asimétrico de 10px left +
+   290px right cuando hay comments). Por la asimetría, el centro de la row
+   está ~140px a la izquierda del centro de la padding-box (que es donde
+   se mide `left: 50%`). Para anclar las cards al borde derecho de la row:
+     row_right = (50% del padding-box) + (mitad de row 445) - 140 (asymm)
+   Resultado: left = calc(50% + 445px - 140px + 16px gap) = calc(50% + 321px)
+   con un clamp `min()` para que en viewports angostos las cards no se
+   salgan del scroll area: nunca cards_left > 100% - 296 (= card width
+   + 16 air). Esto mantiene attachment visual con el canvas sin overflow. */
 .cardsLayer {
   position: absolute;
   top: 0;
-  right: 8px;
+  left: min(calc(50% + 321px), calc(100% - 296px));
   width: 280px;
   pointer-events: none;
   z-index: var(--wb-z-sticky);
@@ -16,25 +27,25 @@
   width: 280px;
   background: var(--wb-surface);
   border: 1px solid var(--wb-border);
-  border-radius: 10px;
-  padding: 12px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  border-radius: var(--wb-radius-md);
+  padding: var(--wb-space-3);
+  box-shadow: var(--wb-shadow-card);
   pointer-events: auto;
   cursor: pointer;
-  transition: top 180ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  transition: top 180ms ease, border-color 150ms ease, box-shadow 150ms ease;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .card:hover {
-  border-color: var(--wb-color-neutral-300);
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+  border-color: var(--wb-color-primary-300);
+  box-shadow: var(--wb-shadow-card-hover);
 }
 
 .cardActive {
-  border-color: var(--wb-color-warning-500);
-  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.18), 0 0 0 1px var(--wb-color-warning-200);
+  border-color: var(--wb-color-primary-300);
+  box-shadow: var(--wb-shadow-card-hover);
   cursor: default;
   z-index: var(--wb-z-sticky);
 }
@@ -66,11 +77,11 @@
 
 .popoverCloseBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-editor-bg);
+  color: var(--wb-text);
 }
 
 .cardActive:hover {
-  border-color: var(--wb-color-warning-500);
+  border-color: var(--wb-color-primary-300);
 }
 
 .cardResolved {
@@ -134,17 +145,17 @@
 }
 
 .entryAuthor {
-  font-weight: 600;
-  font-size: 12.5px;
-  color: var(--wb-editor-bg);
+  font-weight: var(--wb-weight-semibold);
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .entryTime {
-  font-size: 11px;
-  color: var(--wb-color-neutral-400);
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text-muted);
   flex-shrink: 0;
 }
 
@@ -155,8 +166,8 @@
 }
 
 .entryText {
-  font-size: 13px;
-  color: var(--wb-editor-bg);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text);
   line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -164,7 +175,7 @@
 }
 
 .mentionLink {
-  color: var(--wb-color-primary-900);
+  color: var(--wb-primary);
   text-decoration: none;
   font-weight: 500;
 }
@@ -211,7 +222,7 @@
 
 .dotsBtn:hover {
   background: #f0f4f9;
-  color: var(--wb-editor-bg);
+  color: var(--wb-text);
 }
 
 /* Reply trigger (idle compact button shown when active card has no composer open yet) */
@@ -257,8 +268,8 @@
 
 .replyComposerName {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--wb-editor-bg);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-text);
 }
 
 .replyTextarea {
@@ -272,7 +283,7 @@
   outline: none;
   padding: 4px 0;
   background: transparent;
-  color: var(--wb-editor-bg);
+  color: var(--wb-text);
 }
 
 .replyComposerActions {
@@ -336,7 +347,7 @@
   background: var(--wb-surface);
   border: 1px solid var(--wb-border);
   border-radius: 8px;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--wb-shadow-md, 0 8px 18px rgba(15, 23, 42, 0.18));
   padding: 4px;
   min-width: 180px;
   z-index: var(--wb-z-popover);
@@ -352,7 +363,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 12.5px;
-  color: var(--wb-editor-bg);
+  color: var(--wb-text);
   cursor: pointer;
   text-align: left;
   font-family: inherit;

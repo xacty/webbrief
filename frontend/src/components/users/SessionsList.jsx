@@ -132,6 +132,13 @@ export default function SessionsList({ targetUserId, selectedIds, onSelectionCha
           aria-label="Recargar sesiones"
         />
       </div>
+      {/* Section hint — moved out of the footer so the toggle/close row
+          stays a stable 2-column layout regardless of selection state. */}
+      <p className={styles.sectionHint}>
+        {someSelected
+          ? 'Las marcadas se cerrarán al guardar contraseña.'
+          : 'Marcá sesiones para cerrarlas al guardar contraseña.'}
+      </p>
       <div className={styles.list}>
         {sessions.map((s) => {
           const revealed = revealedIps[s.id]
@@ -163,9 +170,6 @@ export default function SessionsList({ targetUserId, selectedIds, onSelectionCha
         <Button type="button" variant="ghost" size="sm" onClick={toggleAll}>
           {allSelected ? 'Deseleccionar todas' : 'Seleccionar todas'}
         </Button>
-        <span className={styles.hint}>
-          {someSelected ? 'Las marcadas se cerrarán al guardar contraseña.' : 'Marcá sesiones para cerrar.'}
-        </span>
         <Button
           type="button"
           variant="secondary"
@@ -175,7 +179,7 @@ export default function SessionsList({ targetUserId, selectedIds, onSelectionCha
           disabled={!someSelected || revoking}
           loading={revoking}
         >
-          Cerrar seleccionadas
+          {someSelected ? `Cerrar seleccionadas (${selectedIds.size})` : 'Cerrar seleccionadas'}
         </Button>
       </div>
       {error && <p className={styles.error}>{error}</p>}

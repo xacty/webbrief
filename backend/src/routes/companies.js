@@ -861,4 +861,55 @@ router.delete('/:id/templates/:templateId', async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// GET /api/companies/:id/activity
+// Returns last 50 project_activity events across all projects in this company.
+// ---------------------------------------------------------------------------
+router.get('/:id/activity', async (req, res) => {
+  try {
+    const companyId = req.params.id
+
+    // Verify user has access to this company
+    const isAdmin = req.currentUser.platformRole === 'admin'
+    if (!isAdmin && !canAccessCompany(req.currentUser, companyId)) {
+      return res.status(403).json({ error: 'Sin acceso a esta empresa' })
+    }
+
+    // Fetch all project IDs for this company
+    const { data: projects, error: projectsError } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('company_id', companyId)
+
+    if (projectsError) {
+      return res.status(500).json({ error: 'Error al cargar proyectos' })
+    }
+
+    if (!projects || projects.length === 0) {
+      return res.json({ activity: [] })
+    }
+
+    const projectIds = projects.map((p) => p.id)
+
+    const { data: activity, error: activityError } = await supabaseAdmin
+      .from('project_activity')
+      .select('id, event_type, metadata, created_at, project_id, user_id')
+      .in('project_id', projectIds)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (activityError) {
+      if (activityError.code === '42P01') {
+        // Table doesn't exist yet — return empty gracefully
+        return res.json({ activity: [] })
+      }
+      return res.status(500).json({ error: 'Error al cargar actividad' })
+    }
+
+    return res.json({ activity: activity ?? [] })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo cargar la actividad' })
+  }
+})
+
 export default router
