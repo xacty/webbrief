@@ -93,10 +93,15 @@ export default function PasswordSection({ targetUser, selectedSessionIdsToRevoke
   return (
     <div className={styles.section}>
       <p className={styles.label}>Contraseña</p>
+      <p className={styles.sectionHint}>
+        {generatedPassword
+          ? 'Copiala antes de cerrar — no se vuelve a mostrar.'
+          : 'Generá una contraseña segura o definí una manualmente. Si marcaste sesiones arriba, se cerrarán al guardar.'}
+      </p>
 
       {generatedPassword ? (
         <div className={styles.generatedBox}>
-          <p className={styles.generatedHeader}>Contraseña generada — copiala ahora, no se vuelve a mostrar:</p>
+          <p className={styles.generatedHeader}>Contraseña generada</p>
           <div className={styles.generatedRow}>
             <code className={styles.generatedCode}>{generatedPassword}</code>
             <Button
@@ -109,9 +114,11 @@ export default function PasswordSection({ targetUser, selectedSessionIdsToRevoke
               {copied ? 'Copiada' : 'Copiar'}
             </Button>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setGeneratedPassword('')}>
-            Listo, ya la copié
-          </Button>
+          <div className={styles.generatedDoneRow}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setGeneratedPassword('')}>
+              Listo, ya la copié
+            </Button>
+          </div>
         </div>
       ) : (
         <div className={styles.actions}>
@@ -158,9 +165,11 @@ export default function PasswordSection({ targetUser, selectedSessionIdsToRevoke
             minLength={8}
             required
           />
-          <Button type="submit" variant="primary" disabled={busy} loading={busy}>
-            Guardar contraseña
-          </Button>
+          <div className={styles.customSubmitRow}>
+            <Button type="submit" variant="primary" disabled={busy} loading={busy}>
+              Guardar contraseña
+            </Button>
+          </div>
         </form>
       )}
 
