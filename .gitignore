@@ -12,3 +12,5 @@ dist/
 # Claude Agent SDK skill installer (local only — not used by VPS)
 .agents/
 skills-lock.json
+# superpowers skill state (brainstorm/, etc. — local-only, per-session)
+.superpowers/
