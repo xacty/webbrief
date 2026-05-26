@@ -1,0 +1,37 @@
+/* UserEditModal.module.css
+ * Minimal styles unique to the shared modal. Reuses .modalForm, .avatarEditor,
+ * .membershipSection etc. by passing parent's styles via className prop where
+ * possible; this module owns only what doesn't exist elsewhere.
+ */
+
+.subtitle {
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-600);
+  margin: 0 0 var(--wb-space-md);
+}
+
+.fieldHint {
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-600);
+  margin: 0;
+}
+
+.formNote {
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-600);
+  font-style: italic;
+  margin: 0;
+}
+
+.error {
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-danger-600);
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-sm);
+  margin-top: var(--wb-space-md);
+}

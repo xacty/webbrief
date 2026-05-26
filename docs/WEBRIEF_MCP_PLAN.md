@@ -79,7 +79,7 @@ La v1 sera local para `Codex` y `Claude` usando `stdio`. La v2 sera remota usand
 - El MCP server no realiza llamadas a LLMs. La generacion de contenido (estructura inicial, borradores, prefill) la hace el cliente MCP (Codex/Claude). El servidor solo expone tools y aplica mutaciones validadas.
 - El MCP debe forwardear el token del usuario al backend en cada llamada para que el rate limiting, los permisos y la auditoria del backend apliquen naturalmente. El rate limiting propio del MCP es defensa en profundidad, no control primario.
 - El MCP no opera proyectos archivados ni en papelera. Restore se hace via UI.
-- El MCP no maneja uploads de assets ni operaciones de media en v1.
+- El MCP no maneja uploads de assets ni transformaciones de media en v1. Las imagenes se suben via UI (pipeline ImageKit); el MCP puede referenciar URLs publicas ya existentes via `insert_image_by_url` (v1.1).
 - Side-effect deseable: introducir logger estructurado (pino) cuando se monte el MCP. Hoy el backend usa solo `console.log`.
 
 ## Tools V1
@@ -161,12 +161,36 @@ Aclaraciones de scope:
 - Preservar `content_json`, `content_html`, actividad y auditoria.
 - Cubrir cambios de titulos, parrafos, secciones, paginas y FAQ.
 
-### Fase 4: MCP Remoto V2
+### Fase 4: MCP Remoto (en scope v1, no v2)
 
-- Disenar transporte `HTTP/SSE`.
-- Definir autenticacion remota y controles de cliente.
-- Evaluar montaje en VPS detras de Nginx.
-- Preparar compatibilidad futura con clientes como `ChatGPT`.
+**Cambio respecto al plan original (2026-05-23)**: la fase remota se moviò
+dentro de v1 para evitar que cada usuario tenga que clonar el repo y
+mantener un path absoluto en su cliente MCP. La distribución será un
+único endpoint HTTP en el VPS de WeBrief; los clientes se conectan con
+una URL + su `mcpt_*` token, sin npm install ni binarios locales.
+
+Decisiones:
+
+- **Transporte**: `StreamableHTTPServerTransport` del SDK MCP (v1.29.0+).
+  Compatible con Claude Code, Codex CLI, Claude Desktop. SSE legacy NO
+  se implementa (deprecado en favor de Streamable HTTP).
+- **Auth**: token bearer `mcpt_*` en `Authorization` header de cada
+  request, validado por el `requireAuth` middleware existente del
+  backend Express (fast-path `mcpt_` ya implementado en Prep A).
+- **Montaje**: dentro del backend Express, en `POST /api/mcp`. Reusa el
+  mismo proceso y middleware; cero overhead de proceso adicional.
+- **Multi-tenant**: el server hoy es monolítico (env-scoped); pasa a
+  per-request via `AsyncLocalStorage`. Cada handler recibe el token +
+  `currentUser` del request actual; el state de "active company" se
+  guarda en un `Map<token, companyId>` en lugar de variable global.
+- **Stdio sigue funcionando**: `src/index.js` queda como fallback para
+  desarrollo local y para usuarios que prefieran el modo offline.
+- **Nginx**: el endpoint vive bajo el mismo dominio del backend; Nginx
+  pasa el body raw + `Authorization` header. No requiere cambios
+  sustanciales en el reverse proxy.
+- **OAuth/device flow**: NO se implementa en esta vuelta. El `mcpt_`
+  token actúa como API key. Si en el futuro hay multi-org / scopes
+  complejos, se migra a OAuth sin romper el contrato de los tools.
 
 ## Validacion
 
@@ -192,14 +216,33 @@ Aclaraciones de scope:
 - V2 remota por `HTTP/SSE` queda fuera de la implementacion inicial.
 - El MCP opera contenido y proyectos de WeBrief, no deploy ni cambios arbitrarios de codigo.
 - La seguridad base de la app se implementa antes de habilitar mutaciones MCP.
-- V1 no maneja uploads de assets ni operaciones de media. Las imagenes se editan via UI.
+- V1 no maneja uploads de assets ni transformaciones de media. Las imagenes se suben via UI; desde v1.1 el MCP puede embeber URLs publicas ya subidas (`insert_image_by_url`) e insertar CTAs (`insert_cta`).
 - V1 no opera proyectos archivados ni en papelera.
 - El MCP server no llama a LLMs. Toda generacion la hace el cliente (Codex/Claude).
 - Existe un proyecto Supabase de desarrollo separado del de produccion antes de habilitar mutaciones.
+
+## Modelo Recomendado
+
+Para ejecutar este plan via Claude Code, se recomiendan los siguientes modelos por fase. La eleccion balancea calidad de codigo contra costo de tokens.
+
+| Fase | Modelo | Reasoning | Justificacion |
+|---|---|---|---|
+| Prep A (MCP token system) | Sonnet 4.6 | high | Patterns claros (migration, endpoints, middleware). Reasoning high como minimo para evitar bugs sutiles en auth. |
+| Prep B (`shared/documentInvariants.js`) | **Opus 4.7** | **high** | Porteo desde frontend TipTap. Bug silencioso en invariantes rompe documentos en produccion semanas despues. Opus se justifica. |
+| Fase 0 (Contratos + Scaffolding) | Sonnet 4.6 | high | Boilerplate de stdio + zod schemas. Pattern conocido. |
+| Fase 1 (Lectura + Contexto) | Sonnet 4.6 | high | Read-only tools, validacion de auth, multi-empresa. Mecanico. |
+| Fase 2 (Creacion desde contenido) | Sonnet 4.6 | high | URL fetching + project type detection + brief prefill. Patrones conocidos pero con varias ramas. |
+| Fase 3 (Edicion existente) | **Opus 4.7** | **high** | Combinacion de invariantes + expectedVersion + conflict snapshot + 8 operaciones. El espacio de estados es el mas grande de v1. |
+| Fase 4 (Remote V2) | TBD | TBD | Fuera de v1. Re-evaluar cuando se aborde. |
+
+Reglas:
+
+- Sonnet 4.6 reasoning `high` es el minimo para cualquier fase. No bajar a medium/low en este proyecto.
+- Cambiar a Opus 4.7 reasoning `high` SOLO para Prep B y Fase 3.
+- No usar Opus very-high/max: ganancia marginal sobre high, costo y latencia significativos.
 
 ## Proximos Pasos
 
 - Antes de profundizar MCP, completar `Fase 2` del plan general: seguridad de la app.
 - Despues de completar `Fase 2`, pasar a `Fase 3`: completar el plan MCP v1.
-- Modelo recomendado para `Fase 3`: `GPT-5.4`.
-- Thinking recomendado para `Fase 3`: `high`.
+- Ver `docs/WEBRIEF_MCP_HANDOFF.md` para sequencing por sesion y modelo recomendado por unidad de trabajo.

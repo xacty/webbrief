@@ -361,9 +361,10 @@
   color: var(--wb-text);
 }
 
-.membersCount {
+.membersCounter {
+  margin: 0;
+  font-size: var(--wb-text-sm);
   color: var(--wb-text-muted);
-  font-weight: var(--wb-weight-regular);
 }
 
 .membersList {

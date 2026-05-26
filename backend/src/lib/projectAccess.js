@@ -69,7 +69,8 @@ export function canManageCompanyLifecycle(currentUser, companyId) {
 
 export function canManageCompanyUsers(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return getCompanyRole(currentUser, companyId) === 'manager'
+  const role = getCompanyRole(currentUser, companyId)
+  return role === 'admin' || role === 'manager'
 }
 
 export function canCreateProject(currentUser, companyId) {

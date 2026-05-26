@@ -13,7 +13,6 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import {
-  canInviteCompanyRole,
   canManageCompanyUsers,
   canRequestUserRemoval,
   getAccessibleCompanyIds,
@@ -26,7 +25,15 @@ import {
 } from '../lib/users.js'
 import { wrapSupabaseAuthCall } from '../lib/applicationErrors.js'
 import { canSendAccess, decideSendAccessAction } from '../lib/sendAccess.js'
+import {
+  canAssignRoleRanked,
+  canManageMembershipRanked,
+  wouldLeaveCompanyWithoutAdmin,
+} from '../lib/membershipPermissions.js'
 import { sendInviteEmail, sendResetPasswordEmail } from '../lib/authEmails.js'
+import { canSetPassword, canViewSessions, canRevealIp } from '../lib/passwordPermissions.js'
+import { generateSecurePassword } from '../lib/passwordGenerator.js'
+import { formatDeviceLabel, maskIp } from '../lib/userAgent.js'
 import { requireAuth } from '../middleware/auth.js'
 import {
   COMPANY_ROLE_SET,
@@ -65,12 +72,22 @@ function canUseUsersPage(currentUser) {
 
 function canAssignRole(currentUser, companyId, role) {
   if (!COMPANY_ROLE_SET.has(role)) return false
-  return canInviteCompanyRole(currentUser, companyId, role)
+  return canAssignRoleRanked({
+    actorPlatformRole: currentUser?.platformRole,
+    actorMemberships: currentUser?.memberships || [],
+    companyId,
+    role,
+  })
 }
 
 function canManageMembership(currentUser, companyId, targetRole) {
   if (!canManageCompanyUsers(currentUser, companyId)) return false
-  return isAdmin(currentUser) || targetRole !== 'manager'
+  return canManageMembershipRanked({
+    actorPlatformRole: currentUser?.platformRole,
+    actorMemberships: currentUser?.memberships || [],
+    companyId,
+    targetRole,
+  })
 }
 
 function normalizePlatformRole(currentUser, requestedRole) {
@@ -134,18 +151,32 @@ async function getMembership(userId, companyId) {
   return data
 }
 
-async function assertCompanyKeepsManager(companyId, removedManagerId) {
+// Returns the list of admin user_ids for a company.
+async function getCompanyAdminUserIds(companyId) {
   const { data, error } = await supabaseAdmin
     .from('company_memberships')
     .select('user_id')
     .eq('company_id', companyId)
-    .eq('role', 'manager')
+    .eq('role', 'admin')
 
   if (error) throw error
+  return (data || []).map((m) => m.user_id).filter(Boolean)
+}
 
-  const remainingManagers = (data || []).filter((membership) => membership.user_id !== removedManagerId)
-  if (remainingManagers.length === 0) {
-    throw httpError(400, 'La empresa debe conservar al menos un manager')
+// Throws 400 if changing this membership would leave the company without an admin.
+// Pass the new role; pass null when fully removing the membership.
+async function assertCompanyKeepsAdmin(companyId, targetUserId, nextRole) {
+  const adminIds = await getCompanyAdminUserIds(companyId)
+  // We need the CURRENT role to know if we're actually demoting an admin.
+  const currentMembership = await getMembership(targetUserId, companyId)
+  const currentRole = currentMembership?.role
+  if (wouldLeaveCompanyWithoutAdmin({
+    currentRole,
+    nextRole: nextRole === null ? 'editor' : nextRole, // "removed" treated as demoted
+    companyAdminUserIds: adminIds,
+    targetUserId,
+  })) {
+    throw httpError(400, 'La empresa debe conservar al menos un admin')
   }
 }
 
@@ -717,8 +748,8 @@ router.patch('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async 
       return res.status(403).json({ error: 'No tienes permisos para asignar ese rol' })
     }
 
-    if (membership.role === 'manager' && role !== 'manager') {
-      await assertCompanyKeepsManager(companyId, userId)
+    if (membership.role === 'admin' && role !== 'admin') {
+      await assertCompanyKeepsAdmin(companyId, userId, role)
     }
 
     const { error } = await supabaseAdmin
@@ -755,8 +786,8 @@ router.delete('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async
       return res.status(403).json({ error: 'No tienes permisos para gestionar este acceso' })
     }
 
-    if (membership.role === 'manager') {
-      await assertCompanyKeepsManager(companyId, userId)
+    if (membership.role === 'admin') {
+      await assertCompanyKeepsAdmin(companyId, userId, null)
     }
 
     const { error } = await supabaseAdmin
@@ -807,20 +838,24 @@ router.post('/:id/removal-requests', rateLimiters.sensitiveAction, async (req, r
       return res.status(404).json({ error: 'No se encontró el usuario o la empresa para esta solicitud' })
     }
 
-    const { data: managerMemberships, error: managersError } = await supabaseAdmin
+    // PR3: removal-request recipients include both admin and manager roles.
+    // Pre-PR3, only managers received the notification — but after PR 3 a
+    // company's primary authority figure is its admin, so admin-only or
+    // admin-light companies would otherwise have zero recipients.
+    const { data: authorityMemberships, error: managersError } = await supabaseAdmin
       .from('company_memberships')
       .select('user_id')
       .eq('company_id', companyId)
-      .eq('role', 'manager')
+      .in('role', ['admin', 'manager'])
 
     if (managersError) throw managersError
 
-    const recipients = (managerMemberships || [])
+    const recipients = (authorityMemberships || [])
       .map((membership) => membership.user_id)
       .filter((userId) => userId && userId !== req.currentUser.id)
 
     if (recipients.length === 0) {
-      return res.status(400).json({ error: 'No hay managers disponibles para revisar esta solicitud' })
+      return res.status(400).json({ error: 'No hay admins o managers disponibles para revisar esta solicitud' })
     }
 
     const timestamp = new Date().toISOString()
@@ -1041,6 +1076,333 @@ router.post('/:id/send-access', rateLimiters.passwordReset, async (req, res) => 
     const status = error.status || 500
     return res.status(status).json({
       error: error.message || 'No se pudo enviar acceso',
+      errorId: error.applicationErrorId || null,
+    })
+  }
+})
+
+router.get('/:id/sessions', rateLimiters.sensitiveAction, async (req, res) => {
+  const targetUserId = req.params.id
+  if (!targetUserId) return res.status(400).json({ error: 'id requerido' })
+
+  try {
+    const { data: targetProfile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name, platform_role')
+      .eq('id', targetUserId)
+      .maybeSingle()
+    if (profileError) throw profileError
+    if (!targetProfile) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    const { data: targetMembershipsRaw, error: membershipsError } = await supabaseAdmin
+      .from('company_memberships')
+      .select('company_id, role')
+      .eq('user_id', targetUserId)
+    if (membershipsError) throw membershipsError
+
+    const targetMemberships = (targetMembershipsRaw || []).map((m) => ({
+      companyId: m.company_id,
+      role: m.role,
+    }))
+
+    const actorMemberships = (req.currentUser?.memberships || []).map((m) => ({
+      companyId: m.companyId,
+      role: m.role,
+    }))
+
+    const targetForPerm = {
+      id: targetProfile.id,
+      platformRole: targetProfile.platform_role,
+    }
+    const actorForPerm = {
+      id: req.currentUser?.id,
+      platformRole: req.currentUser?.platformRole,
+    }
+
+    if (!canViewSessions({ actor: actorForPerm, target: targetForPerm, actorMemberships, targetMemberships })) {
+      return res.status(403).json({ error: 'No tienes permisos para ver las sesiones de este usuario' })
+    }
+
+    const revealIp = canRevealIp({ actor: actorForPerm, target: targetForPerm, actorMemberships, targetMemberships })
+
+    const { data: sessionsRows, error: sessionsError } = await supabaseAdmin.rpc('list_user_sessions', {
+      p_user_id: targetUserId,
+    })
+    if (sessionsError) throw sessionsError
+
+    const sessions = (sessionsRows || []).map((row) => ({
+      id: row.id,
+      deviceLabel: formatDeviceLabel(row.user_agent),
+      ipMasked: maskIp(row.ip || ''),
+      lastRefreshAt: row.refreshed_at || row.updated_at,
+      createdAt: row.created_at,
+    }))
+
+    return res.json({
+      sessions,
+      total: sessions.length,
+      canRevealIp: revealIp,
+    })
+  } catch (error) {
+    const status = error.status || 500
+    return res.status(status).json({
+      error: error.message || 'No se pudieron cargar las sesiones',
+      errorId: error.applicationErrorId || null,
+    })
+  }
+})
+
+router.post('/:id/sessions/revoke', rateLimiters.sensitiveAction, async (req, res) => {
+  const targetUserId = req.params.id
+  const { sessionIds } = req.body || {}
+
+  if (!targetUserId) return res.status(400).json({ error: 'id requerido' })
+  if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+    return res.status(400).json({ error: 'sessionIds debe ser un array no vacío' })
+  }
+  // Cap to prevent oversized payloads (typical user has < 20 active sessions).
+  if (sessionIds.length > 100) {
+    return res.status(400).json({ error: 'demasiados sessionIds (máx 100)' })
+  }
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!sessionIds.every((id) => typeof id === 'string' && UUID_RE.test(id))) {
+    return res.status(400).json({ error: 'sessionIds inválidos' })
+  }
+
+  try {
+    const { data: targetProfile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name, platform_role')
+      .eq('id', targetUserId)
+      .maybeSingle()
+    if (profileError) throw profileError
+    if (!targetProfile) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    const { data: targetMembershipsRaw, error: membershipsError } = await supabaseAdmin
+      .from('company_memberships')
+      .select('company_id, role')
+      .eq('user_id', targetUserId)
+    if (membershipsError) throw membershipsError
+
+    const targetMemberships = (targetMembershipsRaw || []).map((m) => ({
+      companyId: m.company_id,
+      role: m.role,
+    }))
+    const actorMemberships = (req.currentUser?.memberships || []).map((m) => ({
+      companyId: m.companyId,
+      role: m.role,
+    }))
+    const targetForPerm = { id: targetProfile.id, platformRole: targetProfile.platform_role }
+    const actorForPerm = { id: req.currentUser?.id, platformRole: req.currentUser?.platformRole }
+
+    if (!canViewSessions({ actor: actorForPerm, target: targetForPerm, actorMemberships, targetMemberships })) {
+      return res.status(403).json({ error: 'No tienes permisos para revocar sesiones de este usuario' })
+    }
+
+    const { data: revokedCount, error: revokeError } = await supabaseAdmin.rpc('revoke_user_sessions', {
+      p_user_id: targetUserId,
+      p_session_ids: sessionIds,
+    })
+    if (revokeError) throw revokeError
+
+    await logSecurityEvent(req, {
+      action: 'user_sessions_revoked',
+      resourceType: 'user',
+      resourceId: targetUserId,
+      targetUserId,
+      metadata: { count: revokedCount ?? 0, sessionIds, via: 'modal' },
+    })
+
+    return res.json({ revokedCount: revokedCount ?? 0 })
+  } catch (error) {
+    const status = error.status || 500
+    return res.status(status).json({
+      error: error.message || 'No se pudieron revocar las sesiones',
+      errorId: error.applicationErrorId || null,
+    })
+  }
+})
+
+router.post('/:id/sessions/:sessionId/reveal-ip', rateLimiters.sensitiveAction, async (req, res) => {
+  const { id: targetUserId, sessionId } = req.params
+  if (!targetUserId || !sessionId) return res.status(400).json({ error: 'id y sessionId son requeridos' })
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!UUID_RE.test(sessionId)) return res.status(400).json({ error: 'sessionId inválido' })
+
+  try {
+    const { data: targetProfile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, platform_role')
+      .eq('id', targetUserId)
+      .maybeSingle()
+    if (profileError) throw profileError
+    if (!targetProfile) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    const { data: targetMembershipsRaw, error: membershipsError } = await supabaseAdmin
+      .from('company_memberships')
+      .select('company_id, role')
+      .eq('user_id', targetUserId)
+    if (membershipsError) throw membershipsError
+
+    const targetMemberships = (targetMembershipsRaw || []).map((m) => ({
+      companyId: m.company_id,
+      role: m.role,
+    }))
+    const actorMemberships = (req.currentUser?.memberships || []).map((m) => ({
+      companyId: m.companyId,
+      role: m.role,
+    }))
+    const targetForPerm = { id: targetProfile.id, platformRole: targetProfile.platform_role }
+    const actorForPerm = { id: req.currentUser?.id, platformRole: req.currentUser?.platformRole }
+
+    if (!canRevealIp({ actor: actorForPerm, target: targetForPerm, actorMemberships, targetMemberships })) {
+      return res.status(403).json({ error: 'No tienes permisos para revelar IPs' })
+    }
+
+    const { data: ipRows, error: ipError } = await supabaseAdmin.rpc('get_session_ip', {
+      p_user_id: targetUserId,
+      p_session_id: sessionId,
+    })
+    if (ipError) throw ipError
+
+    const ipRow = (ipRows || [])[0]
+    if (!ipRow) return res.status(404).json({ error: 'Sesión no encontrada para este usuario' })
+
+    const viewerRole = req.currentUser?.platformRole === 'admin' ? 'platform_admin' : 'company_admin'
+    await logSecurityEvent(req, {
+      action: 'ip_revealed',
+      resourceType: 'user',
+      resourceId: targetUserId,
+      targetUserId,
+      metadata: { sessionId, viewerRole },
+    })
+
+    return res.json({ ipFull: ipRow.ip || null })
+  } catch (error) {
+    const status = error.status || 500
+    return res.status(status).json({
+      error: error.message || 'No se pudo revelar la IP',
+      errorId: error.applicationErrorId || null,
+    })
+  }
+})
+
+router.post('/:id/set-password', rateLimiters.passwordReset, async (req, res) => {
+  const targetUserId = req.params.id
+  const { mode, password, revokeSessionIds = [] } = req.body || {}
+
+  if (!targetUserId) return res.status(400).json({ error: 'id requerido' })
+  if (mode !== 'generate' && mode !== 'custom') {
+    return res.status(400).json({ error: 'mode debe ser "generate" o "custom"' })
+  }
+  if (mode === 'custom') {
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' })
+    }
+  }
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!Array.isArray(revokeSessionIds)) {
+    return res.status(400).json({ error: 'revokeSessionIds debe ser un array' })
+  }
+  // Cap to prevent oversized payloads (typical user has < 20 active sessions).
+  if (revokeSessionIds.length > 100) {
+    return res.status(400).json({ error: 'demasiados revokeSessionIds (máx 100)' })
+  }
+  if (revokeSessionIds.length > 0 && !revokeSessionIds.every((id) => typeof id === 'string' && UUID_RE.test(id))) {
+    return res.status(400).json({ error: 'revokeSessionIds inválidos' })
+  }
+
+  try {
+    const { data: targetProfile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name, platform_role')
+      .eq('id', targetUserId)
+      .maybeSingle()
+    if (profileError) throw profileError
+    if (!targetProfile) return res.status(404).json({ error: 'Usuario no encontrado' })
+
+    const { data: targetMembershipsRaw, error: membershipsError } = await supabaseAdmin
+      .from('company_memberships')
+      .select('company_id, role')
+      .eq('user_id', targetUserId)
+    if (membershipsError) throw membershipsError
+
+    const targetMemberships = (targetMembershipsRaw || []).map((m) => ({
+      companyId: m.company_id,
+      role: m.role,
+    }))
+    const actorMemberships = (req.currentUser?.memberships || []).map((m) => ({
+      companyId: m.companyId,
+      role: m.role,
+    }))
+    const targetForPerm = { id: targetProfile.id, platformRole: targetProfile.platform_role }
+    const actorForPerm = { id: req.currentUser?.id, platformRole: req.currentUser?.platformRole }
+
+    if (!canSetPassword({ actor: actorForPerm, target: targetForPerm, actorMemberships, targetMemberships })) {
+      return res.status(403).json({ error: 'No tienes permisos para cambiar la contraseña de este usuario' })
+    }
+
+    const finalPassword = mode === 'generate' ? generateSecurePassword(16) : password
+
+    const { error: updateError } = await wrapSupabaseAuthCall({
+      operation: () => supabaseAdmin.auth.admin.updateUserById(targetUserId, { password: finalPassword }),
+      operationName: 'updateUserById:set-password',
+      req,
+      args: { userId: targetUserId, mode },
+    })
+    if (updateError) throw updateError
+
+    const { error: invalError } = await supabaseAdmin
+      .from('password_reset_requests')
+      .update({ used_at: new Date().toISOString() })
+      .eq('user_id', targetUserId)
+      .is('used_at', null)
+    if (invalError) {
+      console.warn('[set-password] password_reset_requests invalidation failed', invalError.message)
+    }
+
+    let revokedCount = 0
+    if (revokeSessionIds.length > 0) {
+      const { data: count, error: revokeError } = await supabaseAdmin.rpc('revoke_user_sessions', {
+        p_user_id: targetUserId,
+        p_session_ids: revokeSessionIds,
+      })
+      if (revokeError) throw revokeError
+      revokedCount = count ?? 0
+    }
+
+    let actorRole = 'platform_admin'
+    if (req.currentUser?.platformRole !== 'admin') {
+      const sharedRoles = (req.currentUser?.memberships || [])
+        .filter((m) => targetMemberships.some((tm) => tm.companyId === m.companyId))
+        .map((m) => m.role)
+      actorRole = sharedRoles.includes('admin') ? 'company_admin'
+                : sharedRoles.includes('manager') ? 'manager'
+                : 'unknown'
+    }
+
+    await logSecurityEvent(req, {
+      action: 'password_changed',
+      resourceType: 'user',
+      resourceId: targetUserId,
+      targetUserId,
+      metadata: {
+        initiator: 'other',
+        method: mode,
+        sessionsRevokedCount: revokedCount,
+        actorRole,
+      },
+    })
+
+    if (mode === 'generate') {
+      return res.json({ ok: true, password: finalPassword, revokedCount })
+    }
+    return res.json({ ok: true, revokedCount })
+  } catch (error) {
+    const status = error.status || 500
+    return res.status(status).json({
+      error: error.message || 'No se pudo cambiar la contraseña',
       errorId: error.applicationErrorId || null,
     })
   }

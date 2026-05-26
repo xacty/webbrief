@@ -4,6 +4,91 @@ import { sendInviteEmail } from './authEmails.js'
 import { wrapSupabaseAuthCall } from './applicationErrors.js'
 import { notifyManagerAssigned, shouldNotifyManagerAssigned } from './managerNotifications.js'
 
+/**
+ * Generates an invite action_link via Supabase Auth admin.generateLink,
+ * then sends it via the provided email sender (defaults to Resend).
+ *
+ * Supports BOTH "fresh user" (no auth row yet — Supabase creates it) and
+ * "reinvite existing user" flows. Pure-input/output for unit testing.
+ *
+ * @param {object} args
+ * @param {object} [args.supabaseClient]  Supabase Admin client (defaults to supabaseAdmin)
+ * @param {function} [args.emailSender]   Email sender function (defaults to sendInviteEmail)
+ * @param {string} args.email             Target email (must be normalized)
+ * @param {string} args.fullName          Full name for user_metadata + email greeting
+ * @param {string} args.redirectTo        Absolute URL of the SetPassword frontend route
+ * @param {object|null} args.req          Express req for wrapSupabaseAuthCall (or null)
+ * @param {string} [args.operationName]   Tag for application_errors logging
+ * @returns {Promise<{error: Error|null, actionLink: string|null, user: object|null, emailSent: boolean}>}
+ *   Never throws — Supabase exceptions are caught and returned in the result's `error` field.
+ */
+export async function generateInviteLinkAndSendEmail({
+  supabaseClient,
+  emailSender,
+  email,
+  fullName,
+  redirectTo,
+  req = null,
+  operationName = 'generateLink:invite',
+}) {
+  const client = supabaseClient || supabaseAdmin
+  const sender = emailSender || sendInviteEmail
+
+  let data, error
+  try {
+    const result = await wrapSupabaseAuthCall({
+      operation: () => client.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: {
+          redirectTo,
+          data: { full_name: fullName || '' },
+        },
+      }),
+      operationName,
+      req,
+      args: { email, type: 'invite' },
+    })
+    data = result.data
+    error = result.error
+  } catch (thrownError) {
+    // wrapSupabaseAuthCall rethrows on caught operation() exceptions. We
+    // catch here to preserve the helper's "never throws, returns errors in
+    // result object" contract. The applicationErrorId (if set by the
+    // wrapper) is preserved on the thrown error for trace correlation.
+    return { error: thrownError, actionLink: null, user: null, emailSent: false }
+  }
+
+  if (error) {
+    return { error, actionLink: null, user: null, emailSent: false }
+  }
+
+  const actionLink = data?.properties?.action_link
+  const user = data?.user || null
+
+  if (!actionLink) {
+    return {
+      error: new Error('No se pudo generar el link de invitación'),
+      actionLink: null,
+      user,
+      emailSent: false,
+    }
+  }
+
+  const emailResult = await sender({
+    to: email,
+    fullName,
+    actionLink,
+  })
+
+  return {
+    error: null,
+    actionLink,
+    user,
+    emailSent: Boolean(emailResult?.sent),
+  }
+}
+
 export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase()
 }
@@ -102,18 +187,20 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
   const redirectTo = getSetPasswordRedirectUrl()
 
   // -------- Case A: fresh invite --------
+  // Uses generateLink+sendInviteEmail (Resend) — NOT supabaseAdmin.auth.admin.inviteUserByEmail,
+  // because the native Supabase template lands users on the Site URL root, which redirects to /login.
+  // generateLink with type='invite' creates the auth user when it doesn't exist AND returns a
+  // properly-redirected action_link that lands on /auth/set-password.
   if (decision.action === 'invited') {
-    const { data, error: inviteError } = await wrapSupabaseAuthCall({
-      operation: () => supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
-        redirectTo,
-        data: { full_name: fullName || '' },
-      }),
-      operationName: 'inviteUserByEmail',
+    const { error: inviteError, user: newAuthUser, emailSent } = await generateInviteLinkAndSendEmail({
+      email: normalizedEmail,
+      fullName,
+      redirectTo,
       req,
-      args: { email: normalizedEmail },
+      operationName: 'generateLink:invite:new',
     })
 
-    if (inviteError || !data?.user?.id) {
+    if (inviteError || !newAuthUser?.id) {
       // Race: another invite landed between our lookups and now. Re-resolve once.
       const fallback = await findAuthUserByEmail(normalizedEmail)
       if (!fallback?.id) {
@@ -123,15 +210,15 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
       return await handleReinvite(fallback, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req)
     }
 
-    await upsertProfileRow(data.user.id, normalizedEmail, fullName, data.user, normalizedPlatformRole, timestamp)
+    await upsertProfileRow(newAuthUser.id, normalizedEmail, fullName, newAuthUser, normalizedPlatformRole, timestamp)
 
     return {
-      userId: data.user.id,
+      userId: newAuthUser.id,
       email: normalizedEmail,
-      fullName: fullName || data.user.user_metadata?.full_name || '',
+      fullName: fullName || newAuthUser.user_metadata?.full_name || '',
       platformRole: normalizedPlatformRole,
       action: 'invited',
-      inviteSent: true,
+      inviteSent: Boolean(emailSent),
     }
   }
 
@@ -165,27 +252,20 @@ export async function ensureUserProfile({ email, fullName, platformRole = 'user'
   }
 }
 
+// Reinvite path for users that exist in auth.users but never activated.
+// Unlike Case A (which has a race-fallback that demands inline error handling),
+// this path has no fallback — any helper error propagates directly to the caller.
 async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPlatformRole, redirectTo, timestamp, req) {
-  const { data: linkData, error: linkError } = await wrapSupabaseAuthCall({
-    operation: () => supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
-      email: normalizedEmail,
-      options: { redirectTo },
-    }),
-    operationName: 'generateLink:invite',
-    req,
-    args: { email: normalizedEmail, type: 'invite' },
-  })
-
-  if (linkError) throw linkError
-  const actionLink = linkData?.properties?.action_link
-  if (!actionLink) throw new Error('No se pudo regenerar el link de invitación')
-
-  const emailResult = await sendInviteEmail({
-    to: normalizedEmail,
+  const { error, actionLink, emailSent } = await generateInviteLinkAndSendEmail({
+    email: normalizedEmail,
     fullName,
-    actionLink,
+    redirectTo,
+    req,
+    operationName: 'generateLink:invite:reinvite',
   })
+
+  if (error) throw error
+  if (!actionLink) throw new Error('No se pudo regenerar el link de invitación')
 
   await upsertProfileRow(authUser.id, normalizedEmail, fullName, authUser, normalizedPlatformRole, timestamp)
 
@@ -195,7 +275,7 @@ async function handleReinvite(authUser, normalizedEmail, fullName, normalizedPla
     fullName: fullName || authUser.user_metadata?.full_name || '',
     platformRole: normalizedPlatformRole,
     action: 'reinvited',
-    inviteSent: Boolean(emailResult?.sent),
+    inviteSent: Boolean(emailSent),
   }
 }
 
@@ -238,15 +318,17 @@ export async function inviteUserToCompany({ email, fullName, companyId, role, pl
   const profile = await ensureUserProfile({ email, fullName, platformRole, req })
   await assignUserToCompany({ companyId, userId: profile.userId, role })
 
-  // Plan C: notify when an existing active user is promoted to manager.
-  // notifyManagerAssigned is best-effort and never throws (failures log
-  // to application_errors via Plan D). The membership row is already
-  // committed; this only affects notification delivery.
+  // Plan C: notify when an existing active user is promoted to a high-rank
+  // role (manager or company-admin). notifyManagerAssigned is best-effort
+  // and never throws (failures log to application_errors via Plan D). The
+  // membership row is already committed; this only affects notification
+  // delivery. PR3 QA extended this to include the new admin role.
   if (shouldNotifyManagerAssigned({ role, action: profile.action })) {
     await notifyManagerAssigned({
       targetUserId: profile.userId,
       companyId,
       actor: req?.currentUser || null,
+      role,
       req,
     })
   }

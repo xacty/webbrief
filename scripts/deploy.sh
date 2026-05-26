@@ -15,6 +15,22 @@ echo "Installing backend dependencies..."
 cd "$APP_DIR/backend"
 npm ci --omit=dev
 
+echo "Installing shared/ dependencies..."
+# shared/documentInvariants.js imports @tiptap/* and resolves them out of
+# shared/node_modules at runtime when the backend's /api/mcp pipeline loads
+# the editOps tool. Without this step the backend crashes on boot with
+# ERR_MODULE_NOT_FOUND for @tiptap/html.
+cd "$APP_DIR/shared"
+npm ci --omit=dev
+
+echo "Installing MCP server dependencies..."
+# The backend imports the MCP HTTP handler from mcp/webrief-server/src/http.js.
+# Node resolves @modelcontextprotocol/sdk + @tiptap/* from that folder's
+# node_modules, so we must install them here even though backend never does so
+# itself.
+cd "$APP_DIR/mcp/webrief-server"
+npm ci --omit=dev
+
 echo "Restarting backend..."
 if pm2 describe "$BACKEND_PROCESS" >/dev/null 2>&1; then
   pm2 restart "$BACKEND_PROCESS" --update-env

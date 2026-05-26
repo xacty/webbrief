@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { getActiveSecurityBlock } from '../lib/securityBlocks.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
@@ -66,6 +67,80 @@ export async function requireAuth(req, res, next) {
       outcome: 'denied',
     })
     return res.status(401).json({ error: 'Token no proporcionado' })
+  }
+
+  // MCP token fast-path: long-lived tokens with prefix mcpt_
+  if (token.startsWith('mcpt_')) {
+    const hash = createHash('sha256').update(token).digest('hex')
+
+    const { data: mcpToken, error: mcpError } = await supabaseAdmin
+      .from('mcp_tokens')
+      .select('id, user_id')
+      .eq('token_hash', hash)
+      .is('revoked_at', null)
+      .maybeSingle()
+
+    if (mcpError || !mcpToken) {
+      writeSecurityLog('warn', 'mcp_token_invalid', getRequestLogContext(req))
+      await logSecurityEvent(req, {
+        action: 'mcp_token_invalid',
+        resourceType: 'mcp_token',
+        outcome: 'denied',
+        metadata: { reason: mcpError?.message || 'not_found_or_revoked' },
+      })
+      return res.status(401).json({ error: 'Token MCP invalido o revocado' })
+    }
+
+    try {
+      req.currentUser = await loadCurrentUser({ id: mcpToken.user_id })
+    } catch (err) {
+      writeSecurityLog('warn', 'mcp_token_user_load_failed', {
+        ...getRequestLogContext(req),
+        error: err.message,
+      })
+      return res.status(401).json({ error: 'No se pudo cargar el usuario del token MCP' })
+    }
+
+    req.accessToken = null
+    req.mcpTokenId = mcpToken.id
+
+    const userBlock = await getActiveSecurityBlock(req, {
+      userId: req.currentUser.id,
+      ipAddress: req.clientIp,
+    })
+    if (userBlock?.blockType === 'user') {
+      writeSecurityLog('warn', 'security_user_blocked_request', {
+        ...getRequestLogContext(req),
+        blockId: userBlock.id,
+        reason: userBlock.reason,
+      })
+      await logSecurityEvent(req, {
+        action: 'blocked_user_request_denied',
+        resourceType: 'security_block',
+        resourceId: userBlock.id,
+        targetUserId: req.currentUser.id,
+        outcome: 'denied',
+        metadata: { reason: userBlock.reason },
+      })
+      return res.status(403).json({ error: 'Usuario bloqueado por seguridad', blockId: userBlock.id })
+    }
+
+    // Non-blocking: audit + last_used_at (only for unblocked requests)
+    Promise.all([
+      supabaseAdmin
+        .from('mcp_tokens')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('id', mcpToken.id),
+      logSecurityEvent(req, {
+        action: 'mcp_token_used',
+        resourceType: 'mcp_token',
+        resourceId: mcpToken.id,
+        targetUserId: mcpToken.user_id,
+        outcome: 'success',
+      }),
+    ]).catch(() => {})
+
+    return next()
   }
 
   try {

@@ -1,22 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, Building2, Pencil, Trash2, Plus, UserPlus, Users, Mail } from 'lucide-react'
+import { Archive, ArrowRight, Building2, Copy, Mail, Pencil, Trash2, Plus } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
   canCreateProjects as canCreateProjectsForRole,
   canInviteMembers,
   canManageProjectLifecycle as canManageProjectLifecycleForRole,
+  canSendAccess,
   getInviteRoleOptions,
   isAdmin,
 } from '../lib/roleCapabilities'
 import {
-  COMPANY_ROLE_ORDER,
-  MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
-import { Button, Input, Select, Modal, Badge, KebabMenu } from '../components/ui'
+import { Button, Input, Select, Card, Badge, KebabMenu } from '../components/ui'
+import UserEditModal from '../components/users/UserEditModal'
+import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
 import MoveToCompanyModal from '../components/MoveToCompanyModal'
 import styles from './CompanyPage.module.css'
 
@@ -65,23 +66,6 @@ function formatDate(isoDate) {
   })
 }
 
-function formatRelativeDate(isoDate) {
-  if (!isoDate) return 'sin actividad'
-  const now = new Date()
-  const then = new Date(isoDate)
-  const diffMs = now - then
-  const diffMin = Math.round(diffMs / 60000)
-  const diffH = Math.round(diffMs / 3600000)
-  const diffD = Math.round(diffMs / 86400000)
-  if (diffMin < 1) return 'hace instantes'
-  if (diffMin < 60) return `hace ${diffMin} min`
-  if (diffH < 24) return `hace ${diffH} h`
-  if (diffD === 1) return 'ayer'
-  if (diffD < 7) return `hace ${diffD} días`
-  if (diffD < 30) return `hace ${Math.round(diffD / 7)} semanas`
-  return `el ${formatDate(isoDate)}`
-}
-
 function getCompanyRoleLabel(currentUser, membershipRole) {
   if (currentUser?.platformRole === 'admin') return getPlatformRoleTitle(currentUser.platformRole)
   return getCompanyRoleLabelShared(membershipRole)
@@ -91,49 +75,19 @@ function roleLabel(role) {
   return getCompanyRoleLabelShared(role)
 }
 
-function getInitials(fullName, email) {
-  const source = (fullName && fullName.trim()) || (email && email.split('@')[0]) || ''
-  if (!source) return '?'
-  const parts = source.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+function buildMembersCounter(members) {
+  const counts = members.reduce((acc, m) => {
+    acc[m.role] = (acc[m.role] || 0) + 1
+    return acc
+  }, {})
+  const parts = []
+  if (counts.admin) parts.push(`${counts.admin} ${counts.admin === 1 ? 'admin' : 'admins'}`)
+  if (counts.manager) parts.push(`${counts.manager} ${counts.manager === 1 ? 'manager' : 'managers'}`)
+  if (counts.editor) parts.push(`${counts.editor} ${counts.editor === 1 ? 'editor' : 'editores'}`)
+  const workerCount = (counts.content_writer || 0) + (counts.designer || 0) + (counts.developer || 0)
+  if (workerCount) parts.push(`${workerCount} ${workerCount === 1 ? 'colaborador' : 'colaboradores'}`)
+  return parts.join(' · ')
 }
-
-function getRoleBadgeVariant(role) {
-  if (role === 'manager') return 'primary'
-  return 'neutral'
-}
-
-// TEMP demo members for visual preview when the list is empty. They render
-// as the list view but the kebab is hidden so they can't be edited (the
-// fake userIds would 404 against the real API). Disappear automatically as
-// soon as a real member is invited.
-const DEMO_MEMBERS = [
-  {
-    userId: 'demo-am',
-    fullName: 'Ana Martinez',
-    email: 'ana.martinez@empresa.com',
-    role: 'manager',
-    addedAt: '2026-03-12T10:00:00Z',
-    _demo: true,
-  },
-  {
-    userId: 'demo-jl',
-    fullName: 'Juan Lopez',
-    email: 'juan.lopez@empresa.com',
-    role: 'editor',
-    addedAt: '2026-04-22T10:00:00Z',
-    _demo: true,
-  },
-  {
-    userId: 'demo-ps',
-    fullName: 'Pedro Sanchez',
-    email: 'p.sanchez@empresa.com',
-    role: 'editor',
-    addedAt: '2026-05-18T10:00:00Z',
-    _demo: true,
-  },
-]
 
 function projectTypeLabel(projectType) {
   if (projectType === 'document') return 'Artículo'
@@ -157,41 +111,30 @@ export default function CompanyPage() {
   const [inviteRole, setInviteRole] = useState('editor')
   const [inviteFeedback, setInviteFeedback] = useState('')
   const [inviting, setInviting] = useState(false)
-  const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
-  const [editForm, setEditForm] = useState({ fullName: '', role: 'editor' })
-  const [editError, setEditError] = useState('')
-  const [editBusy, setEditBusy] = useState(false)
+  const [accessBusyId, setAccessBusyId] = useState('')
+  const [accessMessage, setAccessMessage] = useState('')
+  const [accessError, setAccessError] = useState('')
   const [moveModalIds, setMoveModalIds] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [feedbackNotice, setFeedbackNotice] = useState('')
-  const [activeTab, setActiveTab] = useState('proyectos')
-  const [activity, setActivity] = useState([])
-  const [activityLoading, setActivityLoading] = useState(false)
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const canManageProjects = canManageProjectLifecycleForRole(currentUser, company?.membershipRole)
   const canCreateProjects = canCreateProjectsForRole(currentUser, company?.membershipRole)
   const inviteRoles = getInviteRoleOptions(currentUser, company?.membershipRole)
   const isAdminUser = isAdmin(currentUser)
+  const isCompanyAdmin = company?.membershipRole === 'admin'
   const isCompanyManager = company?.membershipRole === 'manager'
 
   function canManageMember(member) {
     if (!member) return false
     if (isAdminUser) return true
+    // Company-admin can manage any peer below admin rank.
+    if (isCompanyAdmin) return member.role !== 'admin'
     if (!isCompanyManager) return false
-    return member.role !== 'manager'
-  }
-
-  function getMemberRoleOptions(member) {
-    if (isAdminUser) return COMPANY_ROLE_ORDER
-    const baseOptions = MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER
-    return member && baseOptions.includes(member.role)
-      ? baseOptions
-      : member?.role
-        ? [member.role, ...baseOptions.filter((role) => role !== member.role)]
-        : baseOptions
+    return member.role !== 'manager' && member.role !== 'admin'
   }
 
   useEffect(() => {
@@ -239,25 +182,6 @@ export default function CompanyPage() {
     setInviteFeedback('')
     setInviteRole((current) => (inviteRoles.includes(current) ? current : inviteRoles[0] || 'editor'))
   }, [currentUser, companyId, inviteRoles])
-
-  useEffect(() => {
-    if (activeTab !== 'actividad' || !companyId) return
-    let active = true
-    setActivityLoading(true)
-
-    apiFetch(`/api/companies/${companyId}/activity`)
-      .then((data) => {
-        if (active) setActivity(data.activity ?? [])
-      })
-      .catch(() => {
-        if (active) setActivity([])
-      })
-      .finally(() => {
-        if (active) setActivityLoading(false)
-      })
-
-    return () => { active = false }
-  }, [activeTab, companyId])
 
   // ESC clears multiselect; do not consume ESC when no selection is active
   // so other components (modals, kebab menus) keep their own ESC handling.
@@ -307,9 +231,7 @@ export default function CompanyPage() {
       if (nextCompany) writeCompanyCache(companyId, { company: nextCompany, projects, members: nextMembers })
       setInviteName('')
       setInviteEmail('')
-      setInviteFeedback('')
-      setInviteModalOpen(false)
-      showFeedback('Invitación enviada correctamente.')
+      setInviteFeedback('Invitación enviada correctamente.')
     } catch (err) {
       setInviteFeedback(err.message || 'No se pudo enviar la invitación')
     } finally {
@@ -317,137 +239,38 @@ export default function CompanyPage() {
     }
   }
 
-  function openInviteModal() {
-    setInviteFeedback('')
-    setInviteModalOpen(true)
-  }
-
-  function closeInviteModal() {
-    if (inviting) return
-    setInviteModalOpen(false)
-    setInviteFeedback('')
-  }
-
-  async function handleSendAccess(member) {
-    if (member._demo) {
-      showFeedback('Demo: invitá a un miembro real para probar esta acción.')
-      return
-    }
-    const label = member.fullName || member.email
-    try {
-      const data = await apiFetch(`/api/users/${member.userId}/send-access`, { method: 'POST' })
-      const actionLabel = data?.action === 'invite_resent'
-        ? 'Invitación reenviada'
-        : 'Email de acceso enviado'
-      showFeedback(`${actionLabel} a ${label}`)
-    } catch (err) {
-      if (err?.status === 429) {
-        showFeedback('Demasiados intentos. Esperá unos minutos.')
-      } else {
-        showFeedback(err?.message || 'No se pudo enviar acceso')
-      }
-    }
-  }
-
-  async function handleRemoveMember(member) {
-    if (member._demo) {
-      showFeedback('Demo: invitá a un miembro real para probar esta acción.')
-      return
-    }
-    const label = member.fullName || member.email
-    if (!window.confirm(
-      `¿Eliminar a ${label} de esta empresa? Perderá acceso a todos los proyectos del workspace.`
-    )) return
-
-    try {
-      await apiFetch(
-        `/api/users/${member.userId}/memberships/${companyId}`,
-        { method: 'DELETE' }
-      )
-      const nextMembers = members.filter((m) => m.userId !== member.userId)
-      const nextCompany = company
-        ? { ...company, memberCount: nextMembers.length }
-        : company
-      setMembers(nextMembers)
-      setCompany(nextCompany)
-      clearCompaniesCache()
-      if (nextCompany) {
-        writeCompanyCache(companyId, { company: nextCompany, projects, members: nextMembers })
-      }
-      showFeedback(`${label} eliminado de la empresa`)
-    } catch (err) {
-      showFeedback(err?.message || 'No se pudo eliminar al miembro')
-    }
-  }
-
   function openEditMember(member) {
-    // Demo members: open the modal so the visual is reachable, but
-    // saving will be blocked in handleSaveEditMember (fake userIds would
-    // 404 against the real API).
     setEditingMember(member)
-    setEditForm({
-      fullName: member.fullName || '',
-      role: member.role || 'editor',
-    })
-    setEditError(member?._demo ? 'Demo: este miembro no se puede guardar. Invitá a un miembro real para editarlo.' : '')
+    setAccessMessage('')
+    setAccessError('')
   }
 
-  function closeEditMember() {
-    setEditingMember(null)
-    setEditError('')
-  }
-
-  async function handleSaveEditMember(e) {
-    e.preventDefault()
+  function handleMemberSaved(updates) {
     if (!editingMember) return
+    const nextMembers = members.map((existing) => (
+      existing.userId === editingMember.userId
+        ? { ...existing, fullName: updates.fullName, role: updates.role || existing.role }
+        : existing
+    ))
+    setMembers(nextMembers)
+    if (company) writeCompanyCache(companyId, { company, projects, members: nextMembers })
+  }
 
-    if (editingMember._demo) {
-      setEditError('Demo: este miembro no se puede guardar. Invitá a un miembro real para editarlo.')
-      return
+  async function handleSendAccessForMember(member) {
+    if (!member?.userId) return
+    setAccessBusyId(member.userId)
+    setAccessError('')
+    setAccessMessage('')
+
+    const targetUser = { id: member.userId, email: member.email, companies: [{ companyId }] }
+    const result = await sendAccessRequest(targetUser)
+
+    if (result.ok || result.kind === 'rate_limited') {
+      setAccessMessage(result.message)
+    } else {
+      setAccessError(result.message)
     }
-
-    const trimmedName = String(editForm.fullName || '').trim()
-    const nextRole = editForm.role
-    const nameChanged = trimmedName !== (editingMember.fullName || '')
-    const roleChanged = nextRole !== editingMember.role
-
-    if (!nameChanged && !roleChanged) {
-      closeEditMember()
-      return
-    }
-
-    setEditBusy(true)
-    setEditError('')
-
-    try {
-      if (nameChanged) {
-        await apiFetch(`/api/users/${editingMember.userId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ fullName: trimmedName }),
-        })
-      }
-
-      if (roleChanged) {
-        await apiFetch(`/api/users/${editingMember.userId}/memberships/${companyId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ role: nextRole }),
-        })
-      }
-
-      const nextMembers = members.map((existing) => (
-        existing.userId === editingMember.userId
-          ? { ...existing, fullName: trimmedName, role: nextRole }
-          : existing
-      ))
-      setMembers(nextMembers)
-      if (company) writeCompanyCache(companyId, { company, projects, members: nextMembers })
-
-      closeEditMember()
-    } catch (err) {
-      setEditError(err.message || 'No se pudo actualizar al miembro')
-    } finally {
-      setEditBusy(false)
-    }
+    setAccessBusyId('')
   }
 
   function openProject(projectId) {
@@ -629,73 +452,67 @@ export default function CompanyPage() {
 
   return (
     <div className={styles.page}>
+      <div className={styles.breadcrumbs}>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/companies')}>
+          ← Empresas
+        </Button>
+      </div>
+
       {loading && <p className={styles.info}>Cargando empresa...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
 
       {!loading && company && (
         <>
-          <header className={styles.pageHeader}>
-            <div className={styles.pageHeaderInner}>
-              <nav className={styles.breadcrumb} aria-label="Migas de pan">
-                <button
-                  type="button"
-                  className={styles.breadcrumbLink}
-                  onClick={() => navigate('/companies')}
-                >
-                  Empresas
-                </button>
-                <span className={styles.breadcrumbSep} aria-hidden="true">/</span>
-                <span className={styles.breadcrumbCurrent} aria-current="page">
-                  {company.name}
-                </span>
-              </nav>
-
+          <header className={styles.header}>
+            <div>
               <div className={styles.titleRow}>
-                <div className={styles.headerMain}>
-                  <div className={styles.titleLine}>
-                    <h1 className={styles.title}>{company.name}</h1>
-                    {company.isInternal && <Badge variant="neutral" size="sm">Interna</Badge>}
-                  </div>
-                  <div className={styles.headerMeta}>
-                    <span>{company.projectCount} proyecto{company.projectCount === 1 ? '' : 's'}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{company.memberCount} miembro{company.memberCount === 1 ? '' : 's'}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{getCompanyRoleLabel(currentUser, company.membershipRole)}</span>
-                  </div>
+                <h1 className={styles.title}>{company.name}</h1>
+                {company.isInternal && <Badge variant="neutral" size="sm">Interna</Badge>}
+              </div>
+              <p className={styles.subtitle}>
+                Workspace operativo de la empresa. Aquí viven sus proyectos y su equipo.
+              </p>
+            </div>
+          </header>
+
+          <section className={styles.summary}>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Tu rol</span>
+              <strong className={styles.summaryValue}>
+                {getCompanyRoleLabel(currentUser, company.membershipRole)}
+              </strong>
+            </Card>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Proyectos</span>
+              <strong className={styles.summaryValue}>{company.projectCount}</strong>
+            </Card>
+            <Card padding="sm" shadow="sm" radius="md" className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Equipo</span>
+              <strong className={styles.summaryValue}>{company.memberCount}</strong>
+            </Card>
+          </section>
+
+          <div className={styles.workspaceGrid}>
+            <section className={styles.projectsSection}>
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h2 className={styles.sectionTitle}>Proyectos</h2>
+                  <p className={styles.sectionText}>
+                    Todos los proyectos de {company.name} viven aquí en cards navegables.
+                  </p>
                 </div>
+
                 {canCreateProjects && (
                   <Button
                     variant="primary"
                     icon={<Plus size={16} />}
                     onClick={() => navigate(`/new-project?companyId=${companyId}`)}
                   >
-                    Proyecto
+                    Nuevo proyecto
                   </Button>
                 )}
               </div>
 
-              <div className={styles.tabBar} role="tablist">
-                {['proyectos', 'equipo', 'actividad'].map((tab) => (
-                  <button
-                    key={tab}
-                    role="tab"
-                    aria-selected={activeTab === tab}
-                    className={activeTab === tab ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-                    onClick={() => setActiveTab(tab)}
-                  >
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </header>
-
-          <div className={styles.pageBody}>
-
-          {/* Tab panels */}
-          <div role="tabpanel" hidden={activeTab !== 'proyectos'} className={styles.tabPanel}>
-            <section className={styles.projectsSection}>
               {canManageProjects && selectedIds.size > 0 && (
                 <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
                   <div className={styles.bulkInfo}>
@@ -777,7 +594,8 @@ export default function CompanyPage() {
                 </div>
               ) : (
                 <div className={styles.projectGrid}>
-                  {projects.map((project) => {                    const isSelected = selectedIds.has(project.id)
+                  {projects.map((project) => {
+                    const isSelected = selectedIds.has(project.id)
                     const inSelectMode = selectedIds.size > 0
                     const cardClassNames = [styles.projectCard]
                     if (isSelected) cardClassNames.push(styles.projectCardSelected)
@@ -808,46 +626,56 @@ export default function CompanyPage() {
                       )}
 
                       <div className={styles.projectTop}>
-                        <span className={styles.projectTypeChip}>
-                          {projectTypeLabel(project.projectType)}
-                        </span>
+                        <div>
+                          <h3 className={styles.projectName}>{project.name}</h3>
+                          <p className={styles.projectClient}>{project.client}</p>
+                        </div>
                       </div>
 
-                      <div className={styles.projectBody}>
-                        <h3 className={styles.projectName}>{project.name}</h3>
-                        <p className={styles.projectTimestamp}>
-                          Editado {formatRelativeDate(project.lastActivity)}
-                        </p>
+                      <div className={styles.projectMetaList}>
+                        <div className={styles.projectMetaRow}>
+                          <span className={styles.metaLabel}>Tipo</span>
+                          <span className={styles.metaValue}>{projectTypeLabel(project.projectType)}</span>
+                        </div>
+                        <div className={styles.projectMetaRow}>
+                          <span className={styles.metaLabel}>Actividad</span>
+                          <span className={styles.metaValue}>{formatDate(project.lastActivity)}</span>
+                        </div>
                       </div>
 
                       <div className={styles.projectActions}>
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openProject(project.id)
-                          }}
-                        >
-                          Abrir
-                        </Button>
-                        {canManageProjects && (
+                        <div className={styles.projectActionsButtons}>
                           <Button
                             type="button"
-                            variant="secondary"
+                            variant="primary"
                             size="sm"
+                            icon={<ArrowRight size={14} />}
+                            iconPosition="right"
                             onClick={(event) => {
                               event.stopPropagation()
-                              handleProjectDuplicate(project.id)
+                              openProject(project.id)
                             }}
                           >
-                            Duplicar
+                            Abrir
                           </Button>
-                        )}
+                          {canManageProjects && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              icon={<Copy size={14} />}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleProjectDuplicate(project.id)
+                              }}
+                              title="Duplicar proyecto"
+                              aria-label={`Duplicar ${project.name}`}
+                            />
+                          )}
+                        </div>
                         {canManageProjects && (
                           <div
-                            className={styles.projectKebabSlot}
+                            className={styles.projectActionsKebab}
                             onClick={(event) => event.stopPropagation()}
                           >
                             <KebabMenu
@@ -878,201 +706,145 @@ export default function CompanyPage() {
                     </article>
                   )
                   })}
-                  {canCreateProjects && (
-                    <button
-                      type="button"
-                      className={styles.addProjectCard}
-                      onClick={() => navigate(`/new-project?companyId=${companyId}`)}
-                    >
-                      <Plus size={20} />
-                      <span>Nuevo proyecto</span>
-                    </button>
-                  )}
                 </div>
               )}
             </section>
-          </div>
 
-          <div role="tabpanel" hidden={activeTab !== 'equipo'} className={styles.tabPanel}>
-            {(() => {
-              const displayMembers = members.length > 0 ? members : DEMO_MEMBERS
-              return (
-            <section className={styles.membersSection}>
-              <div className={styles.membersHeader}>
-                <h2 className={styles.membersTitle}>
-                  Miembros <span className={styles.membersCount}>· {displayMembers.length}</span>
-                </h2>
-                {canInvite && displayMembers.length > 0 && (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    icon={<UserPlus size={16} />}
-                    onClick={openInviteModal}
+            <Card as="aside" padding="md" shadow="sm" radius="md" className={styles.teamCard}>
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h2 className={styles.sectionTitle}>Equipo</h2>
+                  <p className={styles.sectionText}>
+                    Miembros actuales e invitación rápida en una sola sidecard.
+                  </p>
+                </div>
+              </div>
+
+              {canInvite ? (
+                <form className={styles.inviteForm} onSubmit={handleInvite}>
+                  <Input
+                    type="text"
+                    placeholder="Nombre completo"
+                    value={inviteName}
+                    onChange={(e) => setInviteName(e.target.value)}
+                  />
+                  <Input
+                    type="email"
+                    placeholder="email@empresa.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    required
+                  />
+                  <Select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
                   >
-                    Invitar miembro
+                    {inviteRoles.map((role) => (
+                      <option key={role} value={role}>
+                        {roleLabel(role)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button type="submit" variant="primary" disabled={inviting} loading={inviting} fullWidth>
+                    {inviting ? 'Enviando...' : 'Invitar usuario'}
                   </Button>
+                </form>
+              ) : (
+                <div className={styles.inlineNotice}>
+                  Tu rol no puede enviar invitaciones en esta empresa.
+                </div>
+              )}
+
+              {inviteFeedback && <p className={styles.feedback}>{inviteFeedback}</p>}
+
+              <div className={styles.membersSection}>
+                {accessMessage && <p style={{ color: 'var(--wb-color-success-600)', margin: '8px 0' }}>{accessMessage}</p>}
+                {accessError && <p style={{ color: 'var(--wb-color-danger-600)', margin: '8px 0' }}>{accessError}</p>}
+                <div className={styles.membersHeader}>
+                  <h3 className={styles.membersTitle}>Miembros</h3>
+                  <Badge variant="neutral" size="sm">{members.length}</Badge>
+                </div>
+
+                {members.length > 0 && (() => {
+                  const counter = buildMembersCounter(members)
+                  return counter ? <p className={styles.membersCounter}>{counter}</p> : null
+                })()}
+
+                {members.length === 0 ? (
+                  <div className={styles.emptyStateCompact}>
+                    Aún no hay miembros registrados para esta empresa.
+                  </div>
+                ) : (
+                  <div className={styles.membersList}>
+                    {members.map((member) => {
+                      const memberManageable = canManageMember(member)
+                      return (
+                        <article key={member.userId} className={styles.memberRow}>
+                          <div>
+                            <p className={styles.memberName}>{member.fullName || 'Sin nombre'}</p>
+                            <p className={styles.memberEmail}>{member.email || 'Sin email'}</p>
+                          </div>
+
+                          <div className={styles.memberMeta}>
+                            <Badge
+                              variant={member.role === 'admin' ? 'warning' : 'neutral'}
+                              size="sm"
+                            >
+                              {roleLabel(member.role)}
+                            </Badge>
+                            <span className={styles.memberDate}>{formatDate(member.addedAt)}</span>
+                          </div>
+
+                          {canSendAccess(currentUser, { id: member.userId, companies: [{ companyId }] }) && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              icon={<Mail size={16} />}
+                              onClick={() => handleSendAccessForMember(member)}
+                              disabled={accessBusyId === member.userId}
+                              title="Enviar acceso (invitación o restablecimiento)"
+                            />
+                          )}
+                          {memberManageable && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              icon={<Pencil size={16} />}
+                              onClick={() => openEditMember(member)}
+                              title="Editar miembro"
+                              aria-label="Editar miembro"
+                            />
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
-
-              {displayMembers.length === 0 ? (
-                <div className={styles.membersEmpty}>
-                  <div className={styles.membersEmptyIcon}>
-                    <Users size={32} />
-                  </div>
-                  <h3 className={styles.membersEmptyTitle}>
-                    {canInvite ? 'Tu equipo todavía está vacío' : 'Esta empresa aún no tiene miembros'}
-                  </h3>
-                  <p className={styles.membersEmptyText}>
-                    {canInvite
-                      ? 'Invitá a alguien para empezar a colaborar.'
-                      : 'Cuando se agreguen miembros aparecerán acá.'}
-                  </p>
-                  {canInvite && (
-                    <Button
-                      variant="primary"
-                      size="md"
-                      icon={<UserPlus size={16} />}
-                      onClick={openInviteModal}
-                    >
-                      Invitar miembro
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className={styles.membersList}>
-                  {displayMembers.map((member) => {
-                    const memberManageable = canManageMember(member)
-                    return (
-                      <div key={member.userId} className={styles.memberRow}>
-                        <div className={styles.memberAvatar} aria-hidden="true">
-                          {getInitials(member.fullName, member.email)}
-                        </div>
-                        <div className={styles.memberInfo}>
-                          <p className={styles.memberName}>{member.fullName || 'Sin nombre'}</p>
-                          <p className={styles.memberEmail}>{member.email || 'Sin email'}</p>
-                        </div>
-                        <Badge variant={getRoleBadgeVariant(member.role)} size="sm">
-                          {roleLabel(member.role)}
-                        </Badge>
-                        <time className={styles.memberDate}>
-                          {formatRelativeDate(member.addedAt)}
-                        </time>
-                        {memberManageable ? (
-                          <KebabMenu
-                            label={`Acciones de ${member.fullName || member.email}`}
-                            placement="bottom-end"
-                            items={[
-                              {
-                                label: 'Editar miembro',
-                                icon: <Pencil size={14} />,
-                                onClick: () => openEditMember(member),
-                              },
-                              ...(member.userId !== currentUser?.id ? [
-                                {
-                                  label: 'Reenviar acceso',
-                                  icon: <Mail size={14} />,
-                                  onClick: () => handleSendAccess(member),
-                                },
-                                {
-                                  label: 'Eliminar del workspace',
-                                  icon: <Trash2 size={14} />,
-                                  destructive: true,
-                                  onClick: () => handleRemoveMember(member),
-                                },
-                              ] : []),
-                            ]}
-                          />
-                        ) : (
-                          <span className={styles.memberKebabPlaceholder} aria-hidden="true" />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-              )
-            })()}
-          </div>
-
-          <div role="tabpanel" hidden={activeTab !== 'actividad'} className={styles.tabPanel}>
-            {activityLoading ? (
-              <p className={styles.info}>Cargando actividad...</p>
-            ) : activity.length === 0 ? (
-              <div className={styles.emptyState}>
-                <p className={styles.emptyTitle}>Sin actividad registrada</p>
-                <p className={styles.emptyText}>
-                  La actividad de los proyectos de esta empresa aparecerá aquí.
-                </p>
-              </div>
-            ) : (
-              <ol className={styles.activityList}>
-                {activity.map((event) => (
-                  <li key={event.id} className={styles.activityItem}>
-                    <span className={styles.activityType}>{event.event_type}</span>
-                    <time
-                      className={styles.activityDate}
-                      dateTime={event.created_at}
-                    >
-                      {formatDate(event.created_at)}
-                    </time>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
+            </Card>
           </div>
         </>
       )}
 
-      <Modal
+      <UserEditModal
         open={Boolean(editingMember)}
-        onClose={closeEditMember}
-        title="Editar miembro"
-        size="md"
-        ariaDescribedBy="edit-member-description"
-      >
-        <p id="edit-member-description" className={styles.modalSubtitle}>
-          {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
-        </p>
-
-        {editingMember && (
-          <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
-            <Input
-              label="Nombre"
-              type="text"
-              value={editForm.fullName}
-              onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
-              placeholder="Nombre completo"
-            />
-
-            <Select
-              label={`Rol en ${company?.name || 'empresa'}`}
-              value={editForm.role}
-              onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
-            >
-              {getMemberRoleOptions(editingMember).map((role) => (
-                <option key={role} value={role}>{roleLabel(role)}</option>
-              ))}
-            </Select>
-
-            <p className={styles.fieldHint}>
-              Email: {editingMember.email || 'Sin email'}
-            </p>
-
-            {editError && <p className={styles.modalError}>{editError}</p>}
-
-            <div className={styles.modalActions}>
-              <Button type="button" variant="secondary" onClick={closeEditMember}>
-                Cancelar
-              </Button>
-              <Button type="submit" variant="primary" disabled={editBusy} loading={editBusy}>
-                {editBusy ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+        user={editingMember ? {
+          id: editingMember.userId,
+          fullName: editingMember.fullName,
+          email: editingMember.email,
+          avatarUrl: editingMember.avatarUrl || '',
+          platformRole: 'user',
+          companies: [{ companyId, companyName: company?.name, role: editingMember.role }],
+        } : null}
+        currentUser={currentUser}
+        scope="company"
+        companyId={companyId}
+        companyName={company?.name || 'empresa'}
+        onClose={() => setEditingMember(null)}
+        onSaved={handleMemberSaved}
+      />
 
       <MoveToCompanyModal
         open={Boolean(moveModalIds && moveModalIds.length > 0)}
@@ -1082,64 +854,6 @@ export default function CompanyPage() {
         onClose={closeMoveModal}
         onSuccess={handleMoveSuccess}
       />
-
-      <Modal
-        open={inviteModalOpen}
-        onClose={closeInviteModal}
-        title="Invitar miembro"
-        size="md"
-      >
-        <p className={styles.modalSubtitle}>
-          El usuario recibirá un correo con el link para activar su cuenta.
-        </p>
-
-        <form className={styles.inviteForm} onSubmit={handleInvite}>
-          <div className={styles.inviteRow}>
-            <Input
-              id="invite-email"
-              label="Email del invitado"
-              type="email"
-              placeholder="persona@empresa.com"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              required
-              autoFocus
-            />
-            <Select
-              id="invite-role"
-              label="Rol"
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value)}
-            >
-              {inviteRoles.map((role) => (
-                <option key={role} value={role}>
-                  {roleLabel(role)}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <Input
-            id="invite-name"
-            label="Nombre (opcional)"
-            type="text"
-            placeholder="Nombre completo"
-            value={inviteName}
-            onChange={(e) => setInviteName(e.target.value)}
-          />
-
-          {inviteFeedback && <p className={styles.modalError}>{inviteFeedback}</p>}
-
-          <div className={styles.modalActions}>
-            <Button type="button" variant="ghost" onClick={closeInviteModal} disabled={inviting}>
-              Cancelar
-            </Button>
-            <Button type="submit" variant="primary" disabled={inviting} loading={inviting}>
-              {inviting ? 'Enviando...' : 'Enviar invitación'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
     </div>
   )
 }

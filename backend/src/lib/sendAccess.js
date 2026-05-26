@@ -1,35 +1,19 @@
 // Pure helpers for the send-access feature. Side-effect free; testable in isolation.
 //
-// - canSendAccess: permission check (admin global; manager per shared company).
+// - canSendAccess: permission check (delegates to canSendAccessRanked — admin global;
+//   company-admin/manager per shared company by rank; peer-rank forbidden; QA denied).
 // - decideSendAccessAction: discriminates invite vs recovery by last_sign_in_at.
 // - validateResetRequestRow: enforces 1h recovery TTL from password_reset_requests.
 
+import { canSendAccessRanked } from './membershipPermissions.js'
+
 export function canSendAccess({ actor, targetUserId, actorMemberships = [], targetMemberships = [] }) {
-  if (!actor || !targetUserId) return false
-  if (actor.id === targetUserId) return false // no self-targeting (DEC-2)
-
-  if (actor.platformRole === 'admin') return true
-
-  // QA is explicitly forbidden per spec §B.1, even if they happen to have
-  // a manager membership row (defensive — shouldn't occur in practice).
-  if (actor.platformRole === 'qa') return false
-
-  // Manager path: actor must be 'manager' in at least one company shared with target.
-  const actorManagerCompanies = new Set(
-    (actorMemberships || [])
-      .filter((m) => m && m.role === 'manager')
-      .map((m) => m.companyId)
-  )
-  if (actorManagerCompanies.size === 0) return false
-
-  const targetCompanyIds = new Set(
-    (targetMemberships || []).map((m) => m && m.companyId).filter(Boolean)
-  )
-
-  for (const cid of actorManagerCompanies) {
-    if (targetCompanyIds.has(cid)) return true
-  }
-  return false
+  return canSendAccessRanked({
+    actor,
+    targetUserId,
+    actorMemberships,
+    targetMemberships,
+  })
 }
 
 const INVITE_TTL_SECONDS = 86_400 // 24h, matches Supabase email_otp_exp

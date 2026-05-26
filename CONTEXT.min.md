@@ -5,7 +5,7 @@
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-18 (session 17 — Prod login bug fixed: VPS `.env` had `SUPABASE_URL` missing due to a mashed line; GitGuardian secrets remediated)
+- Updated: 2026-05-19 (session 19 — MCP Prep A + N+2: token system + scaffold mcp/webrief-server + shared/documentInvariants. Prod migration applied. Backend code pending VPS deploy)
 
 ## Targets
 
@@ -532,6 +532,32 @@
 - **Browser shortcuts > editor shortcuts en colisiones**: `TextAlign.extend()` sobrescribe `addKeyboardShortcuts` para dejar solo `Mod-Shift-l` y `Mod-Shift-e` (left/center). `Mod-Shift-r` (hard refresh) y `Mod-Shift-j` (DevTools) ya no se bindean — el browser tiene prioridad. Remover el wrapper custom `AlignShortcuts` (redundante con el override). Para alinear derecha o justify, usar la toolbar.
 - **CSS fix history card overflow**: `historyItemHeader` con `flex-wrap: wrap`; `historyItemTime` sin `white-space: nowrap` → cuando el actor + fecha no caben con el sectionName, wrap natural a segunda línea en vez de overflow.
 - **Resend API key**: configurada en `backend/.env` local + VPS. Smoke test pasó. `RESEND_API_KEY=re_…` + `COMMENTS_EMAIL_FROM=WeBrief <noreply@webrief.app>`.
+
+## Session 19 — MCP Prep A + N+2 (token system + invariants lib + server scaffold)
+
+- **Prep A — MCP Token System** (commits `6e15e67..9f4b13b`, `main`):
+  - Migration `supabase/migrations/20260519_mcp_tokens.sql`: tabla `public.mcp_tokens (id, user_id FK profiles CASCADE, label CHECK 1-120, token_hash UNIQUE, prefix, created_at, revoked_at, last_used_at)`, índices parciales `WHERE revoked_at IS NULL`, RLS enabled sin policies (service_role only). Aplicada a **Dev y Prod** (zero-risk: CREATE IF NOT EXISTS, sin tocar tablas existentes).
+  - `backend/src/routes/mcpTokens.js` mounted en `/api/auth`: `GET /mcp-tokens` (rate-limited, no devuelve raw/hash), `POST /mcp-tokens` (cap 10 activos/usuario, devuelve raw 1 vez, audit `mcp_token_issued`), `DELETE /mcp-tokens/:id` (ownership check user OR admin, idempotent guard, audit `mcp_token_revoked`).
+  - `backend/src/middleware/auth.js` extendido: fast-path `if (token.startsWith('mcpt_'))` antes del path Supabase JWT. Lookup por SHA-256 hash. Audit `mcp_token_used` non-blocking via `Promise.all().catch(()=>{})` después del block check. Audit `mcp_token_invalid` en miss.
+  - `frontend/src/pages/AccountSettingsPage.jsx` sección `#api-tokens` con nav link "Tokens MCP": create form + reveal-once banner amarillo con `data-comment-resolved` (no, wait — el banner es `mcpReveal` con `Copy` button), lista con prefix `mcpt_XXXXXXXX…` y `last_used_at`, revoke button. `mcpBusy` discriminator string (`'create'` o tokenId UUID) para spinners por-fila. `navigator.clipboard.writeText().catch(()=>{})` con feedback 2s "Copiado".
+  - Smoke test 7/7 pasos via curl (issue → use → list → revoke → 401 en reuso) + 4/4 audit events en `security_events` confirmados.
+  - **Acción pendiente VPS**: `git pull` + `pm2 restart webrief-backend`. Migration ya está en Prod, solo falta el código.
+
+- **Fase 0 — Scaffold `mcp/webrief-server/`** (commit `2c6f905`):
+  - 24 archivos. `package.json` con `@modelcontextprotocol/sdk ^1.29.0` + `zod ^3.23.0`, engine `node >=20`. SDK API: `McpServer.registerTool()` (no usar `.tool()` deprecado).
+  - 10 tools v1 todas no-op (handlers `{ status:'not_implemented_yet', tool, input }`): `session.getContext`, `companies.selectActive`, `projects.previewCreateFromContent`, `projects.createFromPreview`, `brief.previewPrefill`, `pages.previewDraft`, `projects.get`, `pages.get`, `pages.previewEdits`, `pages.applyEdits`.
+  - Schemas zod compartidos en `src/schemas/{common,project,page,company}.js` (con `companyId`, `projectId`, `pageId`, `projectTypeEnum`, `referenceUrls`).
+  - Stubs: `src/auth/mcpToken.js` (lee `WEBRIEF_MCP_TOKEN` env, throws hard si falta — **fix en N+3: wrap en try/catch para devolver MCP error estructurado**), `src/lib/webbriefClient.js` (`get/post/patch`, **falta `delete`**).
+  - `pages.applyEdits.edits[]` es `z.array(z.unknown())` con TODO — shape se define en **N+4** (Fase 3).
+  - Transport stdio: `node src/index.js < /dev/null` arranca clean.
+
+- **Prep B — `shared/documentInvariants.js`** (commits `0617e16` + `3bb5e4c`):
+  - API: `ensureInvariants(contentJson, projectType) → { contentJson, contentHtml, repairs: string[] }`, `serializeContentJsonToHtml`, `SUPPORTED_PROJECT_TYPES`. `projectType='brief'` rechazado (las respuestas van por otro endpoint).
+  - `shared/package.json` creado para que ESM resuelva deps Tiptap independiente de backend/frontend (`@tiptap/html`, `@tiptap/core`, `@tiptap/starter-kit`, `@tiptap/extension-{heading,link,image,underline,text-style,color,highlight,text-align,table,table-row,table-header,table-cell}` ^3.20.x — versiones matching frontend). Mismo set también en `mcp/webrief-server/package.json`.
+  - Mirror completo de extensiones frontend: `SectionDividerNode`, `CtaButtonNode`, `EditableImageNode` (6 attrs: `width, originalWidth, originalHeight, assetId, fileName, storagePath`), `TextBlockLayoutExtension` (`blockSpacing, indentLevel`), `CommentMark` (`id`, `resolved`).
+  - Repairs: missing leading `sectionDivider` → "Sección 1"; custom + custom + auto → auto consume ordinal correcto; renumber contiguo tras deletes; CTA `ctaText` default "Ver más"; FAQ stray H3 → divider inserted; `projectType='document'` → strip todos los dividers.
+  - 23/23 tests pasando (`cd shared && npm test`). Idempotency check con 3 pases consecutivos. Code review Opus encontró 4 silent-corruption bugs (FAQ non-idempotency, image attrs drift, textBlockLayout missing, comment.resolved drift) y fueron fixeados en pass 2.
+  - **Pattern crítico** para futuras extensiones: si la frontend agrega un atributo a un node TipTap, hay que mirrorearlo en `documentInvariants.js` o el `content_html` lo pierde en cada edit MCP.
 
 ## Session 12 — Dev Supabase project + env-aware uploads/emails
 
