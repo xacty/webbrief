@@ -47,8 +47,14 @@
 /* Hide a toolbar group via display:none. The element stays in the DOM
    (ref remains valid) but takes no layout space — and crucially won't
    show its content nor trigger interactions. The overflow JS toggles
-   this class based on measured widths. */
-.toolbarGroupHidden {
+   this class based on measured widths.
+
+   Double-class selector (.toolbarGroup.toolbarGroupHidden) raises
+   specificity to (0,2,0) so this wins over .toolbarGroup's
+   `display: inline-flex` regardless of declaration order. The earlier
+   single-class version lost the cascade because .toolbarGroup is
+   declared LATER in this file. */
+.toolbarGroup.toolbarGroupHidden {
   display: none;
 }
 

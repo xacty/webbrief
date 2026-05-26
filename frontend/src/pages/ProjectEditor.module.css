@@ -47,9 +47,16 @@
 
 /* Canvas column wrapper — transparent so the lavender from .root shows
    around the white canvas and behind the floating glass toolbar. The
-   canvas itself stays white via the .canvas class (invariant). */
+   canvas itself stays white via the .canvas class (invariant).
+
+   min-width: 0 is REQUIRED so this flex item (row child of .body) can
+   shrink below its content's natural width. Without it, a wide child
+   (the editor toolbar with many tools) forces .centerPanel to grow
+   to fit, which silently breaks the toolbar's own overflow detection
+   (toolbar.clientWidth == natural width → "everything fits"). */
 .centerPanel {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;

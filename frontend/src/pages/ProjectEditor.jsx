@@ -5803,36 +5803,63 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
       const widths = groupWidthsRef.current
       const order = TOOLBAR_GROUP_ORDER
 
-      // Subtract horizontal padding (var(--wb-space-2) var(--wb-space-3)
-      // = 8px top/bottom, 12px left/right → 24px horizontal).
-      const padding = 24
-      // Divider geometry: 1px width + 4px margin each side = 9px.
-      const dividerWidth = 9
-      // Approx width of the "more" button (32px ToolBtn).
-      const moreBtnWidth = 32
+      // Geometry constants — must match the toolbar's actual flex layout
+      // or the math is off and items spill past the edge.
+      const padding = 24       // .toolbar horizontal padding (12px×2)
+      const gap = 8            // .toolbar `gap: var(--wb-space-2)` between children
+      const dividerWidth = 9   // 1px line + 4px margin each side
+      const moreBtnWidth = 32  // .toolBtn fixed size
 
-      // Sum widths assuming ALL groups visible (no more button needed).
-      let totalAll = 0
+      // The flex `gap` applies BETWEEN every pair of adjacent children,
+      // and dividers themselves are flex children. So between two visible
+      // groups the actual spacing is: gap + divider + gap = 25px.
+      // The earlier version of this code used only `dividerWidth` (9)
+      // and silently underestimated by 16px per separator — which is why
+      // items spilled past the edge before the reduction triggered.
+      const betweenGroups = gap + dividerWidth + gap  // 25
+      // Slot reserved for the "more" button when overflow exists:
+      // gap + divider + gap + button = 57px.
+      const moreSlot = gap + dividerWidth + gap + moreBtnWidth  // 57
+
+      // Pre-emptive buffer: react to resize BEFORE items spill past
+      // the toolbar edge. Without this, the JS recompute lands a frame
+      // after the resize paints, so the user sees a flash of overflow.
+      const safetyBuffer = 8
+
+      // Natural width of the toolbar with ALL groups visible (no more
+      // button). Independent of current overflow state so the math
+      // stays stable across re-renders.
+      let totalAll = padding
       order.forEach((id, idx) => {
         totalAll += widths[id] || 0
-        if (idx > 0) totalAll += dividerWidth
+        if (idx > 0) totalAll += betweenGroups
       })
 
-      if (totalAll + padding <= containerWidth) {
+      // Case 1: everything fits with the safety buffer. Reset state
+      // unconditionally via functional update — reading from a closure
+      // here would be stale (the reason expand-then-fit used to get
+      // stuck). The setter no-ops if prev is already empty.
+      if (totalAll + safetyBuffer <= containerWidth) {
         setOverflowedGroupIds((prev) => (prev.length === 0 ? prev : []))
         return
       }
 
-      // Some overflow — reserve room for the more button + its leading
-      // divider. Fit as many groups as possible from the left.
-      const availForGroups = containerWidth - padding - moreBtnWidth - dividerWidth
+      // Case 2: doesn't fit. Walk groups left-to-right, keeping those
+      // that still fit AFTER reserving the more slot AND the safety
+      // buffer. Once a group fails to fit, every subsequent group is
+      // also marked overflowed (contiguous suffix — no visual gaps).
+      const availForGroups = containerWidth - padding - moreSlot - safetyBuffer
       let used = 0
       const overflowed = []
       order.forEach((id, idx) => {
-        const w = (widths[id] || 0) + (idx > 0 ? dividerWidth : 0)
-        if (used + w > availForGroups) overflowed.push(id)
-        else used += w
+        const w = (widths[id] || 0) + (idx > 0 ? betweenGroups : 0)
+        if (overflowed.length > 0 || used + w > availForGroups) {
+          overflowed.push(id)
+        } else {
+          used += w
+        }
       })
+
       setOverflowedGroupIds((prev) => {
         if (prev.length === overflowed.length && prev.every((id, i) => id === overflowed[i])) return prev
         return overflowed
