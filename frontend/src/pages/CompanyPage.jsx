@@ -7,17 +7,21 @@ import {
   canCreateProjects as canCreateProjectsForRole,
   canInviteMembers,
   canManageProjectLifecycle as canManageProjectLifecycleForRole,
+  canSendAccess,
   getInviteRoleOptions,
   isAdmin,
 } from '../lib/roleCapabilities'
 import {
-  COMPANY_ROLE_ORDER,
+  ADMIN_ASSIGNABLE_COMPANY_ROLE_ORDER,
   MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER,
   getCompanyRoleLabel as getCompanyRoleLabelShared,
+  getCompanyRoleRank,
   getPlatformRoleTitle,
 } from '../../../shared/userRoles.js'
 import { Button, Input, Select, Modal, Badge, KebabMenu } from '../components/ui'
+import UserEditModal from '../components/users/UserEditModal'
 import MoveToCompanyModal from '../components/MoveToCompanyModal'
+import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -100,8 +104,29 @@ function getInitials(fullName, email) {
 }
 
 function getRoleBadgeVariant(role) {
+  // company-admin is the highest in-company rank (PR 3) — give it a
+  // distinct accent so it reads above 'manager' at a glance. Workers
+  // (editor, content_writer, designer, developer) stay neutral.
+  if (role === 'admin') return 'warning'
   if (role === 'manager') return 'primary'
   return 'neutral'
+}
+
+// Compact breakdown line for the Miembros header (PR 3). Renders as
+// "1 admin · 2 managers · 3 editores · 1 colaborador" — order is fixed
+// regardless of insertion order so the line stays scannable.
+function buildMembersCounter(members) {
+  const counts = members.reduce((acc, m) => {
+    acc[m.role] = (acc[m.role] || 0) + 1
+    return acc
+  }, {})
+  const parts = []
+  if (counts.admin)   parts.push(`${counts.admin} ${counts.admin === 1 ? 'admin' : 'admins'}`)
+  if (counts.manager) parts.push(`${counts.manager} ${counts.manager === 1 ? 'manager' : 'managers'}`)
+  if (counts.editor)  parts.push(`${counts.editor} ${counts.editor === 1 ? 'editor' : 'editores'}`)
+  const workerCount = (counts.content_writer || 0) + (counts.designer || 0) + (counts.developer || 0)
+  if (workerCount)    parts.push(`${workerCount} ${workerCount === 1 ? 'colaborador' : 'colaboradores'}`)
+  return parts.join(' · ')
 }
 
 // TEMP demo members for visual preview when the list is empty. They render
@@ -159,9 +184,8 @@ export default function CompanyPage() {
   const [inviting, setInviting] = useState(false)
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
-  const [editForm, setEditForm] = useState({ fullName: '', role: 'editor' })
-  const [editError, setEditError] = useState('')
-  const [editBusy, setEditBusy] = useState(false)
+  // editForm/editError/editBusy removed — <UserEditModal/> (PR 2) owns
+  // its own form state, validation, and submit lifecycle.
   const [moveModalIds, setMoveModalIds] = useState(null)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -177,15 +201,24 @@ export default function CompanyPage() {
   const isAdminUser = isAdmin(currentUser)
   const isCompanyManager = company?.membershipRole === 'manager'
 
+  // Rank-aware peer rule (PR 3): you can manage anyone STRICTLY below you
+  // in the company rank ladder (admin > manager > editor > worker peers).
+  // Platform admin still bypasses the ladder.
+  const actorCompanyRank = getCompanyRoleRank(company?.membershipRole)
   function canManageMember(member) {
     if (!member) return false
     if (isAdminUser) return true
-    if (!isCompanyManager) return false
-    return member.role !== 'manager'
+    if (!actorCompanyRank) return false
+    return actorCompanyRank > getCompanyRoleRank(member.role)
   }
 
   function getMemberRoleOptions(member) {
-    if (isAdminUser) return COMPANY_ROLE_ORDER
+    // company-admin assigns from the full set (incl. another 'admin');
+    // managers can only assign from the worker tier (PR 3 contract,
+    // mirrors backend rank check). Platform admin uses the admin list.
+    if (isAdminUser || company?.membershipRole === 'admin') {
+      return ADMIN_ASSIGNABLE_COMPANY_ROLE_ORDER
+    }
     const baseOptions = MANAGER_ASSIGNABLE_COMPANY_ROLE_ORDER
     return member && baseOptions.includes(member.role)
       ? baseOptions
@@ -334,18 +367,16 @@ export default function CompanyPage() {
       return
     }
     const label = member.fullName || member.email
-    try {
-      const data = await apiFetch(`/api/users/${member.userId}/send-access`, { method: 'POST' })
-      const actionLabel = data?.action === 'invite_resent'
-        ? 'Invitación reenviada'
-        : 'Email de acceso enviado'
-      showFeedback(`${actionLabel} a ${label}`)
-    } catch (err) {
-      if (err?.status === 429) {
-        showFeedback('Demasiados intentos. Esperá unos minutos.')
-      } else {
-        showFeedback(err?.message || 'No se pudo enviar acceso')
-      }
+    // sendAccessClient (PR 3) wraps the endpoint with structured error
+    // handling — rate-limit returns kind='rate_limited' instead of
+    // throwing, so we can show a friendly message without an inline
+    // try/catch + err.status check.
+    const targetUser = { id: member.userId, email: member.email, companies: [{ companyId }] }
+    const result = await sendAccessRequest(targetUser)
+    if (result.ok || result.kind === 'rate_limited') {
+      showFeedback(result.message || `Email de acceso enviado a ${label}`)
+    } else {
+      showFeedback(result.message || 'No se pudo enviar acceso')
     }
   }
 
@@ -381,73 +412,29 @@ export default function CompanyPage() {
   }
 
   function openEditMember(member) {
-    // Demo members: open the modal so the visual is reachable, but
-    // saving will be blocked in handleSaveEditMember (fake userIds would
-    // 404 against the real API).
+    if (member?._demo) {
+      showFeedback('Demo: invitá a un miembro real para editarlo.')
+      return
+    }
     setEditingMember(member)
-    setEditForm({
-      fullName: member.fullName || '',
-      role: member.role || 'editor',
-    })
-    setEditError(member?._demo ? 'Demo: este miembro no se puede guardar. Invitá a un miembro real para editarlo.' : '')
   }
 
-  function closeEditMember() {
-    setEditingMember(null)
-    setEditError('')
-  }
-
-  async function handleSaveEditMember(e) {
-    e.preventDefault()
+  // Called by <UserEditModal/> after a successful PATCH. We get the
+  // updated fields and merge them into our local member row + cache,
+  // so the row reflects the change without re-fetching the company.
+  function handleMemberSaved(updates) {
     if (!editingMember) return
-
-    if (editingMember._demo) {
-      setEditError('Demo: este miembro no se puede guardar. Invitá a un miembro real para editarlo.')
-      return
-    }
-
-    const trimmedName = String(editForm.fullName || '').trim()
-    const nextRole = editForm.role
-    const nameChanged = trimmedName !== (editingMember.fullName || '')
-    const roleChanged = nextRole !== editingMember.role
-
-    if (!nameChanged && !roleChanged) {
-      closeEditMember()
-      return
-    }
-
-    setEditBusy(true)
-    setEditError('')
-
-    try {
-      if (nameChanged) {
-        await apiFetch(`/api/users/${editingMember.userId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ fullName: trimmedName }),
-        })
-      }
-
-      if (roleChanged) {
-        await apiFetch(`/api/users/${editingMember.userId}/memberships/${companyId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ role: nextRole }),
-        })
-      }
-
-      const nextMembers = members.map((existing) => (
-        existing.userId === editingMember.userId
-          ? { ...existing, fullName: trimmedName, role: nextRole }
-          : existing
-      ))
-      setMembers(nextMembers)
-      if (company) writeCompanyCache(companyId, { company, projects, members: nextMembers })
-
-      closeEditMember()
-    } catch (err) {
-      setEditError(err.message || 'No se pudo actualizar al miembro')
-    } finally {
-      setEditBusy(false)
-    }
+    const nextMembers = members.map((existing) => (
+      existing.userId === editingMember.userId
+        ? {
+            ...existing,
+            fullName: updates.fullName ?? existing.fullName,
+            role: (updates.companyRoles && updates.companyRoles[companyId]) || updates.role || existing.role,
+          }
+        : existing
+    ))
+    setMembers(nextMembers)
+    if (company) writeCompanyCache(companyId, { company, projects, members: nextMembers })
   }
 
   function openProject(projectId) {
@@ -899,9 +886,15 @@ export default function CompanyPage() {
               return (
             <section className={styles.membersSection}>
               <div className={styles.membersHeader}>
-                <h2 className={styles.membersTitle}>
-                  Miembros <span className={styles.membersCount}>· {displayMembers.length}</span>
-                </h2>
+                <div>
+                  <h2 className={styles.membersTitle}>
+                    Miembros <span className={styles.membersCount}>· {displayMembers.length}</span>
+                  </h2>
+                  {displayMembers.length > 0 && (() => {
+                    const counter = buildMembersCounter(displayMembers)
+                    return counter ? <p className={styles.membersCounter}>{counter}</p> : null
+                  })()}
+                </div>
                 {canInvite && displayMembers.length > 0 && (
                   <Button
                     variant="primary"
@@ -967,12 +960,16 @@ export default function CompanyPage() {
                                 icon: <Pencil size={14} />,
                                 onClick: () => openEditMember(member),
                               },
+                              // PR 3: gate "Reenviar acceso" via canSendAccess
+                              // capability — mirrors the backend rank check so
+                              // managers can't try to send access to peers and
+                              // hit a 403 mid-action.
                               ...(member.userId !== currentUser?.id ? [
-                                {
+                                ...(canSendAccess(currentUser, { id: member.userId, companies: [{ companyId }] }) ? [{
                                   label: 'Reenviar acceso',
                                   icon: <Mail size={14} />,
                                   onClick: () => handleSendAccess(member),
-                                },
+                                }] : []),
                                 {
                                   label: 'Eliminar del workspace',
                                   icon: <Trash2 size={14} />,
@@ -1025,54 +1022,31 @@ export default function CompanyPage() {
         </>
       )}
 
-      <Modal
+      {/* Shared UserEditModal (PR 2) — scope='company' shows just the
+          single-company role select + name + (admin only) email field,
+          and embeds PasswordSection / SessionsList (PR 4) for the
+          target user. Replaces the prior inline edit form. */}
+      <UserEditModal
         open={Boolean(editingMember)}
-        onClose={closeEditMember}
-        title="Editar miembro"
-        size="md"
-        ariaDescribedBy="edit-member-description"
-      >
-        <p id="edit-member-description" className={styles.modalSubtitle}>
-          {isAdminUser ? 'Actualiza el nombre y el rol dentro de la empresa.' : 'Actualiza el nombre y el rol dentro de tu empresa.'}
-        </p>
-
-        {editingMember && (
-          <form className={styles.modalForm} onSubmit={handleSaveEditMember}>
-            <Input
-              label="Nombre"
-              type="text"
-              value={editForm.fullName}
-              onChange={(e) => setEditForm((current) => ({ ...current, fullName: e.target.value }))}
-              placeholder="Nombre completo"
-            />
-
-            <Select
-              label={`Rol en ${company?.name || 'empresa'}`}
-              value={editForm.role}
-              onChange={(e) => setEditForm((current) => ({ ...current, role: e.target.value }))}
-            >
-              {getMemberRoleOptions(editingMember).map((role) => (
-                <option key={role} value={role}>{roleLabel(role)}</option>
-              ))}
-            </Select>
-
-            <p className={styles.fieldHint}>
-              Email: {editingMember.email || 'Sin email'}
-            </p>
-
-            {editError && <p className={styles.modalError}>{editError}</p>}
-
-            <div className={styles.modalActions}>
-              <Button type="button" variant="secondary" onClick={closeEditMember}>
-                Cancelar
-              </Button>
-              <Button type="submit" variant="primary" disabled={editBusy} loading={editBusy}>
-                {editBusy ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+        user={editingMember && {
+          id: editingMember.userId,
+          email: editingMember.email,
+          fullName: editingMember.fullName,
+          platformRole: editingMember.platformRole || 'user',
+          avatarUrl: editingMember.avatarUrl || null,
+          companies: [{
+            companyId,
+            companyName: company?.name || '',
+            companySlug: company?.slug || '',
+            role: editingMember.role,
+          }],
+        }}
+        currentUser={currentUser}
+        scope="company"
+        companyId={companyId}
+        onClose={() => setEditingMember(null)}
+        onSaved={handleMemberSaved}
+      />
 
       <MoveToCompanyModal
         open={Boolean(moveModalIds && moveModalIds.length > 0)}

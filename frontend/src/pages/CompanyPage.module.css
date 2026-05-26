@@ -349,7 +349,7 @@
 
 .membersHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--wb-space-3);
 }
@@ -364,6 +364,14 @@
 .membersCount {
   color: var(--wb-text-muted);
   font-weight: var(--wb-weight-regular);
+}
+
+/* PR 3: role-breakdown line under the Miembros title
+   ("1 admin · 2 managers · 3 editores · 1 colaborador"). */
+.membersCounter {
+  margin: var(--wb-space-1) 0 0;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text-muted);
 }
 
 .membersList {
