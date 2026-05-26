@@ -4,8 +4,9 @@
   - Read `AI_GLOBAL.md` first.
   - Read this file second for fastest/highest-signal project context.
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
+  - **Before touching any `frontend/src/` file that produces a visible surface**, also read `DESIGN-SYSTEM.md` — tokens, UI patterns, anti-patterns, component inventory. Single source of truth for design decisions.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-19 (session 19 — MCP Prep A + N+2: token system + scaffold mcp/webrief-server + shared/documentInvariants. Prod migration applied. Backend code pending VPS deploy)
+- Updated: 2026-05-26 (session 20 — UI refresh v2.0.0 + DESIGN-SYSTEM.md. Editor toolbar overflow, Modern SaaS shell, UserEditModal/SessionsList/PasswordSection redesign. Merge PR #1 + deploy a webrief.app)
 
 ## Targets
 

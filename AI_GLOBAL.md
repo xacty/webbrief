@@ -5,7 +5,8 @@
   1. read this file first
   2. read `CONTEXT.min.md`
   3. read `CONTEXT.md` only if more detail is needed
-  4. read tool-specific bridge files such as `AGENTS.md` or `CLAUDE.md` if present
+  4. read `DESIGN-SYSTEM.md` before touching any `frontend/src/` file that produces a visible surface (tokens, UI patterns, anti-patterns, component inventory)
+  5. read tool-specific bridge files such as `AGENTS.md` or `CLAUDE.md` if present
 
 ## Working Directory Rule
 
