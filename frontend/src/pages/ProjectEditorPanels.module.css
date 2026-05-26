@@ -854,14 +854,14 @@
 }
 
 .historyItemTime {
-  color: var(--wb-color-neutral-400);
-  font-size: 11px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
   word-break: break-word;
 }
 
 .historyItemChanges {
-  color: var(--wb-color-neutral-500);
-  font-size: 12px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
 }
 
 .historyItemActions {

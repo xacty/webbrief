@@ -184,15 +184,12 @@
 }
 
 .navPillMenu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
+  position: fixed;
   background: var(--wb-surface);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
   padding: 4px 0;
-  z-index: var(--wb-z-sticky);
+  z-index: var(--wb-z-popover);
   min-width: 130px;
 }
 

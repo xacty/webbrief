@@ -4881,8 +4881,29 @@ function FloatingEditorBar({
 function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, onRename, onRequestDelete, menuOpen, onOpenMenu, onCloseMenu }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(page.name)
+  const menuTriggerRef = useRef(null)
+  const [menuPos, setMenuPos] = useState(null)
 
   useEffect(() => { setDraft(page.name) }, [page.name])
+
+  // The dropdown is portaled to document.body so it escapes the .navCenter
+  // scroll container (overflow-x: auto clips absolutely-positioned descendants
+  // vertically too). Position is recomputed on scroll/resize while open.
+  useLayoutEffect(() => {
+    if (!menuOpen) { setMenuPos(null); return undefined }
+    function update() {
+      const rect = menuTriggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    }
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [menuOpen])
 
   function commitRename() {
     setEditing(false)
@@ -4919,6 +4940,7 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
       )}
       {canManagePages && (
         <button
+          ref={menuTriggerRef}
           className={menuButtonClassName}
           onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
           title="Opciones"
@@ -4926,8 +4948,12 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
           <MoreVertical size={14} />
         </button>
       )}
-      {canManagePages && menuOpen && (
-        <div className={navStyles.navPillMenu} onMouseLeave={onCloseMenu}>
+      {canManagePages && menuOpen && menuPos && typeof document !== 'undefined' && createPortal(
+        <div
+          className={navStyles.navPillMenu}
+          style={menuPos}
+          onMouseLeave={onCloseMenu}
+        >
           <div
             className={navStyles.navPillMenuItem}
             onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}
@@ -4942,7 +4968,8 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
               Eliminar
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
