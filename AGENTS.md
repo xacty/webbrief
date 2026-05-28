@@ -1,5 +1,11 @@
 # AGENTS
 
+## Language Rule
+
+- **All Spanish content in this repo (UI copy, emails, comments, docs) must be written in neutral Spanish (español neutro).**
+- Do NOT use Argentinian Spanish. Forbidden forms: "hacé", "copiá", "ignorá", "abrí", "podés", "tenés", "creés", "contactá", "pedile", "guardá", "vos".
+- Use: "haz", "copia", "ignora", "abre", "puedes", "tienes", "crees", "contacta", "pide", "guarda", "tú".
+
 ## Startup Rule
 
 - At the start of each new conversation in this repo, read `/Users/adrian/GitHub/webbrief/AI_GLOBAL.md` first.

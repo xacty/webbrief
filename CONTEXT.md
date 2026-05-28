@@ -9,6 +9,12 @@
 - Scope: current repo state; use as authoritative project context when user says "review/read CONTEXT.md", unless user says some part is outdated.
 - Goal: optimize for AI consumption; prefer this file over inferring intent from stale code comments.
 
+## Language Rule
+
+- **All Spanish content in this repo (UI copy, emails, comments, docs) must be written in neutral Spanish (español neutro).**
+- Do NOT use Argentinian Spanish. Forbidden forms: "hacé", "copiá", "ignorá", "abrí", "podés", "tenés", "creés", "contactá", "pedile", "guardá", "vos".
+- Use: "haz", "copia", "ignora", "abre", "puedes", "tienes", "crees", "contacta", "pide", "guarda", "tú".
+
 ## Repo Map
 
 - `AI_GLOBAL.md`

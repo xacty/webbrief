@@ -45,7 +45,7 @@ export function buildInviteEmailPayload({ to, fullName, actionLink, companyName 
       <h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(greeting)}</h1>
       <p style="font-size:15px;line-height:1.5;margin:0 0 16px">
         Recibiste una invitación para acceder a WeBrief${escapeHtml(companyClause)}.
-        Hacé clic en el botón para crear tu contraseña y entrar.
+        Haz clic en el botón para crear tu contraseña y entrar.
       </p>
       <p style="margin:24px 0">
         <a href="${escapeHtml(actionLink)}"
@@ -54,11 +54,11 @@ export function buildInviteEmailPayload({ to, fullName, actionLink, companyName 
         </a>
       </p>
       <p style="font-size:13px;color:#666;margin:24px 0 0">
-        Si el botón no funciona, copiá esta dirección en tu navegador:<br>
+        Si el botón no funciona, copia esta dirección en tu navegador:<br>
         <span style="word-break:break-all">${escapeHtml(actionLink)}</span>
       </p>
       <p style="font-size:12px;color:#888;margin:24px 0 0">
-        Si no esperabas esta invitación, ignorá este mensaje.
+        Si no esperabas esta invitación, ignora este mensaje.
       </p>
     </body></html>
   `.trim()
@@ -67,10 +67,10 @@ export function buildInviteEmailPayload({ to, fullName, actionLink, companyName 
     greeting + '.',
     '',
     `Recibiste una invitación para acceder a WeBrief${companyClause}.`,
-    'Abrí el siguiente enlace para crear tu contraseña:',
+    'Abre el siguiente enlace para crear tu contraseña:',
     actionLink,
     '',
-    'Si no esperabas esta invitación, ignorá este mensaje.',
+    'Si no esperabas esta invitación, ignora este mensaje.',
   ].join('\n')
 
   return { to, subject, html, text, from: getSender() }
@@ -129,11 +129,11 @@ export async function sendInviteEmail(args) {
 const ROLE_COPY_ES = {
   manager: {
     label: 'manager',
-    powers: 'Como manager podés invitar usuarios, crear proyectos y gestionar la empresa.',
+    powers: 'Como manager puedes invitar usuarios, crear proyectos y gestionar la empresa.',
   },
   admin: {
     label: 'admin',
-    powers: 'Como admin de la empresa podés invitar a cualquier rol (incluso otros admins), gestionar todo el equipo y administrar la empresa.',
+    powers: 'Como admin de la empresa puedes invitar a cualquier rol (incluso otros admins), gestionar todo el equipo y administrar la empresa.',
   },
 }
 
@@ -166,11 +166,11 @@ export function buildManagerAssignedEmailPayload({ to, fullName, companyName, ad
         </a>
       </p>
       <p style="font-size:13px;color:#666;margin:24px 0 0">
-        Si el botón no funciona, copiá esta dirección en tu navegador:<br>
+        Si el botón no funciona, copia esta dirección en tu navegador:<br>
         <span style="word-break:break-all">${escapeHtml(companyUrl)}</span>
       </p>
       <p style="font-size:12px;color:#888;margin:24px 0 0">
-        Si creés que esto es un error, contactá al administrador.
+        Si crees que esto es un error, contacta al administrador.
       </p>
     </body></html>
   `.trim()
@@ -181,7 +181,7 @@ export function buildManagerAssignedEmailPayload({ to, fullName, companyName, ad
     introLine,
     copy.powers,
     '',
-    'Abrí la empresa en:',
+    'Abre la empresa en:',
     companyUrl,
   ].join('\n')
 
@@ -248,7 +248,7 @@ export function buildResetPasswordEmailPayload({ to, fullName, actionLink, expir
       <h1 style="font-size:20px;margin:0 0 16px">${escapeHtml(greeting)}</h1>
       <p style="font-size:15px;line-height:1.5;margin:0 0 16px">
         Recibimos una solicitud para restablecer tu contraseña de WeBrief.
-        Hacé clic en el botón para elegir una nueva. El enlace expira en 1 hora.
+        Haz clic en el botón para elegir una nueva. El enlace expira en 1 hora.
       </p>
       <p style="margin:24px 0">
         <a href="${escapeHtml(actionLink)}"
@@ -257,11 +257,11 @@ export function buildResetPasswordEmailPayload({ to, fullName, actionLink, expir
         </a>
       </p>
       <p style="font-size:13px;color:#666;margin:24px 0 0">
-        Si el botón no funciona, copiá esta dirección en tu navegador:<br>
+        Si el botón no funciona, copia esta dirección en tu navegador:<br>
         <span style="word-break:break-all">${escapeHtml(actionLink)}</span>
       </p>
       <p style="font-size:12px;color:#888;margin:24px 0 0">
-        Si no solicitaste este cambio, ignorá este mensaje. Tu contraseña actual sigue siendo válida.
+        Si no solicitaste este cambio, ignora este mensaje. Tu contraseña actual sigue siendo válida.
       </p>
     </body></html>
   `.trim()
@@ -270,10 +270,10 @@ export function buildResetPasswordEmailPayload({ to, fullName, actionLink, expir
     greeting + '.',
     '',
     'Recibimos una solicitud para restablecer tu contraseña de WeBrief.',
-    'Abrí el siguiente enlace para elegir una nueva. El enlace expira en 1 hora:',
+    'Abre el siguiente enlace para elegir una nueva. El enlace expira en 1 hora:',
     actionLink,
     '',
-    'Si no solicitaste este cambio, ignorá este mensaje.',
+    'Si no solicitaste este cambio, ignora este mensaje.',
   ].join('\n')
 
   return { to, subject, html, text, from: getSender(), expiresAt }

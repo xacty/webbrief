@@ -8,6 +8,12 @@
   4. read `DESIGN-SYSTEM.md` before touching any `frontend/src/` file that produces a visible surface (tokens, UI patterns, anti-patterns, component inventory)
   5. read tool-specific bridge files such as `AGENTS.md` or `CLAUDE.md` if present
 
+## Language Rule
+
+- **All Spanish content in this repo (UI copy, emails, comments, docs) must be written in neutral Spanish (español neutro).**
+- Do NOT use Argentinian Spanish. Forbidden forms: "hacé", "copiá", "ignorá", "abrí", "podés", "tenés", "creés", "contactá", "pedile", "guardá", "vos".
+- Use: "haz", "copia", "ignora", "abre", "puedes", "tienes", "crees", "contacta", "pide", "guarda", "tú".
+
 ## Working Directory Rule
 
 - **Always edit files in `/Users/adrian/GitHub/webbrief/`** — the main repository.
