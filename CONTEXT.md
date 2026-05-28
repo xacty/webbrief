@@ -879,3 +879,12 @@ Iteración intensa sobre el sistema de comments inicial: rediseño total de UI a
 - notification read/unread UI actions
 - Create a separate Supabase Dev project before DB/schema experiments; do not test destructive SQL or schema changes against Supabase Prod first.
 - Comments huérfanos: actualmente visibles en History tab cuando se auto-resuelven, pero no hay vista cronológica dedicada (opcional — agregar si emerge la necesidad).
+- **Dev environment at `dev.webrief.app` (separate from local)** — currently the only way to test on a "real" URL is prod. A proper dev tier on the same VPS would unblock email-flow tests (password reset, invite link click-through) without touching prod data. Trabajitos requeridos:
+  - DNS: add `A dev.webrief.app → 199.192.22.74` in cPanel zone (same VPS IP, distinct host).
+  - Nginx: new server block for `dev.webrief.app` → `proxy_pass http://127.0.0.1:3001/` (backend-dev) + serves `frontend-dev/dist` static.
+  - PM2: second process `webrief-backend-dev` on port 3001 with its own `.env` pointing to Supabase Dev project (`iimqxacagxuemwgaunis`) + Dev Resend key (or sandbox).
+  - Frontend build: separate `frontend-dev/` checkout on `dev` branch, or use main repo with `VITE_API_URL`/`VITE_SUPABASE_URL` swapped at build time per environment.
+  - Certbot: `certbot --nginx -d dev.webrief.app` for HTTPS.
+  - Supabase Dev: configure Custom SMTP (smtp.resend.com) + Spanish templates + `mailer_otp_exp=86400` so /login recovery actually delivers a mail (currently Dev has no Custom SMTP, so the public `resetPasswordForEmail` flow silently fails or hits Supabase's native ~3-4/h limit).
+  - Supabase Auth redirect allowlist: add `https://dev.webrief.app/auth/set-password`.
+  - Deploy flow: branch convention (e.g., `main` → prod, `dev` → dev) + per-branch git pull on VPS.
