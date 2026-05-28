@@ -131,7 +131,10 @@ test('validateResetRequestRow: used when used_at is set', () => {
   assert.deepEqual(validateResetRequestRow({ row, now }), { valid: false, reason: 'used' })
 })
 
-test('validateResetRequestRow: no_request when row is null', () => {
+test('validateResetRequestRow: passthrough when row is null (public /login flow)', () => {
+  // Public "Olvidé mi contraseña" calls supabase.auth.resetPasswordForEmail
+  // directly without inserting a row. Must NOT be treated as expired —
+  // Supabase's own TTL gates the token.
   const now = new Date('2026-05-14T12:00:00Z')
-  assert.deepEqual(validateResetRequestRow({ row: null, now }), { valid: false, reason: 'no_request' })
+  assert.deepEqual(validateResetRequestRow({ row: null, now }), { valid: true, reason: 'no_request' })
 })

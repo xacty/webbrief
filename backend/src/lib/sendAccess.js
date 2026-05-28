@@ -26,7 +26,13 @@ export function decideSendAccessAction({ authUser }) {
 }
 
 export function validateResetRequestRow({ row, now }) {
-  if (!row) return { valid: false, reason: 'no_request' }
+  // No row → the recovery was initiated via the public /login "Olvidé mi
+  // contraseña" flow (supabase.auth.resetPasswordForEmail), which talks to
+  // Supabase directly and never hits our backend. Treat as passthrough and
+  // let Supabase's own token TTL (email_otp_exp) gate the link. The 1h
+  // server-side TTL still applies to send-access admin flows because those
+  // DO insert a row here.
+  if (!row) return { valid: true, reason: 'no_request' }
   if (row.used_at) return { valid: false, reason: 'used' }
   const expiresAt = new Date(row.expires_at)
   if (Number.isNaN(expiresAt.getTime())) return { valid: false, reason: 'expired' }
