@@ -6,7 +6,7 @@
   - Read `CONTEXT.md` only if task needs more detail, implementation history, or stronger guardrails.
   - **Before touching any `frontend/src/` file that produces a visible surface**, also read `DESIGN-SYSTEM.md` — tokens, UI patterns, anti-patterns, component inventory. Single source of truth for design decisions.
   - If user explicitly says "read/review CONTEXT", start with this file, then expand to `CONTEXT.md` only if needed.
-- Updated: 2026-05-26 (session 20 — UI refresh v2.0.0 + DESIGN-SYSTEM.md. Editor toolbar overflow, Modern SaaS shell, UserEditModal/SessionsList/PasswordSection redesign. Merge PR #1 + deploy a webrief.app)
+- Updated: 2026-05-27 (session 21 — MCP v1: implementado y deployado. Fases 1+2+3 + HTTP transport (Fase 4, antes diferida a v2). 12 tools + 12 edit ops. `IntegrationsPage` reemplaza "Tokens MCP" en Settings. `/api/mcp` vivo en `https://webrief.app/api/mcp`.)
 
 ## Targets
 
@@ -533,6 +533,79 @@
 - **Browser shortcuts > editor shortcuts en colisiones**: `TextAlign.extend()` sobrescribe `addKeyboardShortcuts` para dejar solo `Mod-Shift-l` y `Mod-Shift-e` (left/center). `Mod-Shift-r` (hard refresh) y `Mod-Shift-j` (DevTools) ya no se bindean — el browser tiene prioridad. Remover el wrapper custom `AlignShortcuts` (redundante con el override). Para alinear derecha o justify, usar la toolbar.
 - **CSS fix history card overflow**: `historyItemHeader` con `flex-wrap: wrap`; `historyItemTime` sin `white-space: nowrap` → cuando el actor + fecha no caben con el sectionName, wrap natural a segunda línea en vez de overflow.
 - **Resend API key**: configurada en `backend/.env` local + VPS. Smoke test pasó. `RESEND_API_KEY=re_…` + `COMMENTS_EMAIL_FROM=WeBrief <noreply@webrief.app>`.
+
+## Session 21 — MCP v1 completo: Fases 1+2+3 + HTTP transport + IntegrationsPage + deploy
+
+- **Status final**: MCP v1 vivo en Prod (`https://webrief.app/api/mcp`). 12 tools registradas, 12 edit ops, transport HTTP via `StreamableHTTPServerTransport`. 157/157 unit tests + 23/23 invariants. Suite total estable.
+
+- **Fase 1 — Read tools** (commits `5b59829`, `4d582f6`, `c5c7f8c`): `session.getContext`, `companies.selectActive`, `projects.get`, `pages.get`. Validan token, forward al backend, devuelven errores estructurados. 31 tests con fetch mockeado.
+
+- **Fase 2 — Preview/create tools** (commits `7c8eb3b`, `f97f6f9`): `projects.previewCreateFromContent`, `projects.createFromPreview` (con `overrides` opt al apply), `brief.previewPrefill`, `pages.previewDraft`.
+  - `lib/urlFetcher.js`: política SSRF-safe — http/https only, 10s timeout, 2MB cap, RFC1918 + loopback + link-local + IPv4-mapped-v6 rechazados, redirects refused.
+  - `lib/previewStore.js`: in-memory Map con TTL 10min + GC + cap 256 entries con FIFO eviction. previewId con prefix `prev_`.
+  - **Schema fix crítico**: `projectTypeEnum` original tenía `[brief, website, landing_page, email, social, ads, other]` pero backend `normalizeProjectType` sólo acepta `[page, brief, document, faq]`. Corregido en commit `7c8eb3b`. Decisión: enum estricto, no fallback silencioso.
+  - 60 tests.
+
+- **Fase 3 — Edit tools** (commit `f0f197b` + rich-node ops `be44ad7` + SEO `4927dc1`/`bf665e4`/`c6f8670`): `pages.previewEdits`, `pages.applyEdits`.
+  - `lib/editOps.js`: discriminated union de **12 ops**: `set_page_name`, `set_section_name`, `set_heading_text`, `replace_paragraph`, `insert_section`, `delete_section`, `find_replace`, `set_faq_question`, `set_faq_answer`, `insert_cta`, `insert_image_by_url`, `set_seo_metadata`. Ops que no matchean → warning estructurado (no throw). `find_replace` escapa regex meta-chars.
+  - Versionado: `expectedVersion` requerido en apply. Conflict → `{ code: 'version_conflict', currentVersion, currentSnapshot }` con la página fresca para replan. Backend 409 también mapeado.
+  - Strategy A (locked): MCP construye contentJson completo + ensureInvariants + PUT `/projects/:id/pages` con TODAS las páginas (full-replace endpoint). Otras páginas se envían verbatim para no perderlas.
+  - **SEO metadata** (commit `c6f8670`): keys alineadas al frontend (`titleTag`, `metaDescription`, `urlSlug`). Esquema strict rechaza `title`/`description`/`ogImage`/`keywords`/`canonicalUrl`/`noindex` (eran zombi data, frontend no los leía). Si se agregan al editor en el futuro, reincorporar con mismos nombres.
+  - **Imágenes**: `insert_image_by_url` SÍ permitido vía URL pública (typicamente ImageKit ya subido por UI). Upload sigue siendo UI-only — el MCP nunca sube assets.
+  - 52 tests (incluye `set_seo_metadata` merge/replace + PUT payload carries new seoMetadata + no disturba otras páginas).
+
+- **Project meta updates** (backend `bf665e4` + tools `4927dc1`): extendido backend `PATCH /projects/:id` para aceptar `name + clientName + clientEmail + businessType + projectType` (antes sólo `name`). Empty-string clears clientName/Email. `projectType` validado contra enum, sin coerción silenciosa. Dos tools MCP nuevas: `projects.previewUpdate` (per-field diff vs current, drops no-ops) + `projects.applyUpdate` (PATCHea solo los diffeados). 14 tests en nuevo `fase4.test.js`.
+
+- **Fase 4 — HTTP transport** (commit `66ca109`, antes diferida a v2):
+  - **Decisión**: pasar a v1. Razón: distribución por stdio requiere que cada usuario clone el repo + path absoluto + Node — no escala. Opción HTTP/SSE con bearer token bajo `requireAuth` del backend reusa toda la infra existente sin OAuth (queda para v2 cuando haya scopes complejos).
+  - `mcp/webrief-server/src/http.js`: factory `createMcpHttpHandler()` usando `StreamableHTTPServerTransport` en modo stateless (server + transport nuevos por request). Token sale del header `Authorization: Bearer mcpt_*`.
+  - `session/requestContext.js`: `AsyncLocalStorage` para `{ token, currentUser, activeCompanyByToken }`. Handlers no cambiaron — `auth/mcpToken.js` lee context primero, env como fallback.
+  - `session/activeCompany.js`: pasó de variable global a `Map<token, companyId>` cuando hay context (HTTP), variable global cuando no (stdio). Evita contaminación cross-user.
+  - `backend/src/routes/mcp.js`: `POST /api/mcp` detrás de `requireAuth`. `GET` devuelve 405 + JSON-RPC error para que clientes discovery probes reconozcan el endpoint. Mounted en `backend/src/index.js` bajo `/api/mcp`.
+  - `instructions.js`: playbook global de 5,376 chars compartido stdio + HTTP. Cubre orden de uso, 5 flujos concretos, hard limits, cheatsheet de las 12 ops, tabla de error codes.
+  - Stdio sigue funcionando para dev local (`src/index.js`) — fallback no eliminado.
+
+- **Tool descriptions consolidated** (commit `f1a8ce0`): patrón consistente What/When/Side effects/Errors por cada una de las 12 tools (373-948 chars c/u). `.describe()` en cada campo del input schema, especialmente las 12 variantes del discriminated union de edits.
+
+- **Frontend — IntegrationsPage** (commit `2181e6f`, antes `660803e` lo tenía en Settings):
+  - Nueva ruta `/integrations`. Sidebar item "Integraciones" debajo de "Seguridad" sin role gate (todo user puede conectar su agente).
+  - Wizard 3 steps: Generate token (auto-label `${cliente} · ${fecha}`) → Pick client (Claude Code/Codex/Claude Desktop) → Copy snippet (dinámico según cliente + token actual). Snippet incluye URL (`http://localhost:3000/api/mcp` en dev, `${origin}/api/mcp` en prod).
+  - Tokens activos en sección colapsable "Advanced" debajo. La sección antes en AccountSettings se removió completa (~290 líneas CSS + 200 líneas JSX + 9 state vars + handlers + sidebar anchor `#api-tokens`).
+  - Naming: "Integraciones" elegido sobre "Conexiones" por estándar SaaS y lectura en español.
+  - Header style refresheado al patrón Modern SaaS (`pageHeader/pageHeaderInner/titleRow/headerMain/headerMeta` matching CompaniesPage/UsersPage).
+
+- **Deploy a Prod** (commits `cc47072`, `5b24433`):
+  - `scripts/deploy.sh` actualizado para también `npm ci --omit=dev` en `shared/` y `mcp/webrief-server/` (sin esto el backend crashea con MODULE_NOT_FOUND para `@modelcontextprotocol/sdk` o `@tiptap/html`).
+  - **Bug arquitectónico descubierto**: bash carga deploy.sh en memoria al inicio del run. Si `git pull` actualiza el propio script, los pasos nuevos NO corren en ese deploy — solo en el siguiente. Primer deploy de Fase 4 quedó incompleto. Recuperado con SSH manual + `npm ci` en `mcp/webrief-server/` y `shared/`. Follow-up registrado: hacer deploy.sh auto-reexec'ar tras self-update via sha256 comparison.
+  - Migration `20260519_mcp_tokens.sql` ya aplicada a Prod desde sesión 19. Sin migrations nuevas en esta sesión.
+  - Nginx ya proxyea `/api/*` → backend; cero cambios de Nginx.
+  - **Frontend env**: en prod usa `window.location.origin + '/api/mcp'` → mismo origin. En dev fuerza `http://localhost:3000/api/mcp` porque Vite proxy no aplica para MCP clients externos.
+
+- **GitGuardian false positive** (commit `1b217c6`): test fixtures con literales `mcpt_*` (5 archivos) flaggeados como secretos. Renombrados a `test-fixture-not-a-real-token[-suffix]` para evitar el detector de prefijo. Tokens reales se generan en `backend/src/routes/mcpTokens.js:12` con `'mcpt_' + randomBytes(32).toString('hex')` (entropía 2^256), DB guarda sólo SHA-256.
+
+- **Comando final para users** (cualquier máquina):
+  ```bash
+  claude mcp add webbrief \
+    --transport http \
+    --header "Authorization: Bearer mcpt_xxx" \
+    https://webrief.app/api/mcp
+  ```
+
+- **Decisiones permanentes** (no re-debatir):
+  - **MCP server NO llama LLMs.** Cliente (Codex/Claude) genera. Server orquesta tools + valida + persiste. Opción B (server con LLM) diferida a post-monetización por costo (~$1.5k/mes a escala) + doble inteligencia.
+  - **Bearer token suficiente** para v1, OAuth diferido hasta multi-scope.
+  - **Stateless HTTP transport**: fresh server + transport por request. Aislamiento cross-user via `Map<token, companyId>` compartido por proceso.
+  - **Image upload OUT, image embed by URL OK** (ya subida en ImageKit por UI).
+  - **Brief responses apply**: NO en v1. `brief.previewPrefill` devuelve preguntas; el cliente las propone; el usuario completa en UI.
+
+- **Roadmap residual** (en `docs/WEBRIEF_MCP_HANDOFF.md`):
+  1. `projects.list` (descubrir sin saber IDs)
+  2. Apply de brief responses (cierra el loop del prefill)
+  3. Image upload via MCP (proxy a ImageKit con auth)
+  4. `comments.*` tools
+  5. `pages.reorder`/`duplicate`/`delete`
+  6. `deploy.sh` self-update fix
+  7. `set-password` PR del usuario (branch `fix/set-password-sessions`, paralela, no relacionada con MCP)
 
 ## Session 19 — MCP Prep A + N+2 (token system + invariants lib + server scaffold)
 

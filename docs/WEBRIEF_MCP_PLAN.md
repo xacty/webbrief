@@ -82,16 +82,25 @@ La v1 sera local para `Codex` y `Claude` usando `stdio`. La v2 sera remota usand
 - El MCP no maneja uploads de assets ni transformaciones de media en v1. Las imagenes se suben via UI (pipeline ImageKit); el MCP puede referenciar URLs publicas ya existentes via `insert_image_by_url` (v1.1).
 - Side-effect deseable: introducir logger estructurado (pino) cuando se monte el MCP. Hoy el backend usa solo `console.log`.
 
-## Tools V1
+## Tools V1 (12 tools registradas en Prod)
 
+**Session + descubrimiento**
 - `session.getContext`
 - `companies.selectActive`
-- `projects.previewCreateFromContent`
-- `projects.createFromPreview`
-- `brief.previewPrefill`
-- `pages.previewDraft`
+
+**Lectura**
 - `projects.get`
 - `pages.get`
+
+**Crear / actualizar proyecto**
+- `projects.previewCreateFromContent`
+- `projects.createFromPreview` — accepta `overrides` opt al apply (name/projectType/businessType/clientName/clientEmail)
+- `projects.previewUpdate` *(v1.1)* — per-field diff vs current, drops no-ops
+- `projects.applyUpdate` *(v1.1)* — PATCHea solo los fields diffeados
+
+**Editar páginas**
+- `brief.previewPrefill` — preview-only en v1 (no hay apply)
+- `pages.previewDraft`
 - `pages.previewEdits`
 - `pages.applyEdits`
 
@@ -100,21 +109,28 @@ Notas sobre las tools:
 - Las tools de edicion se llaman `pages.*` para evitar colision con `project_type='document'` (Articulo). La unidad mutable real es `project_pages`.
 - Toda tool que muta requiere `companyId` explicito en parametros. `companies.selectActive` solo provee un default por sesion, no un binding obligatorio.
 - `pages.applyEdits` recibe `expectedVersion` por pagina y devuelve `409 { code: 'version_conflict', currentVersion, currentSnapshot }` cuando hay conflicto. El cliente puede replanear el patch con el snapshot devuelto.
+- Cada tool expone su descripcion en patron `What / When / Side effects / Errors` (ver `mcp/webrief-server/src/tools/*.js`). El global `instructions` field (en `instructions.js`, 5,376 chars) le da al LLM cliente el playbook completo en el handshake.
 
 ## Edicion De Contenido Existente
 
 La v1 debe permitir cambios sobre proyectos ya creados, especialmente `document`, `page` y `faq`, siempre con preview y confirmacion.
 
-Operaciones contempladas:
+Operaciones implementadas (12, discriminated union en `pages.applyEdits.edits[]`):
 
-- Cambiar un titulo.
-- Cambiar varios titulos.
-- Reemplazar un parrafo.
-- Insertar una seccion.
-- Eliminar una seccion.
-- Renombrar una pagina.
-- Ejecutar reemplazos masivos controlados.
-- Editar pregunta/respuesta en FAQ.
+- `set_page_name` — renombrar pagina.
+- `set_section_name` *(v1.1)* — renombrar un sectionDivider por id.
+- `set_heading_text` — cambiar texto de un heading (scoped por sectionId/level/matchText).
+- `replace_paragraph` — reemplazar parrafo (por `paragraphIndex` o `matchText`).
+- `insert_section` — insertar nueva seccion (opcional: name/headingText/bodyText).
+- `delete_section` — eliminar divider + body hasta el siguiente divider.
+- `find_replace` — reemplazo masivo. **Regex meta-chars escapados** (es string literal, no regex). Default case-insensitive. Opcional scope por section.
+- `set_faq_question` — heading de seccion FAQ.
+- `set_faq_answer` — colapsa todos los parrafos de la seccion en uno.
+- `insert_cta` *(v1.1)* — boton CTA `{ ctaText, ctaUrl }` dentro de section body.
+- `insert_image_by_url` *(v1.1)* — embeber image por URL publica (typicamente ImageKit ya subido por UI). **MCP no sube assets.**
+- `set_seo_metadata` *(v1.1)* — title/desc/slug, merge=true default. Keys alineadas al frontend: `titleTag` / `metaDescription` / `urlSlug` (no `title`/`description` — eso era zombi data que la UI no leia). Schema strict rechaza keys desconocidas.
+
+Ops que no matchean su selector NO throw; devuelven `{ matched: false, warning: ... }`. El handler las agrega a `warnings[]` y sigue procesando las siguientes — un selector con typo no aborta el batch entero.
 
 Cada edicion debe preservar:
 

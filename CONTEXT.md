@@ -5,7 +5,7 @@
   - Read `CONTEXT.min.md` second.
   - Read this file only if more detail is needed.
   - If user explicitly asks to review/read `CONTEXT.md`, treat this file as authoritative expanded context.
-- Updated: 2026-05-15 (session 12 — Dev Supabase project active, env-aware uploads/emails)
+- Updated: 2026-05-27 (session 21 — MCP v1 deployed: 12 tools + 12 edit ops + HTTP transport en `https://webrief.app/api/mcp` + IntegrationsPage)
 - Scope: current repo state; use as authoritative project context when user says "review/read CONTEXT.md", unless user says some part is outdated.
 - Goal: optimize for AI consumption; prefer this file over inferring intent from stale code comments.
 
@@ -878,6 +878,100 @@ Iteración intensa sobre el sistema de comments inicial: rediseño total de UI a
 - Vite build: 14.46s, 1946 modules, 0 errors (warning sobre ProjectEditor bundle 691kB es pre-existing por TipTap, no nuevo)
 - PM2 webrief-backend restart OK; health endpoint `https://webrief.app/api/health` → 200 `{"status":"ok","version":"1.0.0"}`
 - `.gitignore` actualizado: `.claude/skills/`, `.agents/`, `skills-lock.json` (Claude Agent SDK skill installer artifacts, local-only); `.claude/launch.json` cwd ahora relativo (portable cross-machine)
+
+## Completed (2026-05-27) — Session 21: MCP v1 deployed (Fases 1-4)
+
+**Scope**: MCP v1 end-to-end, desde Fase 1 (read) hasta Fase 4 (HTTP transport remoto). Deployed a Prod. Comando final para users:
+
+```bash
+claude mcp add webbrief --transport http \
+  --header "Authorization: Bearer mcpt_..." https://webrief.app/api/mcp
+```
+
+### Tools registradas (12 totales)
+
+**Session + descubrimiento**: `session.getContext`, `companies.selectActive`.
+**Lectura**: `projects.get`, `pages.get`.
+**Crear/actualizar proyecto**: `projects.previewCreateFromContent`, `projects.createFromPreview` (con `overrides` opt al apply), `projects.previewUpdate`, `projects.applyUpdate`.
+**Editar páginas**: `brief.previewPrefill` (preview-only — no hay apply en v1), `pages.previewDraft`, `pages.previewEdits`, `pages.applyEdits`.
+
+### Edit operations (12, dentro de `pages.applyEdits.edits[]` discriminated union)
+
+`set_page_name`, `set_section_name`, `set_heading_text` (scoped por sectionId/level/matchText), `replace_paragraph` (paragraphIndex o matchText), `insert_section` (con heading + body opt), `delete_section`, `find_replace` (regex meta-chars escapados, case-insensitive default, scope opt por section), `set_faq_question`, `set_faq_answer` (collapsa todos los párrafos en uno), `insert_cta` (`{ctaText, ctaUrl}`), `insert_image_by_url` (URL pública — MCP no sube assets), `set_seo_metadata` (merge=true default).
+
+### Decisiones arquitectónicas tomadas
+
+- **MCP server NO llama LLMs**. Cliente (Codex/Claude) genera; server orquesta + valida + persiste. Opción B (server con LLM) diferida a post-monetización por costo (~$1.5k/mes a escala) + doble inteligencia.
+- **Bearer token suficiente** para v1, OAuth diferido hasta multi-scope.
+- **HTTP transport stateless**: fresh `McpServer` + `StreamableHTTPServerTransport` por request. Multi-tenant safe via `Map<token, companyId>` compartido por proceso + `AsyncLocalStorage` para context por request.
+- **Strategy A (locked)**: MCP construye contentJson completo + ensureInvariants + `PUT /projects/:id/pages` con TODAS las páginas. Endpoint es full-replace; otras páginas se envían verbatim para no perderlas. Strategy B (PATCH granular) diferida a post-v1.
+- **Image upload OUT, image embed by URL OK** (typicamente ImageKit ya subido por UI).
+- **Brief responses apply NO en v1**. `brief.previewPrefill` devuelve preguntas + content; el cliente las propone; el user completa en UI.
+- **Stdio sigue funcionando** para dev local (`src/index.js`). HTTP es el modo Prod.
+
+### Schema fixes críticos descubiertos durante implementación
+
+- **`projectTypeEnum`** original tenía `[brief, website, landing_page, email, social, ads, other]` pero backend `normalizeProjectType` solo acepta `[page, brief, document, faq]` y cae a `page` silenciosamente. Corregido en commit `7c8eb3b`. Decisión: enum estricto, no fallback silencioso.
+- **SEO metadata keys**: schema original aceptaba `title/description/ogImage/keywords/canonicalUrl/noindex` (nombres "estándar web"). El frontend `getPageSeoMetadata()` solo lee `titleTag/metaDescription/urlSlug`. Eran zombi data que nunca aparecía en la UI. Realineado en commit `c6f8670` — schema `.strict()` ahora rechaza los 6 antiguos. Si en el futuro el editor agrega más fields, reincorporar con MISMOS nombres del frontend.
+- **Backend `PATCH /projects/:id`** antes solo aceptaba `name`. Extendido en `bf665e4` para `clientName/clientEmail/businessType/projectType`. Empty-string clears nullables. `projectType` validado contra enum estricto.
+
+### Infraestructura nueva
+
+**`mcp/webrief-server/src/`**:
+- `http.js` — HTTP transport entry point, factory `createMcpHttpHandler()` para Express.
+- `instructions.js` — playbook global de 5,376 chars compartido stdio + HTTP. Cubre orden de uso, 5 flujos, hard limits, cheatsheet de 12 ops, tabla de error codes.
+- `session/requestContext.js` — `AsyncLocalStorage` para `{ token, currentUser, activeCompanyByToken }`.
+- `session/activeCompany.js` — `Map<token, companyId>` cuando hay context, variable global fallback (stdio).
+- `auth/mcpToken.js` — lee context primero, env como fallback.
+- `lib/urlFetcher.js` — SSRF-safe URL fetcher (http/https only, 10s timeout, 2MB cap, RFC1918 + loopback rechazados, redirects refused).
+- `lib/previewStore.js` — in-memory Map con TTL 10min + GC + cap 256 entries FIFO.
+- `lib/editOps.js` — discriminated union schema + applier puro (no I/O).
+
+**`backend/src/routes/mcp.js`**: `POST /api/mcp` detrás de `requireAuth`. `GET` devuelve 405 + JSON-RPC error.
+
+### Tests
+
+- `fase1.test.js` 31 tests (read tools)
+- `fase2.test.js` 60 tests (preview/create + URL fetcher policy + preview store)
+- `fase3.test.js` 52 tests (edit ops + invariants + SEO threading)
+- `fase4.test.js` 14 tests (projects.update)
+- `shared/documentInvariants.test.js` 23 tests (invariants library)
+- **Total: 180 passing**
+
+### Frontend — `/integrations` (commit `2181e6f`)
+
+Wizard 3 steps en `pages/IntegrationsPage.jsx`: Generate token (auto-label `${cliente} · ${fecha}`) → Pick client (Claude Code/Codex/Claude Desktop) → Copy snippet (dinámico).
+
+Sidebar item "Integraciones" debajo de "Seguridad" sin role gate. Naming "Integraciones" elegido sobre "Conexiones" por estándar SaaS y lectura en español. Tokens activos en sección colapsable "Advanced". Sección MCP removida completa de AccountSettingsPage (~290 líneas CSS + 200 líneas JSX + 9 state vars + handlers).
+
+### Deploy a Prod
+
+- `scripts/deploy.sh` actualizado: agrega `npm ci --omit=dev` en `shared/` y `mcp/webrief-server/`. Sin estos pasos el backend crashea con `ERR_MODULE_NOT_FOUND` para `@modelcontextprotocol/sdk` o `@tiptap/html`.
+- **Bug arquitectónico descubierto**: bash carga deploy.sh en memoria al inicio. Si `git pull` actualiza el propio script, los pasos nuevos NO corren en ese deploy — solo en el siguiente. Primer deploy de Fase 4 quedó incompleto. Recuperado con SSH manual + npm ci en los dos directorios. Follow-up registrado: hacer deploy.sh auto-reexec'ar tras self-update via sha256 comparison.
+- Nginx ya proxyea `/api/*` → backend; cero cambios.
+- Migration `20260519_mcp_tokens.sql` ya estaba en Prod desde sesión 19. Sin migrations nuevas.
+- **Frontend env**: en prod usa `window.location.origin + '/api/mcp'`; en dev fuerza `http://localhost:3000/api/mcp` (Vite proxy no aplica para MCP clients externos).
+
+### Verificaciones end-to-end ejecutadas
+
+- Local stdio: `qa-e2e.mjs` 14/15 (el único "fail" fue del harness, no del código).
+- Local HTTP: `qa-http.mjs` + `qa-http-state.mjs` — confirmó `tools/list` (12 tools), `session.getContext`, y `Map<token, activeCompanyId>` persistido entre requests separados.
+- Prod smoke: `https://webrief.app/api/health` → 200, `/api/mcp` GET → 405 con JSON-RPC error custom, `/integrations` → 200.
+
+### GitGuardian false positive (commit `1b217c6`)
+
+Test fixtures con literales `mcpt_*` (5 archivos) flaggeados como secretos. Renombrados a `test-fixture-not-a-real-token[-suffix]`. Tokens reales se generan con `'mcpt_' + randomBytes(32).toString('hex')` (entropía 2^256), DB guarda solo SHA-256, raw mostrado una sola vez.
+
+### Roadmap residual
+
+Documentado en `docs/WEBRIEF_MCP_HANDOFF.md` (reescrito en esta sesión post-v1). En orden de ROI:
+1. `projects.list` — descubrir proyectos sin saber IDs (el LLM hoy no puede responder "qué proyectos tengo en empresa X").
+2. Apply de brief responses — cierra el loop del `brief.previewPrefill`.
+3. Image upload via MCP — proxy a ImageKit con auth. Hoy solo embed por URL pública.
+4. `comments.*` tools — leer/escribir threads.
+5. `pages.reorder` / `pages.duplicate` / `pages.delete`.
+6. `deploy.sh` self-update fix (deuda técnica del bug arriba).
+7. Cuando justifique: HTTP transport con OAuth (multi-scope, scopes refinados).
 
 ## Pending
 

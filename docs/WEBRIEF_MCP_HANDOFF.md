@@ -1,125 +1,100 @@
-# WeBrief MCP — Next Session Handoff
+# WeBrief MCP — Handoff post-v1
 
-Updated: 2026-05-19. Last edit: sesion N+1 extendida — Prep A + N+2 (Prep B + Fase 0) completados, Prod migration aplicada.
+Updated: 2026-05-27. **MCP v1 está vivo en producción** (`https://webrief.app/api/mcp`). Este documento reemplaza el handoff anterior (que documentaba el sequencing N+1 → N+4 ahora completado).
 
 ## Status snapshot
 
-- Plan MCP revisado y mejorado: `docs/WEBRIEF_MCP_PLAN.md` (12 mejoras aplicadas, Strategy A locked).
-- Dev Supabase project listo: `iimqxacagxuemwgaunis` (us-west-1). Local `backend/.env` y `frontend/.env` apuntan aca.
-- Prod Supabase intacto: `gmrlhhszrdahcxyoywvt` (us-west-2). VPS pulled latest y reiniciado.
-- Backend tiene env vars nuevas en codigo y prod (`IMAGEKIT_FOLDER_PREFIX`, `EMAIL_ENABLED`), backward compatible.
-- MCP server scaffold: ✅ existe en `mcp/webrief-server/` con 10 tools no-op (Fase 0).
+- ✅ Fases 1+2+3 + Fase 4 (HTTP remoto) implementadas y deployadas a Prod.
+- ✅ 12 tools, 12 edit operations, transport HTTP via `StreamableHTTPServerTransport`.
+- ✅ Comando de instalación final para usuarios:
+  ```bash
+  claude mcp add webbrief --transport http \
+    --header "Authorization: Bearer mcpt_..." https://webrief.app/api/mcp
+  ```
+- ✅ UI: `/integrations` con wizard 3-steps (token + cliente + comando).
+- ✅ Tests: 180 passing (31 fase1 + 60 fase2 + 52 fase3 + 14 fase4 + 23 invariants).
+- ✅ Stdio sigue funcionando para dev local.
 
-### Prep A — COMPLETADO (sesion N+1, 2026-05-19)
+## Lo que YA está hecho (no rehacer)
 
-- Migration `supabase/migrations/20260519_mcp_tokens.sql` en `main`. **Aplicada a Dev. Pendiente aplicar a Prod antes de deploy.**
-- `backend/src/routes/mcpTokens.js`: GET/POST/DELETE `/api/auth/mcp-tokens`, cap 10 tokens activos, rate-limited.
-- `backend/src/middleware/auth.js`: fast-path `mcpt_*` via SHA-256 hash, audit `mcp_token_used` non-blocking.
-- `backend/src/index.js`: mcpTokensRoutes montado en `/api/auth`.
-- `frontend/src/pages/AccountSettingsPage.jsx`: seccion "Tokens MCP" con create/list/revoke y reveal-once banner.
-- Commits `6e15e67..9f4b13b` en `main`. Todos los tests de subagentes pasaron.
-- Smoke test 7/7 pasos + audit 4/4 events verificados (curl + SQL).
-- ✅ Migration aplicada a Prod (`mcp_tokens` table existe en `gmrlhhszrdahcxyoywvt`).
-- **Accion antes de deploy a VPS**: `git pull` + `pm2 restart webrief-backend`.
+Ver `CONTEXT.min.md` Session 21 y `CONTEXT.md` "Completed (2026-05-27)" para el detalle completo. Resumen:
 
-### N+2 — COMPLETADO (sesion N+1 extendida, 2026-05-19)
+- **Auth bearer token** `mcpt_*` (32 bytes random hex, prefix, hash SHA-256 en DB).
+- **HTTP transport** stateless en `/api/mcp` detrás de `requireAuth`. Fresh server + transport por request.
+- **Multi-tenant safety**: `Map<token, companyId>` para active company + `AsyncLocalStorage` para context per-request.
+- **12 tools** con descripciones en patron `What / When / Side effects / Errors`.
+- **Edit ops** discriminated union con 12 variantes + `ensureInvariants` del shared lib + Strategy A (full-page replace contra `PUT /:id/pages`).
+- **URL fetcher** SSRF-safe (http/https only, 10s, 2MB, no privates, no redirects).
+- **Preview store** in-memory con TTL 10min + GC + cap 256.
+- **Frontend** wizard en `/integrations`, sidebar item "Integraciones".
+- **Backend `PATCH /projects/:id`** extendido para 5 fields (no solo `name`).
+- **Deploy** automatizado en `scripts/deploy.sh` con npm ci en `backend/ + shared/ + mcp/webrief-server/`.
 
-**Fase 0** (Sonnet 4.6 high, commit `2c6f905`):
-- `mcp/webrief-server/` scaffold completo: 24 archivos.
-- `@modelcontextprotocol/sdk ^1.29.0` + `zod ^3.23.0`. SDK usa `McpServer.registerTool()`.
-- 10 tools registradas como no-ops: `session.getContext`, `companies.selectActive`, `projects.previewCreateFromContent`, `projects.createFromPreview`, `brief.previewPrefill`, `pages.previewDraft`, `projects.get`, `pages.get`, `pages.previewEdits`, `pages.applyEdits`.
-- Stubs: `src/auth/mcpToken.js` (lee `WEBRIEF_MCP_TOKEN` env), `src/lib/webbriefClient.js` (`get/post/patch`, sin `delete`).
-- `node src/index.js < /dev/null` arranca clean.
-- **Notas para N+3** (cuando se implementen los handlers):
-  - `getMcpToken()` actualmente throws hard; wrap en try/catch en handlers para devolver MCP error estructurado.
-  - `webbriefClient.js` no tiene `delete` — agregar si algún tool lo necesita.
-  - `pages.applyEdits.edits[]` es `z.array(z.unknown())` con TODO; el shape granular se define en Fase 3 (N+4).
+## Decisiones permanentes (no re-debatir sin evidencia nueva)
 
-**Prep B** (Opus 4.7 high, commits `0617e16` + `3bb5e4c`):
-- `shared/documentInvariants.js`: pure ESM, API `ensureInvariants(contentJson, projectType) → { contentJson, contentHtml, repairs[] }`.
-- `shared/package.json` declara deps Tiptap (`@tiptap/html`, `@tiptap/core`, `@tiptap/starter-kit`, `@tiptap/extension-*`). MCP server también las lista para resolver shared/.
-- 23/23 tests passing (`cd shared && npm test`). Cubre: section repairs, FAQ Q/A, CTA, image attrs roundtrip, textBlockLayout, comment resolved, idempotency, no-mutation.
-- Code review Opus pass 1: encontró 4 silent-corruption bugs (FAQ non-idempotency, image attrs drift, textBlockLayout missing, comment.resolved drift).
-- Pass 2 (`3bb5e4c`) los corrigió mirroring extensiones frontend completas. Review pass 3 confirmó Yes-to-merge.
-- **Constraint clave**: `projectType='brief'` rechazado (las respuestas de brief van por otro endpoint, no por MCP edits).
+- **Server NO llama LLMs.** Cliente (Codex/Claude) genera; server orquesta + valida + persiste. Opción B diferida a post-monetización por costo (~$1.5k/mes a escala) + doble inteligencia (cliente LLM ya está pagando por razonar el mismo contenido).
+- **Bearer token suficiente** para v1. OAuth (multi-scope, refresh tokens, device flow) diferido hasta que aparezcan necesidades concretas.
+- **Strategy A** (full-page replace) locked para v1. Strategy B (PATCH granular server-side) post-v1 incremental, un endpoint por vez.
+- **Image upload OUT**, embed by URL OK. El MCP nunca sube assets; el user sube via UI WeBrief y el MCP referencia la URL ImageKit resultante via `insert_image_by_url`.
+- **Brief responses apply OUT en v1**. `brief.previewPrefill` es preview-only; el user completa en UI.
+- **Stdio se mantiene** como fallback dev. HTTP es el modo de producción.
+- **Naming "Integraciones"** sobre "Conexiones" (estándar SaaS, lee mejor en español).
+- **SEO metadata keys** = `titleTag/metaDescription/urlSlug` (alineadas al frontend). Si en el futuro el editor agrega `ogImage/keywords/etc`, reincorporar con MISMOS nombres del frontend, NO los "estándar web" — para mantener el JSONB single-sourced.
 
-## Read order al arrancar la proxima sesion
+## Roadmap residual (en orden de ROI estimado)
 
-1. `AI_GLOBAL.md` (rule de inicio, siempre primero).
-2. `CONTEXT.min.md` — especialmente "Session 12" que documenta Dev/Prod separation.
-3. Este archivo (handoff).
-4. `docs/WEBRIEF_MCP_PLAN.md` — plan completo, leer las secciones nuevas (`Politica De Fetch De URLs`, `Autenticacion MCP Local`, notas de Tools V1, Estrategia A locked).
+### 1. `projects.list` — alto ROI
+Hoy el LLM no puede responder "¿qué proyectos tengo en empresa X?" sin recibir UUIDs por adelantado. `projects.get` requiere conocer el ID. Una tool `projects.list({ companyId, filters? })` cierra el gap más obvio. ~2 horas con tests.
 
-## Decisiones locked (no re-debatir)
+### 2. Apply de brief responses
+`brief.previewPrefill` devuelve preguntas + content para que el cliente proponga respuestas. Falta el step de apply que persista esas respuestas en `project_brief_responses`. Requiere backend endpoint nuevo (no existe hoy) o reusar el editor de brief. ~1 día con auditoría.
 
-- **Strategy A** para v1: el MCP computa `content_json` completo localmente y reenvia la pagina entera por `PUT /api/projects/:id/pages`. Strategy B (PATCH granular) diferida a post-v1.
-- **v1 transport**: stdio para Codex y Claude. **v2**: HTTP/SSE diferida.
-- **Auth**: `mcp_token` de larga duracion emitido desde UI de Settings. NO se usa bearer Supabase directo (TTL de 1h no sirve).
-- **MCP server NO llama LLMs**. La generacion la hace el cliente (Codex/Claude). Servidor solo expone tools y aplica mutaciones validadas.
-- **Tools naming**: `pages.*` (no `documents.*`). Colisiona con `project_type='document'` (Articulo).
-- **Mutaciones requieren `companyId` explicito**. `companies.selectActive` solo provee default por sesion.
-- **Conflicto de version**: backend devuelve `409 { code: 'version_conflict', currentVersion, currentSnapshot }` para que el cliente pueda replanear.
-- **Invariantes del documento** se enforzan via `shared/documentInvariants.js` (a crear), portados desde frontend TipTap.
+### 3. Image upload via MCP
+Hoy `insert_image_by_url` solo embebe URLs ya públicas. Para "subí esta imagen al hero", el MCP necesitaría proxy a ImageKit con credenciales del backend. Caso de uso real durante QA con clínica León. ~1-2 días (auth a ImageKit + endpoint backend + tool MCP nueva).
 
-## Sequencing recomendado
+### 4. `comments.*` tools
+`comment_threads` (sesión 18) existe en DB con read/write. Útil para "comentale a María que revise esto". ~1 día.
 
-**Modelo por defecto**: Sonnet 4.6 reasoning `high` (minimo). Cambiar a Opus 4.7 reasoning `high` SOLO en Prep B (invariants) y Fase 3 (edit). Ver `WEBRIEF_MCP_PLAN.md` seccion "Modelo Recomendado" para tabla completa.
+### 5. `pages.reorder` / `pages.duplicate` / `pages.delete`
+Hoy no se pueden reordenar/duplicar/eliminar páginas vía MCP, solo editarlas en sitio. Backend ya soporta esas operaciones (`POST /:id/duplicate`, full-replace PUT puede reordenar). ~1 día.
 
-### ~~Session N+1 — Prep A~~ — COMPLETADO (2026-05-19) ✓
+### 6. `deploy.sh` self-update fix (deuda técnica)
+Bash carga deploy.sh en memoria al inicio; si `git pull` actualiza el propio script, los pasos nuevos NO corren en ese deploy. Solución: comparar sha256 antes/después del pull y `exec "$0" "$@"` si cambió. Spawn task ya registrada en backlog. ~30 min.
 
-### ~~Session N+2 — Prep B + Fase 0~~ — COMPLETADO (2026-05-19) ✓
+### 7. HTTP transport con OAuth (cuando justifique)
+Bearer token alcanza para v1. Si en algún momento aparecen scopes complejos (read-only tokens, tokens limitados a una empresa, expiration corta, revocation propagation), migrar a OAuth con device flow. Diseño existe en spec de Supabase MCP/Anthropic. ~2-3 semanas si se hace bien.
 
-### Session N+3 — Fases 1 + 2 (read + create) — ~120-180k — **Sonnet 4.6 high**
-- **Fase 1**: implementar `session.getContext`, `companies.selectActive`, `projects.get`, `pages.get`. Solo reads. Forward bearer MCP token al backend en cada request.
-- **Fase 2**: implementar `projects.previewCreateFromContent`, `projects.createFromPreview`, `brief.previewPrefill`, `pages.previewDraft`. Incluye URL fetching server-side respetando la `Politica De Fetch De URLs` del plan.
+### 8. Search / activity / brief-share (low priority)
+Búsqueda full-text de proyectos, activity log via tools, manage brief share links — todos featuras de uso específico. Implementar cuando un user real los pida.
 
-### Session N+4 — Fase 3 (edit, mas denso) — ~100-150k — **Opus 4.7 high**
-- `pages.previewEdits` y `pages.applyEdits`. Usar Prep B lib para validar invariantes antes de mandar al backend. Manejar `expectedVersion` + conflict response con snapshot.
-- Operaciones cubiertas: cambiar titulo, cambiar varios titulos, reemplazar parrafo, insertar seccion, eliminar seccion, renombrar pagina, reemplazos masivos, FAQ Q/A.
-- Opus por: combinatoria invariantes × operaciones × estados de conflict version. Es el espacio de estados mas grande de v1.
-
-### Fase 4 (Remote V2) — diferida fuera de v1
-HTTP/SSE detras de Nginx en VPS. Mismo modelo de identidad y permisos.
-
-## Scaffolding sugerido para Fase 0
-
-```
-mcp/webrief-server/
-├── AGENTS.md             # bridge a AI_GLOBAL.md
-├── CLAUDE.md             # bridge a AI_GLOBAL.md
-├── README.md             # como correrlo local, como agregar a Codex/Claude
-├── package.json          # type: module, deps: @modelcontextprotocol/sdk, zod
-└── src/
-    ├── index.js          # stdio transport setup + tool registry
-    ├── tools/            # un archivo por tool, exporta { name, schema, handler }
-    ├── schemas/          # zod schemas compartidos (project, page, company)
-    ├── auth/             # validar mcp_token contra backend
-    └── lib/
-        └── webbriefClient.js  # http client a webbrief backend, forward auth header
-```
-
-## Verificacion antes de cada sesion
+## Cómo verificar que el MCP está vivo
 
 ```bash
-# MCP de Supabase
-mcp__supabaseDev__check_connection   # db.ok=true, api.ok=true
-mcp__supabaseProd__check_connection  # db.ok=true, api.ok=true
+# Health backend
+curl https://webrief.app/api/health
+# → {"status":"ok","version":"1.0.0"}
 
-# Backend + frontend local
-cd ~/GitHub/webbrief/backend && npm run dev   # apunta a Dev
-cd ~/GitHub/webbrief/frontend && npm run dev  # apunta a Dev, login admin@webrief.app
+# MCP endpoint discovery (espera POST)
+curl https://webrief.app/api/mcp
+# → HTTP 405 + JSON-RPC error "MCP endpoint accepts POST only..."
+
+# Tool call con token (reemplazar mcpt_xxx por uno real)
+curl -X POST https://webrief.app/api/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer mcpt_xxx" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+# → JSON con 12 tools
 ```
 
-## TODOs derivados (de baja prioridad, anotados en CONTEXT.min.md Session 12)
+## Read order al arrancar próxima sesión MCP
 
-- Fix `schema.sql`: la FK inline `companies.created_for_testing_by -> public.profiles(id)` rompe en DB fresh porque `profiles` se crea despues de `companies`. Workaround usado en Dev; arreglar reordenando o quitando la FK inline.
-- Verificar drift: Prod `project_page_change_proposals` — `schema.sql` la declara pero `list_tables` no la muestra. Confirmar con SQL directo si Prod la perdio o nunca existio.
-- Future migration Strategy A → B (post-v1).
-
-## Tokens estimados v1 completo
-
-~380-580k tokens en total (Prep A + Prep B + Fase 0 + Fase 1 + Fase 2 + Fase 3). En contexto 1M Claude cabe holgado con compaction probable. En sesiones nativas de 200k, son ~2-3 sesiones nuevas (4 si se separa Fase 3 que es la mas densa).
+1. `AI_GLOBAL.md` (regla de inicio, siempre primero).
+2. `CONTEXT.min.md` — especialmente "Session 21" (estado MCP actual).
+3. Este archivo (handoff) — confirma decisiones permanentes y roadmap.
+4. `docs/WEBRIEF_MCP_PLAN.md` — solo si vas a tocar arquitectura del MCP o agregar tools nuevas.
 
 ## Hand-off contract
 
-La proxima sesion empieza fresh sin tener que releer el chat anterior. Todo lo que importa esta en este archivo + `WEBRIEF_MCP_PLAN.md` + `CONTEXT.min.md` Session 12. Si alguna decision aca contradice lo que dice el plan, el plan gana (es la fuente de verdad). Si el plan es ambiguo, este handoff aclara intencion.
+- Si una decisión en este archivo contradice `WEBRIEF_MCP_PLAN.md`, **gana este archivo** (refleja el estado final post-implementación). Cuando se actualice el plan para reflejar v1 completo, este contrato se invierte: el plan vuelve a ser autoridad.
+- El plan original (`WEBRIEF_MCP_PLAN.md`) tenía sequencing N+1 → N+4 con Sonnet/Opus. Ese sequencing está COMPLETADO. Para futuras adiciones (roadmap residual arriba), elegir modelo según complejidad — la mayoría son Sonnet 4.6 high; usar Opus 4.7 high solo si toca invariantes o conflict resolution.
