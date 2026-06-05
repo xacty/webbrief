@@ -122,4 +122,120 @@ router.post('/oauth/register', express.json({ limit: '8kb' }), rateLimiters.sens
   }
 })
 
+// ─── Authorize: preview (validate query, return data for consent UI) ───
+
+function validateAuthorizeQuery(q) {
+  const errors = []
+  if (q.response_type !== 'code') errors.push('response_type must be "code"')
+  if (typeof q.client_id !== 'string' || !q.client_id.startsWith('mcpc_')) errors.push('invalid client_id')
+  if (typeof q.redirect_uri !== 'string' || !isAllowedRedirectUri(q.redirect_uri)) errors.push('invalid redirect_uri')
+  if (typeof q.code_challenge !== 'string' || q.code_challenge.length < 43) errors.push('code_challenge required (S256)')
+  if (q.code_challenge_method !== 'S256') errors.push('code_challenge_method must be S256')
+  if (typeof q.resource !== 'string') errors.push('resource parameter required')
+  if (q.scope && typeof q.scope === 'string' && !q.scope.split(' ').includes(SCOPE_FULL)) {
+    errors.push(`only scope "${SCOPE_FULL}" is supported`)
+  }
+  return errors
+}
+
+router.get('/oauth/authorize/preview', requireAuth, async (req, res) => {
+  const q = req.query || {}
+  const errors = validateAuthorizeQuery(q)
+  if (errors.length > 0) {
+    return res.status(400).json({ ok: false, errors })
+  }
+
+  const client = await getClient(q.client_id)
+  if (!client) {
+    return res.status(400).json({ ok: false, errors: ['unknown client_id'] })
+  }
+  if (!client.redirect_uris.includes(q.redirect_uri)) {
+    return res.status(400).json({ ok: false, errors: ['redirect_uri not registered for this client'] })
+  }
+
+  // Audience binding: client requested resource must match our canonical URI.
+  let requestedResource
+  try {
+    requestedResource = canonicalizeResourceUri(q.resource)
+  } catch {
+    return res.status(400).json({ ok: false, errors: ['invalid resource URI'] })
+  }
+  if (requestedResource !== RESOURCE_URI) {
+    return res.status(400).json({ ok: false, errors: [`resource must equal ${RESOURCE_URI}`] })
+  }
+
+  return res.json({
+    ok: true,
+    client_name: client.client_name,
+    redirect_uri_host: new URL(q.redirect_uri).host,
+    scope: q.scope || SCOPE_FULL,
+    state: q.state || '',
+    resource: RESOURCE_URI,
+  })
+})
+
+// ─── Authorize: grant (issue code or return deny redirect) ────────────
+
+router.post('/oauth/authorize/grant', express.json({ limit: '8kb' }), requireAuth, async (req, res) => {
+  const body = req.body || {}
+  const q = body.query || {}
+  const approve = body.approve === true
+
+  const errors = validateAuthorizeQuery(q)
+  if (errors.length > 0) {
+    return res.status(400).json({ error: 'invalid_request', errors })
+  }
+
+  const client = await getClient(q.client_id)
+  if (!client || !client.redirect_uris.includes(q.redirect_uri)) {
+    return res.status(400).json({ error: 'invalid_client' })
+  }
+
+  const redirect = new URL(q.redirect_uri)
+  if (q.state) redirect.searchParams.set('state', q.state)
+
+  if (!approve) {
+    redirect.searchParams.set('error', 'access_denied')
+    redirect.searchParams.set('error_description', 'User denied the request')
+    await logSecurityEvent(req, {
+      action: 'oauth_authorize_denied',
+      resourceType: 'oauth_client',
+      resourceId: q.client_id,
+      outcome: 'denied',
+      metadata: { user_id: req.currentUser.id },
+    })
+    return res.json({ redirect_to: redirect.toString() })
+  }
+
+  let canonicalResource
+  try {
+    canonicalResource = canonicalizeResourceUri(q.resource)
+  } catch {
+    return res.status(400).json({ error: 'invalid_resource' })
+  }
+  if (canonicalResource !== RESOURCE_URI) {
+    return res.status(400).json({ error: 'invalid_resource' })
+  }
+
+  const code = await insertAuthCode({
+    clientId: q.client_id,
+    userId: req.currentUser.id,
+    redirectUri: q.redirect_uri,
+    codeChallenge: q.code_challenge,
+    scope: q.scope || SCOPE_FULL,
+    resource: canonicalResource,
+    state: q.state || null,
+  })
+
+  redirect.searchParams.set('code', code)
+  await logSecurityEvent(req, {
+    action: 'oauth_authorize_consented',
+    resourceType: 'oauth_client',
+    resourceId: q.client_id,
+    outcome: 'success',
+    metadata: { user_id: req.currentUser.id, scope: q.scope || SCOPE_FULL },
+  })
+  return res.json({ redirect_to: redirect.toString() })
+})
+
 export default router
