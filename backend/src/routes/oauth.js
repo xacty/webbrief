@@ -50,7 +50,10 @@ router.get('/.well-known/oauth-protected-resource', (req, res) => {
 router.get('/.well-known/oauth-authorization-server', (req, res) => {
   res.json({
     issuer: ISSUER,
-    authorization_endpoint: `${ISSUER}/oauth/authorize`,
+    // The authorization endpoint is the FRONTEND consent page (a React route),
+    // not a backend route. CONSENT_URL points at it (dev: :5173, prod: webrief.app).
+    // Using ISSUER here would 404 in local dev since the backend has no GET /oauth/authorize.
+    authorization_endpoint: CONSENT_URL,
     token_endpoint: `${ISSUER}/oauth/token`,
     registration_endpoint: `${ISSUER}/oauth/register`,
     revocation_endpoint: `${ISSUER}/oauth/revoke`,

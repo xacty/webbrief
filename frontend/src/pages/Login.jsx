@@ -1,6 +1,6 @@
 // Pantalla de inicio de sesión del diseñador
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Button, Input, Card } from '../components/ui'
@@ -14,6 +14,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false)
   const [resetMode, setResetMode] = useState(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { signIn } = useAuth()
 
   async function handleSubmit(e) {
@@ -24,7 +25,14 @@ export default function Login() {
 
     try {
       await signIn(email, password)
-      navigate('/dashboard')
+      // Honor a same-origin return_to (used by the OAuth consent flow). Only
+      // allow relative paths to /oauth/authorize to avoid open-redirect.
+      const returnTo = searchParams.get('return_to')
+      if (returnTo && returnTo.startsWith('/oauth/authorize')) {
+        navigate(returnTo)
+      } else {
+        navigate('/dashboard')
+      }
     } catch (err) {
       setError(err.message || 'No se pudo iniciar sesión')
     } finally {
