@@ -238,4 +238,91 @@ router.post('/oauth/authorize/grant', express.json({ limit: '8kb' }), requireAut
   return res.json({ redirect_to: redirect.toString() })
 })
 
+// ─── Token endpoint ─────────────────────────────────────────────────────
+// RFC 6749 §3.2: token endpoint MUST accept application/x-www-form-urlencoded.
+
+const tokenBodyParser = express.urlencoded({ extended: false, limit: '8kb' })
+
+router.post('/oauth/token', tokenBodyParser, rateLimiters.sensitiveAction, async (req, res) => {
+  const body = req.body || {}
+  const grantType = body.grant_type
+
+  if (grantType === 'authorization_code') {
+    return handleAuthCodeGrant(req, res, body)
+  }
+  if (grantType === 'refresh_token') {
+    return handleRefreshGrant(req, res, body)
+  }
+  return res.status(400).json({ error: 'unsupported_grant_type' })
+})
+
+async function handleAuthCodeGrant(req, res, body) {
+  const code = body.code
+  const codeVerifier = body.code_verifier
+  const clientId = body.client_id
+  const redirectUri = body.redirect_uri
+  const resource = body.resource
+
+  if (!code || !codeVerifier || !clientId || !redirectUri || !resource) {
+    return res.status(400).json({ error: 'invalid_request', error_description: 'missing required parameter' })
+  }
+
+  const codeRow = await consumeAuthCode(code)
+  if (!codeRow) {
+    return res.status(400).json({ error: 'invalid_grant', error_description: 'code invalid, expired, or already used' })
+  }
+
+  if (codeRow.client_id !== clientId) {
+    return res.status(400).json({ error: 'invalid_grant', error_description: 'client_id mismatch' })
+  }
+  if (codeRow.redirect_uri !== redirectUri) {
+    return res.status(400).json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' })
+  }
+
+  let canonicalResource
+  try {
+    canonicalResource = canonicalizeResourceUri(resource)
+  } catch {
+    return res.status(400).json({ error: 'invalid_target' })
+  }
+  if (canonicalResource !== codeRow.resource) {
+    return res.status(400).json({ error: 'invalid_target', error_description: 'resource mismatch' })
+  }
+
+  const pkceOk = verifyPkceChallenge({
+    verifier: codeVerifier,
+    challenge: codeRow.code_challenge,
+    method: 'S256',
+  })
+  if (!pkceOk) {
+    return res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE verification failed' })
+  }
+
+  const tokens = await issueTokenFamily({
+    clientId,
+    userId: codeRow.user_id,
+    scope: codeRow.scope,
+    audience: codeRow.resource,
+  })
+
+  await logSecurityEvent(req, {
+    action: 'oauth_token_issued',
+    resourceType: 'oauth_client',
+    resourceId: clientId,
+    targetUserId: codeRow.user_id,
+    outcome: 'success',
+    metadata: { scope: codeRow.scope, grant_type: 'authorization_code' },
+  })
+
+  // Cache-Control per RFC 6749 §5.1
+  res.set('Cache-Control', 'no-store')
+  res.set('Pragma', 'no-cache')
+  return res.json(tokens)
+}
+
+// Placeholder — Task 7 fills this in.
+async function handleRefreshGrant(req, res, body) {
+  return res.status(501).json({ error: 'not_implemented_yet' })
+}
+
 export default router
