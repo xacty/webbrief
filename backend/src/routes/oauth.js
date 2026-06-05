@@ -368,4 +368,27 @@ async function handleRefreshGrant(req, res, body) {
   return res.json(tokens)
 }
 
+// ─── Revocation (RFC 7009) ──────────────────────────────────────────────
+// Cascades to entire token family. Idempotent — always returns 200.
+
+router.post('/oauth/revoke', tokenBodyParser, async (req, res) => {
+  const token = (req.body || {}).token
+  if (!token) return res.status(200).end()  // RFC 7009 §2.2 — succeed silently on missing token
+
+  try {
+    const revoked = await revokeToken(token)
+    if (revoked) {
+      await logSecurityEvent(req, {
+        action: 'oauth_token_revoked',
+        resourceType: 'oauth_token',
+        outcome: 'success',
+        metadata: { client_id: (req.body || {}).client_id || null },
+      })
+    }
+  } catch {
+    // RFC 7009: still return 200 to prevent token-existence enumeration.
+  }
+  return res.status(200).end()
+})
+
 export default router
