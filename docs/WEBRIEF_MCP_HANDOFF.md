@@ -21,14 +21,45 @@ Ver `CONTEXT.min.md` Session 21 y `CONTEXT.md` "Completed (2026-05-27)" para el 
 
 - **Auth bearer token** `mcpt_*` (32 bytes random hex, prefix, hash SHA-256 en DB).
 - **HTTP transport** stateless en `/api/mcp` detrás de `requireAuth`. Fresh server + transport por request.
-- **Multi-tenant safety**: `Map<token, companyId>` para active company + `AsyncLocalStorage` para context per-request.
-- **12 tools** con descripciones en patron `What / When / Side effects / Errors`.
+- **Multi-tenant safety**: `Map<token, companyId>` para active company + `AsyncLocalStorage` para context per-request (`mcp/webrief-server/src/session/requestContext.js`).
+- **12 tools** con descripciones en patron `What / When / Side effects / Errors` (ver roster abajo).
 - **Edit ops** discriminated union con 12 variantes + `ensureInvariants` del shared lib + Strategy A (full-page replace contra `PUT /:id/pages`).
-- **URL fetcher** SSRF-safe (http/https only, 10s, 2MB, no privates, no redirects).
-- **Preview store** in-memory con TTL 10min + GC + cap 256.
-- **Frontend** wizard en `/integrations`, sidebar item "Integraciones".
-- **Backend `PATCH /projects/:id`** extendido para 5 fields (no solo `name`).
-- **Deploy** automatizado en `scripts/deploy.sh` con npm ci en `backend/ + shared/ + mcp/webrief-server/`.
+- **URL fetcher** SSRF-safe en `mcp/webrief-server/src/lib/urlFetcher.js` (http/https only, 10s, 2MB, no privates, no redirects).
+- **Preview store** in-memory en `mcp/webrief-server/src/lib/previewStore.js` (TTL 10min + GC + cap 256).
+- **LLM-facing playbook** en `mcp/webrief-server/src/instructions.js` (5,376 chars). Compartido stdio + HTTP; cubre orden de uso, 5 flujos, hard limits, cheatsheet de las 12 ops, tabla de error codes. Si cambia el contrato, actualizar acá.
+- **Frontend** wizard 3-step en `/integrations` (token + cliente + comando), sidebar item "Integraciones".
+- **Backend `PATCH /projects/:id`** extendido para 5 fields (name + clientName + clientEmail + businessType + projectType), no solo `name`.
+- **Deploy** automatizado en `scripts/deploy.sh` con `npm ci` en `backend/ + shared/ + mcp/webrief-server/`.
+
+### Roster de tools (12) — todas registradas en Prod
+
+**Session + descubrimiento**
+- `session.getContext` — user + companies accesibles + activeCompanyId
+- `companies.selectActive` — fija empresa activa para la sesión (per-token en HTTP)
+
+**Lectura**
+- `projects.get` — project meta + page list (sin contenido)
+- `pages.get` — page completa (contentJson + contentHtml + seoMetadata + version)
+
+**Crear proyecto**
+- `projects.previewCreateFromContent` — fetchea URLs + heurísticas → preview
+- `projects.createFromPreview` — POST /projects + acepta `overrides` opt
+
+**Actualizar metadata de proyecto** *(v1.1)*
+- `projects.previewUpdate` — per-field diff vs current
+- `projects.applyUpdate` — PATCHea solo los diffeados
+
+**Editar páginas**
+- `brief.previewPrefill` — preguntas del brief (preview-only en v1, sin apply)
+- `pages.previewDraft` — context + fetched URLs para draft local
+- `pages.previewEdits` — dry-run de edits
+- `pages.applyEdits` — commit con `expectedVersion` + version_conflict snapshot
+
+### Roster de edit operations (12, en `pages.applyEdits.edits[]`)
+
+`set_page_name` · `set_section_name` · `set_heading_text` · `replace_paragraph` · `insert_section` · `delete_section` · `find_replace` (regex meta-chars escapados) · `set_faq_question` · `set_faq_answer` (collapses paragraphs) · `insert_cta` *(v1.1)* · `insert_image_by_url` *(v1.1, no upload)* · `set_seo_metadata` *(v1.1, keys: titleTag/metaDescription/urlSlug)*
+
+Ops que no matchean su selector → `{ matched: false, warning: ... }` en lugar de throw. El handler las junta en `warnings[]` y sigue procesando — un selector con typo no aborta el batch.
 
 ## Decisiones permanentes (no re-debatir sin evidencia nueva)
 
