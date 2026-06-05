@@ -320,9 +320,52 @@ async function handleAuthCodeGrant(req, res, body) {
   return res.json(tokens)
 }
 
-// Placeholder — Task 7 fills this in.
 async function handleRefreshGrant(req, res, body) {
-  return res.status(501).json({ error: 'not_implemented_yet' })
+  const refreshToken = body.refresh_token
+  const clientId = body.client_id
+  const resource = body.resource
+
+  if (!refreshToken || !clientId || !resource) {
+    return res.status(400).json({ error: 'invalid_request', error_description: 'missing required parameter' })
+  }
+
+  let canonicalResource
+  try {
+    canonicalResource = canonicalizeResourceUri(resource)
+  } catch {
+    return res.status(400).json({ error: 'invalid_target' })
+  }
+  if (canonicalResource !== RESOURCE_URI) {
+    return res.status(400).json({ error: 'invalid_target', error_description: 'resource mismatch' })
+  }
+
+  const { tokens, familyInvalidated } = await rotateRefreshToken(refreshToken)
+
+  if (familyInvalidated) {
+    await logSecurityEvent(req, {
+      action: 'oauth_token_refresh_reused',
+      resourceType: 'oauth_token',
+      outcome: 'denied',
+      metadata: { client_id: clientId, reason: 'reuse_detected_family_revoked' },
+    })
+    return res.status(400).json({ error: 'invalid_grant', error_description: 'refresh token reuse detected; family revoked' })
+  }
+
+  if (!tokens) {
+    return res.status(400).json({ error: 'invalid_grant', error_description: 'refresh token invalid, expired, or revoked' })
+  }
+
+  await logSecurityEvent(req, {
+    action: 'oauth_token_refreshed',
+    resourceType: 'oauth_client',
+    resourceId: clientId,
+    outcome: 'success',
+    metadata: { scope: tokens.scope },
+  })
+
+  res.set('Cache-Control', 'no-store')
+  res.set('Pragma', 'no-cache')
+  return res.json(tokens)
 }
 
 export default router
