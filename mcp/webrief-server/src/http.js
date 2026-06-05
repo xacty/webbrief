@@ -74,7 +74,10 @@ export function createMcpHttpHandler() {
     // Extract the raw token from the Authorization header. The middleware
     // already validated it; we just need its value to pass to handlers.
     const authHeader = req.get('Authorization') ?? '';
-    const match = /^Bearer\s+(mcpt_[A-Za-z0-9_-]+)$/.exec(authHeader.trim());
+    // Accept BOTH long-lived MCP tokens (mcpt_*) and OAuth access tokens (at_*).
+    // requireAuth upstream has already validated whichever one this is; we just
+    // extract the raw value to forward to the backend on the inner tool calls.
+    const match = /^Bearer\s+((?:mcpt_|at_)[A-Za-z0-9_-]+)$/.exec(authHeader.trim());
     if (!match) {
       // Should be unreachable when requireAuth is upstream, but defend
       // against misconfiguration.
@@ -83,7 +86,7 @@ export function createMcpHttpHandler() {
         error: {
           code: -32001,
           message:
-            'MCP endpoint requires a Bearer mcpt_* token in the Authorization header.',
+            'MCP endpoint requires a Bearer mcpt_* or at_* token in the Authorization header.',
         },
         id: null,
       });

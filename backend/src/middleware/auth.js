@@ -143,6 +143,98 @@ export async function requireAuth(req, res, next) {
     return next()
   }
 
+  // OAuth access-token fast-path: short-lived tokens with prefix at_ (RFC 8707 audience-bound).
+  if (token.startsWith('at_')) {
+    const { lookupAccessToken, touchAccessToken } = await import('../lib/oauthStore.js')
+    const { canonicalizeResourceUri } = await import('../lib/oauthHelpers.js')
+    const EXPECTED_AUDIENCE = canonicalizeResourceUri(process.env.MCP_RESOURCE_URI || 'http://localhost:3000/api/mcp')
+
+    let tokenRow
+    try {
+      tokenRow = await lookupAccessToken(token)
+    } catch (err) {
+      writeSecurityLog('warn', 'oauth_token_lookup_failed', {
+        ...getRequestLogContext(req),
+        error: err.message,
+      })
+      return res.status(401).json({ error: 'Token OAuth no se pudo validar' })
+    }
+
+    if (!tokenRow) {
+      writeSecurityLog('warn', 'oauth_token_invalid', getRequestLogContext(req))
+      await logSecurityEvent(req, {
+        action: 'oauth_token_invalid',
+        resourceType: 'oauth_token',
+        outcome: 'denied',
+        metadata: { reason: 'not_found_expired_or_revoked' },
+      })
+      return res.status(401).json({ error: 'Token OAuth invalido o expirado' })
+    }
+
+    if (tokenRow.audience !== EXPECTED_AUDIENCE) {
+      writeSecurityLog('warn', 'oauth_token_audience_mismatch', {
+        ...getRequestLogContext(req),
+        expected: EXPECTED_AUDIENCE,
+        got: tokenRow.audience,
+      })
+      await logSecurityEvent(req, {
+        action: 'oauth_token_invalid',
+        resourceType: 'oauth_token',
+        outcome: 'denied',
+        metadata: { reason: 'audience_mismatch', expected: EXPECTED_AUDIENCE, got: tokenRow.audience },
+      })
+      return res.status(401).json({ error: 'Token con audience invalido' })
+    }
+
+    try {
+      req.currentUser = await loadCurrentUser({ id: tokenRow.user_id })
+    } catch (err) {
+      writeSecurityLog('warn', 'oauth_token_user_load_failed', {
+        ...getRequestLogContext(req),
+        error: err.message,
+      })
+      return res.status(401).json({ error: 'No se pudo cargar el usuario del token OAuth' })
+    }
+
+    req.accessToken = null
+    req.oauthTokenId = tokenRow.id
+
+    const userBlock = await getActiveSecurityBlock(req, {
+      userId: req.currentUser.id,
+      ipAddress: req.clientIp,
+    })
+    if (userBlock?.blockType === 'user') {
+      writeSecurityLog('warn', 'security_user_blocked_request', {
+        ...getRequestLogContext(req),
+        blockId: userBlock.id,
+        reason: userBlock.reason,
+      })
+      await logSecurityEvent(req, {
+        action: 'blocked_user_request_denied',
+        resourceType: 'security_block',
+        resourceId: userBlock.id,
+        targetUserId: req.currentUser.id,
+        outcome: 'denied',
+        metadata: { reason: userBlock.reason },
+      })
+      return res.status(403).json({ error: 'Usuario bloqueado por seguridad', blockId: userBlock.id })
+    }
+
+    // Non-blocking audit + last_used_at
+    Promise.all([
+      touchAccessToken(tokenRow.id),
+      logSecurityEvent(req, {
+        action: 'oauth_token_used',
+        resourceType: 'oauth_token',
+        resourceId: tokenRow.id,
+        targetUserId: tokenRow.user_id,
+        outcome: 'success',
+      }),
+    ]).catch(() => {})
+
+    return next()
+  }
+
   try {
     const { data, error } = await supabaseAdmin.auth.getUser(token)
     if (error || !data?.user) {
