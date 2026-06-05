@@ -402,6 +402,84 @@
   color: var(--wb-text-muted);
 }
 
+/* Recommended OAuth block — sits above the wizard toggle */
+.mcpRecommendedNum {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-500);
+  color: var(--wb-color-neutral-50);
+  font-size: var(--wb-text-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mcpOAuthSteps {
+  margin: var(--wb-space-3) 0 0 calc(28px + var(--wb-space-3));
+  padding: 0 0 0 var(--wb-space-4);
+  list-style: decimal;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-relaxed);
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-1);
+}
+
+.mcpOAuthSteps li {
+  padding-left: var(--wb-space-1);
+}
+
+.mcpOAuthInputRow {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  margin-top: var(--wb-space-3);
+  margin-left: calc(28px + var(--wb-space-3));
+}
+
+.mcpOAuthInputRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcpOAuthHelper {
+  margin: var(--wb-space-2) 0 0 calc(28px + var(--wb-space-3));
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text-muted);
+  line-height: var(--wb-leading-snug);
+}
+
+/* Advanced method toggle divider */
+.mcpAdvancedDivider {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-4) 0 var(--wb-space-2);
+  border-top: 1px solid var(--wb-border);
+  margin-top: var(--wb-space-2);
+}
+
+.mcpAdvancedDividerToggle {
+  background: transparent;
+  border: 0;
+  padding: var(--wb-space-1) 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+  flex: 1;
+}
+
+.mcpAdvancedDividerToggle:hover {
+  color: var(--wb-text);
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   .mcpStepAction,
@@ -421,5 +499,11 @@
   .mcpItem {
     flex-direction: column;
     align-items: stretch;
+  }
+  .mcpOAuthInputRow,
+  .mcpOAuthSteps,
+  .mcpOAuthHelper {
+    margin-left: 0;
+    padding-left: 0;
   }
 }
