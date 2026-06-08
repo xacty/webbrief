@@ -39,6 +39,7 @@ import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, 
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
+import { markTaskDone } from '../lib/tutorialState'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
 import { Modal, Button, Select } from '../components/ui'
 import navStyles from './ProjectEditorNav.module.css'
@@ -3040,6 +3041,7 @@ export default function ProjectEditor() {
       })
       setShareUrl(data.shareLink.url)
       setPanelError('')
+      markTaskDone('create_share_link')
       loadSidePanelData()
     } catch (error) {
       setPanelError(error.message || 'No se pudo crear el link privado')
@@ -3940,7 +3942,10 @@ export default function ProjectEditor() {
           setIsDirty(true)
         }
         setComments((prev) => (created ? [...prev, created] : prev))
-        if (created) setActiveCommentId(created.id)
+        if (created) {
+          setActiveCommentId(created.id)
+          markTaskDone('leave_comment')
+        }
         setComposerState(null)
       } catch (error) {
         window.alert(error.message || 'No se pudo crear el comentario')
