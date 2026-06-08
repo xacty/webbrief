@@ -10,6 +10,7 @@ import {
   Edit3,
   Share2,
   MessageCircle,
+  Sparkles,
 } from 'lucide-react';
 import styles from './OnboardingChecklist.module.css';
 
@@ -62,6 +63,25 @@ export default function OnboardingChecklist({
   const done = countCompleted(state);
   const total = TASK_ORDER.length;
   const ordered = orderedTasks(state);
+  const allDone = done === total;
+
+  if (allDone && expanded) {
+    return (
+      <div className={styles.wrap}>
+        <div className={styles.card}>
+          <div className={styles.celebration}>
+            <span className={styles.celebrationIcon} aria-hidden="true">
+              <Sparkles size={28} />
+            </span>
+            <h3 className={styles.celebrationTitle}>¡Listo, dominas WeBrief!</h3>
+            <p className={styles.celebrationBody}>
+              Has completado el tutorial. Cierra esta tarjeta cuando quieras.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!expanded) {
     return (

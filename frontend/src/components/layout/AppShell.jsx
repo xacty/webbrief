@@ -14,6 +14,7 @@ import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
 import {
   getTutorialState,
   markDismissed,
+  markCompleted,
   isOnboardingActive,
   STORAGE_KEY,
 } from '../../lib/tutorialState'
@@ -53,6 +54,18 @@ export default function AppShell() {
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])
+
+  useEffect(() => {
+    const doneCount = Object.values(tutorialState.tasks).filter((t) => t.doneAt).length
+    if (doneCount === 6 && !tutorialState.completedAt) {
+      const id = setTimeout(() => {
+        const next = markCompleted()
+        setTutorialState(next)
+      }, 5000)
+      return () => clearTimeout(id)
+    }
+    return undefined
+  }, [tutorialState])
 
   useTutorialAutoComplete(setTutorialState)
 
