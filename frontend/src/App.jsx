@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import AppShell from './components/layout/AppShell'
@@ -26,6 +26,9 @@ const SecurityErrorsPage = lazy(() => import('./pages/SecurityErrorsPage'))
 const SecurityBlocksPage = lazy(() => import('./pages/SecurityBlocksPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 
+import WelcomeModal from './components/onboarding/WelcomeModal'
+import { getTutorialState, markWelcomed, markDismissed, isOnboardingActive } from './lib/tutorialState'
+
 // Prefixed values disambiguate platform-admin vs company-admin (both label as
 // "Admin" historically, value === 'admin' would collide on the <select>).
 const ROLE_PREVIEW_OPTIONS = [
@@ -46,8 +49,35 @@ function PrivateRoute({ children }) {
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
+function WelcomeGate() {
+  const { isAuthenticated, realCurrentUser, loading } = useAuth()
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (loading || !isAuthenticated || !realCurrentUser) return
+    const state = getTutorialState()
+    if (!isOnboardingActive(state)) return
+    if (state.welcomedAt) return
+    // Defer one paint so the shell renders first
+    const id = window.requestAnimationFrame(() => setOpen(true))
+    return () => window.cancelAnimationFrame(id)
+  }, [loading, isAuthenticated, realCurrentUser])
+
+  function handleStart() {
+    markWelcomed()
+    setOpen(false)
+  }
+
+  function handleSkip() {
+    markDismissed()
+    setOpen(false)
+  }
+
+  return <WelcomeModal open={open} onStart={handleStart} onSkip={handleSkip} />
+}
+
 function AppRoutes() {
-  const { realCurrentUser, rolePreview, setRolePreview } = useAuth()
+  const { realCurrentUser, rolePreview, setRolePreview, isAuthenticated, loading } = useAuth()
   const location = useLocation()
   const canPreviewRoles = realCurrentUser?.platformRole === 'admin'
   const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
@@ -108,6 +138,7 @@ function AppRoutes() {
           </Select>
         </div>
       )}
+      {!loading && isAuthenticated && <WelcomeGate />}
     </Suspense>
   )
 }
