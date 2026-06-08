@@ -9,6 +9,13 @@ import {
 } from '../../../../shared/userRoles.js'
 import webriefLogo from '../../assets/brand/webrief--logo-v2.svg'
 import { Button, Card } from '../ui'
+import OnboardingChecklist from '../onboarding/OnboardingChecklist'
+import {
+  getTutorialState,
+  markDismissed,
+  isOnboardingActive,
+  STORAGE_KEY,
+} from '../../lib/tutorialState'
 import styles from './AppShell.module.css'
 
 function roleLabel(currentUser, canManageUsers) {
@@ -34,6 +41,17 @@ export default function AppShell() {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
     localStorage.setItem('wb-theme', darkMode ? 'dark' : 'light')
   }, [darkMode])
+
+  const [tutorialState, setTutorialState] = useState(() => getTutorialState())
+  const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
+
+  useEffect(() => {
+    function onStorage(e) {
+      if (e.key === STORAGE_KEY) setTutorialState(getTutorialState())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   async function handleLogout() {
     await signOut()
@@ -162,6 +180,20 @@ export default function AppShell() {
           <Outlet />
         </div>
       </main>
+
+      {!isEditorRoute && isOnboardingActive(tutorialState) && (
+        <OnboardingChecklist
+          state={tutorialState}
+          onTaskClick={(key) => {
+            // Navigation wired in Task 7
+            console.log('[onboarding] task clicked:', key)
+          }}
+          onDismiss={() => {
+            const next = markDismissed()
+            setTutorialState(next)
+          }}
+        />
+      )}
     </div>
   )
 }
