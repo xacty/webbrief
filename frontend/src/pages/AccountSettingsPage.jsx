@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Camera, Download, KeyRound, Save } from 'lucide-react'
+import { Bell, Camera, Download, KeyRound, RotateCcw, Save } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch } from '../lib/api'
 import { supabase } from '../lib/supabase'
+import { resetTutorial } from '../lib/tutorialState'
 import {
   getCompanyRoleLabel,
   getPlatformRoleTitle,
@@ -179,6 +180,7 @@ export default function AccountSettingsPage() {
           <a href="#profile">Perfil</a>
           <a href="#security">Seguridad</a>
           <a href="#notifications">Notificaciones</a>
+          <a href="#tutorial">Tutorial</a>
         </nav>
 
         <div className={styles.sections}>
@@ -372,6 +374,29 @@ export default function AccountSettingsPage() {
             </div>
             <div className={styles.emptyState}>
               Las preferencias de notificaciones se pueden sumar acá cuando definamos los tipos de aviso.
+            </div>
+          </Card>
+
+          <Card as="section" id="tutorial" padding="md" shadow="sm" radius="lg" className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <h2 className={styles.panelTitle}>Tutorial</h2>
+                <p className={styles.panelText}>Vuelve a ver la bienvenida y el checklist de tareas.</p>
+              </div>
+              <RotateCcw className={styles.panelIcon} aria-hidden="true" />
+            </div>
+            <div className={styles.actions}>
+              <Button
+                type="button"
+                variant="ghost"
+                icon={<RotateCcw size={16} />}
+                onClick={() => {
+                  resetTutorial()
+                  window.location.assign('/companies')
+                }}
+              >
+                Reiniciar tutorial
+              </Button>
             </div>
           </Card>
 
