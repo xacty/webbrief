@@ -113,6 +113,22 @@ export default function IntegrationsPage() {
     return `${window.location.origin}/api/mcp`
   }, [])
 
+  // Cursor deep-link via web wrapper (works without protocol handler installed).
+  // Format: cursor.com/en/install-mcp?name=X&config=<base64({"url":...})>
+  const cursorInstallUrl = useMemo(() => {
+    if (!mcpEndpoint || typeof window === 'undefined') return ''
+    const config = JSON.stringify({ url: mcpEndpoint })
+    const b64 = window.btoa(config)
+    return `https://cursor.com/en/install-mcp?name=webbrief&config=${encodeURIComponent(b64)}`
+  }, [mcpEndpoint])
+
+  // VS Code deep-link. Format: vscode:mcp/install?<urlencoded JSON>
+  const vscodeInstallUrl = useMemo(() => {
+    if (!mcpEndpoint) return ''
+    const config = JSON.stringify({ name: 'webbrief', type: 'http', url: mcpEndpoint })
+    return `vscode:mcp/install?${encodeURIComponent(config)}`
+  }, [mcpEndpoint])
+
   // The mcpt_* token to embed in the generated command:
   //   - If the user just created one this session → use the raw value.
   //   - Otherwise the raw was never stored (we only kept the prefix) so we
@@ -232,57 +248,107 @@ export default function IntegrationsPage() {
             <div>
               <h2 className={styles.panelTitle}>Conecta tu agente</h2>
               <p className={styles.panelText}>
-                Conecta Claude Code, Codex o Claude Desktop a WeBrief vía MCP.
+                Conecta tu cliente de IA (Claude Desktop, Cursor, VS Code, Claude Code o Codex) a WeBrief vía MCP.
                 El agente podrá crear y editar proyectos, páginas y briefs en tu nombre.
               </p>
             </div>
             <Plug className={styles.panelIcon} aria-hidden="true" />
           </div>
 
-          {/* Recommended — Claude Desktop OAuth (no terminal, no token paste) */}
-          <div className={styles.mcpStep}>
-            <div className={styles.mcpStepHead}>
-              <span className={styles.mcpRecommendedNum} aria-hidden="true">
-                <Sparkles size={14} />
-              </span>
-              <div className={styles.mcpStepBody}>
-                <h3 className={styles.mcpStepTitle}>Claude Desktop (recomendado)</h3>
-                <p className={styles.mcpStepText}>
-                  Sin terminal, sin pegar tokens. Pega la URL en Claude Desktop y autoriza el acceso desde el navegador.
-                </p>
+          {/* ─── Section 1: Conexión rápida ─── */}
+          <div className={styles.mcpSection}>
+            <div className={styles.mcpSectionHead}>
+              <Sparkles size={18} aria-hidden="true" className={styles.mcpSectionIcon} />
+              <div>
+                <h2 className={styles.mcpSectionTitle}>Conexión rápida</h2>
+                <p className={styles.mcpSectionSubtitle}>Un clic o pegar una URL. Sin terminal.</p>
               </div>
             </div>
 
-            <ol className={styles.mcpOAuthSteps}>
-              <li>Abre Claude Desktop y ve a <strong>Settings → Connectors</strong>.</li>
-              <li>Haz clic en <strong>+ → Add custom connector</strong>.</li>
-              <li>Pega esta URL en el campo de URL:</li>
-            </ol>
+            <div className={styles.mcpCardGrid}>
 
-            <div className={styles.mcpOAuthInputRow}>
-              <Input
-                id="mcp-endpoint-url"
-                type="text"
-                readOnly
-                value={mcpEndpoint}
-                onFocus={(e) => e.target.select()}
-                aria-label="URL del conector MCP"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                icon={<Copy size={14} />}
-                onClick={handleMcpEndpointCopy}
-              >
-                {mcpEndpointCopied ? 'Copiado' : 'Copiar'}
-              </Button>
+              {/* Claude Desktop */}
+              <div className={styles.mcpCard}>
+                <h3 className={styles.mcpCardTitle}>Claude Desktop</h3>
+                <p className={styles.mcpCardSubtitle}>App de escritorio — pega una URL</p>
+                <p className={styles.mcpCardHelper}>
+                  Abre Claude Desktop → <strong>Settings → Connectors → + → Add custom connector</strong>.
+                  Pega esta URL y autoriza el acceso desde el navegador.
+                </p>
+                <div className={styles.mcpCardInputRow}>
+                  <Input
+                    readOnly
+                    value={mcpEndpoint}
+                    onFocus={(e) => e.target.select()}
+                    className={styles.mcpCardInput}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(mcpEndpoint).catch(() => {})
+                    }}
+                  >
+                    <Copy size={14} aria-hidden="true" /> Copiar
+                  </Button>
+                </div>
+              </div>
+
+              {/* Cursor */}
+              <div className={styles.mcpCard}>
+                <h3 className={styles.mcpCardTitle}>Cursor</h3>
+                <p className={styles.mcpCardSubtitle}>IDE de IA — un clic</p>
+                <p className={styles.mcpCardHelper}>
+                  Haz clic en el botón. Cursor confirmará la instalación y abrirá el navegador para autorizar.
+                </p>
+                <a
+                  href={cursorInstallUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.mcpCardDeepLink}
+                  aria-label="Agregar webbrief a Cursor"
+                >
+                  <img
+                    src="https://cursor.com/deeplink/mcp-install-dark.svg"
+                    alt="Add webbrief MCP server to Cursor"
+                    height="32"
+                  />
+                </a>
+                <details className={styles.mcpCardManual}>
+                  <summary>Ver snippet manual</summary>
+                  <p className={styles.mcpCardPathNote}>
+                    Archivo: <code>~/.cursor/mcp.json</code> (global) o <code>.cursor/mcp.json</code> (por proyecto)
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{JSON.stringify({ mcpServers: { webbrief: { url: mcpEndpoint } } }, null, 2)}</code></pre>
+                </details>
+              </div>
+
+              {/* VS Code */}
+              <div className={styles.mcpCard}>
+                <h3 className={styles.mcpCardTitle}>VS Code</h3>
+                <p className={styles.mcpCardSubtitle}>Con MCP integrado (1.95+) — un clic</p>
+                <p className={styles.mcpCardHelper}>
+                  Haz clic en el botón. VS Code confirmará la instalación y abrirá el navegador para autorizar.
+                </p>
+                <a href={vscodeInstallUrl} className={styles.mcpCardDeepLink}>
+                  <Button variant="primary" size="sm" type="button">
+                    Agregar a VS Code
+                  </Button>
+                </a>
+                <details className={styles.mcpCardManual}>
+                  <summary>Ver snippet manual</summary>
+                  <p className={styles.mcpCardPathNote}>
+                    macOS: <code>~/Library/Application Support/Code/User/mcp.json</code><br />
+                    Windows: <code>%APPDATA%\Code\User\mcp.json</code><br />
+                    Linux: <code>~/.config/Code/User/mcp.json</code><br />
+                    O por workspace: <code>.vscode/mcp.json</code>
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{JSON.stringify({ servers: { webrief: { type: 'http', url: mcpEndpoint } } }, null, 2)}</code></pre>
+                </details>
+              </div>
+
             </div>
-
-            <p className={styles.mcpOAuthHelper}>
-              Claude Desktop te llevará a esta web para iniciar sesión y autorizar el acceso.
-              No necesitas generar ningún token.
-            </p>
           </div>
 
           {/* Divider + toggle for advanced (bearer-token) wizard */}
