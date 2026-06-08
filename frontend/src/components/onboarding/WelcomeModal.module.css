@@ -28,7 +28,7 @@
 
 .body p {
   margin: 0;
-  max-width: 420px;
+  max-width: 420px; /* keep literal — no prose-width token in DS yet */
   font-size: var(--wb-text-base);
   line-height: var(--wb-leading-relaxed);
   color: var(--wb-text-muted);

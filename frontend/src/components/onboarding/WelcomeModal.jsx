@@ -11,6 +11,7 @@ export default function WelcomeModal({ open, onStart, onSkip }) {
       size="md"
       title=""
       showCloseButton={false}
+      closeOnBackdrop={false}
       ariaLabel="Bienvenida a WeBrief"
     >
       <div className={styles.body}>
