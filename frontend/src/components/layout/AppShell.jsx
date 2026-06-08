@@ -10,6 +10,7 @@ import {
 import webriefLogo from '../../assets/brand/webrief--logo-v2.svg'
 import { Button, Card } from '../ui'
 import OnboardingChecklist from '../onboarding/OnboardingChecklist'
+import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
 import {
   getTutorialState,
   markDismissed,
@@ -52,6 +53,8 @@ export default function AppShell() {
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])
+
+  useTutorialAutoComplete(setTutorialState)
 
   async function handleLogout() {
     await signOut()
