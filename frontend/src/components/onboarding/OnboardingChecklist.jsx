@@ -98,7 +98,7 @@ export default function OnboardingChecklist({
             onClick={() => setExpanded(false)}
             aria-label="Minimizar tutorial"
           >
-            <X size={16} />
+            <X size={16} aria-hidden="true" />
           </button>
         </header>
 
@@ -129,7 +129,7 @@ export default function OnboardingChecklist({
                 key={key}
                 type="button"
                 className={`${styles.task} ${isDone ? styles.taskDone : ''}`}
-                onClick={() => !isDone && onTaskClick(key)}
+                onClick={() => onTaskClick(key)}
                 disabled={isDone}
                 aria-label={`${meta.label}${isDone ? ' (completada)' : ''}`}
               >
