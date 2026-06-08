@@ -61,6 +61,31 @@ export default function AppShell() {
     navigate('/login')
   }
 
+  function handleTaskClick(key) {
+    switch (key) {
+      case 'create_company':
+        navigate('/companies?new=1')
+        break
+      case 'invite_member':
+        navigate('/companies')
+        break
+      case 'create_project':
+        navigate('/new-project')
+        break
+      case 'edit_page':
+        navigate('/companies')
+        break
+      case 'create_share_link':
+        navigate('/companies')
+        break
+      case 'leave_comment':
+        navigate('/companies')
+        break
+      default:
+        navigate('/companies')
+    }
+  }
+
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -187,10 +212,7 @@ export default function AppShell() {
       {!isEditorRoute && isOnboardingActive(tutorialState) && (
         <OnboardingChecklist
           state={tutorialState}
-          onTaskClick={(key) => {
-            // Navigation wired in Task 7
-            console.log('[onboarding] task clicked:', key)
-          }}
+          onTaskClick={handleTaskClick}
           onDismiss={() => {
             const next = markDismissed()
             setTutorialState(next)

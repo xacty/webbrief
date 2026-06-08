@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Archive, ArrowRight, Trash2, Plus } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
@@ -68,6 +68,15 @@ export default function CompaniesPage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setModalOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('new')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
   const [companyName, setCompanyName] = useState('')
   const [managerName, setManagerName] = useState('')
   const [managerEmail, setManagerEmail] = useState('')
