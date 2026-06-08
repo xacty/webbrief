@@ -63,7 +63,12 @@ export function getTutorialState() {
 
 function writeState(next) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // QuotaExceededError or similar — onboarding state is not persisted
+    // this render; the user's progress is not saved but the app stays up.
+  }
 }
 
 export function markWelcomed() {
@@ -120,19 +125,15 @@ export function countCompletedTasks(state) {
 }
 
 /**
- * Should the onboarding UI be shown?
- * Returns false when:
- * - user dismissed it
- * - user completed it
- * - user has data in the system that proves they're already a veteran
- *   (in which case we silently mark the relevant tasks as done)
+ * Should the onboarding UI be shown? Returns false once the user
+ * dismissed or completed the tutorial.
+ *
+ * Veteran-user auto-skip is intentionally deferred — see
+ * syncTasksFromSignals for the in-progress auto-complete behavior.
  *
  * @param state — result of getTutorialState()
- * @param signals — { companiesCount, projectsCount, membersCount }
- *                 from the AppShell context. All optional; missing fields
- *                 are treated as 0.
  */
-export function isOnboardingActive(state, signals = {}) {
+export function isOnboardingActive(state) {
   if (state.dismissedAt) return false;
   if (state.completedAt) return false;
   return true;
