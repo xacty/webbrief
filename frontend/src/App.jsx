@@ -9,6 +9,8 @@ import {
   getCompanyRoleLabel,
   getPlatformRoleLabel,
 } from '../../shared/userRoles.js'
+import WelcomeModal from './components/onboarding/WelcomeModal'
+import { getTutorialState, markWelcomed, markDismissed, isOnboardingActive } from './lib/tutorialState'
 
 const Login = lazy(() => import('./pages/Login'))
 const NewProject = lazy(() => import('./pages/NewProject'))
@@ -25,9 +27,6 @@ const SecurityPage = lazy(() => import('./pages/SecurityPage'))
 const SecurityErrorsPage = lazy(() => import('./pages/SecurityErrorsPage'))
 const SecurityBlocksPage = lazy(() => import('./pages/SecurityBlocksPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
-
-import WelcomeModal from './components/onboarding/WelcomeModal'
-import { getTutorialState, markWelcomed, markDismissed, isOnboardingActive } from './lib/tutorialState'
 
 // Prefixed values disambiguate platform-admin vs company-admin (both label as
 // "Admin" historically, value === 'admin' would collide on the <select>).
@@ -55,13 +54,14 @@ function WelcomeGate() {
 
   useEffect(() => {
     if (loading || !isAuthenticated || !realCurrentUser) return
+    if (open) return // Already open — skip re-evaluation triggered by auth refresh
     const state = getTutorialState()
     if (!isOnboardingActive(state)) return
     if (state.welcomedAt) return
     // Defer one paint so the shell renders first
     const id = window.requestAnimationFrame(() => setOpen(true))
     return () => window.cancelAnimationFrame(id)
-  }, [loading, isAuthenticated, realCurrentUser])
+  }, [loading, isAuthenticated, realCurrentUser, open])
 
   function handleStart() {
     markWelcomed()
@@ -81,6 +81,10 @@ function AppRoutes() {
   const location = useLocation()
   const canPreviewRoles = realCurrentUser?.platformRole === 'admin'
   const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
+  const isPublicRoute = location.pathname === '/login'
+    || location.pathname === '/auth/set-password'
+    || location.pathname.startsWith('/share/')
+    || location.pathname.startsWith('/b/')
 
   return (
     <Suspense fallback={<div className="pageLoading">Cargando...</div>}>
@@ -138,7 +142,7 @@ function AppRoutes() {
           </Select>
         </div>
       )}
-      {!loading && isAuthenticated && <WelcomeGate />}
+      {!loading && isAuthenticated && !isPublicRoute && <WelcomeGate />}
     </Suspense>
   )
 }
