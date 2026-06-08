@@ -146,11 +146,6 @@ export default function IntegrationsPage() {
       label: 'Codex CLI',
       hint: 'CLI de OpenAI. Agrega la entrada al archivo ~/.codex/config.toml.',
     },
-    {
-      value: 'claude-desktop',
-      label: 'Claude Desktop',
-      hint: 'App de escritorio. Agrega la entrada al claude_desktop_config.json.',
-    },
   ]
 
   const mcpCommand = useMemo(() => {
@@ -162,29 +157,16 @@ export default function IntegrationsPage() {
         `  ${mcpEndpoint}`,
       ].join('\n')
     }
-    if (mcpClient === 'codex') {
-      return [
-        '# Agrega al final de ~/.codex/config.toml',
-        '',
-        '[mcp_servers.webbrief]',
-        `url = "${mcpEndpoint}"`,
-        'transport = "http"',
-        '',
-        '[mcp_servers.webbrief.headers]',
-        `Authorization = "Bearer ${mcpEffectiveToken}"`,
-      ].join('\n')
-    }
+    // codex (default)
     return [
-      '// Agrega esto al objeto raíz de claude_desktop_config.json',
-      '"mcpServers": {',
-      '  "webbrief": {',
-      `    "url": "${mcpEndpoint}",`,
-      '    "transport": "http",',
-      '    "headers": {',
-      `      "Authorization": "Bearer ${mcpEffectiveToken}"`,
-      '    }',
-      '  }',
-      '}',
+      '# Agrega al final de ~/.codex/config.toml',
+      '',
+      '[mcp_servers.webbrief]',
+      `url = "${mcpEndpoint}"`,
+      'transport = "http"',
+      '',
+      '[mcp_servers.webbrief.headers]',
+      `Authorization = "Bearer ${mcpEffectiveToken}"`,
     ].join('\n')
   }, [mcpClient, mcpEndpoint, mcpEffectiveToken])
 
@@ -351,6 +333,66 @@ export default function IntegrationsPage() {
             </div>
           </div>
 
+            {/* ─── Section 2: Otros clientes ─── */}
+            <div className={styles.mcpSection}>
+              <div className={styles.mcpSectionHead}>
+                <Terminal size={18} aria-hidden="true" className={styles.mcpSectionIcon} />
+                <div>
+                  <h2 className={styles.mcpSectionTitle}>Otros clientes</h2>
+                  <p className={styles.mcpSectionSubtitle}>Para clientes de terminal o que requieren configuración manual.</p>
+                </div>
+              </div>
+
+              <div className={styles.mcpCardGrid}>
+
+                {/* Claude Code */}
+                <div className={styles.mcpCard}>
+                  <h3 className={styles.mcpCardTitle}>Claude Code</h3>
+                  <p className={styles.mcpCardSubtitle}>CLI oficial de Anthropic</p>
+                  <p className={styles.mcpCardHelper}>
+                    Ejecuta este comando en tu terminal. Claude Code abrirá el navegador para autorizar la primera vez.
+                    No necesitas generar ningún token.
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{`claude mcp add --transport http webbrief ${mcpEndpoint}`}</code></pre>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`claude mcp add --transport http webbrief ${mcpEndpoint}`).catch(() => {})
+                    }}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    <Copy size={14} aria-hidden="true" /> Copiar comando
+                  </Button>
+                </div>
+
+                {/* Codex CLI */}
+                <div className={styles.mcpCard}>
+                  <h3 className={styles.mcpCardTitle}>Codex CLI</h3>
+                  <p className={styles.mcpCardSubtitle}>CLI de OpenAI</p>
+                  <p className={styles.mcpCardHelper}>
+                    Agrega este bloque al archivo, luego ejecuta el comando de login en tu terminal.
+                    No necesitas generar ningún token.
+                  </p>
+                  <p className={styles.mcpCardPathNote}>
+                    Archivo: <code>~/.codex/config.toml</code>
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{`[mcp_servers.webbrief]\nurl = "${mcpEndpoint}"`}</code></pre>
+                  <p className={styles.mcpCardPathNote} style={{ marginTop: 'var(--wb-space-2)' }}>
+                    Después, en tu terminal:
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>codex mcp login webbrief</code></pre>
+                </div>
+
+              </div>
+            </div>
+
+            {/* ─── ChatGPT future note ─── */}
+            <p className={styles.mcpChatgptNote}>
+              ChatGPT se agregará a "Conexión rápida" cuando OpenAI habilite connectors MCP públicos.
+            </p>
+
           {/* Divider + toggle for advanced (bearer-token) wizard */}
           <div className={styles.mcpAdvancedDivider}>
             <button
@@ -365,13 +407,18 @@ export default function IntegrationsPage() {
                 aria-hidden="true"
               />
               {mcpShowAdvanced
-                ? 'Ocultar método avanzado (para devs)'
-                : 'Mostrar método avanzado (token bearer, para devs)'}
+                ? 'Ocultar método con token'
+                : 'Mostrar método con token (para automatización o CI)'}
             </button>
           </div>
 
           {mcpShowAdvanced && (
             <>
+              <p className={styles.mcpTokenContext}>
+                Solo necesitas un token si tu cliente no soporta OAuth o si quieres conectar desde un script,
+                CI o automatización. Para uso interactivo, usa los botones de arriba.
+              </p>
+
               {/* Step 1 — Generate token */}
               <div className={styles.mcpStep}>
                 <div className={styles.mcpStepHead}>
@@ -455,7 +502,11 @@ export default function IntegrationsPage() {
                 <div className={styles.mcpStepHead}>
                   <span className={styles.mcpStepNum}>3</span>
                   <div className={styles.mcpStepBody}>
-                    <h3 className={styles.mcpStepTitle}>Pega esto en tu cliente</h3>
+                    <h3 className={styles.mcpStepTitle}>
+                      {mcpClient === 'claude-code'
+                        ? 'Ejecuta este comando en tu terminal'
+                        : 'Agrega este bloque a ~/.codex/config.toml'}
+                    </h3>
                     <p className={styles.mcpStepText}>
                       {!mcpNewToken && (
                         <span className={styles.mcpHint}>
