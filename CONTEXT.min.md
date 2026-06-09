@@ -538,15 +538,15 @@
 
 - **Status final**: MCP v1 vivo en Prod (`https://webrief.app/api/mcp`). 12 tools registradas, 12 edit ops, transport HTTP via `StreamableHTTPServerTransport`. 157/157 unit tests + 23/23 invariants. Suite total estable.
 
-- **Fase 1 — Read tools** (commits `5b59829`, `4d582f6`, `c5c7f8c`): `session.getContext`, `companies.selectActive`, `projects.get`, `pages.get`. Validan token, forward al backend, devuelven errores estructurados. 31 tests con fetch mockeado.
+- **Fase 1 — Read tools** (commits `5b59829`, `4d582f6`, `c5c7f8c`): `session_getContext`, `companies_selectActive`, `projects.get`, `pages.get`. Validan token, forward al backend, devuelven errores estructurados. 31 tests con fetch mockeado.
 
-- **Fase 2 — Preview/create tools** (commits `7c8eb3b`, `f97f6f9`): `projects.previewCreateFromContent`, `projects.createFromPreview` (con `overrides` opt al apply), `brief.previewPrefill`, `pages.previewDraft`.
+- **Fase 2 — Preview/create tools** (commits `7c8eb3b`, `f97f6f9`): `projects_previewCreateFromContent`, `projects_createFromPreview` (con `overrides` opt al apply), `brief_previewPrefill`, `pages_previewDraft`.
   - `lib/urlFetcher.js`: política SSRF-safe — http/https only, 10s timeout, 2MB cap, RFC1918 + loopback + link-local + IPv4-mapped-v6 rechazados, redirects refused.
   - `lib/previewStore.js`: in-memory Map con TTL 10min + GC + cap 256 entries con FIFO eviction. previewId con prefix `prev_`.
   - **Schema fix crítico**: `projectTypeEnum` original tenía `[brief, website, landing_page, email, social, ads, other]` pero backend `normalizeProjectType` sólo acepta `[page, brief, document, faq]`. Corregido en commit `7c8eb3b`. Decisión: enum estricto, no fallback silencioso.
   - 60 tests.
 
-- **Fase 3 — Edit tools** (commit `f0f197b` + rich-node ops `be44ad7` + SEO `4927dc1`/`bf665e4`/`c6f8670`): `pages.previewEdits`, `pages.applyEdits`.
+- **Fase 3 — Edit tools** (commit `f0f197b` + rich-node ops `be44ad7` + SEO `4927dc1`/`bf665e4`/`c6f8670`): `pages_previewEdits`, `pages_applyEdits`.
   - `lib/editOps.js`: discriminated union de **12 ops**: `set_page_name`, `set_section_name`, `set_heading_text`, `replace_paragraph`, `insert_section`, `delete_section`, `find_replace`, `set_faq_question`, `set_faq_answer`, `insert_cta`, `insert_image_by_url`, `set_seo_metadata`. Ops que no matchean → warning estructurado (no throw). `find_replace` escapa regex meta-chars.
   - Versionado: `expectedVersion` requerido en apply. Conflict → `{ code: 'version_conflict', currentVersion, currentSnapshot }` con la página fresca para replan. Backend 409 también mapeado.
   - Strategy A (locked): MCP construye contentJson completo + ensureInvariants + PUT `/projects/:id/pages` con TODAS las páginas (full-replace endpoint). Otras páginas se envían verbatim para no perderlas.
@@ -554,7 +554,7 @@
   - **Imágenes**: `insert_image_by_url` SÍ permitido vía URL pública (typicamente ImageKit ya subido por UI). Upload sigue siendo UI-only — el MCP nunca sube assets.
   - 52 tests (incluye `set_seo_metadata` merge/replace + PUT payload carries new seoMetadata + no disturba otras páginas).
 
-- **Project meta updates** (backend `bf665e4` + tools `4927dc1`): extendido backend `PATCH /projects/:id` para aceptar `name + clientName + clientEmail + businessType + projectType` (antes sólo `name`). Empty-string clears clientName/Email. `projectType` validado contra enum, sin coerción silenciosa. Dos tools MCP nuevas: `projects.previewUpdate` (per-field diff vs current, drops no-ops) + `projects.applyUpdate` (PATCHea solo los diffeados). 14 tests en nuevo `fase4.test.js`.
+- **Project meta updates** (backend `bf665e4` + tools `4927dc1`): extendido backend `PATCH /projects/:id` para aceptar `name + clientName + clientEmail + businessType + projectType` (antes sólo `name`). Empty-string clears clientName/Email. `projectType` validado contra enum, sin coerción silenciosa. Dos tools MCP nuevas: `projects_previewUpdate` (per-field diff vs current, drops no-ops) + `projects_applyUpdate` (PATCHea solo los diffeados). 14 tests en nuevo `fase4.test.js`.
 
 - **Fase 4 — HTTP transport** (commit `66ca109`, antes diferida a v2):
   - **Decisión**: pasar a v1. Razón: distribución por stdio requiere que cada usuario clone el repo + path absoluto + Node — no escala. Opción HTTP/SSE con bearer token bajo `requireAuth` del backend reusa toda la infra existente sin OAuth (queda para v2 cuando haya scopes complejos).
@@ -596,7 +596,7 @@
   - **Bearer token suficiente** para v1, OAuth diferido hasta multi-scope.
   - **Stateless HTTP transport**: fresh server + transport por request. Aislamiento cross-user via `Map<token, companyId>` compartido por proceso.
   - **Image upload OUT, image embed by URL OK** (ya subida en ImageKit por UI).
-  - **Brief responses apply**: NO en v1. `brief.previewPrefill` devuelve preguntas; el cliente las propone; el usuario completa en UI.
+  - **Brief responses apply**: NO en v1. `brief_previewPrefill` devuelve preguntas; el cliente las propone; el usuario completa en UI.
 
 - **Roadmap residual** (en `docs/WEBRIEF_MCP_HANDOFF.md`):
   1. `projects.list` (descubrir sin saber IDs)
@@ -619,10 +619,10 @@
 
 - **Fase 0 — Scaffold `mcp/webrief-server/`** (commit `2c6f905`):
   - 24 archivos. `package.json` con `@modelcontextprotocol/sdk ^1.29.0` + `zod ^3.23.0`, engine `node >=20`. SDK API: `McpServer.registerTool()` (no usar `.tool()` deprecado).
-  - 10 tools v1 todas no-op (handlers `{ status:'not_implemented_yet', tool, input }`): `session.getContext`, `companies.selectActive`, `projects.previewCreateFromContent`, `projects.createFromPreview`, `brief.previewPrefill`, `pages.previewDraft`, `projects.get`, `pages.get`, `pages.previewEdits`, `pages.applyEdits`.
+  - 10 tools v1 todas no-op (handlers `{ status:'not_implemented_yet', tool, input }`): `session_getContext`, `companies_selectActive`, `projects_previewCreateFromContent`, `projects_createFromPreview`, `brief_previewPrefill`, `pages_previewDraft`, `projects.get`, `pages.get`, `pages_previewEdits`, `pages_applyEdits`.
   - Schemas zod compartidos en `src/schemas/{common,project,page,company}.js` (con `companyId`, `projectId`, `pageId`, `projectTypeEnum`, `referenceUrls`).
   - Stubs: `src/auth/mcpToken.js` (lee `WEBRIEF_MCP_TOKEN` env, throws hard si falta — **fix en N+3: wrap en try/catch para devolver MCP error estructurado**), `src/lib/webbriefClient.js` (`get/post/patch`, **falta `delete`**).
-  - `pages.applyEdits.edits[]` es `z.array(z.unknown())` con TODO — shape se define en **N+4** (Fase 3).
+  - `pages_applyEdits.edits[]` es `z.array(z.unknown())` con TODO — shape se define en **N+4** (Fase 3).
   - Transport stdio: `node src/index.js < /dev/null` arranca clean.
 
 - **Prep B — `shared/documentInvariants.js`** (commits `0617e16` + `3bb5e4c`):

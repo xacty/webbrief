@@ -4,7 +4,7 @@ import { checkMcpToken } from '../auth/mcpToken.js';
 import { get } from '../lib/webbriefClient.js';
 import { savePreview } from '../lib/previewStore.js';
 
-export const name = 'brief.previewPrefill';
+export const name = 'brief_previewPrefill';
 
 export const description =
   'What: returns the answerable brief questions (id, type, label, hint, required, options) for a brief-type project, alongside echo of the user-provided content. Excludes section_header and file_upload questions (out of v1 prefill scope). The CLIENT does the mapping content→answers — this server never calls an LLM. ' +

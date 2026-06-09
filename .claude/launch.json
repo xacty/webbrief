@@ -7,6 +7,13 @@
       "runtimeArgs": ["vite"],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "onboarding-worktree",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5174"],
+      "cwd": ".claude/worktrees/onboarding-tutorial/frontend",
+      "port": 5174
     }
   ]
 }

@@ -3,7 +3,7 @@ import { projectId, pageId } from '../schemas/common.js';
 import { checkMcpToken } from '../auth/mcpToken.js';
 import { get } from '../lib/webbriefClient.js';
 
-export const name = 'pages.get';
+export const name = 'pages_get';
 
 export const description =
   'What: returns the full page payload (id/name/position/contentJson/contentHtml/seoMetadata/version/reviewStatus/updatedAt). ' +
