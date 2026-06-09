@@ -6,7 +6,7 @@ import { savePreview } from '../lib/previewStore.js';
 import { applyEditsToContentJson, editOpsArraySchema } from '../lib/editOps.js';
 import { ensureInvariants, SUPPORTED_PROJECT_TYPES } from '../../../../shared/documentInvariants.js';
 
-export const name = 'pages.previewEdits';
+export const name = 'pages_previewEdits';
 
 export const description =
   'What: runs a list of edit ops against the current page contentJson + seoMetadata + name in memory, normalizes via ensureInvariants, and returns the resulting page state, a per-op summary (matched + before/after), warnings for unmatched selectors, and repairs the invariants module applied. ' +

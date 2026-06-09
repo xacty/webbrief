@@ -4,7 +4,7 @@ import { checkMcpToken } from '../auth/mcpToken.js';
 import { get } from '../lib/webbriefClient.js';
 import { setActiveCompanyId, getActiveCompanyId } from '../session/activeCompany.js';
 
-export const name = 'companies.selectActive';
+export const name = 'companies_selectActive';
 
 export const description =
   'What: pins a companyId as the active company for the current MCP session and returns the activated company info. ' +

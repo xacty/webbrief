@@ -5,7 +5,7 @@ import { get } from '../lib/webbriefClient.js';
 import { fetchReferenceUrls } from '../lib/urlFetcher.js';
 import { savePreview } from '../lib/previewStore.js';
 
-export const name = 'pages.previewDraft';
+export const name = 'pages_previewDraft';
 
 export const description =
   'What: returns the project context (existing pages, projectType) + a suggested page name and position for a NEW page, alongside echo of the user content and bodies of any reference URLs the server fetched. The CLIENT builds the actual draft locally — this server never calls an LLM. ' +

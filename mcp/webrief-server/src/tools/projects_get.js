@@ -3,7 +3,7 @@ import { projectId } from '../schemas/common.js';
 import { checkMcpToken } from '../auth/mcpToken.js';
 import { get } from '../lib/webbriefClient.js';
 
-export const name = 'projects.get';
+export const name = 'projects_get';
 
 export const description =
   'What: returns { project, pages[] } for a project. Project meta covers id/name/companyId/projectType/clientName/clientEmail/businessType/archivedAt/trashedAt/updatedAt; pages are summarized (id/name/position/version/reviewStatus/updatedAt) without content. ' +

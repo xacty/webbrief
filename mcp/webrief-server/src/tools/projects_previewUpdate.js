@@ -8,7 +8,7 @@ import { checkMcpToken } from '../auth/mcpToken.js';
 import { get } from '../lib/webbriefClient.js';
 import { savePreview } from '../lib/previewStore.js';
 
-export const name = 'projects.previewUpdate';
+export const name = 'projects_previewUpdate';
 
 export const description =
   'What: dry-runs an update on an EXISTING project meta (any subset of name/clientName/clientEmail/businessType/projectType). Returns previewId + a per-field diff. Fields that already match the current value are dropped from the diff (and `noop:true` is returned if everything matches). ' +

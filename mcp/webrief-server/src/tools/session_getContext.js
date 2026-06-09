@@ -3,7 +3,7 @@ import { checkMcpToken } from '../auth/mcpToken.js';
 import { get } from '../lib/webbriefClient.js';
 import { getActiveCompanyId } from '../session/activeCompany.js';
 
-export const name = 'session.getContext';
+export const name = 'session_getContext';
 
 export const description =
   'What: returns { user, companies[], activeCompanyId } for the authenticated MCP token. ' +

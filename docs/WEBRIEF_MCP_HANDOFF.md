@@ -34,28 +34,28 @@ Ver `CONTEXT.min.md` Session 21 y `CONTEXT.md` "Completed (2026-05-27)" para el 
 ### Roster de tools (12) — todas registradas en Prod
 
 **Session + descubrimiento**
-- `session.getContext` — user + companies accesibles + activeCompanyId
-- `companies.selectActive` — fija empresa activa para la sesión (per-token en HTTP)
+- `session_getContext` — user + companies accesibles + activeCompanyId
+- `companies_selectActive` — fija empresa activa para la sesión (per-token en HTTP)
 
 **Lectura**
 - `projects.get` — project meta + page list (sin contenido)
 - `pages.get` — page completa (contentJson + contentHtml + seoMetadata + version)
 
 **Crear proyecto**
-- `projects.previewCreateFromContent` — fetchea URLs + heurísticas → preview
-- `projects.createFromPreview` — POST /projects + acepta `overrides` opt
+- `projects_previewCreateFromContent` — fetchea URLs + heurísticas → preview
+- `projects_createFromPreview` — POST /projects + acepta `overrides` opt
 
 **Actualizar metadata de proyecto** *(v1.1)*
-- `projects.previewUpdate` — per-field diff vs current
-- `projects.applyUpdate` — PATCHea solo los diffeados
+- `projects_previewUpdate` — per-field diff vs current
+- `projects_applyUpdate` — PATCHea solo los diffeados
 
 **Editar páginas**
-- `brief.previewPrefill` — preguntas del brief (preview-only en v1, sin apply)
-- `pages.previewDraft` — context + fetched URLs para draft local
-- `pages.previewEdits` — dry-run de edits
-- `pages.applyEdits` — commit con `expectedVersion` + version_conflict snapshot
+- `brief_previewPrefill` — preguntas del brief (preview-only en v1, sin apply)
+- `pages_previewDraft` — context + fetched URLs para draft local
+- `pages_previewEdits` — dry-run de edits
+- `pages_applyEdits` — commit con `expectedVersion` + version_conflict snapshot
 
-### Roster de edit operations (12, en `pages.applyEdits.edits[]`)
+### Roster de edit operations (12, en `pages_applyEdits.edits[]`)
 
 `set_page_name` · `set_section_name` · `set_heading_text` · `replace_paragraph` · `insert_section` · `delete_section` · `find_replace` (regex meta-chars escapados) · `set_faq_question` · `set_faq_answer` (collapses paragraphs) · `insert_cta` *(v1.1)* · `insert_image_by_url` *(v1.1, no upload)* · `set_seo_metadata` *(v1.1, keys: titleTag/metaDescription/urlSlug)*
 
@@ -67,7 +67,7 @@ Ops que no matchean su selector → `{ matched: false, warning: ... }` en lugar 
 - **Bearer token suficiente** para v1. OAuth (multi-scope, refresh tokens, device flow) diferido hasta que aparezcan necesidades concretas.
 - **Strategy A** (full-page replace) locked para v1. Strategy B (PATCH granular server-side) post-v1 incremental, un endpoint por vez.
 - **Image upload OUT**, embed by URL OK. El MCP nunca sube assets; el user sube via UI WeBrief y el MCP referencia la URL ImageKit resultante via `insert_image_by_url`.
-- **Brief responses apply OUT en v1**. `brief.previewPrefill` es preview-only; el user completa en UI.
+- **Brief responses apply OUT en v1**. `brief_previewPrefill` es preview-only; el user completa en UI.
 - **Stdio se mantiene** como fallback dev. HTTP es el modo de producción.
 - **Naming "Integraciones"** sobre "Conexiones" (estándar SaaS, lee mejor en español).
 - **SEO metadata keys** = `titleTag/metaDescription/urlSlug` (alineadas al frontend). Si en el futuro el editor agrega `ogImage/keywords/etc`, reincorporar con MISMOS nombres del frontend, NO los "estándar web" — para mantener el JSONB single-sourced.
@@ -78,7 +78,7 @@ Ops que no matchean su selector → `{ matched: false, warning: ... }` en lugar 
 Hoy el LLM no puede responder "¿qué proyectos tengo en empresa X?" sin recibir UUIDs por adelantado. `projects.get` requiere conocer el ID. Una tool `projects.list({ companyId, filters? })` cierra el gap más obvio. ~2 horas con tests.
 
 ### 2. Apply de brief responses
-`brief.previewPrefill` devuelve preguntas + content para que el cliente proponga respuestas. Falta el step de apply que persista esas respuestas en `project_brief_responses`. Requiere backend endpoint nuevo (no existe hoy) o reusar el editor de brief. ~1 día con auditoría.
+`brief_previewPrefill` devuelve preguntas + content para que el cliente proponga respuestas. Falta el step de apply que persista esas respuestas en `project_brief_responses`. Requiere backend endpoint nuevo (no existe hoy) o reusar el editor de brief. ~1 día con auditoría.
 
 ### 3. Image upload via MCP
 Hoy `insert_image_by_url` solo embebe URLs ya públicas. Para "subí esta imagen al hero", el MCP necesitaría proxy a ImageKit con credenciales del backend. Caso de uso real durante QA con clínica León. ~1-2 días (auth a ImageKit + endpoint backend + tool MCP nueva).
