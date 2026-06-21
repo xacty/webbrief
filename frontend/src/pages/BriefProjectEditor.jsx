@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft, Bookmark, MessageSquare } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
-import { Button, Select } from '../components/ui'
+import { Button, Select, HelpPopover } from '../components/ui'
 import ProjectTypeExplainer from '../components/onboarding/ProjectTypeExplainer'
 import styles from './BriefProjectEditor.module.css'
 
@@ -648,6 +648,11 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
               <h2 className={styles.sectionLabel}>
                 Preguntas
                 <span className={styles.questionCount}>{questions.length}</span>
+                {' '}
+                <HelpPopover
+                  title="Presupuesto de archivos"
+                  body="Cada brief tiene 500 MB para archivos del cliente (PDF, imágenes, Office). Los ejecutables y ZIPs se rechazan. El cliente ve el espacio disponible al subir."
+                />
               </h2>
             </div>
 

@@ -11,7 +11,7 @@ import {
   getPlatformRoleLabel,
   isGlobalPlatformRole,
 } from '../../../shared/userRoles.js'
-import { Button, Input, Select, Card, Badge, Modal } from '../components/ui'
+import { Button, Input, Select, Card, Badge, Modal, HelpPopover } from '../components/ui'
 import UserEditModal from '../components/users/UserEditModal'
 import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
 import EmptyState from '../components/onboarding/EmptyState'
@@ -757,7 +757,16 @@ export default function UsersPage() {
               </Select>
 
               <Select
-                label="Rol en empresa"
+                label={(
+                  <>
+                    Rol en empresa
+                    {' '}
+                    <HelpPopover
+                      title="Roles disponibles"
+                      body="Manager: gestiona el equipo y crea proyectos. Editor: crea y edita proyectos. Content writer / Designer / Developer: editan páginas asignadas, sin gestión de equipo."
+                    />
+                  </>
+                )}
                 value={inviteForm.role}
                 onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))}
               >

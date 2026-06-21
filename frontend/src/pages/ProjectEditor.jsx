@@ -42,7 +42,7 @@ import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { markTaskDone } from '../lib/tutorialState'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
-import { Modal, Button, Select } from '../components/ui'
+import { Modal, Button, Select, HelpPopover } from '../components/ui'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -4882,6 +4882,11 @@ function FloatingEditorBar({
           })}
         </div>
       </div>
+
+      <HelpPopover
+        title="Modos del editor"
+        body="Brief: edición interna. Handoff: vista para Dev y Designer con bloques etiquetados. Preview: vista del cliente. Cambia con la pill o con Cmd+1/2/3."
+      />
     </div>
   )
 }
@@ -7753,7 +7758,14 @@ function DocumentRulesCard({
     <div className={seoRulesStyles.rulesDock}>
       <aside className={seoRulesStyles.rulesCard} aria-labelledby="document-rules-title">
         <div className={seoRulesStyles.rulesHeader}>
-          <span id="document-rules-title" className={seoRulesStyles.rulesTitle}>Reglas de contenido</span>
+          <span id="document-rules-title" className={seoRulesStyles.rulesTitle}>
+            Reglas de contenido
+            {' '}
+            <HelpPopover
+              title="Reglas de contenido"
+              body="Solo aplican a proyectos tipo Artículo. Definen límites para título SEO, meta descripción, slug y palabras totales. Los autores ven una barra de progreso en vivo."
+            />
+          </span>
           {canEdit && (
             <button
               type="button"

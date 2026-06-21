@@ -3,7 +3,7 @@ import { Archive, RefreshCw, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin } from '../lib/roleCapabilities'
-import { Button, Select, Card, Badge } from '../components/ui'
+import { Button, Select, Card, Badge, HelpPopover } from '../components/ui'
 import EmptyState from '../components/onboarding/EmptyState'
 import styles from './TrashPage.module.css'
 
@@ -238,7 +238,18 @@ export default function TrashPage({ mode = 'trashed' }) {
         <div className={styles.pageHeaderInner}>
           <div className={styles.titleRow}>
             <div className={styles.headerMain}>
-              <h1 className={styles.title}>{pageCopy.title}</h1>
+              <h1 className={styles.title}>
+                {pageCopy.title}
+                {mode === 'trashed' && (
+                  <>
+                    {' '}
+                    <HelpPopover
+                      title="Retención automática"
+                      body="Los proyectos en papelera se borran solos: brief en 15 días, otros tipos en 30. Restáuralos antes del vencimiento o se purgan junto con sus assets."
+                    />
+                  </>
+                )}
+              </h1>
               <p className={styles.headerMeta}>
                 {totalItems} elemento{totalItems === 1 ? '' : 's'}
                 {' · '}
