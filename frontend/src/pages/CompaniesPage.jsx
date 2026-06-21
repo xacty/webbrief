@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, ArrowRight, Trash2, Plus } from 'lucide-react'
+import { Archive, ArrowRight, Building2, Plus, Trash2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
+import EmptyState from '../components/onboarding/EmptyState'
 import styles from './CompaniesPage.module.css'
 
 const PAGE_SIZE = 8
@@ -460,13 +461,23 @@ export default function CompaniesPage() {
 
       {loading && <p className={styles.info}>Cargando empresas...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
-      {!loading && !error && paginatedCompanies.length === 0 && (
-        <div className={styles.emptyState}>
-          <p className={styles.emptyTitle}>No hay empresas para esta búsqueda.</p>
-          <p className={styles.emptyText}>
-            Ajusta filtros o crea una empresa nueva para empezar a organizar proyectos y equipo.
-          </p>
-        </div>
+      {!loading && !error && paginatedCompanies.length === 0 && companies.length === 0 && (
+        <EmptyState
+          icon={Building2}
+          title="Crea tu primera empresa"
+          body="Una empresa agrupa proyectos y equipo. Empieza con tu agencia o un cliente."
+          cta={canCreateCompanies ? {
+            label: 'Nueva empresa',
+            onClick: () => setModalOpen(true),
+          } : null}
+        />
+      )}
+      {!loading && !error && paginatedCompanies.length === 0 && companies.length > 0 && (
+        <EmptyState
+          icon={Building2}
+          title="No hay empresas para esta búsqueda"
+          body="Ajusta los filtros o limpia la búsqueda para ver todas las empresas."
+        />
       )}
 
       {!loading && !error && paginatedCompanies.length > 0 && (
