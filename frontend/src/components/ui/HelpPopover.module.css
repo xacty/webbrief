@@ -1,0 +1,98 @@
+.root {
+  display: inline-flex;
+}
+
+.trigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 2px; /* keep literal — micro-target inside labels */
+  color: var(--wb-color-neutral-500);
+  cursor: pointer;
+  border-radius: var(--wb-radius-xs);
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  background: var(--wb-color-primary-100);
+  color: var(--wb-color-primary-700);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--wb-color-primary-600);
+  outline-offset: 2px;
+}
+
+.popover {
+  position: fixed;
+  width: 280px;
+  padding: var(--wb-space-3);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-lg);
+  z-index: var(--wb-z-popover);
+  font-size: var(--wb-text-sm);
+}
+
+.popoverHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wb-space-2);
+  margin-bottom: var(--wb-space-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-text);
+}
+
+.close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--wb-color-neutral-500);
+  cursor: pointer;
+  padding: 0;
+  margin-top: 1px; /* keep literal — visual centering with title */
+  display: inline-flex;
+}
+
+.close:hover {
+  color: var(--wb-text);
+}
+
+.body {
+  margin: 0;
+  font-size: var(--wb-text-xs);
+  line-height: var(--wb-leading-relaxed);
+  color: var(--wb-text-muted);
+}
+
+.learnMore {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px; /* keep literal — sub-token icon gap */
+  margin-top: var(--wb-space-2);
+  font-size: var(--wb-text-xs);
+  color: var(--wb-color-primary-700);
+  text-decoration: none;
+}
+
+.learnMore:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger {
+    transition: none;
+  }
+}

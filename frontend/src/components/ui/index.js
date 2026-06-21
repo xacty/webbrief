@@ -20,3 +20,4 @@ export { default as Modal } from './Modal.jsx';
 export { default as Card } from './Card.jsx';
 export { default as Badge } from './Badge.jsx';
 export { default as KebabMenu } from './KebabMenu.jsx';
+export { default as HelpPopover } from './HelpPopover.jsx';
