@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Copy, Link, Plus, Trash2, X, ArrowLeft, Bookmar
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../auth/AuthContext'
 import { Button, Select } from '../components/ui'
+import ProjectTypeExplainer from '../components/onboarding/ProjectTypeExplainer'
 import styles from './BriefProjectEditor.module.css'
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -720,6 +721,7 @@ export default function BriefProjectEditor({ projectId, projectMeta, pages }) {
           <ResponsesPanel projectId={projectId} questions={questions} />
         </aside>
       </div>
+      <ProjectTypeExplainer projectType="brief" />
     </div>
   )
 }
