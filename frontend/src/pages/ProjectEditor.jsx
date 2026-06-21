@@ -24,6 +24,7 @@ import CommentComposerPopover from '../components/editor/CommentComposerPopover'
 import CommentMarginCards from '../components/editor/CommentMarginCards'
 import CommentInlinePopover from '../components/editor/CommentInlinePopover'
 import EditorContextMenu from '../components/editor/EditorContextMenu'
+import ProjectTypeExplainer from '../components/onboarding/ProjectTypeExplainer'
 import {
   fetchComments,
   createComment,
@@ -4422,6 +4423,9 @@ export default function ProjectEditor() {
         onSubmit={handleComposerSubmit}
         submitLabel={composerState?.mode === 'edit' ? 'Guardar' : 'Comentar'}
       />
+      {!loadingProject && projectType && projectType !== 'brief' && (
+        <ProjectTypeExplainer projectType={projectType} />
+      )}
     </div>
   )
 }
