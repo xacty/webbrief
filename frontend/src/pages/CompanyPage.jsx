@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Archive, Building2, Pencil, Trash2, Plus, UserPlus, Users, Mail } from 'lucide-react'
+import { Archive, Building2, Pencil, Trash2, Plus, UserPlus, Users, Mail, FolderPlus, Activity } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import {
@@ -22,6 +22,7 @@ import { Button, Input, Select, Modal, Badge, KebabMenu } from '../components/ui
 import UserEditModal from '../components/users/UserEditModal'
 import MoveToCompanyModal from '../components/MoveToCompanyModal'
 import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
+import EmptyState from '../components/onboarding/EmptyState'
 import styles from './CompanyPage.module.css'
 
 function getCompanyCacheKey(companyId) {
@@ -756,12 +757,15 @@ export default function CompanyPage() {
               )}
 
               {projects.length === 0 ? (
-                <div className={styles.emptyState}>
-                  <p className={styles.emptyTitle}>Todavía no hay proyectos en esta empresa.</p>
-                  <p className={styles.emptyText}>
-                    Usa el botón de la sección para crear el primer proyecto dentro de este workspace.
-                  </p>
-                </div>
+                <EmptyState
+                  icon={FolderPlus}
+                  title="Todavía no hay proyectos en esta empresa"
+                  body="Crea el primero para empezar a colaborar con tu equipo y compartir avances con clientes."
+                  cta={canCreateProjects ? {
+                    label: 'Nuevo proyecto',
+                    onClick: () => navigate(`/new-project?companyId=${companyId}`),
+                  } : null}
+                />
               ) : (
                 <div className={styles.projectGrid}>
                   {projects.map((project) => {                    const isSelected = selectedIds.has(project.id)
@@ -908,29 +912,17 @@ export default function CompanyPage() {
               </div>
 
               {displayMembers.length === 0 ? (
-                <div className={styles.membersEmpty}>
-                  <div className={styles.membersEmptyIcon}>
-                    <Users size={32} />
-                  </div>
-                  <h3 className={styles.membersEmptyTitle}>
-                    {canInvite ? 'Tu equipo todavía está vacío' : 'Esta empresa aún no tiene miembros'}
-                  </h3>
-                  <p className={styles.membersEmptyText}>
-                    {canInvite
-                      ? 'Invitá a alguien para empezar a colaborar.'
-                      : 'Cuando se agreguen miembros aparecerán acá.'}
-                  </p>
-                  {canInvite && (
-                    <Button
-                      variant="primary"
-                      size="md"
-                      icon={<UserPlus size={16} />}
-                      onClick={openInviteModal}
-                    >
-                      Invitar miembro
-                    </Button>
-                  )}
-                </div>
+                <EmptyState
+                  icon={UserPlus}
+                  title={canInvite ? 'Invita a tu primer colaborador' : 'Esta empresa aún no tiene miembros'}
+                  body={canInvite
+                    ? 'Asigna roles para que cada persona vea solo lo que necesita. Tú sigues siendo Manager.'
+                    : 'Cuando se agreguen miembros aparecerán aquí.'}
+                  cta={canInvite ? {
+                    label: 'Invitar miembro',
+                    onClick: openInviteModal,
+                  } : null}
+                />
               ) : (
                 <div className={styles.membersList}>
                   {displayMembers.map((member) => {
@@ -996,12 +988,11 @@ export default function CompanyPage() {
             {activityLoading ? (
               <p className={styles.info}>Cargando actividad...</p>
             ) : activity.length === 0 ? (
-              <div className={styles.emptyState}>
-                <p className={styles.emptyTitle}>Sin actividad registrada</p>
-                <p className={styles.emptyText}>
-                  La actividad de los proyectos de esta empresa aparecerá aquí.
-                </p>
-              </div>
+              <EmptyState
+                icon={Activity}
+                title="Sin actividad registrada"
+                body="La actividad de los proyectos de esta empresa aparecerá aquí."
+              />
             ) : (
               <ol className={styles.activityList}>
                 {activity.map((event) => (
