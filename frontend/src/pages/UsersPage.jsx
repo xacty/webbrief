@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Mail, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { canSendAccess, getCompanyRole, getInviteRoleOptions, isAdmin } from '../lib/roleCapabilities'
@@ -14,6 +14,7 @@ import {
 import { Button, Input, Select, Card, Badge, Modal } from '../components/ui'
 import UserEditModal from '../components/users/UserEditModal'
 import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
+import EmptyState from '../components/onboarding/EmptyState'
 import styles from './UsersPage.module.css'
 
 const PAGE_SIZE = 10
@@ -452,12 +453,13 @@ export default function UsersPage() {
       {loading && <p className={styles.info}>Cargando usuarios...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
       {!loading && !error && paginatedUsers.length === 0 && (
-        <div className={styles.emptyState}>
-          <p className={styles.emptyTitle}>No hay usuarios para esta búsqueda.</p>
-          <p className={styles.emptyText}>
-            Ajusta filtros o agrega usuarios desde este panel.
-          </p>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No hay usuarios para esta búsqueda"
+          body={query
+            ? "Ajusta los filtros o limpia la búsqueda para ver todos los usuarios."
+            : "Agrega usuarios desde el panel superior para empezar a gestionar la plataforma."}
+        />
       )}
 
       {!loading && !error && paginatedUsers.length > 0 && (
