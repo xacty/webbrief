@@ -38,7 +38,7 @@ export default function AppShell() {
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
   const { accessibleCompanies, currentCompanySlug } = useWorkspace()
-  const { startFullTutorial } = useTour()
+  const { startFullTutorial, isActive: tourIsActive } = useTour()
   const canCreateCompany = canCreateCompanyCapability(currentUser)
   const canViewAllCompaniesFromSwitcher = isAdmin(currentUser) || accessibleCompanies.length >= 3
   const canSeeCompaniesListNav = isAdmin(currentUser) || accessibleCompanies.length >= 3
@@ -283,7 +283,10 @@ export default function AppShell() {
             }}
           />
         )}
-      {!isPreviewingPublicViewer && <FirstTimeTooltipsRoot />}
+      {/* Suppress the legacy data-firsttime tooltips while a guided
+       *  tour is active so the two overlays don't fight for the
+       *  user's attention. */}
+      {!isPreviewingPublicViewer && !tourIsActive && <FirstTimeTooltipsRoot />}
     </div>
   )
 }
