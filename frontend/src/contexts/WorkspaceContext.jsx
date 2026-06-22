@@ -61,12 +61,26 @@ export function WorkspaceProvider({ children }) {
   }, [isAuthenticated, realCurrentUser?.id])
 
   // Run refresh once whenever authentication settles.
+  //
+  // Subtle race: on full page reload, AuthContext fires INITIAL_SESSION which
+  // sets session (so isAuthenticated=true) and clears loading BEFORE the
+  // /api/auth/me call hydrates realCurrentUser. If we cleared state on
+  // `!realCurrentUser?.id`, we'd wipe accessibleCompanies during that gap
+  // and DefaultRedirect would land on /companies. Solution: only CLEAR
+  // state when explicitly unauthenticated; if authenticated but user not
+  // yet hydrated, hold state (keep cached companies, leave loading as-is).
   useEffect(() => {
     if (authLoading) return undefined
-    if (!isAuthenticated || !realCurrentUser?.id) {
+    if (!isAuthenticated) {
       setAccessibleCompanies([])
       setCurrentCompany(null)
       setLoading(false)
+      return undefined
+    }
+    if (!realCurrentUser?.id) {
+      // Authenticated but user record not yet hydrated by AuthContext.
+      // Keep loading=true so consumers wait (no premature redirects).
+      setLoading(true)
       return undefined
     }
     let cancelled = false
