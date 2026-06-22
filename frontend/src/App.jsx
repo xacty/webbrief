@@ -1,8 +1,10 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
-import { WorkspaceProvider } from './contexts/WorkspaceContext'
+import { WorkspaceProvider, useWorkspace } from './contexts/WorkspaceContext'
 import AppShell from './components/layout/AppShell'
+import CompanyRedirect from './components/layout/CompanyRedirect'
+import { companyToSlug } from './lib/companySlug'
 import { Select } from './components/ui'
 import {
   COMPANY_ROLE_ORDER,
@@ -29,6 +31,11 @@ const SecurityPage = lazy(() => import('./pages/SecurityPage'))
 const SecurityErrorsPage = lazy(() => import('./pages/SecurityErrorsPage'))
 const SecurityBlocksPage = lazy(() => import('./pages/SecurityBlocksPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
+const WorkspaceLayout = lazy(() => import('./components/layout/WorkspaceLayout'))
+const ProjectsPage = lazy(() => import('./pages/workspace/ProjectsPage'))
+const TeamPage = lazy(() => import('./pages/workspace/TeamPage'))
+const ActivityPage = lazy(() => import('./pages/workspace/ActivityPage'))
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 // Prefixed values disambiguate platform-admin vs company-admin (both label as
 // "Admin" historically, value === 'admin' would collide on the <select>).
@@ -78,6 +85,16 @@ function WelcomeGate() {
   return <WelcomeModal open={open} onStart={handleStart} onSkip={handleSkip} />
 }
 
+function DefaultRedirect() {
+  const { currentCompany, accessibleCompanies, loading } = useWorkspace()
+  if (loading) return null
+  if (currentCompany) {
+    return <Navigate to={`/c/${companyToSlug(currentCompany)}/projects`} replace />
+  }
+  if (accessibleCompanies.length === 0) return <Navigate to="/companies" replace />
+  return <Navigate to={`/c/${companyToSlug(accessibleCompanies[0])}/projects`} replace />
+}
+
 function AppRoutes() {
   const { realCurrentUser, rolePreview, setRolePreview, isAuthenticated, loading } = useAuth()
   const location = useLocation()
@@ -104,10 +121,17 @@ function AppRoutes() {
             </PrivateRoute>
           }
         >
-          <Route index element={<Navigate to="companies" replace />} />
-          <Route path="dashboard" element={<Navigate to="/companies" replace />} />
+          <Route index element={<DefaultRedirect />} />
+          <Route path="dashboard" element={<DefaultRedirect />} />
+          <Route path="c/:companySlug" element={<WorkspaceLayout />}>
+            <Route index element={<Navigate to="projects" replace />} />
+            <Route path="projects" element={<ProjectsPage />} />
+            <Route path="team" element={<TeamPage />} />
+            <Route path="activity" element={<ActivityPage />} />
+          </Route>
           <Route path="companies" element={<CompaniesPage />} />
-          <Route path="companies/:companyId" element={<CompanyPage />} />
+          <Route path="companies/:companyId" element={<CompanyRedirect />} />
+          <Route path="not-found" element={<NotFoundPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="settings" element={<AccountSettingsPage />} />
           <Route path="archive" element={<TrashPage mode="archived" />} />
@@ -117,6 +141,7 @@ function AppRoutes() {
           <Route path="security/blocks" element={<SecurityBlocksPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="new-project" element={<NewProject />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
 
         <Route
