@@ -62,6 +62,7 @@ export default function OnboardingChecklist({
   state = MOCK_STATE,
   onTaskClick = () => {},
   onDismiss = () => {},
+  onComplete = () => {},
 }) {
   // Initial expand: auto-open if the user has welcomed but hasn't completed
   // the tutorial yet. The hint that the user just clicked "Empezar tour" is
@@ -89,13 +90,22 @@ export default function OnboardingChecklist({
     return (
       <div className={styles.wrap}>
         <div className={styles.card}>
+          <button
+            type="button"
+            className={styles.cardClose}
+            onClick={onComplete}
+            aria-label="Cerrar"
+            title="Cerrar"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
           <div className={styles.celebration}>
             <span className={styles.celebrationIcon} aria-hidden="true">
               <Sparkles size={28} />
             </span>
             <h3 className={styles.celebrationTitle}>¡Listo, dominas WeBrief!</h3>
             <p className={styles.celebrationBody}>
-              Has completado el tutorial. Cierra esta tarjeta cuando quieras.
+              Has completado el tutorial. Cierra esta tarjeta cuando quieras; si no, se cerrará sola en un par de minutos.
             </p>
           </div>
         </div>

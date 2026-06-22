@@ -80,10 +80,12 @@ export default function AppShell() {
     // `create_company` row) don't throw off the all-done check.
     const doneCount = TASK_KEYS.filter((k) => tutorialState.tasks[k]?.doneAt).length
     if (doneCount === TASK_KEYS.length && !tutorialState.completedAt) {
+      // Give the user ~2 min to read the celebration card before it
+      // auto-closes. They can also dismiss it manually via the X.
       const id = setTimeout(() => {
         const next = markCompleted()
         setTutorialState(next)
-      }, 5000)
+      }, 120000)
       return () => clearTimeout(id)
     }
     return undefined
@@ -281,6 +283,10 @@ export default function AppShell() {
             onTaskClick={handleTaskClick}
             onDismiss={() => {
               const next = markDismissed()
+              setTutorialState(next)
+            }}
+            onComplete={() => {
+              const next = markCompleted()
               setTutorialState(next)
             }}
           />
