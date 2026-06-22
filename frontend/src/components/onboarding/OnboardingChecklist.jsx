@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Target,
   X,
@@ -59,7 +59,23 @@ export default function OnboardingChecklist({
   onTaskClick = () => {},
   onDismiss = () => {},
 }) {
-  const [expanded, setExpanded] = useState(false);
+  // Initial expand: auto-open if the user has welcomed but hasn't completed
+  // the tutorial yet. The hint that the user just clicked "Empezar tour" is
+  // a fresh welcomedAt — the auto-complete poll won't satisfy this on its
+  // own, but the AppShell state-change event listener now pushes the
+  // updated state immediately so we can react.
+  const [expanded, setExpanded] = useState(() => Boolean(state.welcomedAt && !state.completedAt));
+  // Track the welcomedAt value we last reacted to so we don't re-open the
+  // card every render after the user has explicitly minimized it.
+  const lastSeenWelcomeRef = useRef(state.welcomedAt);
+
+  useEffect(() => {
+    if (state.welcomedAt && state.welcomedAt !== lastSeenWelcomeRef.current) {
+      setExpanded(true);
+      lastSeenWelcomeRef.current = state.welcomedAt;
+    }
+  }, [state.welcomedAt]);
+
   const done = countCompleted(state);
   const total = TASK_ORDER.length;
   const ordered = orderedTasks(state);

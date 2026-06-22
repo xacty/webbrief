@@ -68,10 +68,18 @@ export function getTutorialState() {
   }
 }
 
+// Custom event dispatched on every successful writeState so same-tab
+// consumers (AppShell, OnboardingChecklist) can refresh immediately.
+// The native `storage` event ONLY fires for OTHER tabs, so without
+// this, AppShell would stay stale until the next 4-second auto-complete
+// poll — which is why "Empezar tour" felt unresponsive.
+const STATE_CHANGE_EVENT = 'wb-tutorial-state-changed';
+
 function writeState(next) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent(STATE_CHANGE_EVENT));
   } catch {
     // QuotaExceededError or similar — onboarding state is not persisted
     // this render; the user's progress is not saved but the app stays up.
@@ -171,4 +179,4 @@ export function syncTasksFromSignals(signals) {
   if (hasEditedPage) markTaskDone('edit_page');
 }
 
-export { STORAGE_KEY, FIRSTTIME_KEYS };
+export { STORAGE_KEY, FIRSTTIME_KEYS, STATE_CHANGE_EVENT };

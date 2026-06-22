@@ -18,6 +18,7 @@ import {
   markCompleted,
   isOnboardingActive,
   STORAGE_KEY,
+  STATE_CHANGE_EVENT,
 } from '../../lib/tutorialState'
 import styles from './AppShell.module.css'
 
@@ -52,8 +53,15 @@ export default function AppShell() {
     function onStorage(e) {
       if (e.key === STORAGE_KEY) setTutorialState(getTutorialState())
     }
+    function onSameTabChange() {
+      setTutorialState(getTutorialState())
+    }
     window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
+    window.addEventListener(STATE_CHANGE_EVENT, onSameTabChange)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(STATE_CHANGE_EVENT, onSameTabChange)
+    }
   }, [])
 
   useEffect(() => {
