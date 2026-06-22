@@ -43,7 +43,24 @@ export function WorkspaceProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [createCompanyModalOpen, setCreateCompanyModalOpen] = useState(false)
 
-  // Fetch companies list whenever authentication settles.
+  // Manually-callable fetch. Used by the auth-settle effect AND by
+  // any consumer that mutates the companies list (CompaniesPage).
+  const refresh = useCallback(async () => {
+    if (!isAuthenticated || !realCurrentUser?.id) return null
+    try {
+      const data = await apiFetch('/api/companies')
+      const list = Array.isArray(data?.companies) ? data.companies : []
+      setAccessibleCompanies(list)
+      writeCompaniesCache(list)
+      return list
+    } catch {
+      const cached = readCompaniesCache()
+      if (cached) setAccessibleCompanies(cached)
+      return null
+    }
+  }, [isAuthenticated, realCurrentUser?.id])
+
+  // Run refresh once whenever authentication settles.
   useEffect(() => {
     if (authLoading) return undefined
     if (!isAuthenticated || !realCurrentUser?.id) {
@@ -53,26 +70,14 @@ export function WorkspaceProvider({ children }) {
       return undefined
     }
     let cancelled = false
-    async function loadCompanies() {
-      try {
-        const data = await apiFetch('/api/companies')
-        if (cancelled) return
-        const list = Array.isArray(data?.companies) ? data.companies : []
-        setAccessibleCompanies(list)
-        writeCompaniesCache(list)
-      } catch {
-        // Fallback to cached list — if there is none, we render empty state.
-        const cached = readCompaniesCache()
-        if (!cancelled && cached) setAccessibleCompanies(cached)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    loadCompanies()
+    setLoading(true)
+    refresh().finally(() => {
+      if (!cancelled) setLoading(false)
+    })
     return () => {
       cancelled = true
     }
-  }, [authLoading, isAuthenticated, realCurrentUser?.id])
+  }, [authLoading, isAuthenticated, realCurrentUser?.id, refresh])
 
   // Resolve current company from accessibleCompanies + localStorage default.
   useEffect(() => {
@@ -115,6 +120,7 @@ export function WorkspaceProvider({ children }) {
       accessibleCompanies,
       switchCompany,
       loading,
+      refresh,
       createCompanyModalOpen,
       openCreateCompanyModal,
       closeCreateCompanyModal,
@@ -124,6 +130,7 @@ export function WorkspaceProvider({ children }) {
       accessibleCompanies,
       switchCompany,
       loading,
+      refresh,
       createCompanyModalOpen,
       openCreateCompanyModal,
       closeCreateCompanyModal,
