@@ -1,7 +1,12 @@
 .wrap {
   position: fixed;
   right: var(--wb-space-5);
-  bottom: var(--wb-space-5);
+  /* Sit above the admin role-preview pill (which is fixed at bottom:22
+   * with z-index 900). Without this offset, the checklist would be
+   * hidden behind that pill for admins in dev. For non-admins the gap
+   * is harmless — the pill ends up ~80px from bottom, still anchored
+   * to the corner area. */
+  bottom: 80px; /* keep literal — anchored above the role-preview pill */
   z-index: var(--wb-z-sticky);
   font-family: inherit;
 }
