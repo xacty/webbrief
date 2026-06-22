@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui';
 import { getTutorialState, markTypeSeen, isOnboardingActive } from '../../lib/tutorialState';
+import { useTour } from './TourContext';
 import styles from './ProjectTypeExplainer.module.css';
 
 const TYPE_CONTENT = {
@@ -67,15 +68,27 @@ const TYPE_CONTENT = {
 
 export default function ProjectTypeExplainer({ projectType }) {
   const [open, setOpen] = useState(false);
+  const { isActive: tourIsActive } = useTour();
 
   useEffect(() => {
     if (!projectType || !TYPE_CONTENT[projectType]) return undefined;
     const state = getTutorialState();
     if (!isOnboardingActive(state)) return undefined;
     if (state.typeExplainers[projectType]) return undefined;
+    // Don't compete with the guided tour Spotlight — defer until the
+    // tour exits. The next time the user lands on this editor the
+    // effect re-runs (mount/projectType change) and opens normally.
+    if (tourIsActive) return undefined;
     const id = window.requestAnimationFrame(() => setOpen(true));
     return () => window.cancelAnimationFrame(id);
-  }, [projectType]);
+  }, [projectType, tourIsActive]);
+
+  // If the tour activates while the explainer is already open, hide
+  // the explainer immediately (it'll come back when the tour exits
+  // and the user revisits this editor / type).
+  useEffect(() => {
+    if (tourIsActive && open) setOpen(false);
+  }, [tourIsActive, open]);
 
   useEffect(() => {
     if (!open) return undefined;

@@ -10,9 +10,9 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
-import { isAdmin } from '../../lib/roleCapabilities'
+import { isAdmin, canUseTrashNav } from '../../lib/roleCapabilities'
 import { readCompanyCache } from '../../lib/companyCache'
-import { TASK_KEYS, getTutorialState } from '../../lib/tutorialState'
+import { TASK_KEYS, getTutorialState, markDismissed } from '../../lib/tutorialState'
 import {
   buildWorkspaceTour,
   buildCreateProjectTour,
@@ -66,6 +66,11 @@ export function TourProvider({ children }) {
   // Live in a ref (not state) because we mutate it during transitions
   // without needing a re-render.
   const chainTasksRef = useRef([])
+  // Stack of task keys already shown in this chain, for cross-tour
+  // Anterior. When prev() is called at step 0, we pop here, restart
+  // that previous task at its last step, and push the current task
+  // to the front of chainTasksRef so it'll re-run after.
+  const chainHistoryRef = useRef([])
 
   // Keep latest workspace ctx accessible to the chain dispatcher even
   // when advanceChain() is called from a callback that captured an
@@ -94,6 +99,7 @@ export function TourProvider({ children }) {
   function resolveCtx() {
     const { currentUser, currentCompany, currentCompanySlug } = ctxRef.current
     const isPlatformAdmin = isAdmin(currentUser)
+    const canSeeTrash = canUseTrashNav(currentUser)
     const role =
       currentUser?.rolePreview ||
       currentUser?.memberships?.find((m) => m.companyId === currentCompany?.id)?.role ||
@@ -109,6 +115,7 @@ export function TourProvider({ children }) {
     const lastProject = sortedByEdit[0] || null
     return {
       isPlatformAdmin,
+      canSeeTrash,
       role,
       currentCompanySlug,
       hasProjects,
@@ -181,6 +188,11 @@ export function TourProvider({ children }) {
     // the gesture regardless.
     const fromIdx = fromTask ? Math.max(0, TASK_KEYS.indexOf(fromTask)) : 0
     chainTasksRef.current = TASK_KEYS.slice(fromIdx)
+    // History pre-seeds the tasks BEFORE fromIdx so Anterior on the
+    // first chain task can walk back into the tasks the user skipped
+    // straight to (e.g., click "Comparte un link público" from the
+    // checklist → Anterior takes you back to edit_page).
+    chainHistoryRef.current = TASK_KEYS.slice(0, fromIdx)
     advanceChain()
   }, [advanceChain])
 
@@ -189,11 +201,24 @@ export function TourProvider({ children }) {
   // (so the task-done bookkeeping in onboardingTours.js still runs),
   // then either auto-advance the chain or clear state.
 
+  // Push the currently-active task onto the history stack so Anterior
+  // can resume it (only for tasks that map to real TASK_KEYS — the
+  // edit_page no-project fallback uses a synthetic id we skip).
+  function pushCurrentToHistory() {
+    setTour((t) => {
+      if (t?.id && TASK_KEYS.includes(t.id)) {
+        chainHistoryRef.current = [...chainHistoryRef.current, t.id]
+      }
+      return t
+    })
+  }
+
   const exit = useCallback(() => {
     onSkipRef.current?.()
     onSkipRef.current = null
     onCompleteRef.current = null
     if (chainTasksRef.current.length > 0) {
+      pushCurrentToHistory()
       setTimeout(advanceChain, CHAIN_INTER_TOUR_DELAY_MS)
     } else {
       setTour(EMPTY_TOUR)
@@ -206,6 +231,7 @@ export function TourProvider({ children }) {
     onSkipRef.current = null
     onCompleteRef.current = null
     if (chainTasksRef.current.length > 0) {
+      pushCurrentToHistory()
       setTimeout(advanceChain, CHAIN_INTER_TOUR_DELAY_MS)
     } else {
       setTour(EMPTY_TOUR)
@@ -213,10 +239,27 @@ export function TourProvider({ children }) {
     }
   }, [advanceChain])
 
+  // Cancel the entire tutorial: stop the chain, fire markDismissed
+  // (so the checklist disappears), clear all state.
+  const cancelTutorial = useCallback(() => {
+    chainTasksRef.current = []
+    chainHistoryRef.current = []
+    onSkipRef.current = null
+    onCompleteRef.current = null
+    setTour(EMPTY_TOUR)
+    setIndex(0)
+    try {
+      markDismissed()
+    } catch {
+      // Storage failure — at least the in-memory state is cleared.
+    }
+  }, [])
+
   const start = useCallback((spec) => {
     if (!spec || !Array.isArray(spec.steps) || spec.steps.length === 0) return
     // Starting a single tour from the checklist exits chain mode.
     chainTasksRef.current = []
+    chainHistoryRef.current = []
     onSkipRef.current = spec.onSkip || null
     onCompleteRef.current = spec.onComplete || null
     setTour({ id: spec.id, steps: spec.steps })
@@ -241,8 +284,28 @@ export function TourProvider({ children }) {
   }, [activeSteps, index, navigate, exit, finish])
 
   const prev = useCallback(() => {
-    setIndex((i) => Math.max(0, i - 1))
-  }, [])
+    if (index > 0) {
+      setIndex((i) => i - 1)
+      return
+    }
+    // Cross-tour back: replay the previously-shown task at its last
+    // step. Push the current task back to the front of the forward
+    // queue so the chain resumes here after the previous one finishes.
+    if (chainHistoryRef.current.length === 0) return
+    const prevTaskKey = chainHistoryRef.current[chainHistoryRef.current.length - 1]
+    chainHistoryRef.current = chainHistoryRef.current.slice(0, -1)
+    if (tour?.id && TASK_KEYS.includes(tour.id)) {
+      chainTasksRef.current = [tour.id, ...chainTasksRef.current]
+    }
+    const spec = buildTourForTask(prevTaskKey)
+    if (spec && Array.isArray(spec.steps) && spec.steps.length > 0) {
+      onSkipRef.current = spec.onSkip || null
+      onCompleteRef.current = spec.onComplete || null
+      setTour({ id: spec.id, steps: spec.steps })
+      setIndex(spec.steps.length - 1)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, tour])
 
   // On step change, fire route navigation + onEnter.
   const enteredKeyRef = useRef(null)
@@ -279,8 +342,20 @@ export function TourProvider({ children }) {
       next,
       prev,
       exit,
+      cancelTutorial,
     }),
-    [currentStep, tour, index, activeSteps, start, startFullTutorial, next, prev, exit],
+    [
+      currentStep,
+      tour,
+      index,
+      activeSteps,
+      start,
+      startFullTutorial,
+      next,
+      prev,
+      exit,
+      cancelTutorial,
+    ],
   )
 
   return (
@@ -296,8 +371,9 @@ export function TourProvider({ children }) {
           totalSteps={activeSteps.length}
           isLast={isLast}
           onNext={next}
-          onPrev={prev}
+          onPrev={index > 0 || chainHistoryRef.current.length > 0 ? prev : null}
           onSkip={exit}
+          onCancel={cancelTutorial}
           nextLabel={currentStep.nextLabel}
           prevLabel={currentStep.prevLabel}
           skipLabel={currentStep.skipLabel}

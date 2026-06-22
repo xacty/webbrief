@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { X } from 'lucide-react'
 import styles from './Spotlight.module.css'
 
 const CUTOUT_PADDING = 8
@@ -29,7 +30,11 @@ const VIEWPORT_MARGIN = 12
  *  - onNext          () => void — Next button handler
  *  - onPrev          () => void | null — Prev button (hidden when null
  *                    or stepIndex === 0)
- *  - onSkip          () => void — Skip button + Esc keyboard
+ *  - onSkip          () => void — Saltar button + Space keyboard
+ *                    (advance to next chain task without cancelling
+ *                    the whole tutorial)
+ *  - onCancel        () => void — X icon top-right + Esc keyboard
+ *                    (cancel the entire tutorial — markDismissed)
  *  - isLast          boolean — render "Listo" instead of "Siguiente"
  *  - nextLabel       string — override Next label
  *  - prevLabel       string — override Prev label
@@ -45,6 +50,7 @@ export default function Spotlight({
   onNext,
   onPrev,
   onSkip,
+  onCancel,
   isLast = false,
   nextLabel,
   prevLabel,
@@ -80,10 +86,28 @@ export default function Spotlight({
     }
   }, [target])
 
-  // Keyboard: Esc skips, → Next, ← Prev
+  // Keyboard mapping:
+  //  - Esc    cancel entire tutorial (same as the X button)
+  //  - Space  skip the current step  (same as the Saltar button)
+  //  - →      Siguiente
+  //  - ←      Anterior
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') {
+        e.stopPropagation()
+        ;(onCancel || onSkip)?.()
+      } else if (e.key === ' ' || e.code === 'Space') {
+        // Avoid space inserting in form fields (the Spotlight covers
+        // them but the user might focus one via Tab) — only consume
+        // when the active element isn't a typeable input.
+        const el = document.activeElement
+        const typing =
+          el &&
+          (el.tagName === 'INPUT' ||
+            el.tagName === 'TEXTAREA' ||
+            el.isContentEditable)
+        if (typing) return
+        e.preventDefault()
         e.stopPropagation()
         onSkip?.()
       } else if (e.key === 'ArrowRight') {
@@ -96,7 +120,7 @@ export default function Spotlight({
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onNext, onPrev, onSkip])
+  }, [onNext, onPrev, onSkip, onCancel])
 
   const placement = useMemo(
     () => pickPlacement(rect, preferredPlacement),
@@ -159,6 +183,17 @@ export default function Spotlight({
         className={styles.tooltip}
         style={{ top: tooltipPos.top, left: tooltipPos.left }}
       >
+        {onCancel && (
+          <button
+            type="button"
+            className={styles.closeBtn}
+            onClick={onCancel}
+            aria-label="Cancelar tutorial"
+            title="Cancelar tutorial (Esc)"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        )}
         {Number.isFinite(stepIndex) && Number.isFinite(totalSteps) && totalSteps > 1 && (
           <span className={styles.stepCounter}>
             Paso {stepIndex + 1} de {totalSteps}
@@ -177,7 +212,7 @@ export default function Spotlight({
             </button>
           )}
           <div className={styles.navBtns}>
-            {onPrev && stepIndex > 0 && (
+            {onPrev && (
               <button
                 type="button"
                 className={`${styles.btn} ${styles.btnSecondary}`}

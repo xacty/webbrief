@@ -206,6 +206,7 @@ export default function AppShell() {
               <>
                 <NavLink
                   to="/archive"
+                  data-tour="sidebar-archivados"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -215,6 +216,7 @@ export default function AppShell() {
                 </NavLink>
                 <NavLink
                   to="/trash"
+                  data-tour="sidebar-papelera"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}

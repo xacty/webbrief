@@ -29,7 +29,7 @@ const Q = (key) => `[data-tour="${key}"]`
 // ─── Conoce tu workspace ────────────────────────────────────────────
 // Informational only — guides through the shell.
 export function buildWorkspaceTour(ctx = {}) {
-  const { isPlatformAdmin = false } = ctx
+  const { canSeeTrash = false } = ctx
   return {
     id: 'discover_workspace',
     onComplete: () => markTaskDone('discover_workspace'),
@@ -63,14 +63,21 @@ export function buildWorkspaceTour(ctx = {}) {
           'Bitácora de cambios en los proyectos de esta empresa: ediciones, links públicos, comentarios.',
         placement: 'right',
       },
-      ...(isPlatformAdmin
+      ...(canSeeTrash
         ? [
             {
-              target: '#global-role-preview-select',
-              title: 'Vista por rol',
+              target: Q('sidebar-archivados'),
+              title: 'Archivados',
               body:
-                'Como admin de plataforma, puedes simular cómo ven la app los distintos roles. Útil para verificar permisos sin cambiar de cuenta.',
-              placement: 'top',
+                'Si archivas un proyecto, lo dejas fuera del listado activo pero conservado intacto. Quedan aquí indefinidamente hasta que decidas restaurarlos o eliminarlos.',
+              placement: 'right',
+            },
+            {
+              target: Q('sidebar-papelera'),
+              title: 'Papelera',
+              body:
+                'Los proyectos enviados a la papelera se conservan 30 días y luego se eliminan automáticamente. Puedes restaurarlos antes de que venza ese plazo.',
+              placement: 'right',
             },
           ]
         : []),
@@ -134,6 +141,16 @@ export function buildCreateProjectTour(ctx = {}) {
     onComplete: () => markTaskDone('create_project'),
     onSkip: () => markTaskDone('create_project'),
     steps: [
+      {
+        target: Q('sidebar-projects'),
+        title: 'Ir a Proyectos',
+        body:
+          'Empezamos en la sección Proyectos. Pulsa Siguiente para abrirla.',
+        placement: 'right',
+        onAdvance: ({ navigate }) => {
+          if (projectsRoute) navigate(projectsRoute)
+        },
+      },
       {
         target: Q('create-project-btn'),
         title: 'Crear un proyecto',
