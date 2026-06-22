@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiFetch } from '../lib/api'
+import { clearCompanyDetailCaches } from '../lib/companyCache'
 import { companyToSlug } from '../lib/companySlug'
 import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
@@ -28,18 +29,6 @@ function writeCompaniesCache(companies) {
       companies,
       cachedAt: new Date().toISOString(),
     }))
-  } catch {
-    // Ignore storage failures; network data still renders.
-  }
-}
-
-function clearCompanyDetailCaches() {
-  try {
-    for (const key of Object.keys(window.sessionStorage)) {
-      if (key.startsWith('webrief:company:')) {
-        window.sessionStorage.removeItem(key)
-      }
-    }
   } catch {
     // Ignore storage failures; network data still renders.
   }

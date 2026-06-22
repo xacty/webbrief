@@ -4,6 +4,7 @@ import { Archive, Building2, Trash2, Plus, FolderPlus } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { apiFetch } from '../../lib/api'
+import { getCompanyCacheKey, readCompanyCache, writeCompanyCache, clearCompaniesCache } from '../../lib/companyCache'
 import {
   canCreateProjects as canCreateProjectsForRole,
   canManageProjectLifecycle as canManageProjectLifecycleForRole,
@@ -14,41 +15,6 @@ import { Button, Badge, KebabMenu } from '../../components/ui'
 import MoveToCompanyModal from '../../components/MoveToCompanyModal'
 import EmptyState from '../../components/onboarding/EmptyState'
 import styles from '../CompanyPage.module.css'
-
-function getCompanyCacheKey(companyId) {
-  return `webrief:company:${companyId}`
-}
-
-function readCompanyCache(companyId) {
-  try {
-    const cached = JSON.parse(window.sessionStorage.getItem(getCompanyCacheKey(companyId)))
-    if (!cached?.company) return null
-    return cached
-  } catch {
-    return null
-  }
-}
-
-function writeCompanyCache(companyId, payload) {
-  try {
-    window.sessionStorage.setItem(getCompanyCacheKey(companyId), JSON.stringify({
-      company: payload.company,
-      projects: payload.projects || [],
-      members: payload.members || [],
-      cachedAt: new Date().toISOString(),
-    }))
-  } catch {
-    // Ignore storage failures; network data still renders.
-  }
-}
-
-function clearCompaniesCache() {
-  try {
-    window.sessionStorage.removeItem('webrief:companies')
-  } catch {
-    // Ignore storage failures; network data still renders.
-  }
-}
 
 function formatDate(isoDate) {
   if (!isoDate) return 'Sin actividad'
