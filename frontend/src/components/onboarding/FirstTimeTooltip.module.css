@@ -1,0 +1,80 @@
+.tooltip {
+  position: fixed;
+  width: 240px;
+  padding: var(--wb-space-3);
+  background: var(--wb-color-primary-600);
+  color: #ffffff; /* keep literal — white text on solid brand bg, no token */
+  border: none;
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-xl);
+  z-index: var(--wb-z-tooltip);
+  animation: fadeIn 220ms ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooltip {
+    animation: none;
+  }
+}
+
+.title {
+  margin: 0 0 var(--wb-space-1);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-semibold);
+}
+
+.body {
+  margin: 0 0 var(--wb-space-2);
+  font-size: var(--wb-text-xs);
+  line-height: var(--wb-leading-relaxed);
+  opacity: 0.92;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.acknowledge {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.18); /* keep literal — overlay on brand bg */
+  color: #ffffff; /* keep literal — same as tooltip text */
+  border: none;
+  border-radius: var(--wb-radius-xs);
+  padding: 4px 10px; /* keep literal — sub-token compact button */
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+}
+
+.acknowledge:hover {
+  background: rgba(255, 255, 255, 0.28); /* keep literal — overlay variant */
+}
+
+/* Triangle arrow pointing UP to the anchor (default placement: below) */
+.arrowTop {
+  position: absolute;
+  top: -6px;
+  left: 16px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 6px 6px 6px;
+  border-color: transparent transparent var(--wb-color-primary-600) transparent;
+}
+
+.arrowBottom {
+  position: absolute;
+  bottom: -6px;
+  left: 16px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 6px 6px 0 6px;
+  border-color: var(--wb-color-primary-600) transparent transparent transparent;
+}

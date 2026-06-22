@@ -15,6 +15,9 @@
  *     document: ISOString | null,
  *     faq: ISOString | null,
  *     brief: ISOString | null
+ *   },
+ *   firstTimeTooltips: {
+ *     [tooltipKey]: ISOString | null
  *   }
  * }
  */
@@ -32,6 +35,8 @@ export const TASK_KEYS = [
 
 const TYPE_KEYS = ['page', 'document', 'faq', 'brief'];
 
+const FIRSTTIME_KEYS = ['editor-sections', 'notifications-bell', 'editor-modes', 'faq-add'];
+
 function emptyState() {
   return {
     welcomedAt: null,
@@ -39,6 +44,7 @@ function emptyState() {
     completedAt: null,
     tasks: Object.fromEntries(TASK_KEYS.map((k) => [k, { doneAt: null }])),
     typeExplainers: Object.fromEntries(TYPE_KEYS.map((k) => [k, null])),
+    firstTimeTooltips: Object.fromEntries(FIRSTTIME_KEYS.map((k) => [k, null])),
   };
 }
 
@@ -55,6 +61,7 @@ export function getTutorialState() {
       ...parsed,
       tasks: { ...base.tasks, ...(parsed.tasks || {}) },
       typeExplainers: { ...base.typeExplainers, ...(parsed.typeExplainers || {}) },
+      firstTimeTooltips: { ...base.firstTimeTooltips, ...(parsed.firstTimeTooltips || {}) },
     };
   } catch {
     return emptyState();
@@ -116,6 +123,18 @@ export function markTypeSeen(type) {
   return next;
 }
 
+export function markFirstTimeSeen(key) {
+  const state = getTutorialState();
+  // Permissive: allow unknown keys (callers may add new anchors)
+  if (state.firstTimeTooltips[key]) return state;
+  const next = {
+    ...state,
+    firstTimeTooltips: { ...state.firstTimeTooltips, [key]: new Date().toISOString() },
+  };
+  writeState(next);
+  return next;
+}
+
 export function resetTutorial() {
   writeState(emptyState());
 }
@@ -152,4 +171,4 @@ export function syncTasksFromSignals(signals) {
   if (hasEditedPage) markTaskDone('edit_page');
 }
 
-export { STORAGE_KEY };
+export { STORAGE_KEY, FIRSTTIME_KEYS };
