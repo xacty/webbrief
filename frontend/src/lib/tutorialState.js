@@ -151,6 +151,12 @@ export function countCompletedTasks(state) {
   return TASK_KEYS.reduce((n, k) => n + (state.tasks[k]?.doneAt ? 1 : 0), 0);
 }
 
+// Feature gate — the onboarding tutorial is held back from production
+// until the flow is fully polished. Dev builds keep it on so admins
+// can keep iterating; admins can also use the dev-only "Tutorial"
+// launcher in the role-preview pill to reset and replay locally.
+const TUTORIAL_ENABLED = Boolean(import.meta.env?.DEV);
+
 /**
  * Should the onboarding UI be shown? Returns false once the user
  * dismissed or completed the tutorial.
@@ -161,6 +167,7 @@ export function countCompletedTasks(state) {
  * @param state — result of getTutorialState()
  */
 export function isOnboardingActive(state) {
+  if (!TUTORIAL_ENABLED) return false;
   if (state.dismissedAt) return false;
   if (state.completedAt) return false;
   return true;
