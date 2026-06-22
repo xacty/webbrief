@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
+import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import AppShell from './components/layout/AppShell'
 import { Select } from './components/ui'
 import {
@@ -233,7 +234,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <WorkspaceProvider>
+          <AppRoutes />
+        </WorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>
   )
