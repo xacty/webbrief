@@ -4476,6 +4476,7 @@ function NotificationsBell({ notifications = [], onMarkRead, onMarkAllRead, onRe
         className={navStyles.navIconBtn}
         onClick={handleToggle}
         title={unreadCount > 0 ? `${unreadCount} notificaciones sin leer` : 'Notificaciones'}
+        data-firsttime="notifications-bell"
       >
         <Bell size={20} color="#2a2a2a" />
         {unreadCount > 0 && <span className={navStyles.navBadge}>{unreadCount}</span>}
@@ -4812,7 +4813,7 @@ function FloatingEditorBar({
   const audienceIndex = handoffAudience === 'dev' ? 1 : 0
 
   return (
-    <div className={styles.floatingBar} aria-label="Controles de editor">
+    <div className={styles.floatingBar} aria-label="Controles de editor" data-firsttime="editor-modes">
       {/* Mode segmented control — sliding indicator pill (Tesla-style)
           marks the active mode; all three options are always visible. */}
       <div
@@ -5169,7 +5170,7 @@ function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId,
         <span className={panelStyles.panelTitle}>Preguntas frecuentes</span>
         <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {canManageSections && (
-            <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar pregunta">
+            <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar pregunta" data-firsttime="faq-add">
               <Plus size={14} />
             </button>
           )}
@@ -5284,7 +5285,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
   }
 
   return (
-    <div className={panelStyles.leftPanel}>
+    <div className={panelStyles.leftPanel} data-firsttime="editor-sections">
       <div className={panelStyles.panelHeader}>
         <span className={panelStyles.panelTitle}>Page sections</span>
         {canManageSections && (
