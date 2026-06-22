@@ -125,6 +125,7 @@ export default function AppShell() {
             <WorkspaceSwitcher
               canCreateCompany={canCreateCompany}
               canViewAllCompanies={canViewAllCompaniesFromSwitcher}
+              onCreateCompany={() => navigate('/companies?new=1')}
               onViewAllCompanies={() => navigate('/companies')}
             />
           </div>

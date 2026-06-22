@@ -19,10 +19,10 @@ function initials(name) {
 export default function WorkspaceSwitcher({
   canCreateCompany = false,
   canViewAllCompanies = false,
+  onCreateCompany,
   onViewAllCompanies,
 }) {
-  const { currentCompany, accessibleCompanies, switchCompany, openCreateCompanyModal, loading } =
-    useWorkspace()
+  const { currentCompany, accessibleCompanies, switchCompany, loading } = useWorkspace()
 
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState(null)
@@ -107,7 +107,7 @@ export default function WorkspaceSwitcher({
 
   function handleCreate() {
     setOpen(false)
-    openCreateCompanyModal()
+    if (onCreateCompany) onCreateCompany()
   }
 
   function handleViewAll() {
@@ -225,9 +225,11 @@ export default function WorkspaceSwitcher({
               })}
             </div>
 
-            {(canCreateCompany || canViewAllCompanies) && <div className={styles.separator} />}
+            {((canCreateCompany && onCreateCompany) || (canViewAllCompanies && onViewAllCompanies)) && (
+              <div className={styles.separator} />
+            )}
 
-            {canCreateCompany && (
+            {canCreateCompany && onCreateCompany && (
               <button type="button" className={styles.item} onClick={handleCreate}>
                 <Plus size={16} aria-hidden="true" style={{ marginLeft: 4 }} />
                 <span className={styles.itemName}>Crear empresa</span>
