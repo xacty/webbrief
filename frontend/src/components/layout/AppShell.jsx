@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun, Plug } from 'lucide-react'
+import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun, Plug, Folder, Activity } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
-import { canManageUsersNav, canUseSecurityNav, canUseTrashNav, isAdmin } from '../../lib/roleCapabilities'
+import { canManageUsersNav, canUseSecurityNav, canUseTrashNav, isAdmin, canCreateCompany as canCreateCompanyCapability } from '../../lib/roleCapabilities'
 import {
   getCompanyRoleLabel,
   getPlatformRoleTitle,
@@ -35,9 +35,10 @@ export default function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
-  const { accessibleCompanies } = useWorkspace()
-  const canCreateCompany = isAdmin(currentUser) || (currentUser?.memberships || []).some((m) => m.role === 'manager')
+  const { accessibleCompanies, currentCompanySlug } = useWorkspace()
+  const canCreateCompany = canCreateCompanyCapability(currentUser)
   const canViewAllCompaniesFromSwitcher = isAdmin(currentUser) || accessibleCompanies.length >= 3
+  const canSeeCompaniesListNav = isAdmin(currentUser) || accessibleCompanies.length >= 3
   const canManageUsers = canManageUsersNav(currentUser)
   const canUseTrash = canUseTrashNav(currentUser)
   const canUseSecurity = canUseSecurityNav(currentUser)
@@ -132,15 +133,37 @@ export default function AppShell() {
 
           <nav className={styles.nav}>
             <p className={styles.navSectionLabel}>Principal</p>
-            <NavLink
-              to="/companies"
-              className={({ isActive }) => (
-                isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
-              )}
-            >
-              <Building2 className={styles.navIcon} aria-hidden="true" />
-              Empresas
-            </NavLink>
+            {currentCompanySlug && (
+              <>
+                <NavLink
+                  to={`/c/${currentCompanySlug}/projects`}
+                  className={({ isActive }) => (
+                    isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                  )}
+                >
+                  <Folder className={styles.navIcon} aria-hidden="true" />
+                  Proyectos
+                </NavLink>
+                <NavLink
+                  to={`/c/${currentCompanySlug}/team`}
+                  className={({ isActive }) => (
+                    isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                  )}
+                >
+                  <Users className={styles.navIcon} aria-hidden="true" />
+                  Equipo
+                </NavLink>
+                <NavLink
+                  to={`/c/${currentCompanySlug}/activity`}
+                  className={({ isActive }) => (
+                    isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                  )}
+                >
+                  <Activity className={styles.navIcon} aria-hidden="true" />
+                  Actividad
+                </NavLink>
+              </>
+            )}
             {canManageUsers && (
               <NavLink
                 to="/users"
@@ -162,8 +185,19 @@ export default function AppShell() {
               Integraciones
             </NavLink>
 
-            {(canUseSecurity || canUseTrash) && (
+            {(canUseSecurity || canUseTrash || canSeeCompaniesListNav) && (
               <p className={styles.navSectionLabel}>Admin</p>
+            )}
+            {canSeeCompaniesListNav && (
+              <NavLink
+                to="/companies"
+                className={({ isActive }) => (
+                  isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                )}
+              >
+                <Building2 className={styles.navIcon} aria-hidden="true" />
+                Empresas
+              </NavLink>
             )}
             {canUseSecurity && (
               <NavLink
