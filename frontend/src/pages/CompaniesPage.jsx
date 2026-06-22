@@ -284,7 +284,14 @@ export default function CompaniesPage() {
   }
 
   function openCompany(companyId) {
-    navigate(`/companies/${companyId}`)
+    const company = companies.find((c) => c.id === companyId)
+    if (company) {
+      navigate(`/c/${companyToSlug(company)}/projects`)
+    } else {
+      // Should never happen — companies list is the source of the id we got.
+      // Fall back to the legacy redirect just in case.
+      navigate(`/companies/${companyId}`)
+    }
   }
 
   // In select-mode (≥1 selected), clicking/Enter on the card toggles its
