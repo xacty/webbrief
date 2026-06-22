@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun, Plug } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
-import { canManageUsersNav, canUseSecurityNav, canUseTrashNav } from '../../lib/roleCapabilities'
+import { canManageUsersNav, canUseSecurityNav, canUseTrashNav, isAdmin } from '../../lib/roleCapabilities'
 import {
   getCompanyRoleLabel,
   getPlatformRoleTitle,
@@ -10,6 +10,8 @@ import {
 import webriefLogo from '../../assets/brand/webrief--logo-v2.svg'
 import { Button, Card } from '../ui'
 import OnboardingChecklist from '../onboarding/OnboardingChecklist'
+import WorkspaceSwitcher from './WorkspaceSwitcher'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 import FirstTimeTooltipsRoot from '../onboarding/FirstTimeTooltipsRoot'
 import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
 import {
@@ -33,6 +35,9 @@ export default function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
+  const { accessibleCompanies } = useWorkspace()
+  const canCreateCompany = isAdmin(currentUser) || (currentUser?.memberships || []).some((m) => m.role === 'manager')
+  const canViewAllCompaniesFromSwitcher = isAdmin(currentUser) || accessibleCompanies.length >= 3
   const canManageUsers = canManageUsersNav(currentUser)
   const canUseTrash = canUseTrashNav(currentUser)
   const canUseSecurity = canUseSecurityNav(currentUser)
@@ -114,6 +119,14 @@ export default function AppShell() {
         <div>
           <div className={styles.brand}>
             <img className={styles.logo} src={webriefLogo} alt="WeBrief" />
+          </div>
+
+          <div className={styles.workspaceSwitcherSlot}>
+            <WorkspaceSwitcher
+              canCreateCompany={canCreateCompany}
+              canViewAllCompanies={canViewAllCompaniesFromSwitcher}
+              onViewAllCompanies={() => navigate('/companies')}
+            />
           </div>
 
           <nav className={styles.nav}>
