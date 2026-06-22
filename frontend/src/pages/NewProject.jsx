@@ -5,6 +5,7 @@ import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiFetch } from '../lib/api'
 import { findCompanyBySlug } from '../lib/companySlug'
 import { isAdmin } from '../lib/roleCapabilities'
+import { clearCompaniesCache, clearCompanyCache } from '../lib/companyCache'
 import { Button, Input, Select, Card, Badge } from '../components/ui'
 import styles from './NewProject.module.css'
 
@@ -134,7 +135,7 @@ export default function NewProject() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { currentUser } = useAuth()
-  const { accessibleCompanies } = useWorkspace()
+  const { accessibleCompanies, refresh: refreshWorkspace } = useWorkspace()
   // Prefer ?company=:slug over legacy ?companyId=:id. Slug is resolved
   // against the workspace context; if it doesn't match, fall back to the
   // raw id param so existing links keep working.
@@ -258,6 +259,12 @@ export default function NewProject() {
           contentRules: projectType === 'document' ? contentRules : undefined,
         }),
       })
+
+      // Invalidate caches so the projects list and switcher show the new
+      // project immediately when the user navigates back from the editor.
+      clearCompanyCache(companyId)
+      clearCompaniesCache()
+      refreshWorkspace()
 
       navigate(`/project/${data.project.id}/editor`)
     } catch (err) {

@@ -54,3 +54,12 @@ export function clearCompanyDetailCaches() {
     // Ignore storage failures; network data still renders.
   }
 }
+
+export function clearCompanyCache(companyId) {
+  if (!companyId) return
+  try {
+    window.sessionStorage.removeItem(getCompanyCacheKey(companyId))
+  } catch {
+    // Ignore storage failures; network data still renders.
+  }
+}
