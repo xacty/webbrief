@@ -1,0 +1,171 @@
+.root {
+  position: relative;
+  margin: 0 0 var(--wb-space-2);
+}
+
+.trigger {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  width: 100%;
+  padding: var(--wb-space-2) var(--wb-space-2-5, 10px); /* keep literal — 10px gap not in scale */
+  background: var(--wb-color-neutral-50);
+  color: var(--wb-text);
+  border: 0.5px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease-out;
+}
+
+.trigger:hover {
+  background: var(--wb-color-neutral-100);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--wb-color-primary-600);
+  outline-offset: 2px;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-primary-100);
+  color: var(--wb-color-primary-700);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-semibold);
+  flex-shrink: 0;
+}
+
+.avatarInternal {
+  background: var(--wb-color-neutral-200, var(--wb-color-neutral-100));
+  color: var(--wb-color-neutral-700, var(--wb-text));
+}
+
+.triggerName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerCaret {
+  flex-shrink: 0;
+  color: var(--wb-color-neutral-500);
+}
+
+/* Dropdown panel — portaled to document.body */
+.dropdown {
+  position: fixed;
+  width: 240px;
+  padding: var(--wb-space-1);
+  background: var(--wb-surface);
+  border: 0.5px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-lg);
+  z-index: var(--wb-z-popover);
+}
+
+.searchWrap {
+  padding: var(--wb-space-2);
+}
+
+.searchInput {
+  width: 100%;
+  padding: 6px 10px; /* keep literal — compact dropdown search */
+  border: 0.5px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  font-size: var(--wb-text-xs);
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--wb-color-primary-600);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  width: 100%;
+  padding: var(--wb-space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--wb-radius-2);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease-out;
+}
+
+.item:hover,
+.item:focus-visible {
+  background: var(--wb-color-neutral-50);
+  outline: none;
+}
+
+.itemActive {
+  background: var(--wb-color-primary-50, var(--wb-color-primary-100));
+}
+
+.itemActive:hover {
+  background: var(--wb-color-primary-100);
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemBadge {
+  font-size: var(--wb-text-xs);
+  color: var(--wb-color-neutral-500);
+}
+
+.itemCheck {
+  color: var(--wb-color-primary-700);
+  flex-shrink: 0;
+}
+
+.separator {
+  height: 0.5px;
+  background: var(--wb-border);
+  margin: var(--wb-space-1) 0;
+}
+
+.empty {
+  padding: var(--wb-space-3);
+  text-align: center;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger,
+  .item {
+    transition: none;
+  }
+}
