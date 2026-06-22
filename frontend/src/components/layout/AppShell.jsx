@@ -90,27 +90,28 @@ export default function AppShell() {
   }
 
   function handleTaskClick(key) {
+    const slug = currentCompanySlug
     switch (key) {
       case 'create_company':
         navigate('/companies?new=1')
         break
       case 'invite_member':
-        navigate('/companies')
+        navigate(slug ? `/c/${slug}/team?invite=1` : '/companies')
         break
       case 'create_project':
-        navigate('/new-project')
+        navigate(slug ? `/new-project?company=${slug}` : '/new-project')
         break
       case 'edit_page':
-        navigate('/companies')
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
         break
       case 'create_share_link':
-        navigate('/companies')
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
         break
       case 'leave_comment':
-        navigate('/companies')
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
         break
       default:
-        navigate('/companies')
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
     }
   }
 

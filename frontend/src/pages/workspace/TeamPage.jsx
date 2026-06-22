@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Pencil, Trash2, UserPlus, Mail } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -175,6 +176,16 @@ export default function TeamPage() {
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [editingMember, setEditingMember] = useState(null)
   const [feedbackNotice, setFeedbackNotice] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('invite') === '1') {
+      setInviteModalOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('invite')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const canInvite = canInviteMembers(currentUser, company?.membershipRole)
   const inviteRoles = getInviteRoleOptions(currentUser, company?.membershipRole)

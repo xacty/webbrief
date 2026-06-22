@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiFetch } from '../lib/api'
+import { findCompanyBySlug } from '../lib/companySlug'
 import { isAdmin } from '../lib/roleCapabilities'
 import { Button, Input, Select, Card, Badge } from '../components/ui'
 import styles from './NewProject.module.css'
@@ -132,7 +134,18 @@ export default function NewProject() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { currentUser } = useAuth()
-  const requestedCompanyId = searchParams.get('companyId')
+  const { accessibleCompanies } = useWorkspace()
+  // Prefer ?company=:slug over legacy ?companyId=:id. Slug is resolved
+  // against the workspace context; if it doesn't match, fall back to the
+  // raw id param so existing links keep working.
+  const requestedCompanyId = useMemo(() => {
+    const slug = searchParams.get('company')
+    if (slug) {
+      const bySlug = findCompanyBySlug(accessibleCompanies, slug)
+      if (bySlug) return bySlug.id
+    }
+    return searchParams.get('companyId')
+  }, [searchParams, accessibleCompanies])
 
   const [companies, setCompanies] = useState([])
   const [companiesLoading, setCompaniesLoading] = useState(true)
