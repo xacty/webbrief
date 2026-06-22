@@ -21,7 +21,7 @@ import { Button, Input, Select, Modal, Badge, KebabMenu } from '../../components
 import UserEditModal from '../../components/users/UserEditModal'
 import { sendAccess as sendAccessRequest } from '../../lib/sendAccessClient'
 import EmptyState from '../../components/onboarding/EmptyState'
-import styles from '../CompanyPage.module.css'
+import styles from './workspace.module.css'
 
 function getCompanyRoleLabel(currentUser, membershipRole) {
   if (currentUser?.platformRole === 'admin') return getPlatformRoleTitle(currentUser.platformRole)

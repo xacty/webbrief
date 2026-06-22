@@ -10,7 +10,7 @@ import {
 } from '../../../../shared/userRoles.js'
 import { Badge } from '../../components/ui'
 import EmptyState from '../../components/onboarding/EmptyState'
-import styles from '../CompanyPage.module.css'
+import styles from './workspace.module.css'
 
 function getCompanyRoleLabel(currentUser, membershipRole) {
   if (currentUser?.platformRole === 'admin') return getPlatformRoleTitle(currentUser.platformRole)
