@@ -108,11 +108,20 @@ export default function Spotlight({
     [rect, placement],
   )
 
-  // Clip the backdrop with a polygon that traces the viewport rect,
-  // then the cutout rect; the `evenodd` fill-rule keyword makes the
-  // inner trace count as a hole (modern Chrome/Firefox/Safari all
-  // ship polygon(evenodd, …) — without it, nonzero fills the whole
-  // self-intersecting shape and the hole never appears).
+  // Clip the backdrop with an axis-aligned polygon that "notches"
+  // into the cutout via a zero-width bridge along x=x1.
+  //
+  // The naive 8-vertex outer+inner shape produces visible diagonal
+  // artifacts when the cutout is near a viewport corner (the closing
+  // edge from the last inner vertex back to the polygon start runs
+  // diagonally across the viewport, and evenodd parity flips entire
+  // triangular regions to "outside").
+  //
+  // This path starts at (x1, 0), traces the outer viewport counter-
+  // clockwise back to (x1, 0), then descends into the cutout via
+  // x=x1, walks the inner rect, and the implicit closing edge runs
+  // straight back up along x=x1. All edges are axis-aligned, so
+  // there are no diagonal artifacts regardless of cutout position.
   const safeClipPath = useMemo(() => {
     if (!rect) return undefined
     const x1 = Math.max(0, rect.left - CUTOUT_PADDING)
@@ -120,7 +129,7 @@ export default function Spotlight({
     const x2 = Math.min(window.innerWidth, rect.right + CUTOUT_PADDING)
     const y2 = Math.min(window.innerHeight, rect.bottom + CUTOUT_PADDING)
     return `polygon(evenodd,
-      0 0, 100vw 0, 100vw 100vh, 0 100vh,
+      ${x1}px 0, 0 0, 0 100vh, 100vw 100vh, 100vw 0, ${x1}px 0,
       ${x1}px ${y1}px, ${x2}px ${y1}px, ${x2}px ${y2}px, ${x1}px ${y2}px
     )`
   }, [rect])
