@@ -1,7 +1,10 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
+import { WorkspaceProvider, useWorkspace } from './contexts/WorkspaceContext'
 import AppShell from './components/layout/AppShell'
+import CompanyRedirect from './components/layout/CompanyRedirect'
+import { companyToSlug } from './lib/companySlug'
 import { Select } from './components/ui'
 import {
   COMPANY_ROLE_ORDER,
@@ -9,13 +12,15 @@ import {
   getCompanyRoleLabel,
   getPlatformRoleLabel,
 } from '../../shared/userRoles.js'
+import { Sparkles } from 'lucide-react'
+import WelcomeModal from './components/onboarding/WelcomeModal'
+import { getTutorialState, markWelcomed, markDismissed, isOnboardingActive, resetTutorial } from './lib/tutorialState'
 
 const Login = lazy(() => import('./pages/Login'))
 const NewProject = lazy(() => import('./pages/NewProject'))
 const ProjectEditor = lazy(() => import('./pages/ProjectEditor'))
 const SetPassword = lazy(() => import('./pages/SetPassword'))
 const CompaniesPage = lazy(() => import('./pages/CompaniesPage'))
-const CompanyPage = lazy(() => import('./pages/CompanyPage'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
 const SharePage = lazy(() => import('./pages/SharePage'))
 const TrashPage = lazy(() => import('./pages/TrashPage'))
@@ -25,6 +30,11 @@ const SecurityPage = lazy(() => import('./pages/SecurityPage'))
 const SecurityErrorsPage = lazy(() => import('./pages/SecurityErrorsPage'))
 const SecurityBlocksPage = lazy(() => import('./pages/SecurityBlocksPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
+const WorkspaceLayout = lazy(() => import('./components/layout/WorkspaceLayout'))
+const ProjectsPage = lazy(() => import('./pages/workspace/ProjectsPage'))
+const TeamPage = lazy(() => import('./pages/workspace/TeamPage'))
+const ActivityPage = lazy(() => import('./pages/workspace/ActivityPage'))
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 const OAuthConsentPage = lazy(() => import('./pages/OAuthConsentPage'))
 
 // Prefixed values disambiguate platform-admin vs company-admin (both label as
@@ -47,11 +57,53 @@ function PrivateRoute({ children }) {
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
+function WelcomeGate() {
+  const { isAuthenticated, realCurrentUser, loading } = useAuth()
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (loading || !isAuthenticated || !realCurrentUser) return
+    if (open) return // Already open — skip re-evaluation triggered by auth refresh
+    const state = getTutorialState()
+    if (!isOnboardingActive(state)) return
+    if (state.welcomedAt) return
+    // Defer one paint so the shell renders first
+    const id = window.requestAnimationFrame(() => setOpen(true))
+    return () => window.cancelAnimationFrame(id)
+  }, [loading, isAuthenticated, realCurrentUser, open])
+
+  function handleStart() {
+    markWelcomed()
+    setOpen(false)
+  }
+
+  function handleSkip() {
+    markDismissed()
+    setOpen(false)
+  }
+
+  return <WelcomeModal open={open} onStart={handleStart} onSkip={handleSkip} />
+}
+
+function DefaultRedirect() {
+  const { currentCompany, accessibleCompanies, loading } = useWorkspace()
+  if (loading) return null
+  if (currentCompany) {
+    return <Navigate to={`/c/${companyToSlug(currentCompany)}/projects`} replace />
+  }
+  if (accessibleCompanies.length === 0) return <Navigate to="/companies" replace />
+  return <Navigate to={`/c/${companyToSlug(accessibleCompanies[0])}/projects`} replace />
+}
+
 function AppRoutes() {
-  const { realCurrentUser, rolePreview, setRolePreview } = useAuth()
+  const { realCurrentUser, rolePreview, setRolePreview, isAuthenticated, loading } = useAuth()
   const location = useLocation()
   const canPreviewRoles = realCurrentUser?.platformRole === 'admin'
   const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
+  const isPublicRoute = location.pathname === '/login'
+    || location.pathname === '/auth/set-password'
+    || location.pathname.startsWith('/share/')
+    || location.pathname.startsWith('/b/')
 
   return (
     <Suspense fallback={<div className="pageLoading">Cargando...</div>}>
@@ -70,10 +122,17 @@ function AppRoutes() {
             </PrivateRoute>
           }
         >
-          <Route index element={<Navigate to="companies" replace />} />
-          <Route path="dashboard" element={<Navigate to="/companies" replace />} />
+          <Route index element={<DefaultRedirect />} />
+          <Route path="dashboard" element={<DefaultRedirect />} />
+          <Route path="c/:companySlug" element={<WorkspaceLayout />}>
+            <Route index element={<Navigate to="projects" replace />} />
+            <Route path="projects" element={<ProjectsPage />} />
+            <Route path="team" element={<TeamPage />} />
+            <Route path="activity" element={<ActivityPage />} />
+          </Route>
           <Route path="companies" element={<CompaniesPage />} />
-          <Route path="companies/:companyId" element={<CompanyPage />} />
+          <Route path="companies/:companyId" element={<CompanyRedirect />} />
+          <Route path="not-found" element={<NotFoundPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="settings" element={<AccountSettingsPage />} />
           <Route path="archive" element={<TrashPage mode="archived" />} />
@@ -83,6 +142,7 @@ function AppRoutes() {
           <Route path="security/blocks" element={<SecurityBlocksPage />} />
           <Route path="integrations" element={<IntegrationsPage />} />
           <Route path="new-project" element={<NewProject />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
 
         <Route
@@ -108,8 +168,24 @@ function AppRoutes() {
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </Select>
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={() => {
+                resetTutorial()
+                window.location.assign('/companies')
+              }}
+              aria-label="Lanzar tutorial"
+              title="Resetear y lanzar el tutorial de onboarding (solo dev/admin)"
+              style={rolePreviewStyles.devTutorialBtn}
+            >
+              <Sparkles size={14} aria-hidden="true" />
+              <span style={rolePreviewStyles.devTutorialBtnLabel}>Tutorial</span>
+            </button>
+          )}
         </div>
       )}
+      {!loading && isAuthenticated && !isPublicRoute && <WelcomeGate />}
     </Suspense>
   )
 }
@@ -155,13 +231,38 @@ const rolePreviewStyles = {
     color: 'var(--wb-color-neutral-500)',
     whiteSpace: 'nowrap',
   },
+  // Dev-only "Lanzar tutorial" button. Lives in the role-preview pill so
+  // it only shows for platform admins AND only in `vite dev` builds.
+  // Single primary CTA in the cluster — visually subordinate to "Ver como".
+  devTutorialBtn: {
+    appearance: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 10px',
+    background: 'var(--wb-color-primary-100)',
+    color: 'var(--wb-color-primary-700)',
+    border: 'none',
+    borderRadius: 'var(--wb-radius-2)',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  devTutorialBtnLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    lineHeight: 1,
+  },
 }
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <WorkspaceProvider>
+          <AppRoutes />
+        </WorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>
   )

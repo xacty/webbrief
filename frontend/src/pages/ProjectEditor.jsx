@@ -24,6 +24,7 @@ import CommentComposerPopover from '../components/editor/CommentComposerPopover'
 import CommentMarginCards from '../components/editor/CommentMarginCards'
 import CommentInlinePopover from '../components/editor/CommentInlinePopover'
 import EditorContextMenu from '../components/editor/EditorContextMenu'
+import ProjectTypeExplainer from '../components/onboarding/ProjectTypeExplainer'
 import {
   fetchComments,
   createComment,
@@ -39,8 +40,9 @@ import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, 
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
+import { markTaskDone } from '../lib/tutorialState'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
-import { Modal, Button, Select } from '../components/ui'
+import { Modal, Button, Select, HelpPopover } from '../components/ui'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -3040,6 +3042,7 @@ export default function ProjectEditor() {
       })
       setShareUrl(data.shareLink.url)
       setPanelError('')
+      markTaskDone('create_share_link')
       loadSidePanelData()
     } catch (error) {
       setPanelError(error.message || 'No se pudo crear el link privado')
@@ -3940,7 +3943,10 @@ export default function ProjectEditor() {
           setIsDirty(true)
         }
         setComments((prev) => (created ? [...prev, created] : prev))
-        if (created) setActiveCommentId(created.id)
+        if (created) {
+          setActiveCommentId(created.id)
+          markTaskDone('leave_comment')
+        }
         setComposerState(null)
       } catch (error) {
         window.alert(error.message || 'No se pudo crear el comentario')
@@ -4417,6 +4423,9 @@ export default function ProjectEditor() {
         onSubmit={handleComposerSubmit}
         submitLabel={composerState?.mode === 'edit' ? 'Guardar' : 'Comentar'}
       />
+      {!loadingProject && projectType && projectType !== 'brief' && (
+        <ProjectTypeExplainer projectType={projectType} />
+      )}
     </div>
   )
 }
@@ -4467,6 +4476,7 @@ function NotificationsBell({ notifications = [], onMarkRead, onMarkAllRead, onRe
         className={navStyles.navIconBtn}
         onClick={handleToggle}
         title={unreadCount > 0 ? `${unreadCount} notificaciones sin leer` : 'Notificaciones'}
+        data-firsttime="notifications-bell"
       >
         <Bell size={20} color="#2a2a2a" />
         {unreadCount > 0 && <span className={navStyles.navBadge}>{unreadCount}</span>}
@@ -4803,7 +4813,7 @@ function FloatingEditorBar({
   const audienceIndex = handoffAudience === 'dev' ? 1 : 0
 
   return (
-    <div className={styles.floatingBar} aria-label="Controles de editor">
+    <div className={styles.floatingBar} aria-label="Controles de editor" data-firsttime="editor-modes">
       {/* Mode segmented control — sliding indicator pill (Tesla-style)
           marks the active mode; all three options are always visible. */}
       <div
@@ -4873,6 +4883,11 @@ function FloatingEditorBar({
           })}
         </div>
       </div>
+
+      <HelpPopover
+        title="Modos del editor"
+        body="Brief: edición interna. Handoff: vista para Dev y Designer con bloques etiquetados. Preview: vista del cliente. Cambia con la pill o con Cmd+1/2/3."
+      />
     </div>
   )
 }
@@ -5155,7 +5170,7 @@ function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId,
         <span className={panelStyles.panelTitle}>Preguntas frecuentes</span>
         <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {canManageSections && (
-            <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar pregunta">
+            <button className={panelStyles.panelAddBtn} onClick={onOpenAddSectionModal} title="Agregar pregunta" data-firsttime="faq-add">
               <Plus size={14} />
             </button>
           )}
@@ -5270,7 +5285,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
   }
 
   return (
-    <div className={panelStyles.leftPanel}>
+    <div className={panelStyles.leftPanel} data-firsttime="editor-sections">
       <div className={panelStyles.panelHeader}>
         <span className={panelStyles.panelTitle}>Page sections</span>
         {canManageSections && (
@@ -6916,7 +6931,7 @@ function EditorPanel({
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: false }),
+      StarterKit.configure({ heading: false, link: false, underline: false }),
       Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
       EditableImageNode.configure({
         projectId,
@@ -7744,7 +7759,14 @@ function DocumentRulesCard({
     <div className={seoRulesStyles.rulesDock}>
       <aside className={seoRulesStyles.rulesCard} aria-labelledby="document-rules-title">
         <div className={seoRulesStyles.rulesHeader}>
-          <span id="document-rules-title" className={seoRulesStyles.rulesTitle}>Reglas de contenido</span>
+          <span id="document-rules-title" className={seoRulesStyles.rulesTitle}>
+            Reglas de contenido
+            {' '}
+            <HelpPopover
+              title="Reglas de contenido"
+              body="Solo aplican a proyectos tipo Artículo. Definen límites para título SEO, meta descripción, slug y palabras totales. Los autores ven una barra de progreso en vivo."
+            />
+          </span>
           {canEdit && (
             <button
               type="button"

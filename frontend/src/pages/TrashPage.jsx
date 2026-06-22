@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { Archive, RefreshCw, Trash2 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin } from '../lib/roleCapabilities'
-import { Button, Select, Card, Badge } from '../components/ui'
+import { Button, Select, Card, Badge, HelpPopover } from '../components/ui'
+import EmptyState from '../components/onboarding/EmptyState'
 import styles from './TrashPage.module.css'
 
 const DATE_FILTERS = [
@@ -237,7 +238,18 @@ export default function TrashPage({ mode = 'trashed' }) {
         <div className={styles.pageHeaderInner}>
           <div className={styles.titleRow}>
             <div className={styles.headerMain}>
-              <h1 className={styles.title}>{pageCopy.title}</h1>
+              <h1 className={styles.title}>
+                {pageCopy.title}
+                {mode === 'trashed' && (
+                  <>
+                    {' '}
+                    <HelpPopover
+                      title="Retención automática"
+                      body="Los proyectos en papelera se borran solos: brief en 15 días, otros tipos en 30. Restáuralos antes del vencimiento o se purgan junto con sus assets."
+                    />
+                  </>
+                )}
+              </h1>
               <p className={styles.headerMeta}>
                 {totalItems} elemento{totalItems === 1 ? '' : 's'}
                 {' · '}
@@ -319,10 +331,27 @@ export default function TrashPage({ mode = 'trashed' }) {
             {selected && loading && <p className={styles.info}>{pageCopy.loading}</p>}
             {selected && !loading && error && <p className={styles.error}>{error}</p>}
             {selected && !loading && !error && panelItems.length === 0 && (
-              <div className={styles.emptyState}>
-                <p className={styles.emptyTitle}>{pageCopy.empty}</p>
-                <p className={styles.emptyText}>Cambia de pestaña o ajusta el filtro de fecha para revisar otros elementos.</p>
-              </div>
+              <EmptyState
+                icon={mode === 'archived' ? Archive : Trash2}
+                title={
+                  tab.value === 'companies'
+                    ? (mode === 'archived'
+                        ? 'No hay empresas archivadas'
+                        : 'La papelera de empresas está limpia')
+                    : (mode === 'archived'
+                        ? 'No hay proyectos archivados'
+                        : 'La papelera de proyectos está limpia')
+                }
+                body={
+                  tab.value === 'companies'
+                    ? (mode === 'archived'
+                        ? 'Cuando archives una empresa la verás aquí.'
+                        : 'Las empresas eliminadas se borran automáticamente en 30 días (15 para briefs).')
+                    : (mode === 'archived'
+                        ? 'Cuando archives un proyecto lo verás aquí.'
+                        : 'Los proyectos eliminados se borran automáticamente en 30 días (15 para briefs). Puedes restaurarlos antes de que expiren.')
+                }
+              />
             )}
 
             {selected && !loading && !error && panelItems.length > 0 && (

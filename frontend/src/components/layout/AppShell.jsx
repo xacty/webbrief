@@ -1,14 +1,27 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun, Plug } from 'lucide-react'
+import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun, Plug, Folder, Activity } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
-import { canManageUsersNav, canUseSecurityNav, canUseTrashNav } from '../../lib/roleCapabilities'
+import { canManageUsersNav, canUseSecurityNav, canUseTrashNav, isAdmin, canCreateCompany as canCreateCompanyCapability } from '../../lib/roleCapabilities'
 import {
   getCompanyRoleLabel,
   getPlatformRoleTitle,
 } from '../../../../shared/userRoles.js'
 import webriefLogo from '../../assets/brand/webrief--logo-v2.svg'
 import { Button, Card } from '../ui'
+import OnboardingChecklist from '../onboarding/OnboardingChecklist'
+import WorkspaceSwitcher from './WorkspaceSwitcher'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
+import FirstTimeTooltipsRoot from '../onboarding/FirstTimeTooltipsRoot'
+import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
+import {
+  getTutorialState,
+  markDismissed,
+  markCompleted,
+  isOnboardingActive,
+  STORAGE_KEY,
+  STATE_CHANGE_EVENT,
+} from '../../lib/tutorialState'
 import styles from './AppShell.module.css'
 
 function roleLabel(currentUser, canManageUsers) {
@@ -22,6 +35,10 @@ export default function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
+  const { accessibleCompanies, currentCompanySlug } = useWorkspace()
+  const canCreateCompany = canCreateCompanyCapability(currentUser)
+  const canViewAllCompaniesFromSwitcher = isAdmin(currentUser) || accessibleCompanies.length >= 3
+  const canSeeCompaniesListNav = isAdmin(currentUser) || accessibleCompanies.length >= 3
   const canManageUsers = canManageUsersNav(currentUser)
   const canUseTrash = canUseTrashNav(currentUser)
   const canUseSecurity = canUseSecurityNav(currentUser)
@@ -35,9 +52,67 @@ export default function AppShell() {
     localStorage.setItem('wb-theme', darkMode ? 'dark' : 'light')
   }, [darkMode])
 
+  const [tutorialState, setTutorialState] = useState(() => getTutorialState())
+  const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
+
+  useEffect(() => {
+    function onStorage(e) {
+      if (e.key === STORAGE_KEY) setTutorialState(getTutorialState())
+    }
+    function onSameTabChange() {
+      setTutorialState(getTutorialState())
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener(STATE_CHANGE_EVENT, onSameTabChange)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(STATE_CHANGE_EVENT, onSameTabChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    const doneCount = Object.values(tutorialState.tasks).filter((t) => t.doneAt).length
+    if (doneCount === 6 && !tutorialState.completedAt) {
+      const id = setTimeout(() => {
+        const next = markCompleted()
+        setTutorialState(next)
+      }, 5000)
+      return () => clearTimeout(id)
+    }
+    return undefined
+  }, [tutorialState])
+
+  useTutorialAutoComplete(setTutorialState)
+
   async function handleLogout() {
     await signOut()
     navigate('/login')
+  }
+
+  function handleTaskClick(key) {
+    const slug = currentCompanySlug
+    switch (key) {
+      case 'create_company':
+        navigate('/companies?new=1')
+        break
+      case 'invite_member':
+        navigate(slug ? `/c/${slug}/team?invite=1` : '/companies')
+        break
+      case 'create_project':
+        navigate(slug ? `/new-project?company=${slug}` : '/new-project')
+        break
+      case 'edit_page':
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
+        break
+      case 'create_share_link':
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
+        break
+      case 'leave_comment':
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
+        break
+      default:
+        navigate(slug ? `/c/${slug}/projects` : '/companies')
+    }
   }
 
   return (
@@ -48,17 +123,48 @@ export default function AppShell() {
             <img className={styles.logo} src={webriefLogo} alt="WeBrief" />
           </div>
 
+          <div className={styles.workspaceSwitcherSlot}>
+            <WorkspaceSwitcher
+              canCreateCompany={canCreateCompany}
+              canViewAllCompanies={canViewAllCompaniesFromSwitcher}
+              onCreateCompany={() => navigate('/companies?new=1')}
+              onViewAllCompanies={() => navigate('/companies')}
+            />
+          </div>
+
           <nav className={styles.nav}>
             <p className={styles.navSectionLabel}>Principal</p>
-            <NavLink
-              to="/companies"
-              className={({ isActive }) => (
-                isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
-              )}
-            >
-              <Building2 className={styles.navIcon} aria-hidden="true" />
-              Empresas
-            </NavLink>
+            {currentCompanySlug && (
+              <>
+                <NavLink
+                  to={`/c/${currentCompanySlug}/projects`}
+                  className={({ isActive }) => (
+                    isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                  )}
+                >
+                  <Folder className={styles.navIcon} aria-hidden="true" />
+                  Proyectos
+                </NavLink>
+                <NavLink
+                  to={`/c/${currentCompanySlug}/team`}
+                  className={({ isActive }) => (
+                    isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                  )}
+                >
+                  <Users className={styles.navIcon} aria-hidden="true" />
+                  Equipo
+                </NavLink>
+                <NavLink
+                  to={`/c/${currentCompanySlug}/activity`}
+                  className={({ isActive }) => (
+                    isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                  )}
+                >
+                  <Activity className={styles.navIcon} aria-hidden="true" />
+                  Actividad
+                </NavLink>
+              </>
+            )}
             {canManageUsers && (
               <NavLink
                 to="/users"
@@ -80,8 +186,19 @@ export default function AppShell() {
               Integraciones
             </NavLink>
 
-            {(canUseSecurity || canUseTrash) && (
+            {(canUseSecurity || canUseTrash || canSeeCompaniesListNav) && (
               <p className={styles.navSectionLabel}>Admin</p>
+            )}
+            {canSeeCompaniesListNav && (
+              <NavLink
+                to="/companies"
+                className={({ isActive }) => (
+                  isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                )}
+              >
+                <Building2 className={styles.navIcon} aria-hidden="true" />
+                Empresas
+              </NavLink>
             )}
             {canUseSecurity && (
               <NavLink
@@ -162,6 +279,18 @@ export default function AppShell() {
           <Outlet />
         </div>
       </main>
+
+      {!isEditorRoute && isOnboardingActive(tutorialState) && (
+        <OnboardingChecklist
+          state={tutorialState}
+          onTaskClick={handleTaskClick}
+          onDismiss={() => {
+            const next = markDismissed()
+            setTutorialState(next)
+          }}
+        />
+      )}
+      <FirstTimeTooltipsRoot />
     </div>
   )
 }

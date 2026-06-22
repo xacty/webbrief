@@ -172,3 +172,7 @@
     padding-top: var(--wb-space-6);
   }
 }
+
+.workspaceSwitcherSlot {
+  margin: 0 var(--wb-space-3) var(--wb-space-3);
+}

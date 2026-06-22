@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Mail, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Mail, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { canSendAccess, getCompanyRole, getInviteRoleOptions, isAdmin } from '../lib/roleCapabilities'
@@ -11,9 +11,10 @@ import {
   getPlatformRoleLabel,
   isGlobalPlatformRole,
 } from '../../../shared/userRoles.js'
-import { Button, Input, Select, Card, Badge, Modal } from '../components/ui'
+import { Button, Input, Select, Card, Badge, Modal, HelpPopover } from '../components/ui'
 import UserEditModal from '../components/users/UserEditModal'
 import { sendAccess as sendAccessRequest } from '../lib/sendAccessClient'
+import EmptyState from '../components/onboarding/EmptyState'
 import styles from './UsersPage.module.css'
 
 const PAGE_SIZE = 10
@@ -452,12 +453,13 @@ export default function UsersPage() {
       {loading && <p className={styles.info}>Cargando usuarios...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
       {!loading && !error && paginatedUsers.length === 0 && (
-        <div className={styles.emptyState}>
-          <p className={styles.emptyTitle}>No hay usuarios para esta búsqueda.</p>
-          <p className={styles.emptyText}>
-            Ajusta filtros o agrega usuarios desde este panel.
-          </p>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No hay usuarios para esta búsqueda"
+          body={query
+            ? "Ajusta los filtros o limpia la búsqueda para ver todos los usuarios."
+            : "Agrega usuarios desde el panel superior para empezar a gestionar la plataforma."}
+        />
       )}
 
       {!loading && !error && paginatedUsers.length > 0 && (
@@ -755,7 +757,16 @@ export default function UsersPage() {
               </Select>
 
               <Select
-                label="Rol en empresa"
+                label={(
+                  <>
+                    Rol en empresa
+                    {' '}
+                    <HelpPopover
+                      title="Roles disponibles"
+                      body="Manager: gestiona el equipo y crea proyectos. Editor: crea y edita proyectos. Content writer / Designer / Developer: editan páginas asignadas, sin gestión de equipo."
+                    />
+                  </>
+                )}
                 value={inviteForm.role}
                 onChange={(event) => setInviteForm((current) => ({ ...current, role: event.target.value }))}
               >

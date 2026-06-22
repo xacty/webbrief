@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, ArrowRight, Trash2, Plus } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Archive, ArrowRight, Building2, Plus, Trash2 } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiFetch } from '../lib/api'
+import { clearCompanyDetailCaches } from '../lib/companyCache'
+import { companyToSlug } from '../lib/companySlug'
 import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
+import { formatDate } from '../lib/companyFormatters'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
+import EmptyState from '../components/onboarding/EmptyState'
 import styles from './CompaniesPage.module.css'
 
 const PAGE_SIZE = 8
@@ -30,28 +35,6 @@ function writeCompaniesCache(companies) {
   }
 }
 
-function clearCompanyDetailCaches() {
-  try {
-    for (const key of Object.keys(window.sessionStorage)) {
-      if (key.startsWith('webrief:company:')) {
-        window.sessionStorage.removeItem(key)
-      }
-    }
-  } catch {
-    // Ignore storage failures; network data still renders.
-  }
-}
-
-function formatDate(isoDate) {
-  if (!isoDate) return 'Sin actividad'
-
-  return new Date(isoDate).toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
 function companyTypeBadge(company) {
   if (company.isInternal) return { variant: 'neutral', label: 'Interna' }
   if (company.isTest) return { variant: 'success', label: 'Prueba' }
@@ -61,6 +44,7 @@ function companyTypeBadge(company) {
 export default function CompaniesPage() {
   const navigate = useNavigate()
   const { currentUser } = useAuth()
+  const { refresh: refreshWorkspace } = useWorkspace()
   const [companies, setCompanies] = useState(() => readCompaniesCache())
   const [loading, setLoading] = useState(() => readCompaniesCache().length === 0)
   const [error, setError] = useState('')
@@ -68,6 +52,15 @@ export default function CompaniesPage() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setModalOpen(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('new')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
   const [companyName, setCompanyName] = useState('')
   const [managerName, setManagerName] = useState('')
   const [managerEmail, setManagerEmail] = useState('')
@@ -197,6 +190,7 @@ export default function CompaniesPage() {
       showFeedback(failed > 0
         ? `${archived} empresa(s) archivada(s); ${failed} no procesada(s)`
         : `${archived} empresa(s) archivada(s)`)
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudieron archivar las empresas')
     } finally {
@@ -225,6 +219,7 @@ export default function CompaniesPage() {
       showFeedback(failed > 0
         ? `${trashed} empresa(s) en papelera; ${failed} no procesada(s)`
         : `${trashed} empresa(s) en papelera`)
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudieron enviar a papelera')
     } finally {
@@ -264,7 +259,8 @@ export default function CompaniesPage() {
       setTestMode(false)
       setCompanyFeedback('')
       setModalOpen(false)
-      navigate(`/companies/${data.company.id}`)
+      await refreshWorkspace()
+      navigate(`/c/${companyToSlug(data.company)}/projects`)
     } catch (err) {
       setCompanyFeedback(err.message || 'No se pudo crear la empresa')
     } finally {
@@ -288,7 +284,14 @@ export default function CompaniesPage() {
   }
 
   function openCompany(companyId) {
-    navigate(`/companies/${companyId}`)
+    const company = companies.find((c) => c.id === companyId)
+    if (company) {
+      navigate(`/c/${companyToSlug(company)}/projects`)
+    } else {
+      // Should never happen — companies list is the source of the id we got.
+      // Fall back to the legacy redirect just in case.
+      navigate(`/companies/${companyId}`)
+    }
   }
 
   // In select-mode (≥1 selected), clicking/Enter on the card toggles its
@@ -321,6 +324,7 @@ export default function CompaniesPage() {
       writeCompaniesCache(nextCompanies)
       clearCompanyDetailCaches()
       setError('')
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudo archivar la empresa')
     }
@@ -336,6 +340,7 @@ export default function CompaniesPage() {
       writeCompaniesCache(nextCompanies)
       clearCompanyDetailCaches()
       setError('')
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudo enviar la empresa a papelera')
     }
@@ -451,13 +456,23 @@ export default function CompaniesPage() {
 
       {loading && <p className={styles.info}>Cargando empresas...</p>}
       {!loading && error && <p className={styles.error}>{error}</p>}
-      {!loading && !error && paginatedCompanies.length === 0 && (
-        <div className={styles.emptyState}>
-          <p className={styles.emptyTitle}>No hay empresas para esta búsqueda.</p>
-          <p className={styles.emptyText}>
-            Ajusta filtros o crea una empresa nueva para empezar a organizar proyectos y equipo.
-          </p>
-        </div>
+      {!loading && !error && paginatedCompanies.length === 0 && companies.length === 0 && (
+        <EmptyState
+          icon={Building2}
+          title="Crea tu primera empresa"
+          body="Una empresa agrupa proyectos y equipo. Empieza con tu agencia o un cliente."
+          cta={canCreateCompanies ? {
+            label: 'Nueva empresa',
+            onClick: () => setModalOpen(true),
+          } : null}
+        />
+      )}
+      {!loading && !error && paginatedCompanies.length === 0 && companies.length > 0 && (
+        <EmptyState
+          icon={Building2}
+          title="No hay empresas para esta búsqueda"
+          body="Ajusta los filtros o limpia la búsqueda para ver todas las empresas."
+        />
       )}
 
       {!loading && !error && paginatedCompanies.length > 0 && (

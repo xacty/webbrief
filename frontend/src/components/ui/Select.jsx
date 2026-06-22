@@ -60,9 +60,17 @@ function isOptgroupElement(child) {
   return React.isValidElement(child) && child.type === 'optgroup';
 }
 
+function isFragmentElement(child) {
+  return React.isValidElement(child) && child.type === React.Fragment;
+}
+
 // Extract a flat list of items (options + group headings) preserving DOM
 // order. Group headings render as non-interactive labels in the listbox;
 // they're skipped during keyboard navigation.
+//
+// Recursively unwraps Fragment children at any depth — without this,
+// `<Select>{cond ? <>...</> : <>...</>}</Select>` would render as
+// "Sin opciones" because Fragments are neither <option> nor <optgroup>.
 function extractItems(options, children) {
   if (Array.isArray(options)) {
     return options.map((o) => ({
@@ -73,31 +81,47 @@ function extractItems(options, children) {
     }));
   }
   const result = [];
-  React.Children.forEach(children, (child) => {
-    if (!child) return;
-    if (isOptionElement(child)) {
-      result.push({
-        kind: 'option',
-        value: child.props.value,
-        label: child.props.children,
-        disabled: Boolean(child.props.disabled),
-      });
-      return;
-    }
-    if (isOptgroupElement(child)) {
-      const groupLabel = child.props.label ?? '';
-      if (groupLabel) result.push({ kind: 'group', label: groupLabel });
-      React.Children.forEach(child.props.children, (grandchild) => {
-        if (!grandchild || !isOptionElement(grandchild)) return;
+  function walk(nodes) {
+    React.Children.forEach(nodes, (child) => {
+      if (!child) return;
+      if (isFragmentElement(child)) {
+        walk(child.props.children);
+        return;
+      }
+      if (isOptionElement(child)) {
         result.push({
           kind: 'option',
-          value: grandchild.props.value,
-          label: grandchild.props.children,
-          disabled: Boolean(grandchild.props.disabled),
+          value: child.props.value,
+          label: child.props.children,
+          disabled: Boolean(child.props.disabled),
         });
-      });
-    }
-  });
+        return;
+      }
+      if (isOptgroupElement(child)) {
+        const groupLabel = child.props.label ?? '';
+        if (groupLabel) result.push({ kind: 'group', label: groupLabel });
+        function walkOptgroup(innerNodes) {
+          React.Children.forEach(innerNodes, (grandchild) => {
+            if (!grandchild) return;
+            if (isFragmentElement(grandchild)) {
+              walkOptgroup(grandchild.props.children);
+              return;
+            }
+            if (isOptionElement(grandchild)) {
+              result.push({
+                kind: 'option',
+                value: grandchild.props.value,
+                label: grandchild.props.children,
+                disabled: Boolean(grandchild.props.disabled),
+              });
+            }
+          });
+        }
+        walkOptgroup(child.props.children);
+      }
+    });
+  }
+  walk(children);
   return result;
 }
 

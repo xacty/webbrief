@@ -127,3 +127,17 @@ export function getProjectEditorCapabilities(currentUser, companyId) {
     canEditContentRules: canManageProjectMeta,
   }
 }
+
+/**
+ * canCreateCompany — gate the "Crear empresa" CTA across the app.
+ * Single source of truth so AppShell's WorkspaceSwitcher and CompaniesPage
+ * can't drift. Includes QA users (who can create test companies) and any
+ * manager-tier membership.
+ */
+export function canCreateCompany(user) {
+  if (!user) return false
+  if (isAdmin(user)) return true
+  if (canCreateTestCompany(user)) return true
+  const memberships = Array.isArray(user.memberships) ? user.memberships : []
+  return memberships.some((m) => m.role === 'manager')
+}
