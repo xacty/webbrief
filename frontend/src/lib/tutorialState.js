@@ -25,7 +25,7 @@
 const STORAGE_KEY = 'wb-tutorial-state';
 
 export const TASK_KEYS = [
-  'create_company',
+  'discover_workspace',
   'invite_member',
   'create_project',
   'edit_page',
@@ -179,11 +179,12 @@ export function isOnboardingActive(state) {
  * skip the tutorial.
  */
 export function syncTasksFromSignals(signals) {
-  const { companiesCount = 0, projectsCount = 0, membersCount = 0, hasEditedPage = false } = signals;
-  if (companiesCount > 0) markTaskDone('create_company');
+  const { projectsCount = 0, membersCount = 0, hasEditedPage = false } = signals;
   if (membersCount > 1) markTaskDone('invite_member');
   if (projectsCount > 0) markTaskDone('create_project');
   if (hasEditedPage) markTaskDone('edit_page');
+  // discover_workspace stays as a tour the user has to explicitly take —
+  // there's no observable signal that "they know the workspace exists".
 }
 
 export { STORAGE_KEY, FIRSTTIME_KEYS, STATE_CHANGE_EVENT };
