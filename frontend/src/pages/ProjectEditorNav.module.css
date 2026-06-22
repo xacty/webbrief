@@ -25,13 +25,34 @@
 }
 
 .navLogo {
-  font-size: 35px;
-  color: var(--wb-text);
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 4px;
   cursor: pointer;
-  line-height: 1;
-  user-select: none;
+  border-radius: var(--wb-radius-2);
 }
 
+.navLogo:hover {
+  background: var(--wb-color-neutral-100);
+}
+
+.navLogo:focus-visible {
+  outline: 2px solid var(--wb-color-primary-500);
+  outline-offset: 2px;
+}
+
+.navLogoMark {
+  width: 28px;
+  height: auto;
+  display: block;
+}
+
+/* Legacy wordmark spans (kept to avoid breaking any stale references —
+   the editor navbar now renders an icon-only mark). */
 .navLogoLight {
   font-weight: 200;
 }
