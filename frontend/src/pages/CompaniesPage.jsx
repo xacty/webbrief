@@ -7,6 +7,7 @@ import { apiFetch } from '../lib/api'
 import { clearCompanyDetailCaches } from '../lib/companyCache'
 import { companyToSlug } from '../lib/companySlug'
 import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
+import { formatDate } from '../lib/companyFormatters'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
 import EmptyState from '../components/onboarding/EmptyState'
 import styles from './CompaniesPage.module.css'
@@ -32,16 +33,6 @@ function writeCompaniesCache(companies) {
   } catch {
     // Ignore storage failures; network data still renders.
   }
-}
-
-function formatDate(isoDate) {
-  if (!isoDate) return 'Sin actividad'
-
-  return new Date(isoDate).toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
 }
 
 function companyTypeBadge(company) {

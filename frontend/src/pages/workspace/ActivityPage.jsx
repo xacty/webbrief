@@ -3,6 +3,7 @@ import { Activity } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { apiFetch } from '../../lib/api'
+import { formatDate } from '../../lib/companyFormatters'
 import {
   getCompanyRoleLabel as getCompanyRoleLabelShared,
   getPlatformRoleTitle,
@@ -10,16 +11,6 @@ import {
 import { Badge } from '../../components/ui'
 import EmptyState from '../../components/onboarding/EmptyState'
 import styles from '../CompanyPage.module.css'
-
-function formatDate(isoDate) {
-  if (!isoDate) return 'Sin actividad'
-
-  return new Date(isoDate).toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
 
 function getCompanyRoleLabel(currentUser, membershipRole) {
   if (currentUser?.platformRole === 'admin') return getPlatformRoleTitle(currentUser.platformRole)

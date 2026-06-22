@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { apiFetch } from '../../lib/api'
 import { getCompanyCacheKey, readCompanyCache, writeCompanyCache, clearCompaniesCache } from '../../lib/companyCache'
+import { formatDate, formatRelativeDate } from '../../lib/companyFormatters'
 import {
   canInviteMembers,
   canSendAccess,
@@ -21,33 +22,6 @@ import UserEditModal from '../../components/users/UserEditModal'
 import { sendAccess as sendAccessRequest } from '../../lib/sendAccessClient'
 import EmptyState from '../../components/onboarding/EmptyState'
 import styles from '../CompanyPage.module.css'
-
-function formatDate(isoDate) {
-  if (!isoDate) return 'Sin actividad'
-
-  return new Date(isoDate).toLocaleDateString('es-ES', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-function formatRelativeDate(isoDate) {
-  if (!isoDate) return 'sin actividad'
-  const now = new Date()
-  const then = new Date(isoDate)
-  const diffMs = now - then
-  const diffMin = Math.round(diffMs / 60000)
-  const diffH = Math.round(diffMs / 3600000)
-  const diffD = Math.round(diffMs / 86400000)
-  if (diffMin < 1) return 'hace instantes'
-  if (diffMin < 60) return `hace ${diffMin} min`
-  if (diffH < 24) return `hace ${diffH} h`
-  if (diffD === 1) return 'ayer'
-  if (diffD < 7) return `hace ${diffD} días`
-  if (diffD < 30) return `hace ${Math.round(diffD / 7)} semanas`
-  return `el ${formatDate(isoDate)}`
-}
 
 function getCompanyRoleLabel(currentUser, membershipRole) {
   if (currentUser?.platformRole === 'admin') return getPlatformRoleTitle(currentUser.platformRole)
