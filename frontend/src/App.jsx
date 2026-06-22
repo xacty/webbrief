@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { WorkspaceProvider, useWorkspace } from './contexts/WorkspaceContext'
+import { TourProvider } from './components/onboarding/TourContext'
 import AppShell from './components/layout/AppShell'
 import CompanyRedirect from './components/layout/CompanyRedirect'
 import { companyToSlug } from './lib/companySlug'
@@ -261,7 +262,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <WorkspaceProvider>
-          <AppRoutes />
+          <TourProvider>
+            <AppRoutes />
+          </TourProvider>
         </WorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>
