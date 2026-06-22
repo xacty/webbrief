@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { WorkspaceProvider, useWorkspace } from './contexts/WorkspaceContext'
+import { TourProvider, useTour } from './components/onboarding/TourContext'
 import AppShell from './components/layout/AppShell'
 import CompanyRedirect from './components/layout/CompanyRedirect'
 import { companyToSlug } from './lib/companySlug'
@@ -59,6 +60,7 @@ function PrivateRoute({ children }) {
 
 function WelcomeGate() {
   const { isAuthenticated, realCurrentUser, loading } = useAuth()
+  const { startFullTutorial } = useTour()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -75,6 +77,9 @@ function WelcomeGate() {
   function handleStart() {
     markWelcomed()
     setOpen(false)
+    // Kick off the full chained tutorial after the modal exits so
+    // the first Spotlight doesn't render under the closing scrim.
+    window.setTimeout(() => startFullTutorial(), 200)
   }
 
   function handleSkip() {
@@ -261,7 +266,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <WorkspaceProvider>
-          <AppRoutes />
+          <TourProvider>
+            <AppRoutes />
+          </TourProvider>
         </WorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>

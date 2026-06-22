@@ -25,7 +25,7 @@
 const STORAGE_KEY = 'wb-tutorial-state';
 
 export const TASK_KEYS = [
-  'create_company',
+  'discover_workspace',
   'invite_member',
   'create_project',
   'edit_page',
@@ -151,11 +151,11 @@ export function countCompletedTasks(state) {
   return TASK_KEYS.reduce((n, k) => n + (state.tasks[k]?.doneAt ? 1 : 0), 0);
 }
 
-// Feature gate — the onboarding tutorial is held back from production
-// until the flow is fully polished. Dev builds keep it on so admins
-// can keep iterating; admins can also use the dev-only "Tutorial"
-// launcher in the role-preview pill to reset and replay locally.
-const TUTORIAL_ENABLED = Boolean(import.meta.env?.DEV);
+// Feature gate — the onboarding tutorial is enabled in both dev and
+// production. Kept as a constant so future iterations can flip it
+// back to a dev-only Boolean(import.meta.env?.DEV) without touching
+// every consumer.
+const TUTORIAL_ENABLED = true;
 
 /**
  * Should the onboarding UI be shown? Returns false once the user
@@ -179,11 +179,12 @@ export function isOnboardingActive(state) {
  * skip the tutorial.
  */
 export function syncTasksFromSignals(signals) {
-  const { companiesCount = 0, projectsCount = 0, membersCount = 0, hasEditedPage = false } = signals;
-  if (companiesCount > 0) markTaskDone('create_company');
+  const { projectsCount = 0, membersCount = 0, hasEditedPage = false } = signals;
   if (membersCount > 1) markTaskDone('invite_member');
   if (projectsCount > 0) markTaskDone('create_project');
   if (hasEditedPage) markTaskDone('edit_page');
+  // discover_workspace stays as a tour the user has to explicitly take —
+  // there's no observable signal that "they know the workspace exists".
 }
 
 export { STORAGE_KEY, FIRSTTIME_KEYS, STATE_CHANGE_EVENT };

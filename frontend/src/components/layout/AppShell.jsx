@@ -14,6 +14,7 @@ import WorkspaceSwitcher from './WorkspaceSwitcher'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import FirstTimeTooltipsRoot from '../onboarding/FirstTimeTooltipsRoot'
 import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
+import { useTour } from '../onboarding/TourContext'
 import {
   getTutorialState,
   markDismissed,
@@ -21,6 +22,7 @@ import {
   isOnboardingActive,
   STORAGE_KEY,
   STATE_CHANGE_EVENT,
+  TASK_KEYS,
 } from '../../lib/tutorialState'
 import styles from './AppShell.module.css'
 
@@ -36,6 +38,7 @@ export default function AppShell() {
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
   const { accessibleCompanies, currentCompanySlug } = useWorkspace()
+  const { startFullTutorial, isActive: tourIsActive } = useTour()
   const canCreateCompany = canCreateCompanyCapability(currentUser)
   const canViewAllCompaniesFromSwitcher = isAdmin(currentUser) || accessibleCompanies.length >= 3
   const canSeeCompaniesListNav = isAdmin(currentUser) || accessibleCompanies.length >= 3
@@ -54,6 +57,8 @@ export default function AppShell() {
 
   const [tutorialState, setTutorialState] = useState(() => getTutorialState())
   const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
+  // Public viewers (real or simulated via role-preview) get no tutorial UI.
+  const isPreviewingPublicViewer = currentUser?.rolePreview === 'public_viewer'
 
   useEffect(() => {
     function onStorage(e) {
@@ -71,12 +76,16 @@ export default function AppShell() {
   }, [])
 
   useEffect(() => {
-    const doneCount = Object.values(tutorialState.tasks).filter((t) => t.doneAt).length
-    if (doneCount === 6 && !tutorialState.completedAt) {
+    // Count only current TASK_KEYS so legacy entries (e.g. an old
+    // `create_company` row) don't throw off the all-done check.
+    const doneCount = TASK_KEYS.filter((k) => tutorialState.tasks[k]?.doneAt).length
+    if (doneCount === TASK_KEYS.length && !tutorialState.completedAt) {
+      // Give the user ~2 min to read the celebration card before it
+      // auto-closes. They can also dismiss it manually via the X.
       const id = setTimeout(() => {
         const next = markCompleted()
         setTutorialState(next)
-      }, 5000)
+      }, 120000)
       return () => clearTimeout(id)
     }
     return undefined
@@ -89,30 +98,11 @@ export default function AppShell() {
     navigate('/login')
   }
 
+  // Click a checklist task → start the chain from that task. The
+  // chain auto-advances through remaining (pending) tasks; the
+  // clicked task itself is always replayed, even if already done.
   function handleTaskClick(key) {
-    const slug = currentCompanySlug
-    switch (key) {
-      case 'create_company':
-        navigate('/companies?new=1')
-        break
-      case 'invite_member':
-        navigate(slug ? `/c/${slug}/team?invite=1` : '/companies')
-        break
-      case 'create_project':
-        navigate(slug ? `/new-project?company=${slug}` : '/new-project')
-        break
-      case 'edit_page':
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
-        break
-      case 'create_share_link':
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
-        break
-      case 'leave_comment':
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
-        break
-      default:
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
-    }
+    startFullTutorial(key)
   }
 
   return (
@@ -138,6 +128,7 @@ export default function AppShell() {
               <>
                 <NavLink
                   to={`/c/${currentCompanySlug}/projects`}
+                  data-tour="sidebar-projects"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -147,6 +138,7 @@ export default function AppShell() {
                 </NavLink>
                 <NavLink
                   to={`/c/${currentCompanySlug}/team`}
+                  data-tour="sidebar-team"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -156,6 +148,7 @@ export default function AppShell() {
                 </NavLink>
                 <NavLink
                   to={`/c/${currentCompanySlug}/activity`}
+                  data-tour="sidebar-activity"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -215,6 +208,7 @@ export default function AppShell() {
               <>
                 <NavLink
                   to="/archive"
+                  data-tour="sidebar-archivados"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -224,6 +218,7 @@ export default function AppShell() {
                 </NavLink>
                 <NavLink
                   to="/trash"
+                  data-tour="sidebar-papelera"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -280,17 +275,26 @@ export default function AppShell() {
         </div>
       </main>
 
-      {!isEditorRoute && isOnboardingActive(tutorialState) && (
-        <OnboardingChecklist
-          state={tutorialState}
-          onTaskClick={handleTaskClick}
-          onDismiss={() => {
-            const next = markDismissed()
-            setTutorialState(next)
-          }}
-        />
-      )}
-      <FirstTimeTooltipsRoot />
+      {!isEditorRoute &&
+        !isPreviewingPublicViewer &&
+        isOnboardingActive(tutorialState) && (
+          <OnboardingChecklist
+            state={tutorialState}
+            onTaskClick={handleTaskClick}
+            onDismiss={() => {
+              const next = markDismissed()
+              setTutorialState(next)
+            }}
+            onComplete={() => {
+              const next = markCompleted()
+              setTutorialState(next)
+            }}
+          />
+        )}
+      {/* Suppress the legacy data-firsttime tooltips while a guided
+       *  tour is active so the two overlays don't fight for the
+       *  user's attention. */}
+      {!isPreviewingPublicViewer && !tourIsActive && <FirstTimeTooltipsRoot />}
     </div>
   )
 }

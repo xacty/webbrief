@@ -305,6 +305,7 @@ export default function NewProject() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            data-tour="newproject-name"
           />
 
           <Select
@@ -318,6 +319,7 @@ export default function NewProject() {
             }}
             required
             helperText={PROJECT_TYPES[projectType].description}
+            data-tour="newproject-type"
           >
             {Object.entries(PROJECT_TYPES).map(([key, value]) => (
               <option key={key} value={key}>{value.label}</option>
@@ -346,6 +348,7 @@ export default function NewProject() {
                   ? (BRIEF_TEMPLATES[businessType]?.description || (selectedCompany ? `Se creará en ${selectedCompany.name}.` : ''))
                   : (selectedCompany ? `Se creará en ${selectedCompany.name}.` : '')
               }
+              data-tour="newproject-plantilla"
             >
               {projectType === 'brief' ? (
                 <>
@@ -409,6 +412,7 @@ export default function NewProject() {
               variant="primary"
               disabled={submitting || companiesLoading || companies.length === 0 || !canCreateProject}
               loading={submitting}
+              data-tour="newproject-submit"
             >
               {submitting ? 'Creando...' : 'Crear proyecto'}
             </Button>

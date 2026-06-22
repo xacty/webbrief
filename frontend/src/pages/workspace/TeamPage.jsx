@@ -364,6 +364,7 @@ export default function TeamPage() {
                   <Button
                     variant="primary"
                     icon={<UserPlus size={16} />}
+                    data-tour="invite-member-btn"
                     onClick={openInviteModal}
                   >
                     Invitar miembro
@@ -496,6 +497,7 @@ export default function TeamPage() {
         title="Invitar miembro"
         size="md"
       >
+        <div data-tour="invite-modal">
         <p className={styles.modalSubtitle}>
           El usuario recibirá un correo con el link para activar su cuenta.
         </p>
@@ -546,6 +548,7 @@ export default function TeamPage() {
             </Button>
           </div>
         </form>
+        </div>
       </Modal>
     </div>
   )

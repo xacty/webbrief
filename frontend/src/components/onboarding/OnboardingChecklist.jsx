@@ -4,7 +4,7 @@ import {
   X,
   Circle,
   CheckCircle2,
-  Building2,
+  Compass,
   UserPlus,
   FilePlus2,
   Edit3,
@@ -14,17 +14,21 @@ import {
 } from 'lucide-react';
 import styles from './OnboardingChecklist.module.css';
 
+// Task copy + icons. Keys must match TASK_KEYS in tutorialState.js.
+// The order here is also the display order — pending and completed
+// tasks stay in their natural slot (top-to-bottom step 1 → step N),
+// regardless of completion. Users read top-to-bottom.
 const TASK_LABELS = {
-  create_company: { label: 'Crear tu primera empresa', Icon: Building2 },
-  invite_member: { label: 'Invitar a un miembro del equipo', Icon: UserPlus },
-  create_project: { label: 'Crear tu primer proyecto', Icon: FilePlus2 },
-  edit_page: { label: 'Editar la primera página', Icon: Edit3 },
-  create_share_link: { label: 'Compartir el primer link público', Icon: Share2 },
-  leave_comment: { label: 'Dejar tu primer comentario', Icon: MessageCircle },
+  discover_workspace: { label: 'Conoce tu workspace', Icon: Compass },
+  invite_member: { label: 'Invita a un miembro del equipo', Icon: UserPlus },
+  create_project: { label: 'Crea tu primer proyecto', Icon: FilePlus2 },
+  edit_page: { label: 'Edita una página', Icon: Edit3 },
+  create_share_link: { label: 'Comparte un link público', Icon: Share2 },
+  leave_comment: { label: 'Deja un comentario', Icon: MessageCircle },
 };
 
 const TASK_ORDER = [
-  'create_company',
+  'discover_workspace',
   'invite_member',
   'create_project',
   'edit_page',
@@ -44,10 +48,10 @@ const MOCK_STATE = {
   },
 };
 
-function orderedTasks(state) {
-  const pending = TASK_ORDER.filter((k) => !state.tasks[k]?.doneAt);
-  const done = TASK_ORDER.filter((k) => state.tasks[k]?.doneAt);
-  return [...pending, ...done];
+// Preserve TASK_ORDER regardless of completion state — Spanish reads
+// top-to-bottom, so step 1 must stay on top even after it's done.
+function orderedTasks() {
+  return TASK_ORDER;
 }
 
 function countCompleted(state) {
@@ -58,6 +62,7 @@ export default function OnboardingChecklist({
   state = MOCK_STATE,
   onTaskClick = () => {},
   onDismiss = () => {},
+  onComplete = () => {},
 }) {
   // Initial expand: auto-open if the user has welcomed but hasn't completed
   // the tutorial yet. The hint that the user just clicked "Empezar tour" is
@@ -78,20 +83,29 @@ export default function OnboardingChecklist({
 
   const done = countCompleted(state);
   const total = TASK_ORDER.length;
-  const ordered = orderedTasks(state);
+  const ordered = orderedTasks();
   const allDone = done === total;
 
   if (allDone && expanded) {
     return (
       <div className={styles.wrap}>
         <div className={styles.card}>
+          <button
+            type="button"
+            className={styles.cardClose}
+            onClick={onComplete}
+            aria-label="Cerrar"
+            title="Cerrar"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
           <div className={styles.celebration}>
             <span className={styles.celebrationIcon} aria-hidden="true">
               <Sparkles size={28} />
             </span>
             <h3 className={styles.celebrationTitle}>¡Listo, dominas WeBrief!</h3>
             <p className={styles.celebrationBody}>
-              Has completado el tutorial. Cierra esta tarjeta cuando quieras.
+              Has completado el tutorial. Cierra esta tarjeta cuando quieras; si no, se cerrará sola en un par de minutos.
             </p>
           </div>
         </div>
@@ -166,8 +180,7 @@ export default function OnboardingChecklist({
                 type="button"
                 className={`${styles.task} ${isDone ? styles.taskDone : ''}`}
                 onClick={() => onTaskClick(key)}
-                disabled={isDone}
-                aria-label={`${meta.label}${isDone ? ' (completada)' : ''}`}
+                aria-label={`${meta.label}${isDone ? ' (completada — pulsa para repetir el tour)' : ''}`}
               >
                 <span
                   className={`${styles.taskIcon} ${

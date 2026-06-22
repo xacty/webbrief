@@ -152,6 +152,7 @@ export default function WorkspaceSwitcher({
         aria-haspopup="listbox"
         aria-expanded={open ? 'true' : 'false'}
         aria-label={`Empresa activa: ${currentCompany.name}. Cambiar de empresa.`}
+        data-tour="workspace-switcher"
         onClick={() => setOpen((v) => !v)}
       >
         <span

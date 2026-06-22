@@ -1,0 +1,193 @@
+/* Spotlight — guided-tour overlay primitive.
+ *
+ * Renders three layers (all via portal to document.body):
+ *   1. .backdrop — dark fullscreen with a clip-path polygon cutout
+ *      around the target rect. The polygon uses even-odd to "punch"
+ *      a hole, so clicks inside the cutout pass through to the real
+ *      target element underneath. Clicks on the dark area are caught
+ *      by this layer and do NOT close the tour (intentional — the
+ *      user must explicitly click Skip or Next).
+ *   2. .halo — a thin glowing outline around the cutout area so the
+ *      user sees exactly where to click. Pointer-events: none so it
+ *      never intercepts.
+ *   3. .tooltip — title + body + step counter + nav buttons, anchored
+ *      next to the target with auto placement.
+ */
+
+.root {
+  position: fixed;
+  inset: 0;
+  /* Above everything except popped-out listboxes (see Select.module.css
+   * which uses --wb-z-listbox to render dropdowns above the backdrop). */
+  z-index: var(--wb-z-spotlight, 1500);
+  pointer-events: none;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  /* Heavy bluish-black so the cutout reads as the only lit area.
+   * 0.55 looked nearly transparent on the lavender background;
+   * 0.7 gives the unmistakable "everything else is dimmed" effect
+   * that tours need to focus attention. */
+  background: rgba(8, 8, 30, 0.7);
+  pointer-events: auto;
+  animation: spotlightFadeIn 220ms ease-out;
+}
+
+.halo {
+  position: fixed;
+  border-radius: var(--wb-radius-2);
+  pointer-events: none;
+  /* Inner stroke + soft outer glow in the brand color. */
+  box-shadow:
+    0 0 0 2px var(--wb-color-primary-500),
+    0 0 28px rgba(99, 91, 255, 0.45);
+  transition:
+    top 180ms ease,
+    left 180ms ease,
+    width 180ms ease,
+    height 180ms ease;
+  animation: spotlightFadeIn 220ms ease-out;
+}
+
+.tooltip {
+  position: fixed;
+  width: 320px;
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-3);
+  box-shadow: var(--wb-shadow-xl);
+  padding: var(--wb-space-4);
+  padding-right: calc(var(--wb-space-4) + 22px); /* room for X */
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  animation: spotlightFadeIn 220ms ease-out;
+  transition:
+    top 180ms ease,
+    left 180ms ease;
+}
+
+.closeBtn {
+  position: absolute;
+  top: var(--wb-space-2);
+  right: var(--wb-space-2);
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--wb-radius-2);
+  color: var(--wb-color-neutral-500);
+  cursor: pointer;
+  padding: 0;
+}
+
+.closeBtn:hover {
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-800);
+}
+
+.closeBtn:focus-visible {
+  outline: 2px solid var(--wb-color-primary-500);
+  outline-offset: 2px;
+}
+
+.stepCounter {
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-color-primary-600);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--wb-text-lg);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-text-primary, var(--wb-color-neutral-900));
+  line-height: var(--wb-leading-tight);
+}
+
+.body {
+  margin: 0;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-700);
+  line-height: var(--wb-leading-relaxed);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-2);
+  margin-top: var(--wb-space-2);
+}
+
+.navBtns {
+  display: flex;
+  gap: var(--wb-space-2);
+  margin-left: auto;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--wb-radius-2);
+  padding: 6px 12px;
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.btnGhost {
+  background: transparent;
+  color: var(--wb-color-neutral-600);
+  border-color: transparent;
+}
+
+.btnGhost:hover {
+  color: var(--wb-color-neutral-800);
+  background: var(--wb-color-neutral-100);
+}
+
+.btnSecondary {
+  background: var(--wb-surface);
+  color: var(--wb-color-neutral-800);
+  border-color: var(--wb-border);
+}
+
+.btnSecondary:hover {
+  background: var(--wb-color-neutral-100);
+}
+
+.btnPrimary {
+  background: var(--wb-color-primary-600);
+  color: #ffffff; /* keep literal — white text on brand bg */
+  border-color: var(--wb-color-primary-600);
+}
+
+.btnPrimary:hover {
+  background: var(--wb-color-primary-700);
+  border-color: var(--wb-color-primary-700);
+}
+
+@keyframes spotlightFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .halo,
+  .tooltip {
+    animation: none;
+    transition: none;
+  }
+}
