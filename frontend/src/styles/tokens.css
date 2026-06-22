@@ -169,16 +169,17 @@
   --wb-z-sticky:   200;
   --wb-z-overlay:  900;
   --wb-z-modal:    1000;
-  --wb-z-popover:  1100;
-  --wb-z-tooltip:  1200;
-  --wb-z-toast:    1300;
-  /* Onboarding Spotlight tour backdrop + tooltip. Sits above every
-     normal surface (modal, popover, toast) so a tour can highlight
-     anything. Listbox popovers (Select dropdowns) intentionally rise
-     ABOVE this layer so dropdowns spawned inside a tour are clickable
-     instead of dimmed by the backdrop. */
+  /* Onboarding Spotlight tour backdrop sits at 1500. Every interactive
+     popover layer (kebab menus, dropdown listboxes, toolbar pickers,
+     tooltips, toasts) renders ABOVE that so spawning them inside a
+     tour shows them on top of the dimmed backdrop instead of being
+     hidden under it. Relative order between layers preserved:
+     popover < listbox < tooltip < toast. */
   --wb-z-spotlight: 1500;
-  --wb-z-listbox:   1600;
+  --wb-z-popover:   1600;
+  --wb-z-listbox:   1650;
+  --wb-z-tooltip:   1700;
+  --wb-z-toast:     1800;
 
   --wb-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
   --wb-shadow-lg: 0 24px 48px rgba(15, 23, 42, 0.18);
