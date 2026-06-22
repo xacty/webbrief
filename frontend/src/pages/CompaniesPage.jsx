@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiFetch } from '../lib/api'
+import { companyToSlug } from '../lib/companySlug'
 import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
 import EmptyState from '../components/onboarding/EmptyState'
@@ -278,8 +279,8 @@ export default function CompaniesPage() {
       setTestMode(false)
       setCompanyFeedback('')
       setModalOpen(false)
-      navigate(`/companies/${data.company.id}`)
-      refreshWorkspace()
+      await refreshWorkspace()
+      navigate(`/c/${companyToSlug(data.company)}/projects`)
     } catch (err) {
       setCompanyFeedback(err.message || 'No se pudo crear la empresa')
     } finally {

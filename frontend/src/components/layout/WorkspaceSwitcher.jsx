@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, ChevronDown, List, Plus, Search } from 'lucide-react'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { companyToSlug } from '../../lib/companySlug'
@@ -23,6 +24,8 @@ export default function WorkspaceSwitcher({
   onViewAllCompanies,
 }) {
   const { currentCompany, accessibleCompanies, switchCompany, loading } = useWorkspace()
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState(null)
@@ -103,6 +106,13 @@ export default function WorkspaceSwitcher({
     switchCompany(slug)
     setOpen(false)
     triggerRef.current?.focus?.()
+    // If the user is on a /c/:slug/<section> route, swap the slug segment
+    // so the URL reflects the new active company without losing the section.
+    const match = location.pathname.match(/^\/c\/[^/]+(\/.*)?$/)
+    if (match) {
+      const sectionTail = match[1] || '/projects'
+      navigate(`/c/${slug}${sectionTail}`)
+    }
   }
 
   function handleCreate() {
