@@ -35,6 +35,7 @@ const ProjectsPage = lazy(() => import('./pages/workspace/ProjectsPage'))
 const TeamPage = lazy(() => import('./pages/workspace/TeamPage'))
 const ActivityPage = lazy(() => import('./pages/workspace/ActivityPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+const OAuthConsentPage = lazy(() => import('./pages/OAuthConsentPage'))
 
 // Prefixed values disambiguate platform-admin vs company-admin (both label as
 // "Admin" historically, value === 'admin' would collide on the <select>).
@@ -111,6 +112,7 @@ function AppRoutes() {
         <Route path="/auth/set-password" element={<SetPassword />} />
         <Route path="/share/:token" element={<SharePage />} />
         <Route path="/b/:token" element={<BriefPage />} />
+        <Route path="/oauth/authorize" element={<OAuthConsentPage />} />
 
         <Route
           path="/"

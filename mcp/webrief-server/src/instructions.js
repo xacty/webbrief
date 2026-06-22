@@ -12,24 +12,24 @@ documents, intake forms). Your job is to help the user create, read and
 edit their projects and pages through the 12 tools below.
 
 ## Read order (always, on first connect)
-1. session.getContext — discover the user profile, the active company
+1. session_getContext — discover the user profile, the active company
    (if one was set), and the list of companies the user can access.
-2. If the user has >1 company, call companies.selectActive BEFORE any
+2. If the user has >1 company, call companies_selectActive BEFORE any
    mutation. The active company is a session default, not a hard binding —
    tools that mutate still require explicit companyId arguments.
 
 ## Flow: create a new project
-1. projects.previewCreateFromContent — pass content (paste/text) plus
+1. projects_previewCreateFromContent — pass content (paste/text) plus
    any optional reference URLs (server fetches them; client gets the
    body back to read). Returns a previewId and auto-detected fields.
-2. projects.createFromPreview — confirm with previewId. Accept an
+2. projects_createFromPreview — confirm with previewId. Accept an
    optional 'overrides' bag if the user wants to tweak name/clientName/
    projectType/businessType/clientEmail at apply time.
 
 ## Flow: update an existing project's metadata
-1. projects.previewUpdate — pass changes (name/clientName/clientEmail/
+1. projects_previewUpdate — pass changes (name/clientName/clientEmail/
    businessType/projectType). Returns a per-field diff vs current.
-2. projects.applyUpdate — commit with previewId.
+2. projects_applyUpdate — commit with previewId.
 
 ## Flow: read project structure
 1. projects.get — returns project meta + page list (id, name, version).
@@ -38,22 +38,22 @@ edit their projects and pages through the 12 tools below.
 
 ## Flow: edit a page's content / SEO
 1. pages.get — record the current version!
-2. pages.previewEdits — try the edit list. See warnings (unmatched
+2. pages_previewEdits — try the edit list. See warnings (unmatched
    selectors) and repairs (invariants normalization).
-3. pages.applyEdits — pass expectedVersion = the version from step 1.
+3. pages_applyEdits — pass expectedVersion = the version from step 1.
    On version_conflict: re-fetch pages.get and replan against the
    currentSnapshot the error returned.
 
 ## Flow: prefill a brief (read-only for now)
-- brief.previewPrefill returns the project's brief questions + the
+- brief_previewPrefill returns the project's brief questions + the
   client content for you to map locally. v1 has NO apply step for brief
   responses yet — surface the proposed answers to the user; the user
   fills them via the WeBrief UI.
 
 ## Flow: draft a new page within an existing project (preview-only)
-- pages.previewDraft returns project context + fetched URL bodies so you
+- pages_previewDraft returns project context + fetched URL bodies so you
   can build a draft locally. The apply step is currently to call
-  pages.applyEdits with insert_section ops on a page-type project.
+  pages_applyEdits with insert_section ops on a page-type project.
 
 ## Hard limits — do NOT try to work around these
 - Image / asset upload: NOT supported. The user uploads images via the
@@ -67,7 +67,7 @@ edit their projects and pages through the 12 tools below.
 - URL fetch policy: only http/https; 10s timeout; 2MB cap; private/local
   hosts (RFC 1918, loopback) refused; no redirects followed.
 
-## Edit operation cheatsheet (pages.applyEdits.edits[] discriminated union)
+## Edit operation cheatsheet (pages_applyEdits.edits[] discriminated union)
 Each op has an 'op' field. Ops that fail to find their target record a
 warning (not an error) so a single typo doesn't abort a batch.
 

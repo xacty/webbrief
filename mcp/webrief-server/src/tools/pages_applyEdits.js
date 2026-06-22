@@ -5,7 +5,7 @@ import { get, put } from '../lib/webbriefClient.js';
 import { applyEditsToContentJson, editOpsArraySchema } from '../lib/editOps.js';
 import { ensureInvariants, SUPPORTED_PROJECT_TYPES } from '../../../../shared/documentInvariants.js';
 
-export const name = 'pages.applyEdits';
+export const name = 'pages_applyEdits';
 
 export const description =
   'What: persists a batch of edit ops to a page. Re-runs the ops against the freshest snapshot the backend has, normalizes via ensureInvariants, and writes the result through PUT /projects/:id/pages (full-replace endpoint — backend bumps version). Returns the saved page (with new version) + opsApplied + warnings + repairs. ' +

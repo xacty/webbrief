@@ -9,7 +9,7 @@ import { checkMcpToken } from '../auth/mcpToken.js';
 import { post } from '../lib/webbriefClient.js';
 import { getPreview, deletePreview } from '../lib/previewStore.js';
 
-export const name = 'projects.createFromPreview';
+export const name = 'projects_createFromPreview';
 
 export const description =
   'What: commits a project preview into a real WeBrief project via POST /projects. Returns the created project and burns the preview so it cannot be applied twice. ' +

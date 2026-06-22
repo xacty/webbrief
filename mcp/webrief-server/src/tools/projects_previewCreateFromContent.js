@@ -10,7 +10,7 @@ import { get } from '../lib/webbriefClient.js';
 import { fetchReferenceUrls } from '../lib/urlFetcher.js';
 import { savePreview } from '../lib/previewStore.js';
 
-export const name = 'projects.previewCreateFromContent';
+export const name = 'projects_previewCreateFromContent';
 
 export const description =
   'What: takes pasted content + optional reference URLs, fetches the URLs server-side under the SSRF-safe policy, applies cheap heuristics to suggest name + projectType, and returns a previewId + summary. Does NOT persist anything. ' +

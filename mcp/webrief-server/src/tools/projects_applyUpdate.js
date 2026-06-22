@@ -4,7 +4,7 @@ import { checkMcpToken } from '../auth/mcpToken.js';
 import { patch } from '../lib/webbriefClient.js';
 import { getPreview, deletePreview } from '../lib/previewStore.js';
 
-export const name = 'projects.applyUpdate';
+export const name = 'projects_applyUpdate';
 
 export const description =
   'What: commits a project meta update preview via PATCH /projects/:id. Returns the updated project. Only the diffed fields (computed in previewUpdate) are sent — untouched columns are not overwritten. ' +

@@ -29,6 +29,7 @@ export default function IntegrationsPage() {
   const [mcpCopied, setMcpCopied] = useState(false)
   const [mcpClient, setMcpClient] = useState('claude-code') // claude-code | codex | claude-desktop
   const [mcpCommandCopied, setMcpCommandCopied] = useState(false)
+  const [mcpEndpointCopied, setMcpEndpointCopied] = useState(false)
   const [mcpShowAdvanced, setMcpShowAdvanced] = useState(false)
 
   useEffect(() => {
@@ -92,6 +93,13 @@ export default function IntegrationsPage() {
     }).catch(() => {})
   }
 
+  function handleMcpEndpointCopy() {
+    navigator.clipboard.writeText(mcpEndpoint).then(() => {
+      setMcpEndpointCopied(true)
+      setTimeout(() => setMcpEndpointCopied(false), 2000)
+    }).catch(() => {})
+  }
+
   // ─── Derived ───────────────────────────────────────────────────────────
 
   // Canonical MCP endpoint URL.
@@ -105,6 +113,22 @@ export default function IntegrationsPage() {
     return `${window.location.origin}/api/mcp`
   }, [])
 
+  // Cursor deep-link via web wrapper (works without protocol handler installed).
+  // Format: cursor.com/en/install-mcp?name=X&config=<base64({"url":...})>
+  const cursorInstallUrl = useMemo(() => {
+    if (!mcpEndpoint || typeof window === 'undefined') return ''
+    const config = JSON.stringify({ url: mcpEndpoint })
+    const b64 = window.btoa(config)
+    return `https://cursor.com/en/install-mcp?name=webbrief&config=${encodeURIComponent(b64)}`
+  }, [mcpEndpoint])
+
+  // VS Code deep-link. Format: vscode:mcp/install?<urlencoded JSON>
+  const vscodeInstallUrl = useMemo(() => {
+    if (!mcpEndpoint) return ''
+    const config = JSON.stringify({ name: 'webbrief', type: 'http', url: mcpEndpoint })
+    return `vscode:mcp/install?${encodeURIComponent(config)}`
+  }, [mcpEndpoint])
+
   // The mcpt_* token to embed in the generated command:
   //   - If the user just created one this session → use the raw value.
   //   - Otherwise the raw was never stored (we only kept the prefix) so we
@@ -115,17 +139,12 @@ export default function IntegrationsPage() {
     {
       value: 'claude-code',
       label: 'Claude Code',
-      hint: 'CLI oficial de Anthropic. Ejecutá el comando en una terminal.',
+      hint: 'CLI oficial de Anthropic. Ejecuta el comando en una terminal.',
     },
     {
       value: 'codex',
       label: 'Codex CLI',
-      hint: 'CLI de OpenAI. Agregá la entrada al archivo ~/.codex/config.toml.',
-    },
-    {
-      value: 'claude-desktop',
-      label: 'Claude Desktop',
-      hint: 'App de escritorio. Agregá la entrada al claude_desktop_config.json.',
+      hint: 'CLI de OpenAI. Agrega la entrada al archivo ~/.codex/config.toml.',
     },
   ]
 
@@ -138,29 +157,16 @@ export default function IntegrationsPage() {
         `  ${mcpEndpoint}`,
       ].join('\n')
     }
-    if (mcpClient === 'codex') {
-      return [
-        '# Agregá al final de ~/.codex/config.toml',
-        '',
-        '[mcp_servers.webbrief]',
-        `url = "${mcpEndpoint}"`,
-        'transport = "http"',
-        '',
-        '[mcp_servers.webbrief.headers]',
-        `Authorization = "Bearer ${mcpEffectiveToken}"`,
-      ].join('\n')
-    }
+    // codex (default)
     return [
-      '// Agregá esto al objeto raíz de claude_desktop_config.json',
-      '"mcpServers": {',
-      '  "webbrief": {',
-      `    "url": "${mcpEndpoint}",`,
-      '    "transport": "http",',
-      '    "headers": {',
-      `      "Authorization": "Bearer ${mcpEffectiveToken}"`,
-      '    }',
-      '  }',
-      '}',
+      '# Agrega al final de ~/.codex/config.toml',
+      '',
+      '[mcp_servers.webbrief]',
+      `url = "${mcpEndpoint}"`,
+      'transport = "http"',
+      '',
+      '[mcp_servers.webbrief.headers]',
+      `Authorization = "Bearer ${mcpEffectiveToken}"`,
     ].join('\n')
   }, [mcpClient, mcpEndpoint, mcpEffectiveToken])
 
@@ -210,7 +216,7 @@ export default function IntegrationsPage() {
             <div className={styles.headerMain}>
               <h1 className={styles.title}>Integraciones</h1>
               <p className={styles.headerMeta}>
-                Conectá WeBrief con tus herramientas para que tu agente de IA
+                Conecta WeBrief con tus herramientas para que tu agente de IA
                 pueda crear y editar contenido en tu nombre.
               </p>
             </div>
@@ -222,136 +228,176 @@ export default function IntegrationsPage() {
         <Card as="section" padding="md" shadow="sm" radius="lg" className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
-              <h2 className={styles.panelTitle}>Conectá tu agente</h2>
+              <h2 className={styles.panelTitle}>Conecta tu agente</h2>
               <p className={styles.panelText}>
-                Conectá Claude Code, Codex o Claude Desktop a WeBrief vía MCP.
+                Conecta tu cliente de IA (Claude Desktop, Cursor, VS Code, Claude Code o Codex) a WeBrief vía MCP.
                 El agente podrá crear y editar proyectos, páginas y briefs en tu nombre.
               </p>
             </div>
             <Plug className={styles.panelIcon} aria-hidden="true" />
           </div>
 
-          {/* Step 1 — Generate token */}
-          <div className={styles.mcpStep}>
-            <div className={styles.mcpStepHead}>
-              <span className={styles.mcpStepNum}>1</span>
-              <div className={styles.mcpStepBody}>
-                <h3 className={styles.mcpStepTitle}>Generá tu token de acceso</h3>
-                <p className={styles.mcpStepText}>
-                  Los tokens son de larga duración y se muestran <strong>una sola vez</strong>.
-                  Si ya tenés uno guardado, podés saltarte este paso.
-                </p>
+          {/* ─── Section 1: Conexión rápida ─── */}
+          <div className={styles.mcpSection}>
+            <div className={styles.mcpSectionHead}>
+              <Sparkles size={18} aria-hidden="true" className={styles.mcpSectionIcon} />
+              <div>
+                <h2 className={styles.mcpSectionTitle}>Conexión rápida</h2>
+                <p className={styles.mcpSectionSubtitle}>Un clic o pegar una URL. Sin terminal.</p>
               </div>
             </div>
 
-            <div className={styles.mcpStepAction}>
-              <Button
-                type="button"
-                variant="primary"
-                size="md"
-                icon={<Sparkles size={14} />}
-                loading={mcpBusy === 'create'}
-                disabled={mcpBusy === 'create'}
-                onClick={handleMcpQuickGenerate}
-              >
-                {mcpNewToken ? 'Generar otro' : 'Generar token'}
-              </Button>
-            </div>
+            <div className={styles.mcpCardGrid}>
 
-            {mcpNewToken && (
-              <div className={styles.mcpReveal}>
-                <p className={styles.mcpRevealLabel}>
-                  Token nuevo · este valor no se podrá ver de nuevo:
+              {/* Claude Desktop */}
+              <div className={styles.mcpCard}>
+                <h3 className={styles.mcpCardTitle}>Claude Desktop</h3>
+                <p className={styles.mcpCardSubtitle}>App de escritorio — pega una URL</p>
+                <p className={styles.mcpCardHelper}>
+                  Abre Claude Desktop → <strong>Settings → Connectors → + → Add custom connector</strong>.
+                  Pega esta URL y autoriza el acceso desde el navegador.
                 </p>
-                <div className={styles.mcpRevealRow}>
-                  <code className={styles.mcpCode}>{mcpNewToken.raw}</code>
+                <div className={styles.mcpCardInputRow}>
+                  <Input
+                    readOnly
+                    value={mcpEndpoint}
+                    onFocus={(e) => e.target.select()}
+                    className={styles.mcpCardInput}
+                  />
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
-                    icon={<Copy size={14} />}
-                    onClick={handleMcpCopy}
+                    onClick={() => {
+                      navigator.clipboard.writeText(mcpEndpoint).catch(() => {})
+                    }}
                   >
-                    {mcpCopied ? 'Copiado' : 'Copiar token'}
+                    <Copy size={14} aria-hidden="true" /> Copiar
                   </Button>
                 </div>
               </div>
-            )}
-            {mcpError && <p className={styles.error} role="alert">{mcpError}</p>}
-          </div>
 
-          {/* Step 2 — Pick client */}
-          <div className={styles.mcpStep}>
-            <div className={styles.mcpStepHead}>
-              <span className={styles.mcpStepNum}>2</span>
-              <div className={styles.mcpStepBody}>
-                <h3 className={styles.mcpStepTitle}>Elegí tu cliente MCP</h3>
-                <p className={styles.mcpStepText}>
-                  {mcpClientOptions.find((c) => c.value === mcpClient)?.hint}
+              {/* Cursor */}
+              <div className={styles.mcpCard}>
+                <h3 className={styles.mcpCardTitle}>Cursor</h3>
+                <p className={styles.mcpCardSubtitle}>IDE de IA — un clic</p>
+                <p className={styles.mcpCardHelper}>
+                  Haz clic en el botón. Cursor confirmará la instalación y abrirá el navegador para autorizar.
                 </p>
-              </div>
-            </div>
-
-            <div className={styles.mcpClientGrid} role="radiogroup" aria-label="Cliente MCP">
-              {mcpClientOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={mcpClient === opt.value}
-                  onClick={() => setMcpClient(opt.value)}
-                  className={`${styles.mcpClientOption} ${mcpClient === opt.value ? styles.mcpClientOptionActive : ''}`}
+                <a
+                  href={cursorInstallUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.mcpCardDeepLink}
+                  aria-label="Agregar webbrief a Cursor"
                 >
-                  <Terminal size={14} aria-hidden="true" />
-                  <span>{opt.label}</span>
-                </button>
-              ))}
+                  <img
+                    src="https://cursor.com/deeplink/mcp-install-dark.svg"
+                    alt="Add webbrief MCP server to Cursor"
+                    height="32"
+                  />
+                </a>
+                <details className={styles.mcpCardManual}>
+                  <summary>Ver snippet manual</summary>
+                  <p className={styles.mcpCardPathNote}>
+                    Archivo: <code>~/.cursor/mcp.json</code> (global) o <code>.cursor/mcp.json</code> (por proyecto)
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{JSON.stringify({ mcpServers: { webbrief: { url: mcpEndpoint } } }, null, 2)}</code></pre>
+                </details>
+              </div>
+
+              {/* VS Code */}
+              <div className={styles.mcpCard}>
+                <h3 className={styles.mcpCardTitle}>VS Code</h3>
+                <p className={styles.mcpCardSubtitle}>Con MCP integrado (1.95+) — un clic</p>
+                <p className={styles.mcpCardHelper}>
+                  Haz clic en el botón. VS Code confirmará la instalación y abrirá el navegador para autorizar.
+                </p>
+                <a href={vscodeInstallUrl} className={styles.mcpCardDeepLink}>
+                  <Button variant="primary" size="sm" type="button">
+                    Agregar a VS Code
+                  </Button>
+                </a>
+                <details className={styles.mcpCardManual}>
+                  <summary>Ver snippet manual</summary>
+                  <p className={styles.mcpCardPathNote}>
+                    macOS: <code>~/Library/Application Support/Code/User/mcp.json</code><br />
+                    Windows: <code>%APPDATA%\Code\User\mcp.json</code><br />
+                    Linux: <code>~/.config/Code/User/mcp.json</code><br />
+                    O por workspace: <code>.vscode/mcp.json</code>
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{JSON.stringify({ servers: { webrief: { type: 'http', url: mcpEndpoint } } }, null, 2)}</code></pre>
+                </details>
+              </div>
+
             </div>
           </div>
 
-          {/* Step 3 — Copy command */}
-          <div className={styles.mcpStep}>
-            <div className={styles.mcpStepHead}>
-              <span className={styles.mcpStepNum}>3</span>
-              <div className={styles.mcpStepBody}>
-                <h3 className={styles.mcpStepTitle}>Pegá esto en tu cliente</h3>
-                <p className={styles.mcpStepText}>
-                  {!mcpNewToken && (
-                    <span className={styles.mcpHint}>
-                      ⚠ El comando muestra un placeholder porque tu token raw no está disponible.
-                      Generá uno arriba para autocompletarlo.
-                    </span>
-                  )}
-                  {mcpNewToken && 'El comando ya incluye tu token recién generado.'}
-                </p>
+            {/* ─── Section 2: Otros clientes ─── */}
+            <div className={styles.mcpSection}>
+              <div className={styles.mcpSectionHead}>
+                <Terminal size={18} aria-hidden="true" className={styles.mcpSectionIcon} />
+                <div>
+                  <h2 className={styles.mcpSectionTitle}>Otros clientes</h2>
+                  <p className={styles.mcpSectionSubtitle}>Para clientes de terminal o que requieren configuración manual.</p>
+                </div>
+              </div>
+
+              <div className={styles.mcpCardGrid}>
+
+                {/* Claude Code */}
+                <div className={styles.mcpCard}>
+                  <h3 className={styles.mcpCardTitle}>Claude Code</h3>
+                  <p className={styles.mcpCardSubtitle}>CLI oficial de Anthropic</p>
+                  <p className={styles.mcpCardHelper}>
+                    Ejecuta este comando en tu terminal. Claude Code abrirá el navegador para autorizar la primera vez.
+                    No necesitas generar ningún token.
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{`claude mcp add --transport http webbrief ${mcpEndpoint}`}</code></pre>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`claude mcp add --transport http webbrief ${mcpEndpoint}`).catch(() => {})
+                    }}
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    <Copy size={14} aria-hidden="true" /> Copiar comando
+                  </Button>
+                </div>
+
+                {/* Codex CLI */}
+                <div className={styles.mcpCard}>
+                  <h3 className={styles.mcpCardTitle}>Codex CLI</h3>
+                  <p className={styles.mcpCardSubtitle}>CLI de OpenAI</p>
+                  <p className={styles.mcpCardHelper}>
+                    Agrega este bloque al archivo, luego ejecuta el comando de login en tu terminal.
+                    No necesitas generar ningún token.
+                  </p>
+                  <p className={styles.mcpCardPathNote}>
+                    Archivo: <code>~/.codex/config.toml</code>
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>{`[mcp_servers.webbrief]\nurl = "${mcpEndpoint}"`}</code></pre>
+                  <p className={styles.mcpCardPathNote} style={{ marginTop: 'var(--wb-space-2)' }}>
+                    Después, en tu terminal:
+                  </p>
+                  <pre className={styles.mcpCardCode}><code>codex mcp login webbrief</code></pre>
+                </div>
+
               </div>
             </div>
 
-            <div className={styles.mcpCommandWrap}>
-              <pre className={styles.mcpCommand}><code>{mcpCommand}</code></pre>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                icon={<Copy size={14} />}
-                onClick={handleMcpCommandCopy}
-                className={styles.mcpCommandCopy}
-              >
-                {mcpCommandCopied ? 'Copiado' : 'Copiar'}
-              </Button>
-            </div>
-
-            <p className={styles.mcpAfter}>
-              Después de pegarlo, reiniciá tu cliente y probá pedirle:
-              <em> "Listá mis empresas de WeBrief"</em>.
+            {/* ─── ChatGPT future note ─── */}
+            <p className={styles.mcpChatgptNote}>
+              ChatGPT se agregará a "Conexión rápida" cuando OpenAI habilite connectors MCP públicos.
             </p>
-          </div>
 
-          {/* Token management — collapsed by default */}
-          <div className={styles.mcpAdvanced}>
+          {/* Divider + toggle for advanced (bearer-token) wizard */}
+          <div className={styles.mcpAdvancedDivider}>
             <button
               type="button"
-              className={styles.mcpAdvancedToggle}
+              className={styles.mcpAdvancedDividerToggle}
               onClick={() => setMcpShowAdvanced((v) => !v)}
               aria-expanded={mcpShowAdvanced}
             >
@@ -360,66 +406,213 @@ export default function IntegrationsPage() {
                 className={`${styles.mcpAdvancedChevron} ${mcpShowAdvanced ? styles.mcpAdvancedChevronOpen : ''}`}
                 aria-hidden="true"
               />
-              Tokens activos {mcpTokens.length > 0 && `(${mcpTokens.length})`}
+              {mcpShowAdvanced
+                ? 'Ocultar método con token'
+                : 'Mostrar método con token (para automatización o CI)'}
             </button>
-
-            {mcpShowAdvanced && (
-              <div className={styles.mcpAdvancedPanel}>
-                <form className={styles.form} onSubmit={handleMcpCreate}>
-                  <div className={styles.mcpCreateRow}>
-                    <Input
-                      id="mcp-token-label"
-                      label="Crear token con nombre personalizado"
-                      type="text"
-                      placeholder="p.ej. Claude Code en mi laptop"
-                      value={mcpLabelInput}
-                      onChange={(e) => setMcpLabelInput(e.target.value)}
-                      maxLength={120}
-                    />
-                    <Button
-                      type="submit"
-                      variant="secondary"
-                      size="md"
-                      disabled={!mcpLabelInput.trim() || mcpBusy === 'create'}
-                      loading={mcpBusy === 'create'}
-                    >
-                      Crear
-                    </Button>
-                  </div>
-                </form>
-
-                {mcpTokens.length > 0 ? (
-                  <ul className={styles.mcpList}>
-                    {mcpTokens.map((token) => (
-                      <li key={token.id} className={styles.mcpItem}>
-                        <div className={styles.mcpItemInfo}>
-                          <span className={styles.mcpItemLabel}>{token.label}</span>
-                          <code className={styles.mcpItemPrefix}>{token.prefix}…</code>
-                          <span className={styles.mcpItemMeta}>
-                            Creado {new Date(token.created_at).toLocaleDateString('es')}
-                            {token.last_used_at && ` · Último uso ${new Date(token.last_used_at).toLocaleDateString('es')}`}
-                          </span>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          size="sm"
-                          icon={<Trash2 size={14} />}
-                          disabled={mcpBusy === token.id}
-                          loading={mcpBusy === token.id}
-                          onClick={() => handleMcpRevoke(token.id)}
-                        >
-                          Revocar
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className={styles.emptyState}>Sin tokens activos.</p>
-                )}
-              </div>
-            )}
           </div>
+
+          {mcpShowAdvanced && (
+            <>
+              <p className={styles.mcpTokenContext}>
+                Solo necesitas un token si tu cliente no soporta OAuth o si quieres conectar desde un script,
+                CI o automatización. Para uso interactivo, usa los botones de arriba.
+              </p>
+
+              {/* Step 1 — Generate token */}
+              <div className={styles.mcpStep}>
+                <div className={styles.mcpStepHead}>
+                  <span className={styles.mcpStepNum}>1</span>
+                  <div className={styles.mcpStepBody}>
+                    <h3 className={styles.mcpStepTitle}>Genera tu token de acceso</h3>
+                    <p className={styles.mcpStepText}>
+                      Los tokens son de larga duración y se muestran <strong>una sola vez</strong>.
+                      Si ya tienes uno guardado, puedes saltarte este paso.
+                    </p>
+                  </div>
+                </div>
+
+                <div className={styles.mcpStepAction}>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    icon={<Sparkles size={14} />}
+                    loading={mcpBusy === 'create'}
+                    disabled={mcpBusy === 'create'}
+                    onClick={handleMcpQuickGenerate}
+                  >
+                    {mcpNewToken ? 'Generar otro' : 'Generar token'}
+                  </Button>
+                </div>
+
+                {mcpNewToken && (
+                  <div className={styles.mcpReveal}>
+                    <p className={styles.mcpRevealLabel}>
+                      Token nuevo · este valor no se podrá ver de nuevo:
+                    </p>
+                    <div className={styles.mcpRevealRow}>
+                      <code className={styles.mcpCode}>{mcpNewToken.raw}</code>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        icon={<Copy size={14} />}
+                        onClick={handleMcpCopy}
+                      >
+                        {mcpCopied ? 'Copiado' : 'Copiar token'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {mcpError && <p className={styles.error} role="alert">{mcpError}</p>}
+              </div>
+
+              {/* Step 2 — Pick client */}
+              <div className={styles.mcpStep}>
+                <div className={styles.mcpStepHead}>
+                  <span className={styles.mcpStepNum}>2</span>
+                  <div className={styles.mcpStepBody}>
+                    <h3 className={styles.mcpStepTitle}>Elige tu cliente MCP</h3>
+                    <p className={styles.mcpStepText}>
+                      {mcpClientOptions.find((c) => c.value === mcpClient)?.hint}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={styles.mcpClientGrid} role="radiogroup" aria-label="Cliente MCP">
+                  {mcpClientOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={mcpClient === opt.value}
+                      onClick={() => setMcpClient(opt.value)}
+                      className={`${styles.mcpClientOption} ${mcpClient === opt.value ? styles.mcpClientOptionActive : ''}`}
+                    >
+                      <Terminal size={14} aria-hidden="true" />
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 3 — Copy command */}
+              <div className={styles.mcpStep}>
+                <div className={styles.mcpStepHead}>
+                  <span className={styles.mcpStepNum}>3</span>
+                  <div className={styles.mcpStepBody}>
+                    <h3 className={styles.mcpStepTitle}>
+                      {mcpClient === 'claude-code'
+                        ? 'Ejecuta este comando en tu terminal'
+                        : 'Agrega este bloque a ~/.codex/config.toml'}
+                    </h3>
+                    <p className={styles.mcpStepText}>
+                      {!mcpNewToken && (
+                        <span className={styles.mcpHint}>
+                          ⚠ El comando muestra un placeholder porque tu token no está disponible.
+                          Genera uno arriba para autocompletarlo.
+                        </span>
+                      )}
+                      {mcpNewToken && 'El comando ya incluye tu token recién generado.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={styles.mcpCommandWrap}>
+                  <pre className={styles.mcpCommand}><code>{mcpCommand}</code></pre>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={<Copy size={14} />}
+                    onClick={handleMcpCommandCopy}
+                    className={styles.mcpCommandCopy}
+                  >
+                    {mcpCommandCopied ? 'Copiado' : 'Copiar'}
+                  </Button>
+                </div>
+
+                <p className={styles.mcpAfter}>
+                  Después de pegarlo, reinicia tu cliente y prueba pedirle:
+                  <em> "Lista mis empresas de WeBrief"</em>.
+                </p>
+              </div>
+
+              {/* Token management list */}
+              <div className={styles.mcpAdvanced}>
+                <button
+                  type="button"
+                  className={styles.mcpAdvancedToggle}
+                  onClick={() => setMcpShowAdvanced((v) => !v)}
+                  aria-expanded={mcpShowAdvanced}
+                  aria-label="Ocultar método avanzado"
+                >
+                  <ChevronDown
+                    size={14}
+                    className={`${styles.mcpAdvancedChevron} ${styles.mcpAdvancedChevronOpen}`}
+                    aria-hidden="true"
+                  />
+                  Tokens activos {mcpTokens.length > 0 && `(${mcpTokens.length})`}
+                </button>
+
+                <div className={styles.mcpAdvancedPanel}>
+                  <form className={styles.form} onSubmit={handleMcpCreate}>
+                    <div className={styles.mcpCreateRow}>
+                      <Input
+                        id="mcp-token-label"
+                        label="Crear token con nombre personalizado"
+                        type="text"
+                        placeholder="p.ej. Claude Code en mi laptop"
+                        value={mcpLabelInput}
+                        onChange={(e) => setMcpLabelInput(e.target.value)}
+                        maxLength={120}
+                      />
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        size="md"
+                        disabled={!mcpLabelInput.trim() || mcpBusy === 'create'}
+                        loading={mcpBusy === 'create'}
+                      >
+                        Crear
+                      </Button>
+                    </div>
+                  </form>
+
+                  {mcpTokens.length > 0 ? (
+                    <ul className={styles.mcpList}>
+                      {mcpTokens.map((token) => (
+                        <li key={token.id} className={styles.mcpItem}>
+                          <div className={styles.mcpItemInfo}>
+                            <span className={styles.mcpItemLabel}>{token.label}</span>
+                            <code className={styles.mcpItemPrefix}>{token.prefix}…</code>
+                            <span className={styles.mcpItemMeta}>
+                              Creado {new Date(token.created_at).toLocaleDateString('es')}
+                              {token.last_used_at && ` · Último uso ${new Date(token.last_used_at).toLocaleDateString('es')}`}
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
+                            icon={<Trash2 size={14} />}
+                            disabled={mcpBusy === token.id}
+                            loading={mcpBusy === token.id}
+                            onClick={() => handleMcpRevoke(token.id)}
+                          >
+                            Revocar
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className={styles.emptyState}>Sin tokens activos.</p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </Card>
       </div>
     </div>

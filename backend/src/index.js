@@ -18,6 +18,7 @@ import trashRoutes from './routes/trash.js'
 import securityRoutes from './routes/security.js'
 import mcpTokensRoutes from './routes/mcpTokens.js'
 import mcpRoutes from './routes/mcp.js'
+import oauthRoutes from './routes/oauth.js'
 import {
   buildCorsOptions,
   enforceIpSecurityBlock,
@@ -37,6 +38,7 @@ app.use(requestTimeout())
 app.use(securityHeaders)
 app.use(cors(buildCorsOptions()))
 app.use(enforceIpSecurityBlock)
+app.use(oauthRoutes)
 
 // Ruta de prueba para verificar que el servidor funciona
 app.get('/api/health', (req, res) => {
