@@ -4,20 +4,22 @@
  * Each builder returns a tour spec:
  *   { id, steps, onComplete?, onSkip? }
  *
- * The OnboardingChecklist task click handler picks the right builder
- * for the task being launched and calls `start(tourSpec)`. Builders
- * receive a `ctx` with workspace + auth state so steps can branch:
+ * The TourContext chain dispatcher picks the right builder for each
+ * task in the queue and resolves a context `ctx`:
  *
  *   ctx = {
+ *     isPlatformAdmin,
+ *     role,
  *     currentCompanySlug,
  *     hasProjects,
- *     role,                 // 'admin' | 'manager' | 'editor' | 'content_writer' | 'designer' | 'developer'
- *     isPlatformAdmin,
- *     projectType,          // when launched from inside the editor
+ *     projects,
+ *     lastProject,
+ *     projectId,        // present when launching the edit_page / share / comment tours
+ *     projectType,      // ditto
  *   }
  *
  * Step.target uses CSS selectors for `data-tour="..."` attributes
- * planted in the existing UI (F3a). Spotlight resolves them at render.
+ * planted in the existing UI.
  */
 
 import { markTaskDone } from './tutorialState'
@@ -25,7 +27,7 @@ import { markTaskDone } from './tutorialState'
 const Q = (key) => `[data-tour="${key}"]`
 
 // ─── Conoce tu workspace ────────────────────────────────────────────
-// Informational only — guides the user through the shell.
+// Informational only — guides through the shell.
 export function buildWorkspaceTour(ctx = {}) {
   const { isPlatformAdmin = false } = ctx
   return {
@@ -76,48 +78,71 @@ export function buildWorkspaceTour(ctx = {}) {
   }
 }
 
-// ─── Crea tu primer proyecto ────────────────────────────────────────
-// Branches on hasProjects: if there is at least one, just show an
-// informational pointer at the +Proyecto button. If empty, walk the
-// user through the form fields.
-export function buildCreateProjectTour(ctx = {}) {
-  const { hasProjects = false, currentCompanySlug = null } = ctx
-
-  if (hasProjects) {
-    return {
-      id: 'create_project_info',
-      onComplete: () => markTaskDone('create_project'),
-      onSkip: () => markTaskDone('create_project'),
-      steps: [
-        {
-          target: Q('create-project-btn'),
-          title: 'Crear un proyecto',
-          body:
-            'Cada vez que quieras un brief, artículo, página o FAQ, lo creas desde aquí. Elige tipo, dale nombre y opcionalmente parte de una plantilla.',
-          placement: 'bottom',
-          route: currentCompanySlug ? `/c/${currentCompanySlug}/projects` : undefined,
-        },
-      ],
-    }
-  }
-
+// ─── Invita a un miembro del equipo ─────────────────────────────────
+// Multi-step guided: sidebar → button → modal → user cancels.
+export function buildInviteMemberTour(ctx = {}) {
+  const { currentCompanySlug = null } = ctx
+  const teamRoute = currentCompanySlug ? `/c/${currentCompanySlug}/team` : null
   return {
-    id: 'create_project_guided',
+    id: 'invite_member',
+    onComplete: () => markTaskDone('invite_member'),
+    onSkip: () => markTaskDone('invite_member'),
+    steps: [
+      {
+        target: Q('sidebar-team'),
+        title: 'Sección Equipo',
+        body:
+          'Aquí gestionas quién tiene acceso a esta empresa. Pulsa Siguiente para ir a la sección.',
+        placement: 'right',
+        onAdvance: ({ navigate }) => {
+          if (teamRoute) navigate(teamRoute)
+        },
+      },
+      {
+        target: Q('invite-member-btn'),
+        title: 'Invitar miembro',
+        body:
+          'Este botón abre el formulario de invitación. Pulsa Siguiente para abrirlo.',
+        placement: 'bottom',
+        route: teamRoute || undefined,
+        onAdvance: ({ navigate }) => {
+          if (teamRoute) navigate(`${teamRoute}?invite=1`)
+        },
+      },
+      {
+        target: Q('invite-modal'),
+        title: 'Formulario de invitación',
+        body:
+          'Email del invitado, su rol y nombre opcional. Como esto es un tutorial, NO envíes la invitación: pulsa Cancelar en el modal cuando termines de explorarlo, luego Siguiente.',
+        placement: 'right',
+      },
+    ],
+  }
+}
+
+// ─── Crea tu primer proyecto ────────────────────────────────────────
+// Always-guided: 5 steps regardless of whether projects already exist.
+// The user learns the form even if they have existing projects.
+export function buildCreateProjectTour(ctx = {}) {
+  const { currentCompanySlug = null } = ctx
+  const projectsRoute = currentCompanySlug ? `/c/${currentCompanySlug}/projects` : null
+  const newProjectRoute = currentCompanySlug
+    ? `/new-project?company=${currentCompanySlug}`
+    : '/new-project'
+  return {
+    id: 'create_project',
     onComplete: () => markTaskDone('create_project'),
     onSkip: () => markTaskDone('create_project'),
     steps: [
       {
         target: Q('create-project-btn'),
-        title: 'Crea tu primer proyecto',
+        title: 'Crear un proyecto',
         body:
-          'Pulsa este botón para abrir el formulario. Vamos a llenarlo juntos en los próximos pasos.',
+          'Cada vez que quieras un brief, artículo, página o FAQs, lo creas desde aquí. Pulsa Siguiente para abrir el formulario.',
         placement: 'bottom',
-        route: currentCompanySlug ? `/c/${currentCompanySlug}/projects` : undefined,
-        nextLabel: 'Abrir formulario',
+        route: projectsRoute || undefined,
         onAdvance: ({ navigate }) => {
-          navigate(
-            currentCompanySlug ? `/new-project?company=${currentCompanySlug}` : '/new-project',
-          )
+          navigate(newProjectRoute)
         },
       },
       {
@@ -126,7 +151,7 @@ export function buildCreateProjectTour(ctx = {}) {
         body:
           'Algo descriptivo para identificarlo después: "Landing campaña Q3", "Artículo blog mayo", etc.',
         placement: 'right',
-        route: '/new-project',
+        route: newProjectRoute,
       },
       {
         target: Q('newproject-type'),
@@ -146,34 +171,23 @@ export function buildCreateProjectTour(ctx = {}) {
         target: Q('newproject-submit'),
         title: 'Crea el proyecto',
         body:
-          'Cuando esté listo, pulsa "Crear proyecto" y te llevamos directo al editor para empezar a llenarlo.',
+          'Cuando esté listo, pulsa "Crear proyecto" y te llevamos directo al editor. El tutorial continúa allí con el siguiente paso.',
         placement: 'top',
-        skipLabel: 'Cerrar tour',
       },
     ],
   }
 }
 
 // ─── Edita una página ───────────────────────────────────────────────
-// Project-editor walkthrough. Heavily branched by projectType + role.
-// Currently focused on `page` (Página Web). Other types degrade
-// gracefully to a one-step info bubble.
+// Editor walkthrough. Branches on projectType + role.
+// public_viewer never reaches this (gated at AppShell level).
 export function buildEditPageTour(ctx = {}) {
-  const { projectType = 'page', role = null } = ctx
-
-  // Public viewers get no editor tour at all.
-  if (role === 'public_viewer') {
-    return {
-      id: 'edit_page_skipped',
-      onComplete: () => markTaskDone('edit_page'),
-      steps: [],
-    }
-  }
+  const { projectType = 'page', role = null, projectId = null } = ctx
+  const editorRoute = projectId ? `/project/${projectId}/editor` : null
 
   if (projectType !== 'page') {
-    // Brief/Artículo/FAQ — single info bubble pointing at sections panel.
     return {
-      id: 'edit_page_other',
+      id: 'edit_page',
       onComplete: () => markTaskDone('edit_page'),
       onSkip: () => markTaskDone('edit_page'),
       steps: [
@@ -183,16 +197,16 @@ export function buildEditPageTour(ctx = {}) {
           body:
             'Cada bloque del panel izquierdo es una sección. Doble click en el título para renombrarla; arrastra para reordenar.',
           placement: 'right',
+          route: editorRoute || undefined,
         },
       ],
     }
   }
 
-  // Página Web — full editor walkthrough.
   const skipFloatingBar = role === 'content_writer'
 
   return {
-    id: 'edit_page_web',
+    id: 'edit_page',
     onComplete: () => markTaskDone('edit_page'),
     onSkip: () => markTaskDone('edit_page'),
     steps: [
@@ -202,6 +216,7 @@ export function buildEditPageTour(ctx = {}) {
         body:
           'Una página web puede tener varias páginas (Inicio, Servicios, Contacto…). Cambia entre ellas con estas pills. El botón + agrega una nueva.',
         placement: 'bottom',
+        route: editorRoute || undefined,
       },
       {
         target: Q('editor-sections'),
@@ -232,42 +247,110 @@ export function buildEditPageTour(ctx = {}) {
   }
 }
 
-// ─── Modales info: share link + comentario ──────────────────────────
-// One-step tours that read more like a modal. We still use Spotlight
-// for visual consistency, with target=null so it centers on the
-// viewport.
+// ─── Comparte un link público ───────────────────────────────────────
+// Spotlight ON the editor's "Crear link privado" CTA — info only,
+// does NOT actually create a link.
+export function buildShareLinkTour(ctx = {}) {
+  const { projectId = null } = ctx
+  const editorRoute = projectId ? `/project/${projectId}/editor` : null
 
-export function buildShareLinkInfo() {
+  if (!editorRoute) {
+    return {
+      id: 'create_share_link',
+      onComplete: () => markTaskDone('create_share_link'),
+      onSkip: () => markTaskDone('create_share_link'),
+      steps: [
+        {
+          target: null,
+          title: 'Comparte un link público',
+          body:
+            'Necesitas un proyecto para probar esto. Vuelve cuando hayas creado uno y mostraré dónde está el botón "Crear link privado" en el editor.',
+          placement: 'bottom',
+        },
+      ],
+    }
+  }
+
   return {
-    id: 'share_link_info',
+    id: 'create_share_link',
     onComplete: () => markTaskDone('create_share_link'),
     onSkip: () => markTaskDone('create_share_link'),
     steps: [
       {
-        target: null,
+        target: Q('editor-share-link'),
         title: 'Comparte un link público',
         body:
-          'Desde el panel derecho del editor (Actividad → "Crear link privado"), generas un link que puedes enviar al cliente para que vea o comente el proyecto sin necesidad de cuenta. Cada link tiene su propio control de permisos.',
-        placement: 'bottom',
-        nextLabel: 'Entendido',
+          'Desde aquí generas un link privado para enviar al cliente. Lo puede ver y comentar sin necesidad de cuenta. Cada link tiene su propio control de permisos. (Esto es solo informativo — pulsa Listo para continuar.)',
+        placement: 'left',
+        route: editorRoute,
       },
     ],
   }
 }
 
-export function buildLeaveCommentInfo() {
+// ─── Deja un comentario ─────────────────────────────────────────────
+// Spotlight ON the editor content with copy explaining the gesture.
+// Info only — does NOT force the user to add a real comment.
+export function buildLeaveCommentTour(ctx = {}) {
+  const { projectId = null } = ctx
+  const editorRoute = projectId ? `/project/${projectId}/editor` : null
+
+  if (!editorRoute) {
+    return {
+      id: 'leave_comment',
+      onComplete: () => markTaskDone('leave_comment'),
+      onSkip: () => markTaskDone('leave_comment'),
+      steps: [
+        {
+          target: null,
+          title: 'Deja un comentario',
+          body:
+            'Necesitas un proyecto para probar esto. Vuelve cuando hayas creado uno y mostraré cómo dejar comentarios anclados al texto.',
+          placement: 'bottom',
+        },
+      ],
+    }
+  }
+
   return {
-    id: 'leave_comment_info',
+    id: 'leave_comment',
     onComplete: () => markTaskDone('leave_comment'),
     onSkip: () => markTaskDone('leave_comment'),
     steps: [
       {
-        target: null,
+        target: Q('editor-content'),
         title: 'Deja un comentario',
         body:
-          'Selecciona texto dentro del editor y click derecho para dejar un comentario anclado. Aparece en el hilo del panel derecho. Igual funciona para clientes que entran por link público.',
+          'Selecciona texto dentro del editor y haz click derecho para anclar un comentario. Aparece en el hilo del panel derecho. Los clientes que entran por link público también pueden comentar. (Solo informativo — pulsa Listo para continuar.)',
+        placement: 'top',
+        route: editorRoute,
+      },
+    ],
+  }
+}
+
+// ─── No-project fallback ────────────────────────────────────────────
+// Used when edit_page is reached but no project exists.
+// `onCreateNow` (passed in by TourContext) restarts the chain from
+// create_project so the user lands in the guided form.
+export function buildNoProjectFallback(ctx = {}) {
+  const { onCreateNow } = ctx
+  return {
+    id: 'edit_page_no_project',
+    onComplete: () => markTaskDone('edit_page'),
+    onSkip: () => markTaskDone('edit_page'),
+    steps: [
+      {
+        target: null,
+        title: 'Necesitas un proyecto primero',
+        body:
+          'Para mostrar cómo editar una página, primero hay que crear un proyecto. Pulsa "Crear con tutorial" para abrir el formulario guiado, o "Saltar" para continuar con los siguientes pasos del tutorial.',
         placement: 'bottom',
-        nextLabel: 'Entendido',
+        nextLabel: 'Crear con tutorial',
+        skipLabel: 'Saltar este paso',
+        onAdvance: () => {
+          if (typeof onCreateNow === 'function') onCreateNow()
+        },
       },
     ],
   }

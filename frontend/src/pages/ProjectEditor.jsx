@@ -7580,7 +7580,7 @@ function EditorPanel({
             onMouseDown={focusEditorFromPage}
             data-flash-container=""
           >
-            <div ref={wrapperRef} className={`${seoRulesStyles.editorCanvasContent} ${styles.canvas}`}>
+            <div ref={wrapperRef} className={`${seoRulesStyles.editorCanvasContent} ${styles.canvas}`} data-tour="editor-content">
               <EditorContent editor={editor} />
               <TableInlineButtons editor={editor} wrapperRef={wrapperRef} />
               <TableRightClickMenu editor={editor} />
@@ -9330,6 +9330,7 @@ function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, 
           size="sm"
           fullWidth
           loading={busy}
+          data-tour="editor-share-link"
           onClick={handleCreate}
         >
           Crear link privado

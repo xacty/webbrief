@@ -15,14 +15,6 @@ import { useWorkspace } from '../../contexts/WorkspaceContext'
 import FirstTimeTooltipsRoot from '../onboarding/FirstTimeTooltipsRoot'
 import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
 import { useTour } from '../onboarding/TourContext'
-import { readCompanyCache } from '../../lib/companyCache'
-import {
-  buildWorkspaceTour,
-  buildCreateProjectTour,
-  buildEditPageTour,
-  buildShareLinkInfo,
-  buildLeaveCommentInfo,
-} from '../../lib/onboardingTours'
 import {
   getTutorialState,
   markDismissed,
@@ -45,8 +37,8 @@ export default function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
-  const { accessibleCompanies, currentCompany, currentCompanySlug } = useWorkspace()
-  const { start: startTour } = useTour()
+  const { accessibleCompanies, currentCompanySlug } = useWorkspace()
+  const { startFullTutorial } = useTour()
   const canCreateCompany = canCreateCompanyCapability(currentUser)
   const canViewAllCompaniesFromSwitcher = isAdmin(currentUser) || accessibleCompanies.length >= 3
   const canSeeCompaniesListNav = isAdmin(currentUser) || accessibleCompanies.length >= 3
@@ -104,59 +96,11 @@ export default function AppShell() {
     navigate('/login')
   }
 
+  // Click a checklist task → start the chain from that task. The
+  // chain auto-advances through remaining (pending) tasks; the
+  // clicked task itself is always replayed, even if already done.
   function handleTaskClick(key) {
-    const slug = currentCompanySlug
-    const isPlatformAdmin = isAdmin(currentUser)
-    // Resolve membership role for the active company (falls back to
-    // rolePreview when the admin is simulating).
-    const role =
-      currentUser?.rolePreview ||
-      currentUser?.memberships?.find((m) => m.companyId === currentCompany?.id)?.role ||
-      null
-    const cached = currentCompany?.id ? readCompanyCache(currentCompany.id) : null
-    const projects = Array.isArray(cached?.projects) ? cached.projects : []
-    const hasProjects = projects.length > 0
-
-    switch (key) {
-      case 'discover_workspace':
-        startTour(buildWorkspaceTour({ isPlatformAdmin }))
-        break
-      case 'invite_member':
-        // Navigate-only for now; team-page guidance is a future iteration.
-        navigate(slug ? `/c/${slug}/team?invite=1` : '/companies')
-        break
-      case 'create_project':
-        startTour(buildCreateProjectTour({ hasProjects, currentCompanySlug: slug }))
-        break
-      case 'edit_page':
-        if (hasProjects) {
-          // Open the most recently edited project so the editor anchors
-          // are mounted by the time the tour reaches them.
-          const sortedByEdit = [...projects].sort((a, b) => {
-            const at = a?.updatedAt || a?.editedAt || ''
-            const bt = b?.updatedAt || b?.editedAt || ''
-            return bt.localeCompare(at)
-          })
-          const target = sortedByEdit[0]
-          if (target?.id) navigate(`/project/${target.id}/editor`)
-          // Defer tour start so the editor mounts first (anchors need to
-          // be present in the DOM for Spotlight to find them).
-          setTimeout(() => {
-            startTour(buildEditPageTour({ projectType: target?.projectType, role }))
-          }, 600)
-        } else {
-          startTour(buildCreateProjectTour({ hasProjects: false, currentCompanySlug: slug }))
-        }
-        break
-      case 'create_share_link':
-        startTour(buildShareLinkInfo())
-        break
-      case 'leave_comment':
-        startTour(buildLeaveCommentInfo())
-        break
-      default:
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
-    }
+    startFullTutorial(key)
   }
 
   return (
