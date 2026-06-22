@@ -6931,7 +6931,7 @@ function EditorPanel({
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: false }),
+      StarterKit.configure({ heading: false, link: false, underline: false }),
       Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
       EditableImageNode.configure({
         projectId,
