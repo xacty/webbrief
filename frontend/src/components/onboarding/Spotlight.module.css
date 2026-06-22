@@ -17,9 +17,9 @@
 .root {
   position: fixed;
   inset: 0;
-  /* Above everything: role-preview pill (z=900), modals (z=1100),
-   * tooltip (z=1200). The spotlight is the highest UI layer. */
-  z-index: 1500;
+  /* Above everything except popped-out listboxes (see Select.module.css
+   * which uses --wb-z-listbox to render dropdowns above the backdrop). */
+  z-index: var(--wb-z-spotlight, 1500);
   pointer-events: none;
 }
 

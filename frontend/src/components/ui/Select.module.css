@@ -118,7 +118,9 @@
 /* ── Listbox panel ──────────────────────────────────────────────────── */
 
 .listbox {
-  z-index: var(--wb-z-popover);
+  /* Sits above the guided-tour Spotlight backdrop (--wb-z-spotlight)
+     so dropdowns spawned inside a tour aren't dimmed/blocked. */
+  z-index: var(--wb-z-listbox, 1600);
   min-width: 160px;
   /* 360px fits ~9 options at ~37px each (--wb-text-sm + --wb-leading-sm +
      --wb-space-2 padding). Larger than 280px was — covers common role/

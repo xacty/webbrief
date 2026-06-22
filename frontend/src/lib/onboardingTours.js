@@ -120,7 +120,7 @@ export function buildInviteMemberTour(ctx = {}) {
         target: Q('invite-modal'),
         title: 'Formulario de invitación',
         body:
-          'Email del invitado, su rol y nombre opcional. Como esto es un tutorial, NO envíes la invitación: pulsa Cancelar en el modal cuando termines de explorarlo, luego Siguiente.',
+          'Email del invitado, su rol y nombre opcional. Como esto es un tutorial, NO envíes la invitación: pulsa Listo cuando termines de explorar.',
         placement: 'right',
       },
     ],
