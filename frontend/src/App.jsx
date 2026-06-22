@@ -9,8 +9,9 @@ import {
   getCompanyRoleLabel,
   getPlatformRoleLabel,
 } from '../../shared/userRoles.js'
+import { Sparkles } from 'lucide-react'
 import WelcomeModal from './components/onboarding/WelcomeModal'
-import { getTutorialState, markWelcomed, markDismissed, isOnboardingActive } from './lib/tutorialState'
+import { getTutorialState, markWelcomed, markDismissed, isOnboardingActive, resetTutorial } from './lib/tutorialState'
 
 const Login = lazy(() => import('./pages/Login'))
 const NewProject = lazy(() => import('./pages/NewProject'))
@@ -140,6 +141,21 @@ function AppRoutes() {
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </Select>
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={() => {
+                resetTutorial()
+                window.location.assign('/companies')
+              }}
+              aria-label="Lanzar tutorial"
+              title="Resetear y lanzar el tutorial de onboarding (solo dev/admin)"
+              style={rolePreviewStyles.devTutorialBtn}
+            >
+              <Sparkles size={14} aria-hidden="true" />
+              <span style={rolePreviewStyles.devTutorialBtnLabel}>Tutorial</span>
+            </button>
+          )}
         </div>
       )}
       {!loading && isAuthenticated && !isPublicRoute && <WelcomeGate />}
@@ -187,6 +203,29 @@ const rolePreviewStyles = {
     fontWeight: 700,
     color: 'var(--wb-color-neutral-500)',
     whiteSpace: 'nowrap',
+  },
+  // Dev-only "Lanzar tutorial" button. Lives in the role-preview pill so
+  // it only shows for platform admins AND only in `vite dev` builds.
+  // Single primary CTA in the cluster — visually subordinate to "Ver como".
+  devTutorialBtn: {
+    appearance: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 10px',
+    background: 'var(--wb-color-primary-100)',
+    color: 'var(--wb-color-primary-700)',
+    border: 'none',
+    borderRadius: 'var(--wb-radius-2)',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  devTutorialBtnLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    lineHeight: 1,
   },
 }
 
