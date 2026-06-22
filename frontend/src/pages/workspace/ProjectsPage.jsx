@@ -328,6 +328,7 @@ export default function ProjectsPage() {
                   <Button
                     variant="primary"
                     icon={<Plus size={16} />}
+                    data-tour="create-project-btn"
                     onClick={() => navigate(`/new-project?companyId=${companyId}`)}
                   >
                     Proyecto
@@ -530,6 +531,7 @@ export default function ProjectsPage() {
                       <button
                         type="button"
                         className={styles.addProjectCard}
+                        data-tour="create-project-card"
                         onClick={() => navigate(`/new-project?companyId=${companyId}`)}
                       >
                         <Plus size={20} />

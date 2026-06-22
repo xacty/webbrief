@@ -14,6 +14,15 @@ import WorkspaceSwitcher from './WorkspaceSwitcher'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import FirstTimeTooltipsRoot from '../onboarding/FirstTimeTooltipsRoot'
 import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
+import { useTour } from '../onboarding/TourContext'
+import { readCompanyCache } from '../../lib/companyCache'
+import {
+  buildWorkspaceTour,
+  buildCreateProjectTour,
+  buildEditPageTour,
+  buildShareLinkInfo,
+  buildLeaveCommentInfo,
+} from '../../lib/onboardingTours'
 import {
   getTutorialState,
   markDismissed,
@@ -21,6 +30,7 @@ import {
   isOnboardingActive,
   STORAGE_KEY,
   STATE_CHANGE_EVENT,
+  TASK_KEYS,
 } from '../../lib/tutorialState'
 import styles from './AppShell.module.css'
 
@@ -35,7 +45,8 @@ export default function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const { currentUser, signOut } = useAuth()
-  const { accessibleCompanies, currentCompanySlug } = useWorkspace()
+  const { accessibleCompanies, currentCompany, currentCompanySlug } = useWorkspace()
+  const { start: startTour } = useTour()
   const canCreateCompany = canCreateCompanyCapability(currentUser)
   const canViewAllCompaniesFromSwitcher = isAdmin(currentUser) || accessibleCompanies.length >= 3
   const canSeeCompaniesListNav = isAdmin(currentUser) || accessibleCompanies.length >= 3
@@ -54,6 +65,8 @@ export default function AppShell() {
 
   const [tutorialState, setTutorialState] = useState(() => getTutorialState())
   const isEditorRoute = location.pathname.startsWith('/project/') && location.pathname.endsWith('/editor')
+  // Public viewers (real or simulated via role-preview) get no tutorial UI.
+  const isPreviewingPublicViewer = currentUser?.rolePreview === 'public_viewer'
 
   useEffect(() => {
     function onStorage(e) {
@@ -71,8 +84,10 @@ export default function AppShell() {
   }, [])
 
   useEffect(() => {
-    const doneCount = Object.values(tutorialState.tasks).filter((t) => t.doneAt).length
-    if (doneCount === 6 && !tutorialState.completedAt) {
+    // Count only current TASK_KEYS so legacy entries (e.g. an old
+    // `create_company` row) don't throw off the all-done check.
+    const doneCount = TASK_KEYS.filter((k) => tutorialState.tasks[k]?.doneAt).length
+    if (doneCount === TASK_KEYS.length && !tutorialState.completedAt) {
       const id = setTimeout(() => {
         const next = markCompleted()
         setTutorialState(next)
@@ -91,24 +106,53 @@ export default function AppShell() {
 
   function handleTaskClick(key) {
     const slug = currentCompanySlug
+    const isPlatformAdmin = isAdmin(currentUser)
+    // Resolve membership role for the active company (falls back to
+    // rolePreview when the admin is simulating).
+    const role =
+      currentUser?.rolePreview ||
+      currentUser?.memberships?.find((m) => m.companyId === currentCompany?.id)?.role ||
+      null
+    const cached = currentCompany?.id ? readCompanyCache(currentCompany.id) : null
+    const projects = Array.isArray(cached?.projects) ? cached.projects : []
+    const hasProjects = projects.length > 0
+
     switch (key) {
-      case 'create_company':
-        navigate('/companies?new=1')
+      case 'discover_workspace':
+        startTour(buildWorkspaceTour({ isPlatformAdmin }))
         break
       case 'invite_member':
+        // Navigate-only for now; team-page guidance is a future iteration.
         navigate(slug ? `/c/${slug}/team?invite=1` : '/companies')
         break
       case 'create_project':
-        navigate(slug ? `/new-project?company=${slug}` : '/new-project')
+        startTour(buildCreateProjectTour({ hasProjects, currentCompanySlug: slug }))
         break
       case 'edit_page':
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
+        if (hasProjects) {
+          // Open the most recently edited project so the editor anchors
+          // are mounted by the time the tour reaches them.
+          const sortedByEdit = [...projects].sort((a, b) => {
+            const at = a?.updatedAt || a?.editedAt || ''
+            const bt = b?.updatedAt || b?.editedAt || ''
+            return bt.localeCompare(at)
+          })
+          const target = sortedByEdit[0]
+          if (target?.id) navigate(`/project/${target.id}/editor`)
+          // Defer tour start so the editor mounts first (anchors need to
+          // be present in the DOM for Spotlight to find them).
+          setTimeout(() => {
+            startTour(buildEditPageTour({ projectType: target?.projectType, role }))
+          }, 600)
+        } else {
+          startTour(buildCreateProjectTour({ hasProjects: false, currentCompanySlug: slug }))
+        }
         break
       case 'create_share_link':
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
+        startTour(buildShareLinkInfo())
         break
       case 'leave_comment':
-        navigate(slug ? `/c/${slug}/projects` : '/companies')
+        startTour(buildLeaveCommentInfo())
         break
       default:
         navigate(slug ? `/c/${slug}/projects` : '/companies')
@@ -138,6 +182,7 @@ export default function AppShell() {
               <>
                 <NavLink
                   to={`/c/${currentCompanySlug}/projects`}
+                  data-tour="sidebar-projects"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -147,6 +192,7 @@ export default function AppShell() {
                 </NavLink>
                 <NavLink
                   to={`/c/${currentCompanySlug}/team`}
+                  data-tour="sidebar-team"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -156,6 +202,7 @@ export default function AppShell() {
                 </NavLink>
                 <NavLink
                   to={`/c/${currentCompanySlug}/activity`}
+                  data-tour="sidebar-activity"
                   className={({ isActive }) => (
                     isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
                   )}
@@ -280,17 +327,19 @@ export default function AppShell() {
         </div>
       </main>
 
-      {!isEditorRoute && isOnboardingActive(tutorialState) && (
-        <OnboardingChecklist
-          state={tutorialState}
-          onTaskClick={handleTaskClick}
-          onDismiss={() => {
-            const next = markDismissed()
-            setTutorialState(next)
-          }}
-        />
-      )}
-      <FirstTimeTooltipsRoot />
+      {!isEditorRoute &&
+        !isPreviewingPublicViewer &&
+        isOnboardingActive(tutorialState) && (
+          <OnboardingChecklist
+            state={tutorialState}
+            onTaskClick={handleTaskClick}
+            onDismiss={() => {
+              const next = markDismissed()
+              setTutorialState(next)
+            }}
+          />
+        )}
+      {!isPreviewingPublicViewer && <FirstTimeTooltipsRoot />}
     </div>
   )
 }

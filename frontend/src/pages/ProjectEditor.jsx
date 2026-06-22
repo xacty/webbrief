@@ -4679,7 +4679,7 @@ function Navbar({
       </div>
 
       {/* Columna central: Pills de páginas */}
-      <div className={navStyles.navCenter}>
+      <div className={navStyles.navCenter} data-tour="editor-pages">
         {pages.map((page) => (
           <PagePill
             key={page.id}
@@ -4813,7 +4813,7 @@ function FloatingEditorBar({
   const audienceIndex = handoffAudience === 'dev' ? 1 : 0
 
   return (
-    <div className={styles.floatingBar} aria-label="Controles de editor" data-firsttime="editor-modes">
+    <div className={styles.floatingBar} aria-label="Controles de editor" data-firsttime="editor-modes" data-tour="editor-floating-bar">
       {/* Mode segmented control — sliding indicator pill (Tesla-style)
           marks the active mode; all three options are always visible. */}
       <div
@@ -5285,7 +5285,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
   }
 
   return (
-    <div className={panelStyles.leftPanel} data-firsttime="editor-sections">
+    <div className={panelStyles.leftPanel} data-firsttime="editor-sections" data-tour="editor-sections">
       <div className={panelStyles.panelHeader}>
         <span className={panelStyles.panelTitle}>Page sections</span>
         {canManageSections && (
@@ -6412,6 +6412,7 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
     <div
       ref={toolbarRef}
       className={toolbarStyles.toolbar}
+      data-tour="editor-toolbar"
       onPointerDownCapture={(event) => {
         if (!openToolbarMenu) return
         if (event.target.closest?.('[data-toolbar-menu]')) return
