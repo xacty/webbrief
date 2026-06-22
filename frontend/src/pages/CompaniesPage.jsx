@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Archive, ArrowRight, Building2, Plus, Trash2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiFetch } from '../lib/api'
 import { isAdmin, canCreateTestCompany } from '../lib/roleCapabilities'
 import { Button, Input, Select, Modal, Card, Badge, KebabMenu } from '../components/ui'
@@ -62,6 +63,7 @@ function companyTypeBadge(company) {
 export default function CompaniesPage() {
   const navigate = useNavigate()
   const { currentUser } = useAuth()
+  const { refresh: refreshWorkspace } = useWorkspace()
   const [companies, setCompanies] = useState(() => readCompaniesCache())
   const [loading, setLoading] = useState(() => readCompaniesCache().length === 0)
   const [error, setError] = useState('')
@@ -207,6 +209,7 @@ export default function CompaniesPage() {
       showFeedback(failed > 0
         ? `${archived} empresa(s) archivada(s); ${failed} no procesada(s)`
         : `${archived} empresa(s) archivada(s)`)
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudieron archivar las empresas')
     } finally {
@@ -235,6 +238,7 @@ export default function CompaniesPage() {
       showFeedback(failed > 0
         ? `${trashed} empresa(s) en papelera; ${failed} no procesada(s)`
         : `${trashed} empresa(s) en papelera`)
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudieron enviar a papelera')
     } finally {
@@ -275,6 +279,7 @@ export default function CompaniesPage() {
       setCompanyFeedback('')
       setModalOpen(false)
       navigate(`/companies/${data.company.id}`)
+      refreshWorkspace()
     } catch (err) {
       setCompanyFeedback(err.message || 'No se pudo crear la empresa')
     } finally {
@@ -331,6 +336,7 @@ export default function CompaniesPage() {
       writeCompaniesCache(nextCompanies)
       clearCompanyDetailCaches()
       setError('')
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudo archivar la empresa')
     }
@@ -346,6 +352,7 @@ export default function CompaniesPage() {
       writeCompaniesCache(nextCompanies)
       clearCompanyDetailCaches()
       setError('')
+      refreshWorkspace()
     } catch (err) {
       setError(err.message || 'No se pudo enviar la empresa a papelera')
     }
