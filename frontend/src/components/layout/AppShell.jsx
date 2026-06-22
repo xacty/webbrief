@@ -10,6 +10,7 @@ import {
 import webriefLogo from '../../assets/brand/webrief--logo-v2.svg'
 import { Button, Card } from '../ui'
 import OnboardingChecklist from '../onboarding/OnboardingChecklist'
+import FirstTimeTooltipsRoot from '../onboarding/FirstTimeTooltipsRoot'
 import useTutorialAutoComplete from '../onboarding/useTutorialAutoComplete'
 import {
   getTutorialState,
@@ -232,6 +233,7 @@ export default function AppShell() {
           }}
         />
       )}
+      <FirstTimeTooltipsRoot />
     </div>
   )
 }
