@@ -347,11 +347,16 @@ export function buildLeaveCommentTour(ctx = {}) {
 }
 
 // ─── No-project fallback ────────────────────────────────────────────
-// Used when edit_page is reached but no project exists.
-// `onCreateNow` (passed in by TourContext) restarts the chain from
-// create_project so the user lands in the guided form.
+// Used when edit_page is reached but no project exists. The advance
+// callback creates a "Prueba de tutorial" demo project (Página Web +
+// E-commerce template) automatically so the chain stays on the rails
+// — no manual form-filling required to continue the tutorial. The
+// "Saltar" button is hidden on purpose: skipping here would strand
+// the remaining steps (edit_page, share_link, leave_comment) without
+// a project to attach to. If the user doesn't want a demo project
+// they cancel the whole tutorial with X / Esc instead.
 export function buildNoProjectFallback(ctx = {}) {
-  const { onCreateNow } = ctx
+  const { onCreateDemoProject } = ctx
   return {
     id: 'edit_page_no_project',
     onComplete: () => markTaskDone('edit_page'),
@@ -361,12 +366,16 @@ export function buildNoProjectFallback(ctx = {}) {
         target: null,
         title: 'Necesitas un proyecto primero',
         body:
-          'Para mostrar cómo editar una página, primero hay que crear un proyecto. Pulsa "Crear con tutorial" para abrir el formulario guiado, o "Saltar" para continuar con los siguientes pasos del tutorial.',
+          'Para mostrar cómo editar una página, primero hay que crear un proyecto. Vamos a crear uno de prueba llamado "Prueba de tutorial" (Página Web + plantilla E-commerce); podrás editarlo, renombrarlo o eliminarlo cuando termines el tutorial.',
         placement: 'bottom',
-        nextLabel: 'Crear con tutorial',
-        skipLabel: 'Saltar este paso',
-        onAdvance: () => {
-          if (typeof onCreateNow === 'function') onCreateNow()
+        nextLabel: 'Crear proyecto de prueba',
+        hideSkip: true,
+        onAdvance: async ({ navigate }) => {
+          if (typeof onCreateDemoProject !== 'function') return
+          const project = await onCreateDemoProject()
+          if (project?.id) {
+            navigate(`/project/${project.id}/editor`)
+          }
         },
       },
     ],

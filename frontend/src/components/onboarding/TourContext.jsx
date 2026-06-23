@@ -11,7 +11,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { isAdmin, canUseTrashNav } from '../../lib/roleCapabilities'
-import { readCompanyCache } from '../../lib/companyCache'
+import { readCompanyCache, clearCompaniesCache } from '../../lib/companyCache'
+import { apiFetch } from '../../lib/api'
 import { TASK_KEYS, getTutorialState, markDismissed } from '../../lib/tutorialState'
 import {
   buildWorkspaceTour,
@@ -93,6 +94,52 @@ export function TourProvider({ children }) {
   const currentStep = activeSteps && index < activeSteps.length ? activeSteps[index] : null
   const isLast = activeSteps ? index === activeSteps.length - 1 : false
 
+  // Auto-create a "Prueba de tutorial" project so the chain can keep
+  // teaching even when the user reaches edit_page with no project.
+  // Hardcoded type/template = Página Web + E-commerce so the editor
+  // tour has the standard structure to point at. Returns the new
+  // project on success.
+  async function createDemoProject() {
+    const { currentCompany } = ctxRef.current
+    if (!currentCompany?.id) return null
+    try {
+      const data = await apiFetch('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Prueba de tutorial',
+          projectType: 'page',
+          businessType: 'ecommerce',
+          companyId: currentCompany.id,
+        }),
+      })
+      const newProject = data?.project
+      if (!newProject?.id) return null
+      // Patch the per-company cache so resolveCtx() picks it up as
+      // lastProject for the next chain step.
+      try {
+        const key = `webrief:company:${currentCompany.id}`
+        const raw = window.sessionStorage.getItem(key)
+        const cached = raw ? JSON.parse(raw) : {}
+        const existing = Array.isArray(cached.projects) ? cached.projects : []
+        cached.projects = [newProject, ...existing]
+        cached.company = cached.company || currentCompany
+        cached.members = Array.isArray(cached.members) ? cached.members : []
+        cached.cachedAt = new Date().toISOString()
+        window.sessionStorage.setItem(key, JSON.stringify(cached))
+      } catch {
+        // Cache patch is best-effort; the chain still runs because
+        // a follow-up fetch will surface the project anyway.
+      }
+      clearCompaniesCache()
+      // Requeue edit_page so the natural chain resumes with the
+      // real editor tour pointing at the project we just created.
+      chainTasksRef.current = ['edit_page', ...chainTasksRef.current]
+      return newProject
+    } catch {
+      return null
+    }
+  }
+
   // ─── Chain dispatch ───────────────────────────────────────────────
   // Resolve the live context every time we build a tour so role /
   // hasProjects / currentCompany are up-to-date.
@@ -135,11 +182,11 @@ export function TourProvider({ children }) {
         return buildCreateProjectTour(ctx)
       case 'edit_page':
         if (!ctx.lastProject) {
-          // Edge case: no project yet (user skipped create_project
-          // and has no existing ones). Show a fallback prompt.
+          // No project yet — fallback prompt auto-creates a demo
+          // project on advance so the chain stays on the rails.
           return buildNoProjectFallback({
             ...ctx,
-            onCreateNow: () => startFullTutorial('create_project'),
+            onCreateDemoProject: createDemoProject,
           })
         }
         return buildEditPageTour({
@@ -372,7 +419,7 @@ export function TourProvider({ children }) {
           isLast={isLast}
           onNext={next}
           onPrev={index > 0 || chainHistoryRef.current.length > 0 ? prev : null}
-          onSkip={exit}
+          onSkip={currentStep.hideSkip ? null : exit}
           onCancel={cancelTutorial}
           nextLabel={currentStep.nextLabel}
           prevLabel={currentStep.prevLabel}
