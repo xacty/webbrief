@@ -173,21 +173,19 @@ function AppRoutes() {
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </Select>
-          {import.meta.env.DEV && (
-            <button
-              type="button"
-              onClick={() => {
-                resetTutorial()
-                window.location.assign('/companies')
-              }}
-              aria-label="Lanzar tutorial"
-              title="Resetear y lanzar el tutorial de onboarding (solo dev/admin)"
-              style={rolePreviewStyles.devTutorialBtn}
-            >
-              <Sparkles size={14} aria-hidden="true" />
-              <span style={rolePreviewStyles.devTutorialBtnLabel}>Tutorial</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              resetTutorial()
+              window.location.assign('/companies')
+            }}
+            aria-label="Lanzar tutorial"
+            title="Resetear y lanzar el tutorial de onboarding"
+            style={rolePreviewStyles.devTutorialBtn}
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            <span style={rolePreviewStyles.devTutorialBtnLabel}>Tutorial</span>
+          </button>
         </div>
       )}
       {!loading && isAuthenticated && !isPublicRoute && <WelcomeGate />}
