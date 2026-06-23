@@ -106,13 +106,12 @@ export default function WorkspaceSwitcher({
     switchCompany(slug)
     setOpen(false)
     triggerRef.current?.focus?.()
-    // If the user is on a /c/:slug/<section> route, swap the slug segment
-    // so the URL reflects the new active company without losing the section.
-    const match = location.pathname.match(/^\/c\/[^/]+(\/.*)?$/)
-    if (match) {
-      const sectionTail = match[1] || '/projects'
-      navigate(`/c/${slug}${sectionTail}`)
-    }
+    // Always land on the new company's Projects page — the main view
+    // of the workspace. Switching empresa from anywhere (admin pages,
+    // settings, even another company's Team/Activity) should feel
+    // like opening that empresa from scratch, not silently rebinding
+    // context to the current section.
+    navigate(`/c/${slug}/projects`)
   }
 
   function handleCreate() {
