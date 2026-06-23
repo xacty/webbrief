@@ -46,8 +46,10 @@ export default function AppShell() {
   const canUseTrash = canUseTrashNav(currentUser)
   const canUseSecurity = canUseSecurityNav(currentUser)
 
+  // Dark mode tiene bugs sin resolver — se mantiene solo en dev.
+  const allowDarkMode = import.meta.env.DEV
   const [darkMode, setDarkMode] = useState(
-    () => localStorage.getItem('wb-theme') === 'dark'
+    () => allowDarkMode && localStorage.getItem('wb-theme') === 'dark'
   )
 
   useEffect(() => {
@@ -251,15 +253,17 @@ export default function AppShell() {
             Ajustes de cuenta
           </NavLink>
 
-          <button
-            type="button"
-            className={styles.darkToggle}
-            onClick={() => setDarkMode((d) => !d)}
-            aria-label={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-          >
-            {darkMode ? <Sun size={14} /> : <Moon size={14} />}
-            {darkMode ? 'Modo claro' : 'Modo oscuro'}
-          </button>
+          {allowDarkMode && (
+            <button
+              type="button"
+              className={styles.darkToggle}
+              onClick={() => setDarkMode((d) => !d)}
+              aria-label={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            >
+              {darkMode ? <Sun size={14} /> : <Moon size={14} />}
+              {darkMode ? 'Modo claro' : 'Modo oscuro'}
+            </button>
+          )}
 
           <Button variant="secondary" onClick={handleLogout} fullWidth>
             Cerrar sesión
