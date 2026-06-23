@@ -17,7 +17,7 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
-import { Fragment } from '@tiptap/pm/model'
+import { Fragment, DOMSerializer } from '@tiptap/pm/model'
 import { CommentMark, findCommentRange, getCommentIdsInDoc } from '../extensions/CommentMark'
 import { FakeSelection } from '../extensions/FakeSelection'
 import CommentComposerPopover from '../components/editor/CommentComposerPopover'
@@ -601,6 +601,59 @@ const TEXT_BLOCK_LAYOUT_TYPES = ['paragraph', 'heading', 'listItem']
 
 function cx(...classes) {
   return classes.filter(Boolean).join(' ')
+}
+
+// Limpia el HTML del clipboard para que pegue limpio en editores externos
+// (Webflow, Shopify blogs, Google Docs, etc). Quita los wrappers internos del
+// editor que no significan nada afuera; deja imágenes, links, headings,
+// listas y tablas estándar.
+function sanitizeHtmlForExternalPaste(root) {
+  root.querySelectorAll('div[data-section-divider]').forEach((el) => el.remove())
+
+  root.querySelectorAll('div[data-cta-button]').forEach((div) => {
+    const link = div.querySelector('a')
+    if (link) {
+      Array.from(link.attributes).forEach((attr) => {
+        if (attr.name.startsWith('data-')) link.removeAttribute(attr.name)
+      })
+      div.replaceWith(link)
+    } else {
+      div.remove()
+    }
+  })
+
+  root.querySelectorAll('span[data-comment-id]').forEach((span) => {
+    const parent = span.parentNode
+    if (!parent) return
+    while (span.firstChild) parent.insertBefore(span.firstChild, span)
+    parent.removeChild(span)
+  })
+
+  root.querySelectorAll('img').forEach((img) => {
+    const inlineWidth = parseInt(img.style?.width || '', 10)
+    Array.from(img.attributes).forEach((attr) => {
+      if (attr.name.startsWith('data-')) img.removeAttribute(attr.name)
+    })
+    img.removeAttribute('style')
+    if (Number.isFinite(inlineWidth) && inlineWidth > 0 && !img.getAttribute('width')) {
+      img.setAttribute('width', String(inlineWidth))
+    }
+  })
+}
+
+function serializeSelectionForExternalPaste(view) {
+  const { from, to, empty } = view.state.selection
+  if (empty) return null
+  const slice = view.state.doc.slice(from, to)
+  const serializer = DOMSerializer.fromSchema(view.state.schema)
+  const fragment = serializer.serializeFragment(slice.content)
+  const container = document.createElement('div')
+  container.appendChild(fragment)
+  sanitizeHtmlForExternalPaste(container)
+  return {
+    html: container.innerHTML,
+    text: view.state.doc.textBetween(from, to, '\n\n', '\n'),
+  }
 }
 
 function insertTemporaryImage(editor, src, alt = '', position = null, attrs = {}) {
@@ -7007,6 +7060,24 @@ function EditorPanel({
           event.preventDefault()
           return true
         },
+        copy(view, event) {
+          const payload = serializeSelectionForExternalPaste(view)
+          if (!payload || !event.clipboardData) return false
+          event.clipboardData.setData('text/html', payload.html)
+          event.clipboardData.setData('text/plain', payload.text)
+          event.preventDefault()
+          return true
+        },
+        cut(view, event) {
+          if (!canWriteContent) return false
+          const payload = serializeSelectionForExternalPaste(view)
+          if (!payload || !event.clipboardData) return false
+          event.clipboardData.setData('text/html', payload.html)
+          event.clipboardData.setData('text/plain', payload.text)
+          event.preventDefault()
+          view.dispatch(view.state.tr.deleteSelection().scrollIntoView())
+          return true
+        },
       },
       handleDrop(view, event) {
         const files = Array.from(event.dataTransfer?.files || [])
@@ -7053,6 +7124,36 @@ function EditorPanel({
         return false
       },
       handlePaste(view, event) {
+        // Imagen en clipboard (screenshot, copy de imagen): subir a Supabase
+        // y reemplazar inline. Espejo de handleDrop; corto-circuita el pipeline
+        // de SEO/HTML porque los screenshots no traen texto útil.
+        const files = Array.from(event.clipboardData?.files || [])
+        const imageFile = files.find((file) => file.type.startsWith('image/'))
+        if (imageFile && canWriteContent) {
+          event.preventDefault()
+          const tempUrl = URL.createObjectURL(imageFile)
+          insertTemporaryImage(editor, tempUrl, imageFile.name, null)
+          ;(async () => {
+            try {
+              const asset = await uploadProjectImage(imageFile)
+              if (!asset?.publicUrl) return
+              await replaceImageSrc(editor, tempUrl, asset.publicUrl, {
+                assetId: asset.id || null,
+                fileName: asset.fileName || imageFile.name,
+                storagePath: asset.path || null,
+                originalWidth: asset.width || null,
+                originalHeight: asset.height || null,
+              })
+            } catch (error) {
+              removeImageBySrc(editor, tempUrl)
+              window.alert(error.message || 'No se pudo subir la imagen')
+            } finally {
+              URL.revokeObjectURL(tempUrl)
+            }
+          })()
+          return true
+        }
+
         const html = event.clipboardData?.getData('text/html') || ''
         const text = event.clipboardData?.getData('text/plain') || ''
         const plainLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
