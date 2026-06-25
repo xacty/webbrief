@@ -64,7 +64,8 @@ export function canAccessCompany(currentUser, companyId) {
 
 export function canManageCompanyLifecycle(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return getCompanyRole(currentUser, companyId) === 'manager'
+  const role = getCompanyRole(currentUser, companyId)
+  return role === 'admin' || role === 'manager'
 }
 
 export function canManageCompanyUsers(currentUser, companyId) {
@@ -75,46 +76,51 @@ export function canManageCompanyUsers(currentUser, companyId) {
 
 export function canCreateProject(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
 }
 
 export function canManageProjectMeta(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
 }
 
 export function canManageProjectLifecycle(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'editor'].includes(getCompanyRole(currentUser, companyId))
 }
 
 export function canManageProjectStructure(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'editor', 'content_writer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'editor', 'content_writer', 'developer'].includes(getCompanyRole(currentUser, companyId))
 }
 
 export function canWriteProjectContent(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'editor', 'content_writer', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'editor', 'content_writer', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
 }
 
 export function canUseProjectHandoff(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
 }
 
 export function canSendProjectReview(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
 }
 
 export function canInviteCompanyRole(currentUser, companyId, role) {
-  const allowedRoles = ['manager', 'editor', 'content_writer', 'designer', 'developer']
+  const allowedRoles = ['admin', 'manager', 'editor', 'content_writer', 'designer', 'developer']
   if (!allowedRoles.includes(role)) return false
 
   if (currentUser.platformRole === 'admin') return true
 
   const membershipRole = getCompanyRole(currentUser, companyId)
+
+  // Company-admin owns the company → can invite any role, including peer admins.
+  if (membershipRole === 'admin') {
+    return allowedRoles.includes(role)
+  }
 
   if (membershipRole === 'manager') {
     return ['editor', 'content_writer', 'designer', 'developer'].includes(role)

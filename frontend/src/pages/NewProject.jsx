@@ -232,7 +232,7 @@ export default function NewProject() {
 
   const selectedCompany = companies.find((company) => company.id === companyId) || null
   const selectedCompanyRole = currentUser?.memberships?.find((membership) => membership.companyId === companyId)?.role || null
-  const canCreateProject = isAdmin(currentUser) || ['manager', 'editor'].includes(selectedCompanyRole)
+  const canCreateProject = isAdmin(currentUser) || ['admin', 'manager', 'editor'].includes(selectedCompanyRole)
 
   function updateContentRule(field, value) {
     setContentRules((current) => ({

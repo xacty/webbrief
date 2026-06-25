@@ -72,7 +72,7 @@ export default function CompaniesPage() {
   const [feedbackNotice, setFeedbackNotice] = useState('')
   const canCreateCompanies = isAdmin(currentUser) || canCreateTestCompany(currentUser)
   const canManageAnyCompany = useMemo(
-    () => isAdmin(currentUser) || companies.some((company) => company.membershipRole === 'manager'),
+    () => isAdmin(currentUser) || companies.some((company) => company.membershipRole === 'admin' || company.membershipRole === 'manager'),
     [currentUser, companies]
   )
 
@@ -149,7 +149,7 @@ export default function CompaniesPage() {
 
   function isCompanySelectable(company) {
     if (!company || company.isInternal) return false
-    return isAdmin(currentUser) || company.membershipRole === 'manager'
+    return isAdmin(currentUser) || company.membershipRole === 'admin' || company.membershipRole === 'manager'
   }
 
   function toggleSelected(companyId) {
@@ -479,7 +479,7 @@ export default function CompaniesPage() {
         <div className={styles.cardsGrid}>
           {paginatedCompanies.map((company) => {            const badge = companyTypeBadge(company)
             const selectable = isCompanySelectable(company)
-            const showKebab = (isAdmin(currentUser) || company.membershipRole === 'manager') && !company.isInternal
+            const showKebab = (isAdmin(currentUser) || company.membershipRole === 'admin' || company.membershipRole === 'manager') && !company.isInternal
             const isSelected = selectedIds.has(company.id)
             const inSelectMode = selectedIds.size > 0
             const cardClassNames = [styles.companyCard]

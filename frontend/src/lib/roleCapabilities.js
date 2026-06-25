@@ -24,12 +24,12 @@ export function getCompanyRole(currentUser, companyId = null) {
 
 export function canManageUsersNav(currentUser) {
   return isAdmin(currentUser)
-    || currentUser?.memberships?.some((membership) => membership.role === 'manager')
+    || currentUser?.memberships?.some((membership) => membership.role === 'admin' || membership.role === 'manager')
 }
 
 export function canUseTrashNav(currentUser) {
   return isAdmin(currentUser)
-    || currentUser?.memberships?.some((membership) => membership.role === 'manager')
+    || currentUser?.memberships?.some((membership) => membership.role === 'admin' || membership.role === 'manager')
 }
 
 export function canUseSecurityNav(currentUser) {
@@ -54,15 +54,15 @@ export function canInviteMembers(currentUser, membershipRole) {
 }
 
 export function canCreateProjects(currentUser, membershipRole) {
-  return isAdmin(currentUser) || ['manager', 'editor'].includes(membershipRole)
+  return isAdmin(currentUser) || ['admin', 'manager', 'editor'].includes(membershipRole)
 }
 
 export function canManageProjectLifecycle(currentUser, membershipRole) {
-  return isAdmin(currentUser) || ['manager', 'editor'].includes(membershipRole)
+  return isAdmin(currentUser) || ['admin', 'manager', 'editor'].includes(membershipRole)
 }
 
 export function canManageCompanyLifecycle(currentUser, membershipRole) {
-  return isAdmin(currentUser) || membershipRole === 'manager'
+  return isAdmin(currentUser) || membershipRole === 'admin' || membershipRole === 'manager'
 }
 
 // "Enviar acceso" — admin global can target any user except self;
@@ -107,12 +107,12 @@ export function getProjectEditorCapabilities(currentUser, companyId) {
   const companyRole = getCompanyRole(currentUser, companyId)
   const admin = isAdmin(currentUser)
 
-  const canManageProjectMeta = admin || ['manager', 'editor'].includes(companyRole)
-  const canManageProjectStructure = admin || ['manager', 'editor', 'content_writer', 'developer'].includes(companyRole)
+  const canManageProjectMeta = admin || ['admin', 'manager', 'editor'].includes(companyRole)
+  const canManageProjectStructure = admin || ['admin', 'manager', 'editor', 'content_writer', 'developer'].includes(companyRole)
   const canWriteContent = admin || COMPANY_ROLE_ORDER.includes(companyRole)
-  const canUseHandoff = admin || ['manager', 'designer', 'developer'].includes(companyRole)
-  const canSendToReview = admin || ['manager', 'developer'].includes(companyRole)
-  const canReviewDesignerProposals = admin || ['manager', 'editor'].includes(companyRole)
+  const canUseHandoff = admin || ['admin', 'manager', 'designer', 'developer'].includes(companyRole)
+  const canSendToReview = admin || ['admin', 'manager', 'developer'].includes(companyRole)
+  const canReviewDesignerProposals = admin || ['admin', 'manager', 'editor'].includes(companyRole)
   const isDesignerRole = !admin && companyRole === 'designer'
 
   return {
@@ -139,5 +139,5 @@ export function canCreateCompany(user) {
   if (isAdmin(user)) return true
   if (canCreateTestCompany(user)) return true
   const memberships = Array.isArray(user.memberships) ? user.memberships : []
-  return memberships.some((m) => m.role === 'manager')
+  return memberships.some((m) => m.role === 'admin' || m.role === 'manager')
 }

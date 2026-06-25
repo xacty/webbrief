@@ -95,7 +95,7 @@ export default function UsersPage() {
   const primaryCompanyRole = getCompanyRole(currentUser)
   const managedCompanyIds = useMemo(() => (
     currentUser?.memberships
-      ?.filter((membership) => membership.role === 'manager')
+      ?.filter((membership) => membership.role === 'admin' || membership.role === 'manager')
       .map((membership) => membership.companyId) || []
   ), [currentUser])
   const canManageUsers = isAdminUser || currentUser?.memberships?.length > 0

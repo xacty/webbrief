@@ -265,7 +265,7 @@ async function loadPendingPageProposals(projectId, companyId, currentUser) {
 
   const companyRole = getCompanyRole(currentUser, companyId)
   const isAdmin = currentUser?.platformRole === 'admin'
-  const isReviewer = isAdmin || ['manager', 'editor'].includes(companyRole)
+  const isReviewer = isAdmin || ['admin', 'manager', 'editor'].includes(companyRole)
   const isDesigner = companyRole === 'designer'
 
   if (!isReviewer && !isDesigner) return []
@@ -466,7 +466,7 @@ function getExtensionFromMimeType(mimeType, fileName = '') {
 
 function canExportProjectAsset(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
-  return ['manager', 'editor', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
+  return ['admin', 'manager', 'editor', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
 }
 
 function normalizeExportPreset(preset = '') {

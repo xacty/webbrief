@@ -38,7 +38,7 @@ export default function MoveToCompanyModal({
       if (!company || !company.id) return false
       if (company.id === currentCompanyId) return false
       if (isAdmin) return true
-      return company.membershipRole === 'manager'
+      return company.membershipRole === 'admin' || company.membershipRole === 'manager'
     })
   }, [companies, currentCompanyId, isAdmin])
 

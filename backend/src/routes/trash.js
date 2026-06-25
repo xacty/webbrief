@@ -9,14 +9,14 @@ router.use(requireAuth)
 function getCompanyIdsForCompanyLifecycle(currentUser) {
   if (currentUser.platformRole === 'admin') return null
   return currentUser.memberships
-    .filter((membership) => membership.role === 'manager')
+    .filter((membership) => membership.role === 'admin' || membership.role === 'manager')
     .map((membership) => membership.companyId)
 }
 
 function getCompanyIdsForProjectLifecycle(currentUser) {
   if (currentUser.platformRole === 'admin') return null
   return currentUser.memberships
-    .filter((membership) => ['manager', 'editor'].includes(membership.role))
+    .filter((membership) => ['admin', 'manager', 'editor'].includes(membership.role))
     .map((membership) => membership.companyId)
 }
 

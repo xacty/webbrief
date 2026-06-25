@@ -62,7 +62,7 @@ function isAdmin(currentUser) {
 
 function getManagedCompanyIds(currentUser) {
   return currentUser.memberships
-    .filter((membership) => membership.role === 'manager')
+    .filter((membership) => membership.role === 'admin' || membership.role === 'manager')
     .map((membership) => membership.companyId)
 }
 
