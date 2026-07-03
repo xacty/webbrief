@@ -82,15 +82,29 @@ export function buildImageKitTransformations({
   format = null,
   quality = null,
   fit = null,
+  cropMode = null,
+  x = null,
+  y = null,
+  focus = null,
 } = {}) {
   const transformations = []
   const normalizedWidth = Number(width)
   const normalizedHeight = Number(height)
   const normalizedQuality = Number(quality)
+  // x/y admit 0 as a valid offset, so absent values must become NaN here —
+  // Number(null) is 0 and would emit a spurious x-0/y-0 on every URL.
+  const normalizedX = x === null || x === undefined || x === '' ? NaN : Number(x)
+  const normalizedY = y === null || y === undefined || y === '' ? NaN : Number(y)
 
   if (Number.isFinite(normalizedWidth) && normalizedWidth > 0) transformations.push(`w-${Math.round(normalizedWidth)}`)
   if (Number.isFinite(normalizedHeight) && normalizedHeight > 0) transformations.push(`h-${Math.round(normalizedHeight)}`)
   if (fit) transformations.push(`c-${String(fit).trim()}`)
+  // cm-extract recorta una región exacta (usa w/h como tamaño de la región y
+  // x/y como esquina superior izquierda); fo- reencuadra el crop automático.
+  if (cropMode) transformations.push(`cm-${String(cropMode).trim()}`)
+  if (Number.isFinite(normalizedX) && normalizedX >= 0) transformations.push(`x-${Math.round(normalizedX)}`)
+  if (Number.isFinite(normalizedY) && normalizedY >= 0) transformations.push(`y-${Math.round(normalizedY)}`)
+  if (focus) transformations.push(`fo-${String(focus).trim()}`)
   if (format) transformations.push(`f-${String(format).trim()}`)
   if (Number.isFinite(normalizedQuality) && normalizedQuality > 0) transformations.push(`q-${Math.round(normalizedQuality)}`)
 

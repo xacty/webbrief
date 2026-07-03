@@ -487,6 +487,13 @@ function normalizeExportPreset(preset = '') {
   }
 }
 
+const EXPORT_CROP_MODES = new Set(['extract', 'pad_extract', 'pad_resize'])
+const EXPORT_FOCUS_VALUES = new Set([
+  'center', 'top', 'left', 'bottom', 'right',
+  'top_left', 'top_right', 'bottom_left', 'bottom_right',
+  'auto', 'face',
+])
+
 function normalizeExportOptions(query = {}) {
   const presetOptions = normalizeExportPreset(query.preset)
   const width = Number(query.width)
@@ -494,6 +501,10 @@ function normalizeExportOptions(query = {}) {
   const quality = Number(query.quality)
   const fit = query.fit ? String(query.fit).trim() : presetOptions.fit
   const format = query.format ? String(query.format).trim().toLowerCase() : presetOptions.format
+  const cropMode = query.cropMode ? String(query.cropMode).trim().toLowerCase() : ''
+  const focus = query.focus ? String(query.focus).trim().toLowerCase() : ''
+  const x = Number(query.x)
+  const y = Number(query.y)
 
   return {
     width: Number.isFinite(width) && width > 0 ? width : presetOptions.width || null,
@@ -501,6 +512,10 @@ function normalizeExportOptions(query = {}) {
     quality: Number.isFinite(quality) && quality > 0 ? quality : presetOptions.quality || null,
     fit: fit || null,
     format: format || null,
+    cropMode: EXPORT_CROP_MODES.has(cropMode) ? cropMode : null,
+    x: Number.isFinite(x) && x >= 0 ? Math.round(x) : null,
+    y: Number.isFinite(y) && y >= 0 ? Math.round(y) : null,
+    focus: EXPORT_FOCUS_VALUES.has(focus) ? focus : null,
   }
 }
 
@@ -2220,6 +2235,247 @@ router.post('/:id/assets/export-bulk', async (req, res) => {
     await archive.finalize()
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo exportar el lote de imagenes' })
+  }
+})
+
+// GET /api/projects/:id/assets — list the project's uploaded assets (metadata
+// only, no binaries). Any role with project access can read this; it exposes
+// the same URLs already embedded in page content.
+router.get('/:id/assets', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' })
+    }
+
+    const { data: assets, error } = await supabaseAdmin
+      .from('project_assets')
+      .select('id, file_name, mime_type, asset_kind, public_url, file_size, width, height, page_id, section_id, render_inline, created_at')
+      .eq('project_id', project.id)
+      .order('created_at', { ascending: false })
+
+    if (error) return res.status(500).json({ error: error.message })
+
+    return res.json({
+      assets: (assets || []).map((asset) => ({
+        id: asset.id,
+        fileName: asset.file_name,
+        mimeType: asset.mime_type,
+        assetKind: asset.asset_kind,
+        publicUrl: asset.public_url,
+        fileSize: asset.file_size,
+        width: asset.width,
+        height: asset.height,
+        pageId: asset.page_id,
+        sectionId: asset.section_id,
+        renderInline: asset.render_inline,
+        createdAt: asset.created_at,
+      })),
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron cargar los assets' })
+  }
+})
+
+// POST /api/projects/:id/assets/export-links — JSON variant of the binary
+// export endpoints, for API/MCP consumers that cannot stream binaries. Takes
+// items[] ({assetId|src}) + the same transformation options as /assets/export
+// and returns one ready-to-download URL per resolved asset.
+router.post('/:id/assets/export-links', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canExportProjectAsset(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede exportar imagenes de este proyecto' })
+    }
+
+    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 100) : []
+    if (items.length === 0) {
+      return res.status(400).json({ error: 'No hay imagenes seleccionadas para exportar' })
+    }
+
+    const assets = await resolveProjectAssetsForBulkExport(project.id, items)
+    if (assets.length === 0) {
+      return res.status(404).json({ error: 'No se encontraron assets exportables' })
+    }
+
+    const exportOptions = normalizeExportOptions(req.body || {})
+    const baseName = req.body?.fileName ? slugifyFileBaseName(req.body.fileName) : ''
+
+    const links = assets.map((asset, index) => {
+      const isSvg = asset.asset_kind === 'svg' || asset.mime_type === 'image/svg+xml'
+      const url = isSvg
+        ? asset.public_url
+        : buildImageKitUrl(asset.storage_path, buildImageKitTransformations(exportOptions))
+      const fileName = buildExportFileName(
+        asset.file_name,
+        isSvg ? null : exportOptions.format,
+        asset.mime_type,
+        baseName ? (assets.length > 1 ? `${baseName}-${index + 1}` : baseName) : ''
+      )
+
+      return {
+        assetId: asset.id,
+        fileName,
+        url,
+        mimeType: asset.mime_type,
+        assetKind: asset.asset_kind,
+        transformed: !isSvg,
+      }
+    }).filter((link) => Boolean(link.url))
+
+    return res.json({
+      requested: items.length,
+      resolved: links.length,
+      options: exportOptions,
+      links,
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron generar los links de exportacion' })
+  }
+})
+
+// POST /api/projects/:id/assets/convert — fetches a transformed rendition of
+// an existing raster asset (format/quality/resize/crop) and saves it back to
+// the project as a NEW asset. SVG sources are refused (no raster pipeline).
+router.post('/:id/assets/convert', rateLimiters.authenticatedUpload, async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    if (!canWriteProjectContent(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede guardar imagenes en este proyecto' })
+    }
+
+    const source = await resolveProjectAssetForExport(project.id, {
+      assetId: req.body?.assetId || null,
+      src: req.body?.src || '',
+    })
+    if (!source) return res.status(404).json({ error: 'Asset no encontrado' })
+
+    const isSvg = source.asset_kind === 'svg' || source.mime_type === 'image/svg+xml'
+    if (isSvg) {
+      return res.status(400).json({ error: 'Los SVG no se pueden convertir; solo assets raster (JPEG/PNG/WebP)' })
+    }
+
+    const exportOptions = normalizeExportOptions(req.body || {})
+    const hasTransformation = Boolean(
+      exportOptions.format
+      || exportOptions.quality
+      || exportOptions.width
+      || exportOptions.height
+      || exportOptions.cropMode
+    )
+    if (!hasTransformation) {
+      return res.status(400).json({ error: 'Indica al menos una transformacion (format, quality, width, height o cropMode)' })
+    }
+
+    const exportUrl = buildImageKitUrl(source.storage_path, buildImageKitTransformations(exportOptions))
+    if (!exportUrl) {
+      return res.status(400).json({ error: 'No se pudo construir la conversion' })
+    }
+
+    const upstream = await fetch(exportUrl)
+    if (!upstream.ok) {
+      return res.status(502).json({ error: 'No se pudo obtener la imagen convertida' })
+    }
+
+    const buffer = Buffer.from(await upstream.arrayBuffer())
+    if (buffer.byteLength > 8 * 1024 * 1024) {
+      return res.status(400).json({ error: 'La imagen convertida supera el limite de 8 MB' })
+    }
+
+    const newAssetId = crypto.randomUUID()
+    const derivedFileName = buildExportFileName(
+      source.file_name,
+      exportOptions.format,
+      source.mime_type,
+      req.body?.fileName || ''
+    )
+    const imageKitFolder = buildImageKitPath('companies', project.company_id, 'projects', project.id)
+    const uploadFileName = `${newAssetId}-${sanitizeFileName(derivedFileName)}`
+
+    const uploadResponse = await uploadToImageKit({
+      buffer,
+      fileName: uploadFileName,
+      folder: imageKitFolder,
+      tags: ['project-asset', 'converted'],
+    })
+
+    const originalUrl = uploadResponse.url || null
+    const imagePath = uploadResponse.filePath || buildImageKitPath(imageKitFolder, uploadFileName)
+
+    const { data: asset, error: assetError } = await supabaseAdmin
+      .from('project_assets')
+      .insert({
+        id: newAssetId,
+        project_id: project.id,
+        page_id: source.page_id || null,
+        section_id: source.section_id || null,
+        uploaded_by: req.currentUser.id,
+        file_name: derivedFileName,
+        storage_bucket: 'imagekit',
+        storage_path: imagePath,
+        imagekit_file_id: uploadResponse.fileId || null,
+        mime_type: uploadResponse.fileType || source.mime_type,
+        asset_kind: 'image',
+        public_url: originalUrl,
+        file_size: uploadResponse.size || buffer.byteLength,
+        width: uploadResponse.width || null,
+        height: uploadResponse.height || null,
+        render_inline: true,
+      })
+      .select('id, project_id, file_name, storage_bucket, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, file_size, width, height, render_inline, created_at')
+      .single()
+
+    if (assetError) return res.status(500).json({ error: assetError.message })
+
+    await logProjectActivity({
+      projectId: project.id,
+      currentUser: req.currentUser,
+      eventType: 'asset_uploaded',
+      subjectType: 'asset',
+      subjectId: asset.id,
+      title: 'Imagen convertida',
+      description: asset.file_name,
+      metadata: {
+        mimeType: asset.mime_type,
+        renderInline: asset.render_inline,
+        convertedFromAssetId: source.id,
+        exportOptions,
+      },
+    })
+
+    await logSecurityEvent(req, {
+      action: 'project_asset_converted',
+      resourceType: 'asset',
+      resourceId: asset.id,
+      companyId: project.company_id,
+      projectId: project.id,
+      metadata: { mimeType: asset.mime_type, fileSize: asset.file_size, convertedFromAssetId: source.id },
+    })
+
+    return res.status(201).json({
+      asset: {
+        id: asset.id,
+        projectId: asset.project_id,
+        fileName: asset.file_name,
+        bucket: asset.storage_bucket,
+        path: asset.storage_path,
+        fileId: asset.imagekit_file_id,
+        mimeType: asset.mime_type,
+        assetKind: asset.asset_kind,
+        originalUrl: asset.public_url,
+        publicUrl: asset.public_url,
+        fileSize: asset.file_size,
+        width: asset.width,
+        height: asset.height,
+        renderInline: asset.render_inline,
+        createdAt: asset.created_at,
+        convertedFromAssetId: source.id,
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo convertir la imagen' })
   }
 })
 

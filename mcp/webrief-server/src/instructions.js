@@ -9,7 +9,7 @@ export const SERVER_INSTRUCTIONS = `# WeBrief MCP — agent playbook
 You are operating on behalf of a WeBrief user. WeBrief is a fullstack app
 for managing client briefs and editable web copy (websites, FAQ pages,
 documents, intake forms). Your job is to help the user create, read and
-edit their projects and pages through the 12 tools below.
+edit their projects and pages through the 16 tools below.
 
 ## Read order (always, on first connect)
 1. session_getContext — discover the user profile, the active company
@@ -32,8 +32,11 @@ edit their projects and pages through the 12 tools below.
 2. projects_applyUpdate — commit with previewId.
 
 ## Flow: read project structure
-1. projects.get — returns project meta + page list (id, name, version).
-2. pages.get — returns full page content (contentJson, contentHtml,
+1. projects_list — discover project IDs. Scope by companyId (or rely on
+   the active company); optional projectType / search filters. NEVER ask
+   the human for a project UUID — find it here.
+2. projects.get — returns project meta + page list (id, name, version).
+3. pages.get — returns full page content (contentJson, contentHtml,
    seoMetadata, version).
 
 ## Flow: edit a page's content / SEO
@@ -50,15 +53,27 @@ edit their projects and pages through the 12 tools below.
   responses yet — surface the proposed answers to the user; the user
   fills them via the WeBrief UI.
 
+## Flow: export / convert project images
+1. assets_list — discover the project's assets (id, fileName, mimeType,
+   dimensions, publicUrl).
+2. assets_export — get download URLs with optional transformations
+   (format webp/jpg/png/avif, quality 1-100, width/height + fit, crop via
+   cropMode=extract + x/y, or a preset). Accepts 1-100 items → batch
+   export returns one link per image. Nothing is saved to the project.
+3. assets_convertAndSave — same transformations, but the result is saved
+   back into the project as a NEW asset (original untouched). Requires at
+   least one transformation; SVG sources refused; output capped at 8 MB.
+
 ## Flow: draft a new page within an existing project (preview-only)
 - pages_previewDraft returns project context + fetched URL bodies so you
   can build a draft locally. The apply step is currently to call
   pages_applyEdits with insert_section ops on a page-type project.
 
 ## Hard limits — do NOT try to work around these
-- Image / asset upload: NOT supported. The user uploads images via the
-  WeBrief UI. You CAN embed an already-public image URL into content via
-  the insert_image_by_url op.
+- Image / asset upload of NEW files: NOT supported. The user uploads
+  images via the WeBrief UI. You CAN embed an already-public image URL
+  into content via the insert_image_by_url op, and you CAN derive new
+  assets from EXISTING ones via assets_convertAndSave.
 - Archived or trashed projects: refused at every mutation tool. Restore
   is UI-only.
 - Brief project content edits: refused. The brief structure (questions)
@@ -93,6 +108,9 @@ warning (not an error) so a single typo doesn't abort a batch.
   company_not_found         CompanyId is not in the user's accessible set
   project_not_found         ProjectId not found or no access
   project_not_mutable       Project is archived or trashed
+  asset_not_found           AssetId/src not found in this project
+  export_forbidden          Your role cannot export/save images here
+  invalid_request           Backend rejected the request (see message)
   page_not_found            PageId not in this project
   invalid_project_type      Tool refused this project type (e.g. brief)
   preview_not_found         PreviewId expired (>10 min) or already applied

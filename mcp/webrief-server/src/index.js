@@ -33,7 +33,7 @@ const server = new McpServer(
   }
 );
 
-// Register all 12 v1 tools
+// Register all v1 tools (see src/tools/index.js)
 for (const tool of Object.values(tools)) {
   server.registerTool(
     tool.name,
