@@ -354,8 +354,8 @@ const PROJECT_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 // projects.previewCreateFromContent + createFromPreview (integrated)
 // ──────────────────────────────────────────────────────────────────────────────
 
-import * as previewCreate from '../tools/projects.previewCreateFromContent.js';
-import * as createFromPreview from '../tools/projects.createFromPreview.js';
+import * as previewCreate from '../tools/projects_previewCreateFromContent.js';
+import * as createFromPreview from '../tools/projects_createFromPreview.js';
 
 console.log('\nprojects.previewCreateFromContent — heuristics (pure)');
 
@@ -644,7 +644,7 @@ await test('createFromPreview returns preview_not_found for unknown id', async (
 // brief.previewPrefill
 // ──────────────────────────────────────────────────────────────────────────────
 
-import * as briefPrefill from '../tools/brief.previewPrefill.js';
+import * as briefPrefill from '../tools/brief_previewPrefill.js';
 
 console.log('\nbrief.previewPrefill — success path');
 
@@ -747,7 +747,7 @@ await test('rejects archived project', async () => {
 // pages.previewDraft
 // ──────────────────────────────────────────────────────────────────────────────
 
-import * as pagesPreviewDraft from '../tools/pages.previewDraft.js';
+import * as pagesPreviewDraft from '../tools/pages_previewDraft.js';
 
 console.log('\npages.previewDraft — success path');
 

@@ -69,8 +69,8 @@ async function withMockedFetch(routes, fn) {
   }
 }
 
-import * as previewUpdate from '../tools/projects.previewUpdate.js';
-import * as applyUpdate from '../tools/projects.applyUpdate.js';
+import * as previewUpdate from '../tools/projects_previewUpdate.js';
+import * as applyUpdate from '../tools/projects_applyUpdate.js';
 import { _resetPreviewStoreForTests, savePreview } from '../lib/previewStore.js';
 
 const PROJECT_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';

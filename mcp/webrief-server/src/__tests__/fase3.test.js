@@ -732,8 +732,8 @@ async function withMockedFetch(routes, fn) {
   }
 }
 
-import * as pagesPreviewEdits from '../tools/pages.previewEdits.js';
-import * as pagesApplyEdits from '../tools/pages.applyEdits.js';
+import * as pagesPreviewEdits from '../tools/pages_previewEdits.js';
+import * as pagesApplyEdits from '../tools/pages_applyEdits.js';
 
 const PROJECT_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const PAGE_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';

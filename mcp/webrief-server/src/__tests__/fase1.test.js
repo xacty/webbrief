@@ -97,10 +97,10 @@ await test('returns structured error when token is missing', () => {
 // Input schema validation tests
 // ──────────────────────────────────────────────────────────────────────────────
 
-import * as sessionGetContext from '../tools/session.getContext.js';
-import * as companiesSelectActive from '../tools/companies.selectActive.js';
-import * as projectsGet from '../tools/projects.get.js';
-import * as pagesGet from '../tools/pages.get.js';
+import * as sessionGetContext from '../tools/session_getContext.js';
+import * as companiesSelectActive from '../tools/companies_selectActive.js';
+import * as projectsGet from '../tools/projects_get.js';
+import * as pagesGet from '../tools/pages_get.js';
 
 const VALID_UUID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 
