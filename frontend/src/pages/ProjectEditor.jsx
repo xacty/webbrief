@@ -1123,7 +1123,8 @@ function buildSectionedHtmlFromPlainLines(lines) {
   if (sections.length === 0) return null
 
   return sections.map((section, index) => {
-    const sectionName = index === 0 ? 'Hero - ATF' : `Sección ${index + 1}`
+    const headingTitle = section.title?.trim() || ''
+    const sectionName = headingTitle || `Sección ${index + 1}`
     const sectionId = createLocalId('s')
     const content = section.lines.map(htmlBlockFromPlainLine).join('')
     return `<div data-section-divider data-section-id="${sectionId}" data-section-name="${escapeEditorHtml(sectionName)}"></div>${content || '<p></p>'}`
@@ -1397,6 +1398,7 @@ function buildRichSectionsFromPaste(html, { mode = 'page' } = {}) {
       const level = tag === 'h1' || prefix?.type === 'h1' ? 'h1' : 'h2'
       const text = prefix?.text || node.textContent?.replace(/\s+/g, ' ').trim() || ''
       current = {
+        title: text,
         nodes: [`<${level}>${escapeEditorHtml(text)}</${level}>`],
       }
       return
@@ -1421,7 +1423,8 @@ function buildRichSectionsFromPaste(html, { mode = 'page' } = {}) {
   if (sections.length === 0) return null
 
   return sections.map((section, index) => {
-    const sectionName = index === 0 ? 'Hero - ATF' : `Sección ${index + 1}`
+    const headingTitle = section.title?.trim() || ''
+    const sectionName = headingTitle || `Sección ${index + 1}`
     const sectionId = createLocalId('s')
     return `<div data-section-divider data-section-id="${sectionId}" data-section-name="${escapeEditorHtml(sectionName)}"></div>${section.nodes.join('') || '<p></p>'}`
   }).join('')
@@ -1465,9 +1468,15 @@ function buildSectionedHtmlFromPaste(html) {
   if (sections.length === 0) return null
 
   return sections.map((nodes, index) => {
-    const sectionName = index === 0 ? 'Hero - ATF' : `Sección ${index + 1}`
+    const firstHeading = nodes.find((node) => {
+      if (node.nodeType !== 1) return false
+      const tag = node.tagName?.toLowerCase()
+      return tag === 'h1' || tag === 'h2'
+    })
+    const headingTitle = firstHeading?.textContent?.replace(/\s+/g, ' ').trim() || ''
+    const sectionName = headingTitle || `Sección ${index + 1}`
     const sectionId = createLocalId('s')
-    return `<div data-section-divider data-section-id="${sectionId}" data-section-name="${sectionName}"></div>${serializeNodes(nodes, doc)}`
+    return `<div data-section-divider data-section-id="${sectionId}" data-section-name="${escapeEditorHtml(sectionName)}"></div>${serializeNodes(nodes, doc)}`
   }).join('')
 }
 
