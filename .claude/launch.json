@@ -6,7 +6,8 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite"],
       "cwd": "frontend",
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     },
     {
       "name": "onboarding-worktree",
