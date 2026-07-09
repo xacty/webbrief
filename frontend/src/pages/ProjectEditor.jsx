@@ -2271,6 +2271,39 @@ function getSectionInsertPos(editor, afterSectionId) {
   return insertPos ?? editor.state.doc.content.size
 }
 
+// Resuelve las coordenadas de un right-click a la posición top-level anterior
+// al bloque que contiene el click. Es el lugar donde se puede insertar un
+// sectionDivider para "cortar" mid-content: el bloque clickeado y todo lo que
+// hay debajo pasa a la nueva sección.
+function getInsertBoundaryFromCoords(editor, clientX, clientY) {
+  if (!editor) return null
+  let coord
+  try {
+    coord = editor.view.posAtCoords({ left: clientX, top: clientY })
+  } catch {
+    return null
+  }
+  if (!coord) return null
+  const $pos = editor.state.doc.resolve(coord.pos)
+  if ($pos.depth < 1) return null
+  return $pos.before(1)
+}
+
+// Devuelve true si el bloque top-level inmediatamente ANTES de `boundaryPos`
+// es un sectionDivider — insertar ahí crearía una sección vacía entre dos
+// dividers, así que no tiene sentido ofrecer la acción.
+function isBoundaryImmediatelyAfterDivider(editor, boundaryPos) {
+  if (!editor || typeof boundaryPos !== 'number') return false
+  let prevIsDivider = false
+  editor.state.doc.forEach((node, offset) => {
+    const end = offset + node.nodeSize
+    if (end === boundaryPos) {
+      prevIsDivider = node.type.name === 'sectionDivider'
+    }
+  })
+  return prevIsDivider
+}
+
 function getSectionInfoFromSelection(editor) {
   if (!editor) return null
 
@@ -3512,6 +3545,36 @@ export default function ProjectEditor() {
     setScrollRequest({ type: 'section', sectionId: id, requestId: Date.now() })
   }
 
+  // ── Inserta una sección en una posición absoluta del doc ──
+  // A diferencia de addSection(), NO agrega un bloque de contenido después del
+  // divider: el contenido que ya vive en esa posición se convierte en el primer
+  // bloque de la nueva sección. Se usa desde el right-click menu para "cortar"
+  // una sección a mitad del contenido.
+  function addSectionAtPos(insertPos) {
+    if (!canEditProjectStructure) return
+    if (!editorRef.current) return
+    if (typeof insertPos !== 'number' || insertPos < 0) return
+
+    const id = `s_${Date.now()}`
+    const currentSections = deriveSectionsFromDoc(editorRef.current, projectType)
+    const autoPrefix = projectType === 'faq' ? 'Pregunta Frecuente' : 'Sección'
+    const finalName = `${autoPrefix} ${getNextSectionNumber(currentSections)}`
+
+    protectedEmptySectionIds.current.add(id)
+
+    editorRef.current
+      .chain()
+      .insertContentAt(insertPos, {
+        type: 'sectionDivider',
+        attrs: { sectionId: id, sectionName: finalName },
+      })
+      .run()
+
+    renumberAutoSections(editorRef.current)
+    setActiveSectionId(id)
+    setScrollRequest({ type: 'section', sectionId: id, requestId: Date.now() })
+  }
+
   // ── Renombra una sección ──
   function renameSection(sectionId, newName) {
     if (!canEditProjectStructure) return
@@ -4352,6 +4415,7 @@ export default function ProjectEditor() {
             firstSectionId={derivedSections[0]?.id ?? ''}
             activeSectionId={activeSectionId}
             onOpenAddSectionAfter={(sectionId) => openSectionModal(sectionId)}
+            onAddSectionAtPos={addSectionAtPos}
             sectionActivities={sectionReviewActivities.filter((item) => item.metadata?.pageId === activePageId)}
             selectedActivityId={selectedActivityId}
             onActivityMarkerClick={handleActivityMarkerClick}
@@ -6915,6 +6979,7 @@ function EditorPanel({
   firstSectionId,
   activeSectionId,
   onOpenAddSectionAfter,
+  onAddSectionAtPos,
   sectionActivities = [],
   selectedActivityId = null,
   onActivityMarkerClick,
@@ -7283,6 +7348,7 @@ function EditorPanel({
   // El menú restaura la selección con setTextSelection antes de cada comando.
   const [contextMenuPos, setContextMenuPos] = useState(null)
   const [contextMenuSelection, setContextMenuSelection] = useState({ from: 0, to: 0, empty: true })
+  const [contextMenuInsertBoundary, setContextMenuInsertBoundary] = useState(null)
   const stableSelectionRef = useRef({ from: 0, to: 0, empty: true })
   const rightClickSnapshotRef = useRef({ from: 0, to: 0, empty: true })
   useEffect(() => {
@@ -7322,6 +7388,7 @@ function EditorPanel({
         : snap
       setContextMenuSelection(usable)
       setContextMenuPos({ x: e.clientX, y: e.clientY })
+      setContextMenuInsertBoundary(getInsertBoundaryFromCoords(editor, e.clientX, e.clientY))
       // Pinta el rango como "fake selection" gris para que el usuario siga viendo
       // qué texto va a actuar el menú (la DOM selection nativa ya se limpió).
       if (!usable.empty) {
@@ -7771,9 +7838,20 @@ function EditorPanel({
         onAddComment={onAddComment}
         onClose={() => {
           setContextMenuPos(null)
+          setContextMenuInsertBoundary(null)
           editor?.commands.clearFakeSelection?.()
         }}
         selectionSnapshot={contextMenuSelection}
+        canAddSectionHere={
+          canManageSections
+          && projectType !== 'document'
+          && contextMenuInsertBoundary !== null
+          && !isBoundaryImmediatelyAfterDivider(editor, contextMenuInsertBoundary)
+        }
+        addSectionLabel={projectType === 'faq' ? 'Nueva pregunta aquí' : 'Nueva sección aquí'}
+        onAddSectionHere={() => {
+          if (contextMenuInsertBoundary !== null) onAddSectionAtPos?.(contextMenuInsertBoundary)
+        }}
       />
     </div>
   )

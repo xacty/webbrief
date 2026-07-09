@@ -4,6 +4,7 @@ import {
   Bold, Italic, Underline, Strikethrough,
   Scissors, Copy, ClipboardPaste, Trash2,
   MessageSquare, Link2, Eraser, Type, ChevronRight,
+  SquareSplitVertical,
 } from 'lucide-react'
 import styles from './EditorContextMenu.module.css'
 
@@ -39,7 +40,18 @@ function Separator() {
   return <div className={styles.separator} />
 }
 
-export default function EditorContextMenu({ open, position, editor, onClose, onAddComment, canComment = false, selectionSnapshot = null }) {
+export default function EditorContextMenu({
+  open,
+  position,
+  editor,
+  onClose,
+  onAddComment,
+  canComment = false,
+  selectionSnapshot = null,
+  canAddSectionHere = false,
+  addSectionLabel = 'Nueva sección aquí',
+  onAddSectionHere,
+}) {
   const menuRef = useRef(null)
   const submenuWrapperRef = useRef(null)
   const [submenu, setSubmenu] = useState(null) // 'block' | null
@@ -243,6 +255,16 @@ export default function EditorContextMenu({ open, position, editor, onClose, onA
         disabled={!hasSelection || !canComment}
       />
       <MenuItem icon={Link2} label="Insertar enlace" shortcut={`${mod}+K`} onSelect={handleInsertLink} disabled={!hasSelection} />
+      {canAddSectionHere && (
+        <>
+          <Separator />
+          <MenuItem
+            icon={SquareSplitVertical}
+            label={addSectionLabel}
+            onSelect={() => { onClose?.(); onAddSectionHere?.() }}
+          />
+        </>
+      )}
       <Separator />
       <MenuItem
         icon={Bold}
