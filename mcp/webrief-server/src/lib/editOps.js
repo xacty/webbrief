@@ -303,7 +303,8 @@ function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function textOfNode(node) {
+// Exported for reuse by sections_list (read-only structural traversal).
+export function textOfNode(node) {
   if (!node) return '';
   if (node.type === 'text') return node.text ?? '';
   if (Array.isArray(node.content)) {
@@ -351,7 +352,8 @@ function makeSectionDivider(name, sectionId) {
  * `doc.content.slice(bodyStart, bodyEnd)` is the section's body (excluding the
  * divider itself). `bodyEnd` is exclusive.
  */
-function listSections(doc) {
+// Exported for reuse by sections_list (read-only structural traversal).
+export function listSections(doc) {
   const content = doc.content ?? [];
   const sections = [];
   let current = null;
