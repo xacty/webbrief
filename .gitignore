@@ -9,6 +9,7 @@ dist/
 .claude/worktrees/
 .claude/plans/
 .claude/skills/
+.claude/secrets/
 # Claude Agent SDK skill installer (local only — not used by VPS)
 .agents/
 skills-lock.json

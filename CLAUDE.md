@@ -27,6 +27,15 @@
 - Use `AI_GLOBAL.md` as the cross-model workflow contract for this repo.
 - Do not diverge from the terminology or workflow in the context files unless the user explicitly asks.
 
+## Dev Testing Account
+
+- Cuando necesites autenticarte en WeBrief para probar un flujo (login, editor, comments, share, admin, etc.), usa la cuenta bot `claude-bot@test.local` en el entorno **Dev** (proyecto Supabase `iimqxacagxuemwgaunis`). Nunca uses esa cuenta ni ninguna otra en Prod.
+- La contraseña vive en `.claude/secrets/dev-credentials.env` como `CLAUDE_BOT_EMAIL` y `CLAUDE_BOT_PASSWORD`. El directorio `.claude/secrets/` está en `.gitignore` — no lo commitees ni pegues su contenido en respuestas, PRs, o memoria persistente.
+- Al leer el archivo, respeta el formato con comillas simples (`KEY='value'`) para evitar shell-expansion de caracteres como `$`.
+- Ver `docs/WEBRIEF_DEV_CREDENTIALS.md` para detalle de la cuenta, reglas de manejo y procedimiento de reset.
+- Si Supabase Dev está pausado (free-tier se pausa tras ~1 semana sin uso), pide restaurarlo antes de intentar el login.
+- No uses la cuenta personal del owner para pruebas.
+
 ## Time Estimates Rule
 
 **Distinction: agent-execution time ≠ human-engineer time.**
