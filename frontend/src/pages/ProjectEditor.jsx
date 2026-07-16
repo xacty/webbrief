@@ -37,7 +37,7 @@ import {
   groupCommentsIntoThreads,
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
@@ -8264,6 +8264,20 @@ function blockMarkdown(element) {
     return Array.from(element.querySelectorAll('li')).map((li, index) => `${index + 1}. ${li.textContent.trim()}`).join('\n')
   }
   if (label === 'quote') return `> ${text}`
+  if (label === 'table') {
+    // Tabla Markdown (GFM): fila de encabezado + separador + filas. Si no hay
+    // <th>, se usa la primera fila como encabezado (GFM exige encabezado).
+    const { headers, rows } = tableToMatrix(element)
+    const headerRow = headers.length ? headers : (rows[0] || [])
+    const bodyRows = headers.length ? rows : rows.slice(1)
+    if (!headerRow.length) return ''
+    const cell = (value) => String(value ?? '').replace(/\|/g, '\\|')
+    return [
+      `| ${headerRow.map(cell).join(' | ')} |`,
+      `| ${headerRow.map(() => '---').join(' | ')} |`,
+      ...bodyRows.map((row) => `| ${row.map(cell).join(' | ')} |`),
+    ].join('\n')
+  }
   return text
 }
 
@@ -8282,11 +8296,56 @@ function extractLinks(element) {
   return links
 }
 
+// Convierte una <table> en una matriz { headers, rows }. Si la primera fila
+// es toda <th>, se toma como encabezado; si no, todas las filas van a `rows`.
+function tableToMatrix(element) {
+  const empty = { headers: [], rows: [] }
+  if (!element || element.tagName?.toLowerCase() !== 'table') return empty
+  const trList = Array.from(element.querySelectorAll('tr'))
+  if (!trList.length) return empty
+  const cellsOf = (tr) => Array.from(tr.children).map((cell) => cell.textContent.replace(/\s+/g, ' ').trim())
+  const firstCells = Array.from(trList[0].children)
+  const firstRowIsHeader = firstCells.length > 0 && firstCells.every((cell) => cell.tagName?.toLowerCase() === 'th')
+  if (firstRowIsHeader) {
+    return { headers: cellsOf(trList[0]), rows: trList.slice(1).map(cellsOf) }
+  }
+  return { headers: [], rows: trList.map(cellsOf) }
+}
+
+// Serializa una matriz { headers, rows } a CSV. Reutiliza csvCell (el mismo
+// escaper que exportFaqCsv: siempre entrecomilla y duplica comillas internas).
+function tableToCsv(matrix) {
+  const { headers = [], rows = [] } = matrix || {}
+  const lines = []
+  if (headers.length) lines.push(headers.map(csvCell).join(','))
+  rows.forEach((row) => lines.push(row.map(csvCell).join(',')))
+  return lines.join('\r\n')
+}
+
+// Descarga un CSV como archivo (mirror del tail de exportFaqCsv). Antepone un
+// BOM para que Excel detecte UTF-8 y respete los acentos del español.
+function downloadCsv(baseName, csv) {
+  if (typeof document === 'undefined') return
+  const blob = new Blob([String.fromCharCode(0xFEFF) + csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${slugifyExportFileName(baseName || 'tabla')}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 function createHandoffBlock(element, currentSection) {
   const label = blockLabel(element)
   const text = blockText(element)
   if (!text && !['img', 'table'].includes(label)) return null
   const image = label === 'img' ? parseImageBlockMetadata(element) : null
+  const links = extractLinks(element)
+  // Para tablas guardamos la matriz estructurada (headers/rows) en vez de un
+  // único string aplanado, y precomputamos el CSV para copiar/descargar.
+  const tableMatrix = label === 'table' ? tableToMatrix(element) : null
 
   return {
     id: `${currentSection.id}-${currentSection.blocks.length}`,
@@ -8294,12 +8353,11 @@ function createHandoffBlock(element, currentSection) {
     text,
     html: element.outerHTML,
     markdown: blockMarkdown(element),
-    links: extractLinks(element),
-    json: {
-      type: label,
-      text,
-      links: extractLinks(element),
-    },
+    links,
+    json: tableMatrix
+      ? { type: 'table', headers: tableMatrix.headers, rows: tableMatrix.rows }
+      : { type: label, text, links },
+    csv: tableMatrix ? tableToCsv(tableMatrix) : null,
     image,
   }
 }
@@ -8994,11 +9052,21 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
                         ))}
                         {audience === 'dev' && (
                           <>
-                            <button className={styles.handoffIconBtn} title="Copiar HTML" onClick={() => handleCopy('HTML copiado', { text: block.text, html: block.html })}>
+                            <button className={styles.handoffIconBtn} title="Copiar HTML" onClick={() => handleCopy('HTML copiado', { text: block.html })}>
                               <FileText size={13} />
                             </button>
                             <button className={styles.handoffIconBtn} title="Copiar JSON" onClick={() => handleCopy('JSON copiado', { text: JSON.stringify(block.json, null, 2) })}>
                               <Code2 size={13} />
+                            </button>
+                          </>
+                        )}
+                        {block.label === 'table' && (
+                          <>
+                            <button className={styles.handoffIconBtn} title="Copiar CSV" onClick={() => handleCopy('CSV copiado', { text: block.csv || '' })}>
+                              <Sheet size={13} />
+                            </button>
+                            <button className={styles.handoffIconBtn} title="Descargar CSV" onClick={() => downloadCsv(section.name, block.csv || '')}>
+                              <FileSpreadsheet size={13} />
                             </button>
                           </>
                         )}

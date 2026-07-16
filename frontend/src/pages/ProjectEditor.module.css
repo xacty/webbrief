@@ -1634,6 +1634,43 @@
   border-radius: 10px;
 }
 
+/* Tablas fuera del canvas. El estilo de tabla del editor vive bajo
+   :global(.ProseMirror ...) y NO alcanza ni el panel de Handoff (Des/Dev) ni
+   el Preview, que pintan el HTML crudo con dangerouslySetInnerHTML: sin estas
+   reglas la tabla pierde bordes, padding y encabezado. Replicamos el look del
+   canvas con tokens que SÍ invierten en dark mode (surface-muted/border/text). */
+.handoffBlockContent table,
+.previewPage table {
+  width: 100%;
+  margin: 0.5em 0 1em;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* Anula los widths inline que TipTap (resizable: true) añade al colgroup, igual
+   que en el canvas, para que las columnas queden repartidas parejo. */
+.handoffBlockContent table colgroup col,
+.previewPage table colgroup col {
+  width: auto !important;
+}
+
+.handoffBlockContent th,
+.handoffBlockContent td,
+.previewPage th,
+.previewPage td {
+  min-width: 60px;
+  padding: 6px 10px;
+  border: 1px solid var(--wb-border);
+  vertical-align: top;
+  text-align: left;
+}
+
+.handoffBlockContent th,
+.previewPage th {
+  background: var(--wb-surface-muted);
+  font-weight: 600;
+}
+
 .handoffCtaText {
   display: inline-flex;
   align-items: center;
