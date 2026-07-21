@@ -529,7 +529,7 @@ await test('returns mcp_token_missing when no token is configured', async () => 
 
 console.log('\nMcpServer — registration smoke test');
 
-await test('all exported tools register without throwing (18 tools incl. pages_create)', async () => {
+await test('all exported tools register without throwing (20 tools incl. pages_create)', async () => {
   const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
   const tools = await import('../tools/index.js');
   const server = new McpServer(
@@ -545,8 +545,10 @@ await test('all exported tools register without throwing (18 tools incl. pages_c
     );
     names.push(tool.name);
   }
-  assert.equal(names.length, 18, `expected 18 tools, got ${names.length}: ${names.join(', ')}`);
+  assert.equal(names.length, 20, `expected 20 tools, got ${names.length}: ${names.join(', ')}`);
   assert.ok(names.includes('pages_create'), 'missing pages_create');
+  assert.ok(names.includes('pages_delete'), 'missing pages_delete');
+  assert.ok(names.includes('pages_rename'), 'missing pages_rename');
 });
 
 console.log(`\npages_create.test.js: ${passed} passed, ${failed} failed`);

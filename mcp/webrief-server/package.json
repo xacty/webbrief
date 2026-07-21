@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node src/__tests__/fase1.test.js && node src/__tests__/fase2.test.js && node src/__tests__/fase3.test.js && node src/__tests__/fase4.test.js && node src/__tests__/projects_list.test.js && node src/__tests__/assets_tools.test.js && node src/__tests__/sections_list.test.js && node src/__tests__/pages_create.test.js",
+    "test": "node src/__tests__/fase1.test.js && node src/__tests__/fase2.test.js && node src/__tests__/fase3.test.js && node src/__tests__/fase4.test.js && node src/__tests__/projects_list.test.js && node src/__tests__/assets_tools.test.js && node src/__tests__/sections_list.test.js && node src/__tests__/pages_create.test.js && node src/__tests__/pages_manage.test.js",
     "test:invariants": "node ../../shared/documentInvariants.test.js"
   },
   "dependencies": {

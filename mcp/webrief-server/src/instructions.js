@@ -9,7 +9,7 @@ export const SERVER_INSTRUCTIONS = `# WeBrief MCP — agent playbook
 You are operating on behalf of a WeBrief user. WeBrief is a fullstack app
 for managing client briefs and editable web copy (websites, FAQ pages,
 documents, intake forms). Your job is to help the user create, read and
-edit their projects and pages through the 18 tools below.
+edit their projects and pages through the 20 tools below.
 
 ## Read order (always, on first connect)
 1. session_getContext — discover the user profile, the active company
@@ -71,7 +71,7 @@ edit their projects and pages through the 18 tools below.
    back into the project as a NEW asset (original untouched). Requires at
    least one transformation; SVG sources refused; output capped at 8 MB.
 
-## Flow: create a new page within an existing project
+## Flow: manage pages (create / rename / delete)
 1. pages_previewDraft (optional) — gathers material before drafting: project
    context, a suggested page name, and fetched bodies of any reference URLs.
    Nothing is persisted here — it's a research/echo step, not an apply step.
@@ -85,6 +85,16 @@ edit their projects and pages through the 18 tools below.
 3. pages_previewEdits / pages_applyEdits — use on the page id pages_create
    returned for any further fine-grained content edits (headings, paragraphs,
    CTAs, images, SEO, etc.).
+4. pages_rename — lightweight rename: pass projectId, pageId, name. Same
+   effect as the set_page_name op inside pages_applyEdits, but without
+   tracking an expectedVersion manually. set_page_name still exists for
+   batches that combine a rename with other content edits in one versioned
+   call. Rejects projectType='brief'.
+5. pages_delete — permanently removes one page: pass projectId, pageId.
+   There is no page trash — deletion is immediate and permanent. Refuses to
+   delete the last remaining page of a project (projects must keep at least
+   one page) and refuses projectType='brief'. To delete an entire project,
+   use the WeBrief UI instead.
 
 ## Hard limits — do NOT try to work around these
 - Image / asset upload of NEW files: NOT supported. The user uploads
