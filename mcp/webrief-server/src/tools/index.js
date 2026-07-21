@@ -12,6 +12,7 @@ export * as pagesGet from './pages_get.js';
 export * as sectionsList from './sections_list.js';
 export * as pagesPreviewEdits from './pages_previewEdits.js';
 export * as pagesApplyEdits from './pages_applyEdits.js';
+export * as pagesCreate from './pages_create.js';
 export * as assetsList from './assets_list.js';
 export * as assetsExport from './assets_export.js';
 export * as assetsConvertAndSave from './assets_convertAndSave.js';

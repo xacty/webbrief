@@ -317,12 +317,14 @@ function makeTextNode(text) {
   return { type: 'text', text };
 }
 
-function makeParagraph(text) {
+// Exported for reuse by pages_create (building initial section content).
+export function makeParagraph(text) {
   if (!text) return { type: 'paragraph' };
   return { type: 'paragraph', content: [makeTextNode(text)] };
 }
 
-function makeHeading(level, text) {
+// Exported for reuse by pages_create (building initial section content).
+export function makeHeading(level, text) {
   return { type: 'heading', attrs: { level }, content: [makeTextNode(text)] };
 }
 
@@ -336,7 +338,8 @@ function makeImage(src, alt) {
   return { type: 'image', attrs };
 }
 
-function makeSectionDivider(name, sectionId) {
+// Exported for reuse by pages_create (building initial section content).
+export function makeSectionDivider(name, sectionId) {
   return {
     type: 'sectionDivider',
     attrs: { sectionId, sectionName: name },

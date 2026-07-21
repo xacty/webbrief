@@ -145,6 +145,11 @@ export async function handler(input) {
         contentRules: p.contentRules ?? p.content_rules ?? {},
         version: currentVersion, // backend bumps to currentVersion + 1
         reviewStatus: p.reviewStatus ?? p.review_status ?? 'draft',
+        // The backend PUT persists these verbatim (`|| null`), so omitting
+        // them would wipe the review baseline of pages under review.
+        reviewBaselineVersionId: p.reviewBaselineVersionId ?? p.review_baseline_version_id ?? null,
+        reviewBaselineAt: p.reviewBaselineAt ?? p.review_baseline_at ?? null,
+        reviewRequestedBy: p.reviewRequestedBy ?? p.review_requested_by ?? null,
       };
     }
     return {
@@ -157,6 +162,9 @@ export async function handler(input) {
       contentRules: p.contentRules ?? p.content_rules ?? {},
       version: p.version ?? 1,
       reviewStatus: p.reviewStatus ?? p.review_status ?? 'draft',
+      reviewBaselineVersionId: p.reviewBaselineVersionId ?? p.review_baseline_version_id ?? null,
+      reviewBaselineAt: p.reviewBaselineAt ?? p.review_baseline_at ?? null,
+      reviewRequestedBy: p.reviewRequestedBy ?? p.review_requested_by ?? null,
     };
   });
 

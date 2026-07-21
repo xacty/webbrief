@@ -9,7 +9,7 @@ export const SERVER_INSTRUCTIONS = `# WeBrief MCP — agent playbook
 You are operating on behalf of a WeBrief user. WeBrief is a fullstack app
 for managing client briefs and editable web copy (websites, FAQ pages,
 documents, intake forms). Your job is to help the user create, read and
-edit their projects and pages through the 17 tools below.
+edit their projects and pages through the 18 tools below.
 
 ## Read order (always, on first connect)
 1. session_getContext — discover the user profile, the active company
@@ -71,10 +71,20 @@ edit their projects and pages through the 17 tools below.
    back into the project as a NEW asset (original untouched). Requires at
    least one transformation; SVG sources refused; output capped at 8 MB.
 
-## Flow: draft a new page within an existing project (preview-only)
-- pages_previewDraft returns project context + fetched URL bodies so you
-  can build a draft locally. The apply step is currently to call
-  pages_applyEdits with insert_section ops on a page-type project.
+## Flow: create a new page within an existing project
+1. pages_previewDraft (optional) — gathers material before drafting: project
+   context, a suggested page name, and fetched bodies of any reference URLs.
+   Nothing is persisted here — it's a research/echo step, not an apply step.
+2. pages_create — actually creates the page: pass projectId, name, optional
+   position (0-based index among the project's pages; omit to append at the
+   end), and optional sections[] ({ name, headingLevel, headingText,
+   paragraphs[] }) for initial content. Omitting sections (or passing [])
+   creates the page with a single empty default section ("Sección 1").
+   Rejects projectType='brief' the same way pages.applyEdits does. Returns
+   the new page's id/name/position/version.
+3. pages_previewEdits / pages_applyEdits — use on the page id pages_create
+   returned for any further fine-grained content edits (headings, paragraphs,
+   CTAs, images, SEO, etc.).
 
 ## Hard limits — do NOT try to work around these
 - Image / asset upload of NEW files: NOT supported. The user uploads
@@ -120,6 +130,8 @@ warning (not an error) so a single typo doesn't abort a batch.
   invalid_request           Backend rejected the request (see message)
   page_not_found            PageId not in this project
   invalid_project_type      Tool refused this project type (e.g. brief)
+  structure_forbidden       Your role can write content but not add/reorder
+                            pages (pages_create structural change refused)
   preview_not_found         PreviewId expired (>10 min) or already applied
   preview_kind_mismatch     PreviewId is for a different tool
   preview_company_mismatch  Argument companyId differs from the stored one

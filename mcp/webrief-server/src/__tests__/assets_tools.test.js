@@ -379,8 +379,8 @@ await test('all exported tools register without throwing', async () => {
     );
     names.push(tool.name);
   }
-  assert.equal(names.length, 17, `expected 17 tools, got ${names.length}: ${names.join(', ')}`);
-  for (const expected of ['projects_list', 'assets_list', 'assets_export', 'assets_convertAndSave', 'sections_list']) {
+  assert.equal(names.length, 18, `expected 18 tools, got ${names.length}: ${names.join(', ')}`);
+  for (const expected of ['projects_list', 'assets_list', 'assets_export', 'assets_convertAndSave', 'sections_list', 'pages_create']) {
     assert.ok(names.includes(expected), `missing ${expected}`);
   }
 });
