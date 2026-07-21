@@ -57,6 +57,18 @@ const briefDocsUpload = multer({
 // con 500 MB por proyecto cabe ~2 proyectos full antes de tocar el límite.
 const PROJECT_TOTAL_BUDGET_BYTES = 500 * 1024 * 1024
 
+// The shift_project_pages_position RPC is optional. Older environments (and
+// Dev before the migration runs) fall back to a per-row UPDATE with negative
+// positions. Postgres reports PGRST202 when a function name is not resolvable
+// by PostgREST's schema cache; the message also mentions the function name.
+function isMissingRpcError(error) {
+  if (!error) return false
+  if (error.code === 'PGRST202') return true
+  const message = `${error.message || ''} ${error.details || ''}`
+  return message.includes('shift_project_pages_position')
+    && (message.includes('does not exist') || message.includes('Could not find'))
+}
+
 // Whitelist MIME types para Brief uploads. Imágenes van a ImageKit; el resto a Supabase Storage.
 const BRIEF_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'])
 const BRIEF_DOC_MIMES = new Set([
@@ -1178,6 +1190,41 @@ router.put('/:id/pages', async (req, res) => {
     const deleteIds = (existingPages || [])
       .map((page) => page.id)
       .filter((pageId) => !keepIds.has(pageId))
+
+    // Sidestep the (project_id, position) unique constraint when the payload
+    // reorders existing rows (e.g. pages_create inserting at position 0
+    // pushes existing pages up). INSERT..ON CONFLICT DO UPDATE processes rows
+    // one at a time, so shifting page A from position 0→1 while page B still
+    // occupies 1 raises a duplicate-key error even though the final state is
+    // valid. Bumping every existing page's position out of the way first is
+    // idempotent (the values are overwritten by the upsert below).
+    if ((existingPages || []).length > 0) {
+      const shiftOffset = 1_000_000
+      const { error: shiftError } = await supabaseAdmin
+        .rpc('shift_project_pages_position', {
+          p_project_id: project.id,
+          p_offset: shiftOffset,
+        })
+      if (shiftError && !isMissingRpcError(shiftError)) {
+        return res.status(500).json({ error: shiftError.message })
+      }
+      if (shiftError && isMissingRpcError(shiftError)) {
+        // Fallback path: no RPC available (older DB). Do the shift by fetching
+        // ids and issuing one UPDATE per row — slower but correct. Uses a
+        // negative offset so it can't collide with the incoming payload's
+        // non-negative positions.
+        const existingIds = (existingPages || []).map((p) => p.id)
+        for (let idx = 0; idx < existingIds.length; idx += 1) {
+          const { error: rowShiftError } = await supabaseAdmin
+            .from('project_pages')
+            .update({ position: -(idx + 1) })
+            .eq('id', existingIds[idx])
+          if (rowShiftError) {
+            return res.status(500).json({ error: rowShiftError.message })
+          }
+        }
+      }
+    }
 
     let { error: upsertError } = await supabaseAdmin
       .from('project_pages')
