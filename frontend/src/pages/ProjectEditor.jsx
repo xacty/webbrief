@@ -8747,7 +8747,7 @@ function EditorPanel({
             vive en el doc (nosotros la borramos) así que no hay divider donde
             anclar un chip; se listan acá arriba, dentro del scroll container
             (no fixed) para que convivan con el resto del contenido. */}
-        {projectType === 'page' && deletedLocalConflicts.length > 0 && (
+        {(projectType === 'page' || projectType === 'faq') && deletedLocalConflicts.length > 0 && (
           <div className={styles.deletedLocalConflictBanner}>
             {deletedLocalConflicts.map((conflict) => (
               <div key={conflict.sectionId} className={styles.deletedLocalConflictRow}>
@@ -8801,7 +8801,7 @@ function EditorPanel({
                   editor={editor}
                 />
               )}
-              {projectType === 'page' && (
+              {(projectType === 'page' || projectType === 'faq') && (
                 <ConflictSectionChips
                   conflicts={sectionConflicts}
                   wrapperRef={wrapperRef}
