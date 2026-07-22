@@ -30,7 +30,7 @@ export function createEditorChannel({ projectId, sessionId, initialState, onPres
         if (meta) others.push({ ...meta, sessionId: key })
       })
       const signature = others
-        .map((o) => `${o.sessionId}:${o.pageId}:${o.sectionId}:${o.name}`)
+        .map((o) => `${o.sessionId}:${o.pageId}:${o.sectionId}:${o.name}:${o.avatarUrl}`)
         .sort()
         .join('|')
       if (signature === lastSignature) return
