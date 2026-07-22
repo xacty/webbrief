@@ -3808,11 +3808,19 @@ export default function ProjectEditor() {
   const resolveConflict = useCallback((conflict, action) => {
     if (!conflict) return
 
+    // IM1: openConflict es un snapshot tomado al abrir el modal. Si un sync
+    // remoto posterior actualizó esta misma sección mientras el modal seguía
+    // abierto (ver syncRemoteChanges: "último remoto gana como candidato"),
+    // conflictsByPageRef ya tiene el remoteHtml más nuevo — releerlo acá evita
+    // que "Usar la suya"/"Insertar la suya debajo"/"Restaurar la suya" apliquen
+    // una versión vieja y descarten la que realmente llegó última.
+    const fresh = conflictsByPageRef.current.get(activePageId)?.find((c) => c.sectionId === conflict.sectionId) || conflict
+
     function closeConflict() {
       const pageId = activePageId
       if (pageId) {
         const list = conflictsByPageRef.current.get(pageId) || []
-        const nextList = list.filter((c) => c.sectionId !== conflict.sectionId)
+        const nextList = list.filter((c) => c.sectionId !== fresh.sectionId)
         if (nextList.length === 0) conflictsByPageRef.current.delete(pageId)
         else conflictsByPageRef.current.set(pageId, nextList)
         setConflictsVersion((v) => v + 1)
@@ -3829,67 +3837,84 @@ export default function ProjectEditor() {
       setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
     }
 
+    // M2: la sección ya no tiene divider vivo en el doc (otra mutación —p.ej.
+    // un delete propio o un sync remoto— la sacó mientras el conflicto seguía
+    // pendiente). Mejor avisar que fallar en silencio.
+    function warnSectionGone() {
+      showToast({ kind: 'info', text: 'La sección ya no existe en el documento', autoHideMs: 3500 })
+    }
+
     if (action === 'keep-mine' || action === 'keep-deleted') {
       closeConflict()
       return
     }
 
     if (action === 'use-theirs' && editor) {
-      const range = getSectionRangeById(editor.state.doc, conflict.sectionId)
+      const range = getSectionRangeById(editor.state.doc, fresh.sectionId)
       if (range) {
+        // M1: si remoteHtml llega vacío (p.ej. sección en blanco del otro
+        // lado), protegerla del auto-remove de secciones vacías ANTES del
+        // chain — mismo motivo que insert-below/restore-theirs.
+        protectedEmptySectionIds.current.add(fresh.sectionId)
         const html = buildHtmlFromSections([{
-          sectionId: conflict.sectionId,
-          sectionName: conflict.sectionName,
-          innerHtml: conflict.remoteHtml,
+          sectionId: fresh.sectionId,
+          sectionName: fresh.sectionName,
+          innerHtml: fresh.remoteHtml,
         }])
         editor.chain().insertContentAt(range, html).run()
         refreshAfterMutation()
         setIsDirty(true)
+      } else {
+        warnSectionGone()
       }
       closeConflict()
       return
     }
 
     if (action === 'insert-below' && editor) {
-      const range = getSectionRangeById(editor.state.doc, conflict.sectionId)
+      const range = getSectionRangeById(editor.state.doc, fresh.sectionId)
       if (range) {
         const newId = `s_${Date.now()}`
         protectedEmptySectionIds.current.add(newId)
         const html = buildHtmlFromSections([{
           sectionId: newId,
-          sectionName: `${conflict.sectionName} — versión de ${conflict.actorName}`,
-          innerHtml: conflict.remoteHtml,
+          sectionName: `${fresh.sectionName} — versión de ${fresh.actorName}`,
+          innerHtml: fresh.remoteHtml,
         }])
         editor.chain().insertContentAt(range.to, html).run()
         refreshAfterMutation()
         setIsDirty(true)
+      } else {
+        warnSectionGone()
       }
       closeConflict()
       return
     }
 
     if (action === 'accept-delete' && editor) {
-      const range = getSectionRangeById(editor.state.doc, conflict.sectionId)
+      const range = getSectionRangeById(editor.state.doc, fresh.sectionId)
       if (range) {
-        protectedEmptySectionIds.current.delete(conflict.sectionId)
+        protectedEmptySectionIds.current.delete(fresh.sectionId)
         editor.chain().deleteRange(range).run()
         refreshAfterMutation()
         setIsDirty(true)
-        if (conflict.sectionId === activeSectionId) {
+        if (fresh.sectionId === activeSectionId) {
           const updated = deriveSectionsFromDoc(editor, projectType)
           setActiveSectionId(updated[0]?.id ?? null)
         }
+      } else {
+        warnSectionGone()
       }
       closeConflict()
       return
     }
 
     if (action === 'restore-theirs' && editor) {
-      protectedEmptySectionIds.current.add(conflict.sectionId)
+      protectedEmptySectionIds.current.add(fresh.sectionId)
       const html = buildHtmlFromSections([{
-        sectionId: conflict.sectionId,
-        sectionName: conflict.sectionName,
-        innerHtml: conflict.remoteHtml,
+        sectionId: fresh.sectionId,
+        sectionName: fresh.sectionName,
+        innerHtml: fresh.remoteHtml,
       }])
       editor.chain().insertContentAt(editor.state.doc.content.size, html).run()
       refreshAfterMutation()
@@ -3899,7 +3924,7 @@ export default function ProjectEditor() {
     }
 
     closeConflict()
-  }, [activePageId, activeSectionId, projectType, renumberAutoSections])
+  }, [activePageId, activeSectionId, projectType, renumberAutoSections, showToast])
 
   useEffect(() => {
     if (!isDirty || loadingProject || !projectId) return undefined
