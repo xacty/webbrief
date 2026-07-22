@@ -37,7 +37,7 @@ import {
   groupCommentsIntoThreads,
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
@@ -4791,6 +4791,45 @@ function Navbar({
   onSetOpenMenuId,
 }) {
   const saveLabel = saveMessage || (isDirty ? 'Sin guardar' : 'Guardado')
+
+  // Strip deslizable de pills — ver DESIGN-SYSTEM.md §"min-width: 0 on flex
+  // children". Detecta overflow a izquierda/derecha para mostrar flechas
+  // discretas y difuminar el borde con contenido oculto.
+  const stripRef = useRef(null)
+  const [stripState, setStripState] = useState({ left: false, right: false })
+
+  const updateStripState = useCallback(() => {
+    const el = stripRef.current
+    if (!el) return
+    const left = el.scrollLeft > 4
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 4
+    setStripState((prev) => (prev.left === left && prev.right === right ? prev : { left, right }))
+  }, [])
+
+  useEffect(() => {
+    const el = stripRef.current
+    if (!el) return undefined
+    updateStripState()
+    el.addEventListener('scroll', updateStripState, { passive: true })
+    const observer = new ResizeObserver(updateStripState)
+    observer.observe(el)
+    return () => { el.removeEventListener('scroll', updateStripState); observer.disconnect() }
+  }, [updateStripState, pages.length])
+
+  // Auto-scroll para mantener la pill activa visible dentro del strip.
+  useEffect(() => {
+    const el = stripRef.current
+    if (!el || !activePageId) return
+    el.querySelector(`[data-page-pill-id="${activePageId}"]`)?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+  }, [activePageId])
+
+  const stripFadeClassName = cx(
+    navStyles.navPillsStrip,
+    stripState.left && stripState.right && navStyles.navPillsStripFadeBoth,
+    stripState.left && !stripState.right && navStyles.navPillsStripFadeLeft,
+    !stripState.left && stripState.right && navStyles.navPillsStripFadeRight,
+  )
+
   return (
     <div className={navStyles.navbar}>
 
@@ -4812,21 +4851,43 @@ function Navbar({
 
       {/* Columna central: Pills de páginas */}
       <div className={navStyles.navCenter} data-tour="editor-pages">
-        {pages.map((page) => (
-          <PagePill
-            key={page.id}
-            page={page}
-            isActive={page.id === activePageId}
-            canDelete={pages.length > 1}
-            canManagePages={canManagePages}
-            onClick={() => onPageClick(page.id)}
-            onRename={(name) => onRenamePage(page.id, name)}
-            onRequestDelete={() => onRequestDeletePage(page.id)}
-            menuOpen={openMenuId === `page-${page.id}`}
-            onOpenMenu={() => onSetOpenMenuId(`page-${page.id}`)}
-            onCloseMenu={() => onSetOpenMenuId(null)}
-          />
-        ))}
+        <button
+          type="button"
+          className={cx(navStyles.navStripArrow, stripState.left && navStyles.navStripArrowVisible)}
+          onClick={() => { if (stripRef.current) stripRef.current.scrollLeft -= 160 }}
+          title="Ver páginas anteriores"
+          aria-hidden={!stripState.left}
+          tabIndex={stripState.left ? 0 : -1}
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <div ref={stripRef} className={stripFadeClassName}>
+          {pages.map((page) => (
+            <PagePill
+              key={page.id}
+              page={page}
+              isActive={page.id === activePageId}
+              canDelete={pages.length > 1}
+              canManagePages={canManagePages}
+              onClick={() => onPageClick(page.id)}
+              onRename={(name) => onRenamePage(page.id, name)}
+              onRequestDelete={() => onRequestDeletePage(page.id)}
+              menuOpen={openMenuId === `page-${page.id}`}
+              onOpenMenu={() => onSetOpenMenuId(`page-${page.id}`)}
+              onCloseMenu={() => onSetOpenMenuId(null)}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          className={cx(navStyles.navStripArrow, stripState.right && navStyles.navStripArrowVisible)}
+          onClick={() => { if (stripRef.current) stripRef.current.scrollLeft += 160 }}
+          title="Ver páginas siguientes"
+          aria-hidden={!stripState.right}
+          tabIndex={stripState.right ? 0 : -1}
+        >
+          <ChevronRight size={16} />
+        </button>
         {canManagePages && (
           <button className={navStyles.navPillAdd} onClick={onAddPage} title="Agregar página">
             <Plus size={16} color="#2a2a2a" />
@@ -5064,7 +5125,7 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
   const menuButtonClassName = `${navStyles.navPillMenuBtn} ${isActive ? navStyles.navPillMenuBtnActive : navStyles.navPillMenuBtnInactive}`
 
   return (
-    <div className={wrapperClassName}>
+    <div className={wrapperClassName} data-page-pill-id={page.id} title={page.name}>
       {editing ? (
         <input
           className={cx(inputClassName, navStyles.navPillInputTransparent)}
@@ -5080,9 +5141,9 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
           className={pillClassName}
           onClick={onClick}
           onDoubleClick={canManagePages ? () => setEditing(true) : undefined}
-          title={canManagePages ? 'Doble clic para renombrar' : undefined}
+          title={canManagePages ? `${page.name} — doble clic para renombrar` : page.name}
         >
-          {page.name}
+          <span className={navStyles.navPillLabel}>{page.name}</span>
         </button>
       )}
       {canManagePages && (
