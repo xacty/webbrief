@@ -39,6 +39,8 @@ import {
   groupCommentsIntoThreads,
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
+import { createEditorChannel } from '../lib/editorPresence'
+import PresenceAvatars from '../components/editor/PresenceAvatars'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
@@ -2470,6 +2472,21 @@ export default function ProjectEditor() {
   const [liveCommentIds, setLiveCommentIds] = useState(null)
   const commentsLoadingRef = useRef(false)
 
+  // Presencia en vivo (canal por proyecto) — ver `lib/editorPresence.js` y
+  // docs/superpowers/specs/2026-07-22-editor-collab-navbar-design.md §F1.
+  // sessionId es por pestaña (no por usuario) para poder hacer QA con la
+  // misma cuenta en dos pestañas simultáneas.
+  const editorSessionIdRef = useRef(
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
+  const [remotePeers, setRemotePeers] = useState([])
+  const editorChannelRef = useRef(null)
+  // F3 (fase posterior) conecta esto al handler real de sync/merge.
+  const remoteSaveHandlerRef = useRef(() => {})
+  const presencePageSectionTimerRef = useRef(null)
+
   // Ref al editor único
   const editorRef = useRef(null)
   const saveInFlightRef = useRef(false)
@@ -4035,6 +4052,49 @@ export default function ProjectEditor() {
     return unsubscribe
   }, [projectId, commentsAvailable])
 
+  // Presencia en vivo: crea el canal una sola vez por proyecto/usuario (NO
+  // depende de activePageId/activeSectionId para no recrearlo en cada
+  // navegación — esos cambios se envían aparte, throttled, en el efecto
+  // siguiente).
+  useEffect(() => {
+    if (!projectId || !currentUser?.id || !canWriteContent) return undefined
+
+    const channel = createEditorChannel({
+      projectId,
+      sessionId: editorSessionIdRef.current,
+      initialState: {
+        userId: currentUser.id,
+        name: currentUser.fullName || currentUser.email || 'Alguien',
+        avatarUrl: currentUser.avatarUrl || '',
+        pageId: activePageId,
+        sectionId: activeSectionId,
+      },
+      onPresenceChange: setRemotePeers,
+      onRemoteSave: (payload) => remoteSaveHandlerRef.current(payload),
+    })
+    editorChannelRef.current = channel
+
+    return () => {
+      channel.cleanup()
+      editorChannelRef.current = null
+      setRemotePeers([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, currentUser?.id, canWriteContent])
+
+  // Empuja pageId/sectionId activos al canal de presencia, throttled a ~2s
+  // para no floodear el track() en cada click de navegación.
+  useEffect(() => {
+    if (!editorChannelRef.current) return undefined
+    if (presencePageSectionTimerRef.current) clearTimeout(presencePageSectionTimerRef.current)
+    presencePageSectionTimerRef.current = setTimeout(() => {
+      editorChannelRef.current?.updatePresence({ pageId: activePageId, sectionId: activeSectionId })
+    }, 2000)
+    return () => {
+      if (presencePageSectionTimerRef.current) clearTimeout(presencePageSectionTimerRef.current)
+    }
+  }, [activePageId, activeSectionId])
+
   // Mantener un set de commentIds que ESTÁN en el doc actual (para detectar huérfanos)
   useEffect(() => {
     if (!editorRef.current) return
@@ -4327,6 +4387,7 @@ export default function ProjectEditor() {
       {/* ── NAVBAR ── */}
         <Navbar
         pages={pages}
+        remotePeers={remotePeers}
         activePageId={activePageId}
         projectName={projectMeta?.name || 'Proyecto'}
         projectType={projectType}
@@ -4404,6 +4465,7 @@ export default function ProjectEditor() {
             onSetOpenMenuId={setOpenMenuId}
             seoExpanded={seoExpanded}
             onSeoClick={handleSeoPanelClick}
+            peers={remotePeers}
           />
         ) : projectType === 'faq' ? (
           <FaqPanel
@@ -4461,6 +4523,7 @@ export default function ProjectEditor() {
             onSelectionSectionChange={handleSelectionFocus}
             firstSectionId={derivedSections[0]?.id ?? ''}
             activeSectionId={activeSectionId}
+            remotePeers={remotePeers}
             onOpenAddSectionAfter={(sectionId) => openSectionModal(sectionId)}
             onAddSectionAtPos={addSectionAtPos}
             sectionActivities={sectionReviewActivities.filter((item) => item.metadata?.pageId === activePageId)}
@@ -4801,6 +4864,7 @@ function TemplatesDropdown({ companyId, pages, disabled = false }) {
 
 function Navbar({
   pages,
+  remotePeers = [],
   activePageId,
   projectName,
   projectType = 'page',
@@ -4934,7 +4998,7 @@ function Navbar({
         >
           <ChevronRight size={16} />
         </button>
-        <PageIndexMenu pages={pages} activePageId={activePageId} onSelectPage={onPageClick} />
+        <PageIndexMenu pages={pages} activePageId={activePageId} onSelectPage={onPageClick} peers={remotePeers} />
         {canManagePages && (
           <button className={navStyles.navPillAdd} onClick={onAddPage} title="Agregar página">
             <Plus size={16} color="#2a2a2a" />
@@ -4947,6 +5011,7 @@ function Navbar({
 
       {/* Columna derecha: Iconos + Save */}
       <div className={navStyles.navRight}>
+        <PresenceAvatars peers={remotePeers} pages={pages} />
         <span className={navStyles.navSaveCompact} title={saveLabel} aria-live="polite">
           {isSaving ? (
             <>
@@ -5505,7 +5570,7 @@ function H1Divider({ text, onClick }) {
   )
 }
 
-function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick }) {
+function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick, peers = [] }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -5570,6 +5635,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
             menuOpen={openMenuId === `section-${section.id}`}
             onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
             onCloseMenu={() => onSetOpenMenuId(null)}
+            presencePeers={peers.filter((peer) => peer.sectionId === section.id)}
           />
         ))}
         {sections.length === 0 && (
@@ -5581,7 +5647,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
 }
 
 // Ítem de sección: nav-button (Tag + nombre + menú) + lista de headings
-function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle }) {
+function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle, presencePeers = [] }) {
 
   // ── Scroll al heading correspondiente en el editor al hacer click ──
   function handleHeadingClick(e, index) {
@@ -5661,6 +5727,12 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
                 <span className={panelStyles.sectionSubtitle}>{subtitle}</span>
               )}
             </div>
+          )}
+          {presencePeers.length > 0 && (
+            <span
+              className={cx(panelStyles.presenceDot, isActive && panelStyles.presenceDotWarning)}
+              title={`${presencePeers.map((peer) => peer.name || 'Alguien').join(', ')} está(n) aquí`}
+            />
           )}
         </div>
 
@@ -5997,6 +6069,89 @@ function SectionActivityMarkers({ wrapperRef, editor, activities = [], selectedA
         </button>
       ))}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PresenceSectionChips — overlay NO editable dentro del canvas: un chip
+// "● {nombres}" alineado al top-right de cada sectionDivider que tenga
+// algún peer remoto de presencia (ver `lib/editorPresence.js`). Sigue el
+// mismo patrón de recompute que `canvasAddSectionWrap`/`SectionActivityMarkers`
+// (offsetTop relativo a `wrapperRef`, que es `position: relative`, más
+// MutationObserver/ResizeObserver sobre `.ProseMirror`).
+// ---------------------------------------------------------------------------
+function PresenceSectionChips({ peers = [], activeSectionId, wrapperRef, editor }) {
+  const [chips, setChips] = useState([])
+
+  useEffect(() => {
+    function rebuild() {
+      const wrapper = wrapperRef.current
+      const pm = wrapper?.querySelector('.ProseMirror')
+      if (!pm) {
+        setChips((prev) => (prev.length === 0 ? prev : []))
+        return
+      }
+
+      const bySection = new Map()
+      peers.forEach((peer) => {
+        if (!peer.sectionId) return
+        const list = bySection.get(peer.sectionId) || []
+        list.push(peer.name || 'Alguien')
+        bySection.set(peer.sectionId, list)
+      })
+
+      const next = []
+      bySection.forEach((names, sectionId) => {
+        const divider = pm.querySelector(`[data-section-divider][data-section-id="${sectionId}"]`)
+        if (!divider) return
+        next.push({
+          sectionId,
+          names,
+          isMine: sectionId === activeSectionId,
+          top: divider.offsetTop,
+        })
+      })
+      setChips(next)
+    }
+
+    rebuild()
+    const timeoutId = setTimeout(rebuild, 50)
+
+    const wrapper = wrapperRef.current
+    const pm = wrapper?.querySelector('.ProseMirror')
+    if (!pm) return () => clearTimeout(timeoutId)
+
+    const mutationObserver = new MutationObserver(rebuild)
+    mutationObserver.observe(pm, { childList: true, subtree: true, characterData: true })
+
+    const resizeObserver = new ResizeObserver(rebuild)
+    resizeObserver.observe(pm)
+
+    return () => {
+      clearTimeout(timeoutId)
+      mutationObserver.disconnect()
+      resizeObserver.disconnect()
+    }
+  }, [peers, activeSectionId, editor, wrapperRef])
+
+  if (chips.length === 0) return null
+
+  return (
+    <>
+      {chips.map((chip) => (
+        <div
+          key={chip.sectionId}
+          className={cx(styles.presenceSectionChip, chip.isMine && styles.presenceSectionChipWarning)}
+          ref={(node) => setCssVars(node, { '--presence-chip-top': chip.top })}
+          data-editor-overlay=""
+        >
+          <span className={styles.presenceSectionChipDot} aria-hidden="true" />
+          {chip.isMine
+            ? `${chip.names.join(', ')} está${chip.names.length > 1 ? 'n' : ''} editando esta sección`
+            : chip.names.join(', ')}
+        </div>
+      ))}
+    </>
   )
 }
 
@@ -7105,6 +7260,7 @@ function EditorPanel({
   onSelectionSectionChange,
   firstSectionId,
   activeSectionId,
+  remotePeers = [],
   onOpenAddSectionAfter,
   onAddSectionAtPos,
   sectionActivities = [],
@@ -7885,6 +8041,14 @@ function EditorPanel({
               <EditorContent editor={editor} />
               <TableInlineButtons editor={editor} wrapperRef={wrapperRef} />
               <TableRightClickMenu editor={editor} />
+              {projectType === 'page' && (
+                <PresenceSectionChips
+                  peers={remotePeers}
+                  activeSectionId={activeSectionId}
+                  wrapperRef={wrapperRef}
+                  editor={editor}
+                />
+              )}
               {projectType === 'page' && canManageSections && activeSectionId && activeSectionAddTop !== null && (
                 <div
                   className={styles.canvasAddSectionWrap}

@@ -1188,6 +1188,43 @@
   flex-shrink: 0;
 }
 
+/* Chip de presencia por sección — overlay NO editable dentro del canvas,
+ * alineado al top-right del sectionDivider correspondiente. Verde por
+ * defecto; ámbar cuando la sección coincide con la activa del usuario
+ * local (ver `PresenceSectionChips` en ProjectEditor.jsx). */
+.presenceSectionChip {
+  position: absolute;
+  top: var(--presence-chip-top, 0px);
+  right: 0;
+  z-index: var(--wb-z-sticky);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--wb-color-success-300);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-success-50);
+  color: var(--wb-color-success-800);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.presenceSectionChipWarning {
+  border-color: var(--wb-color-warning-300);
+  background: var(--wb-color-warning-50);
+  color: var(--wb-color-warning-800);
+}
+
+.presenceSectionChipDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--wb-radius-full);
+  background: currentColor;
+}
+
 .rulesPanel {
   padding: 14px 16px 16px;
   border-bottom: 1px solid #e5e7eb;

@@ -296,6 +296,21 @@
   margin-top: 1px;
 }
 
+/* Indicador de presencia: alguien más está en esta sección ahora mismo
+ * (ver `lib/editorPresence.js`). Verde por defecto; ámbar cuando la
+ * sección también es la activa del usuario local (edición simultánea). */
+.presenceDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-success-500);
+}
+
+.presenceDotWarning {
+  background: var(--wb-color-warning-500);
+}
+
 .h1Divider {
   display: flex;
   align-items: center;

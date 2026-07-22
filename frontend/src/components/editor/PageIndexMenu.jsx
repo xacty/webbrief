@@ -17,7 +17,7 @@ function cn(...parts) {
  * Elegir una página solo activa (onSelectPage) — no reordena el strip.
  * El auto-scroll del strip sobre `activePageId` (ya existente) hace el resto.
  */
-export default function PageIndexMenu({ pages = [], activePageId, onSelectPage }) {
+export default function PageIndexMenu({ pages = [], activePageId, onSelectPage, peers = [] }) {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState(null)
   const triggerRef = useRef(null)
@@ -127,20 +127,30 @@ export default function PageIndexMenu({ pages = [], activePageId, onSelectPage }
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          {pages.map((page, index) => (
-            <button
-              key={page.id}
-              type="button"
-              role="menuitem"
-              className={cn(styles.item, page.id === activePageId && styles.itemActive)}
-              onClick={() => { onSelectPage(page.id); close() }}
-            >
-              <span className={styles.itemIndex}>{index + 1}</span>
-              <span className={styles.itemName} title={page.name}>{page.name}</span>
-              {page.id === activePageId && <Check size={14} className={styles.itemCheck} />}
-              <span className={styles.itemSlot} data-presence-slot={page.id} />
-            </button>
-          ))}
+          {pages.map((page, index) => {
+            const pagePeers = peers.filter((peer) => peer.pageId === page.id)
+            return (
+              <button
+                key={page.id}
+                type="button"
+                role="menuitem"
+                className={cn(styles.item, page.id === activePageId && styles.itemActive)}
+                onClick={() => { onSelectPage(page.id); close() }}
+              >
+                <span className={styles.itemIndex}>{index + 1}</span>
+                <span className={styles.itemName} title={page.name}>{page.name}</span>
+                {page.id === activePageId && <Check size={14} className={styles.itemCheck} />}
+                <span className={styles.itemSlot} data-presence-slot={page.id}>
+                  {pagePeers.length > 0 && (
+                    <span
+                      className={styles.presenceDot}
+                      title={`${pagePeers.map((peer) => peer.name || 'Alguien').join(', ')} está(n) aquí`}
+                    />
+                  )}
+                </span>
+              </button>
+            )
+          })}
         </div>,
         document.body
       )}
