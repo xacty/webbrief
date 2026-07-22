@@ -27,6 +27,21 @@
 - Use `AI_GLOBAL.md` as the cross-model workflow contract for this repo.
 - Do not diverge from the terminology or workflow in the context files unless the user explicitly asks.
 
+## Versioning Rule
+
+- **Single source of truth for the user-facing version: `frontend/package.json` → `version`.** Se muestra en el UI como `v{__APP_VERSION__}` (ver `frontend/src/components/layout/AppShell.jsx` y `frontend/vite.config.js`). `backend`, `mcp/webrief-server` y `shared` mantienen su propio versionado interno y NO deben confundirse con la versión pública.
+- **SemVer estricto: `MAJOR.MINOR.PATCH`.** Bump obligatorio en el mismo commit (o commit inmediatamente previo) al cambio que se va a deployar:
+  - **MAJOR** — cambios que rompen compatibilidad para el usuario final o para integraciones externas (MCP, API pública, esquema de datos migrado sin retro-compat), o rediseño visual completo equivalente al salto v1→v2.
+  - **MINOR** — nueva funcionalidad visible al usuario, nuevo tool MCP, nueva página/sección, nuevo endpoint, cambios de UX no triviales. Backward-compatible.
+  - **PATCH** — bugfixes, ajustes de copy, tweaks de estilo, refactors internos, mejoras de performance, hotfixes sin cambio de comportamiento observable.
+- **Reglas de bump:**
+  - Nunca hacer commit "deployable" (que vaya a merge en `main` o a VPS) sin bumpear la versión adecuada. Si dudas entre MINOR y PATCH, elige la más alta.
+  - Un solo bump por PR/feature; no acumules varios cambios bajo la misma versión ya deployada.
+  - El bump vive en `frontend/package.json` (y su `package-lock.json` correspondiente vía `npm version` o edición manual + reinstall).
+  - Commit message del bump: `chore(release): vX.Y.Z` o incluido en el commit del cambio con prefijo apropiado.
+- **Antes de proponer un commit/PR/deploy**, revisa qué tipo de cambio implica y avisa al usuario del bump propuesto (`patch`/`minor`/`major`) con una justificación de una línea. Si el usuario aprueba el cambio, aplica el bump como parte del mismo trabajo — no lo dejes para después.
+- **No bumpear** para cambios que no salen del repo local: docs internas, `.planning/`, memoria, worktrees, experimentos no mergeados.
+
 ## Dev Testing Account
 
 - Cuando necesites autenticarte en WeBrief para probar un flujo (login, editor, comments, share, admin, etc.), usa la cuenta bot `claude-bot@test.local` en el entorno **Dev** (proyecto Supabase `iimqxacagxuemwgaunis`). Nunca uses esa cuenta ni ninguna otra en Prod.
