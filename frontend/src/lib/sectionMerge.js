@@ -7,15 +7,19 @@
 // nombre de sección "Servicios > Precios") sin cortar el tag del divider.
 const DIVIDER_RE = /<div(?:[^>"]|"[^"]*")*\bdata-section-divider\b(?:[^>"]|"[^"]*")*>\s*<\/div>/gi
 
-// Los valores de atributo pueden llegar/serializarse con entities; escapa/decodifica
-// en orden inverso simétrico para que id/name sobrevivan un ciclo split -> build -> split.
+// Escapa solo lo estrictamente necesario dentro de un atributo con comillas dobles
+// (& y "), espejando cómo el navegador/TipTap serializan estos atributos — "<"/">"
+// se dejan literales. El regex del divider es quote-aware, así que ">" literal en
+// un valor no corta el tag. Escapar "<"/">" aquí rompería identicalToRemote contra
+// HTML real del navegador (que nunca los escapa dentro de un atributo).
 function escapeAttr(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
 }
+
+// unescapeAttr decodifica las 4 entities (incluye <, > por robustez con HTML legacy
+// que sí pueda traerlas escapadas, aunque escapeAttr ya no las produzca).
 
 function unescapeAttr(value) {
   return String(value ?? '')

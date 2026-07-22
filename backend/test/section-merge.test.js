@@ -193,6 +193,13 @@ test('nombre de sección con ">" no corta el parseo del divider: la sección sob
   assert.equal(reparsed.find((s) => s.sectionId === 'a').sectionName, 'Servicios > Precios')
 })
 
+test('nombre de sección con ">" idéntico en las 3 copias: identicalToRemote true cuando el remoto serializa el ">" literal (sin escapar)', () => {
+  const htmlGt = d('a', 'Servicios > Precios') + '<p>alfa</p>' + d('b', 'Dos') + '<p>beta</p>'
+  const result = mergeSections({ baseHtml: htmlGt, remoteHtml: htmlGt, localHtml: htmlGt })
+  assert.equal(result.conflicts.length, 0)
+  assert.equal(result.identicalToRemote, true)
+})
+
 // -------- BUG 3: divider serializado por TipTap real (data-section-divider="") --------
 
 test('remoto serializado con data-section-divider="" (forma real de TipTap) y mismo contenido que base: identicalToRemote true, 0 conflicts', () => {
