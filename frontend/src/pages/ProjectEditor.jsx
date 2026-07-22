@@ -4806,6 +4806,12 @@ function Navbar({
     setStripState((prev) => (prev.left === left && prev.right === right ? prev : { left, right }))
   }, [])
 
+  // Firma de nombres de página: el ResizeObserver solo detecta cambios en el
+  // box del strip, no en su scrollWidth interno. Renombrar una página cambia
+  // el ancho del contenido sin cambiar el tamaño del contenedor ni la
+  // cantidad de páginas, así que esta firma fuerza el recálculo de fades.
+  const pageNamesSignature = pages.map((p) => p.name).join(' ')
+
   useEffect(() => {
     const el = stripRef.current
     if (!el) return undefined
@@ -4814,7 +4820,7 @@ function Navbar({
     const observer = new ResizeObserver(updateStripState)
     observer.observe(el)
     return () => { el.removeEventListener('scroll', updateStripState); observer.disconnect() }
-  }, [updateStripState, pages.length])
+  }, [updateStripState, pages.length, pageNamesSignature])
 
   // Auto-scroll para mantener la pill activa visible dentro del strip.
   useEffect(() => {
@@ -4856,6 +4862,7 @@ function Navbar({
           className={cx(navStyles.navStripArrow, stripState.left && navStyles.navStripArrowVisible)}
           onClick={() => { if (stripRef.current) stripRef.current.scrollLeft -= 160 }}
           title="Ver páginas anteriores"
+          aria-label="Ver páginas anteriores"
           aria-hidden={!stripState.left}
           tabIndex={stripState.left ? 0 : -1}
         >
@@ -4883,6 +4890,7 @@ function Navbar({
           className={cx(navStyles.navStripArrow, stripState.right && navStyles.navStripArrowVisible)}
           onClick={() => { if (stripRef.current) stripRef.current.scrollLeft += 160 }}
           title="Ver páginas siguientes"
+          aria-label="Ver páginas siguientes"
           aria-hidden={!stripState.right}
           tabIndex={stripState.right ? 0 : -1}
         >
