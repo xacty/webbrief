@@ -40,6 +40,7 @@ import {
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
 import { createEditorChannel } from '../lib/editorPresence'
+import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
@@ -2284,6 +2285,130 @@ function getSectionInsertPos(editor, afterSectionId) {
   return insertPos ?? editor.state.doc.content.size
 }
 
+// Encuentra la posición del primer textblock dentro de [from, to) del doc.
+// Usado para reposicionar el caret tras reemplazar el rango de una sección
+// (evita el "gap cursor" — mismo problema que getFirstEditableTextPos pero
+// acotado a un rango en vez de a todo el documento).
+function findFirstTextblockPosInRange(doc, from, to) {
+  let targetPos = null
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (targetPos !== null) return false
+    if (node.isTextblock) {
+      targetPos = pos + 1
+      return false
+    }
+    return true
+  })
+  return targetPos
+}
+
+// ---------------------------------------------------------------------------
+// applyMergedSectionsToEditor — F3 (colaboración): aplica al editor TipTap en
+// vivo solo las secciones origin:'remote' de un resultado de sectionMerge.mergeSections.
+// Reemplaza cada rango de atrás hacia adelante en UNA sola cadena para que las
+// posiciones ya calculadas no se invaliden entre reemplazos. Devuelve cuántas
+// secciones aplicó.
+// ---------------------------------------------------------------------------
+function applyMergedSectionsToEditor(editor, mergedSections) {
+  if (!editor || !mergedSections || mergedSections.length === 0) return 0
+
+  const { state } = editor
+  const { doc, selection } = state
+  const selFrom = selection.from
+
+  const dividers = []
+  doc.descendants((node, pos) => {
+    if (node.type.name === 'sectionDivider') dividers.push({ pos, sectionId: node.attrs.sectionId })
+    return true
+  })
+  const dividerIndexById = new Map(dividers.map((d, i) => [d.sectionId, i]))
+
+  function rangeForDividerIndex(i) {
+    const from = dividers[i].pos
+    const to = i + 1 < dividers.length ? dividers[i + 1].pos : doc.content.size
+    return { from, to }
+  }
+
+  const ops = []
+
+  mergedSections.forEach((section, index) => {
+    if (section.origin !== 'remote') return
+    const { sectionId } = section
+    const html = buildHtmlFromSections([section])
+
+    if (sectionId === '__document__') {
+      ops.push({ pos: 0, mergedIndex: index, from: 0, to: doc.content.size, html, sectionId })
+      return
+    }
+    if (sectionId === '__preamble__') {
+      const to = dividers.length > 0 ? dividers[0].pos : doc.content.size
+      ops.push({ pos: 0, mergedIndex: index, from: 0, to, html, sectionId })
+      return
+    }
+
+    const existingIdx = dividerIndexById.get(sectionId)
+    if (existingIdx !== undefined) {
+      const { from, to } = rangeForDividerIndex(existingIdx)
+      ops.push({ pos: from, mergedIndex: index, from, to, html, sectionId })
+      return
+    }
+
+    // Sección remota nueva (sin divider en el doc actual): el ancla es el
+    // final de rango ('to') de la sección anterior en el orden merged que SÍ
+    // exista ya en el doc; pos 0 si no hay ninguna anterior.
+    let anchorPos = 0
+    for (let j = index - 1; j >= 0; j -= 1) {
+      const prevId = mergedSections[j].sectionId
+      if (prevId === '__preamble__' || prevId === '__document__') continue
+      const prevIdx = dividerIndexById.get(prevId)
+      if (prevIdx !== undefined) {
+        anchorPos = rangeForDividerIndex(prevIdx).to
+        break
+      }
+    }
+    ops.push({ pos: anchorPos, mergedIndex: index, from: anchorPos, to: anchorPos, html, sectionId })
+  })
+
+  if (ops.length === 0) return 0
+
+  // Si el caret estaba dentro de un rango que vamos a reemplazar, lo
+  // reposicionamos después del run (mismo criterio que getFirstEditableTextPos).
+  const affectedSectionId = ops.find((op) => op.from !== op.to && selFrom >= op.from && selFrom < op.to)?.sectionId
+
+  // Atrás hacia adelante (mayor posición primero). Empates en la misma ancla
+  // (inserciones nuevas consecutivas) se resuelven en orden inverso al del
+  // merge, así el que va "antes" en mergedSections termina más cerca del ancla.
+  ops.sort((a, b) => (b.pos - a.pos) || (b.mergedIndex - a.mergedIndex))
+
+  let chain = editor.chain()
+  ops.forEach((op) => {
+    chain = chain.insertContentAt({ from: op.from, to: op.to }, op.html)
+  })
+  chain.run()
+
+  if (affectedSectionId) {
+    const nextDoc = editor.state.doc
+    let dividerPos = null
+    let nextDividerPos = null
+    nextDoc.descendants((node, pos) => {
+      if (node.type.name !== 'sectionDivider') return true
+      if (dividerPos === null) {
+        if (node.attrs.sectionId === affectedSectionId) dividerPos = pos
+        return true
+      }
+      if (nextDividerPos === null) nextDividerPos = pos
+      return false
+    })
+    if (dividerPos !== null) {
+      const to = nextDividerPos !== null ? nextDividerPos : nextDoc.content.size
+      const targetPos = findFirstTextblockPosInRange(nextDoc, dividerPos, to)
+      if (targetPos !== null) editor.commands.setTextSelection(targetPos)
+    }
+  }
+
+  return ops.length
+}
+
 // Resuelve las coordenadas de un right-click a la posición top-level anterior
 // al bloque que contiene el click. Es el lugar donde se puede insertar un
 // sectionDivider para "cortar" mid-content: el bloque clickeado y todo lo que
@@ -2490,8 +2615,17 @@ export default function ProjectEditor() {
   // Ref al editor único
   const editorRef = useRef(null)
   const saveInFlightRef = useRef(false)
-  const autosaveBlockedRef = useRef(false)
   const autosaveRunnerRef = useRef(null)
+  // F3 (colaboración): último HTML+version persistido en servidor por página —
+  // 'base' del merge de 3 vías (ver mergeSections en lib/sectionMerge.js).
+  const serverPagesRef = useRef(new Map()) // pageId -> { contentHtml, version }
+  // Conflictos acumulados por sync remoto. La UI de marca/comparador es F4;
+  // por ahora solo se acumulan por sección y se avisan con un toast.
+  const conflictsByPageRef = useRef(new Map()) // pageId -> [{ sectionId, sectionName, localHtml, remoteHtml, type, actorName }]
+  const [conflictsVersion, setConflictsVersion] = useState(0)
+  const syncInFlightRef = useRef(false)
+  const pendingSyncRef = useRef(false)
+  const syncRemoteChangesRef = useRef(null)
   const hasResolvedPersistedViewRef = useRef(false)
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
@@ -2687,6 +2821,12 @@ export default function ProjectEditor() {
 
         setProjectMeta({ ...data.project, projectType: loadedProjectType })
         setPages(nextPages)
+        // F3 (colaboración): snapshot de lo persistido en servidor — base del
+        // merge de 3 vías en syncRemoteChanges. Se resetea en cada carga de
+        // proyecto para no arrastrar conflictos de un proyecto anterior.
+        serverPagesRef.current = new Map(nextPages.map((page) => [page.id, { contentHtml: page.fullContent, version: page.version }]))
+        conflictsByPageRef.current = new Map()
+        setConflictsVersion((v) => v + 1)
         setActivePageId(firstPage?.id || null)
         const loadedUsesSections = loadedProjectType === 'page' || loadedProjectType === 'faq'
         setActiveSectionId(loadedUsesSections ? initialSections[0]?.id || null : null)
@@ -2834,7 +2974,6 @@ export default function ProjectEditor() {
   const handleDocUpdate = useCallback((editor) => {
     if (isAutoRemoving.current || isRenumberingSections.current) return
 
-    autosaveBlockedRef.current = false
     setIsDirty(true)
     setSaveMessage('')
 
@@ -3058,7 +3197,7 @@ export default function ProjectEditor() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
   }, [])
 
-  const saveProjectPages = useCallback(async (source = 'manual') => {
+  const saveProjectPages = useCallback(async (source = 'manual', options = {}) => {
     if (!projectId || !activePage || saveInFlightRef.current || !canWriteContent) return false
 
     const snapshot = snapshotActivePage()
@@ -3126,14 +3265,58 @@ export default function ProjectEditor() {
           ? (source === 'autosave' ? 'Propuesta autoguardada' : 'Propuesta guardada')
           : (source === 'autosave' ? 'Autoguardado' : 'Guardado')
       )
+      // F3 (colaboración): lo que acaba de persistir el servidor pasa a ser la
+      // nueva 'base' para el próximo merge de 3 vías + toca el timbre para que
+      // otras sesiones abiertas en este proyecto sepan que hay contenido nuevo.
+      persistedPages.forEach((page) => {
+        serverPagesRef.current.set(page.id, { contentHtml: page.fullContent, version: page.version })
+      })
+      editorChannelRef.current?.broadcastSaved({
+        actorName: currentUser?.fullName || currentUser?.email || 'Alguien',
+        pageIds: payload.map((page) => page.id),
+        savedAt: new Date().toISOString(),
+      })
       if (source !== 'autosave' || sectionEvents.length > 0) {
         loadSidePanelData()
       }
       return true
     } catch (error) {
-      if (source === 'autosave' && String(error.message || '').includes('otra sesión')) {
-        autosaveBlockedRef.current = true
+      const isStaleConflict = String(error.message || '').includes('otra sesión')
+
+      // Fix del 409: en vez de bloquear el autosave silenciosamente, sincronizamos
+      // (merge de 3 vías) y reintentamos una vez con las versiones al día.
+      if (isStaleConflict && !options.retried) {
+        // El intento que acaba de fallar ya terminó — liberamos el lock de
+        // concurrencia ANTES de disparar el sync. Si no, syncRemoteChanges ve
+        // saveInFlightRef.current en true y se autodefiere (no corre ahora).
+        saveInFlightRef.current = false
+        const sync = await syncRemoteChangesRef.current?.({ actorName: 'Otra sesión' })
+        if (sync?.ok) {
+          // syncRemoteChanges acaba de hacer setPages con las versiones al día,
+          // pero ese setState todavía no se aplicó en este mismo tick — pages
+          // (y por lo tanto page.version) seguirían siendo los viejos si
+          // reintentáramos ya mismo. Un macrotask (setTimeout 0) alcanza para
+          // que React re-renderice y autosaveRunnerRef.current apunte a la
+          // versión fresca de saveProjectPages antes del reintento.
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(autosaveRunnerRef.current?.(source, { retried: true }))
+            }, 0)
+          })
+        }
       }
+
+      if (isStaleConflict) {
+        setSaveMessage('Error')
+        showToast({
+          kind: 'warning',
+          text: 'El brief cambió en otra sesión y no se pudo sincronizar.',
+          actionLabel: 'Actualizar',
+          onAction: () => window.location.reload(),
+        })
+        return false
+      }
+
       setSaveMessage('Error')
       showToast({ kind: 'warning', text: error.message || 'No se pudo guardar' })
       return false
@@ -3141,11 +3324,181 @@ export default function ProjectEditor() {
       saveInFlightRef.current = false
       setIsSaving(false)
     }
-  }, [activePage, activePageId, canWriteContent, loadSidePanelData, pages, projectId, showToast, snapshotActivePage])
+  }, [activePage, activePageId, canWriteContent, currentUser, loadSidePanelData, pages, projectId, showToast, snapshotActivePage])
 
   useEffect(() => {
     autosaveRunnerRef.current = saveProjectPages
   }, [saveProjectPages])
+
+  // F3 (colaboración) — "timbre" → sync → merge. Trae los cambios que otra
+  // sesión guardó: hace merge de 3 vías por sección (mergeSections) contra lo
+  // último persistido en servidor (serverPagesRef = 'base'), aplica solo las
+  // secciones remotas que no chocan con ediciones locales sin guardar, y deja
+  // el resto como conflicto acumulado (UI de marca/comparador = F4; acá solo
+  // se avisa con un toast). También es el mecanismo que resuelve el 409 de
+  // saveProjectPages (ver su catch): sincroniza y reintenta con versión al día.
+  const syncRemoteChanges = useCallback(async ({ actorName = 'Otra sesión' } = {}) => {
+    if (!projectId) return undefined
+    if (saveInFlightRef.current || syncInFlightRef.current) {
+      pendingSyncRef.current = true
+      return { deferred: true }
+    }
+
+    syncInFlightRef.current = true
+
+    try {
+      const data = await apiFetch(`/api/projects/${projectId}`)
+      const remotePages = data.pages.map((page) => mapPersistedPage(page, projectType))
+      const remoteById = new Map(remotePages.map((page) => [page.id, page]))
+      const localById = new Map(pages.map((page) => [page.id, page]))
+      const usesSections = projectType === 'page' || projectType === 'faq'
+
+      // Snapshot único de la página activa (si el editor está montado) — se usa
+      // como 'local' para su merge. Puede además pisar el state de esa página
+      // (efecto secundario propio de snapshotActivePage), pero el único
+      // setPages real de esta función es el de más abajo con nextPages ya
+      // resuelto, así que ese pisado intermedio queda sobrescrito sin efecto.
+      const activeSnapshot = activePageId ? snapshotActivePage() : null
+
+      let appliedRemoteCount = 0
+      let hadConflicts = false
+      let anyLocalDifference = false
+      const nextPages = []
+
+      pages.forEach((localPage) => {
+        const remotePage = remoteById.get(localPage.id)
+        const isActivePage = localPage.id === activePageId
+        const localHtml = isActivePage && activeSnapshot
+          ? activeSnapshot.html
+          : (localPage.fullContent || buildDocumentHTML(localPage.sections))
+
+        if (!remotePage) {
+          // La página ya no existe en remoto (otra sesión la borró). Sin
+          // cambios locales propios se quita en silencio; con cambios locales
+          // se conserva — el usuario decide qué hacer al guardar.
+          const serverEntry = serverPagesRef.current.get(localPage.id)
+          const hasLocalChanges = serverEntry
+            ? normalizeHtml(localHtml) !== normalizeHtml(serverEntry.contentHtml)
+            : true
+          if (!hasLocalChanges) return
+          anyLocalDifference = true
+          nextPages.push(localPage)
+          return
+        }
+
+        const baseHtml = serverPagesRef.current.get(localPage.id)?.contentHtml ?? remotePage.fullContent
+        const remoteHtml = remotePage.fullContent
+        const result = mergeSections({ baseHtml, remoteHtml, localHtml })
+
+        if (result.conflicts.length > 0) {
+          hadConflicts = true
+          const list = conflictsByPageRef.current.get(localPage.id) || []
+          const nextList = [...list]
+          result.conflicts.forEach((conflict) => {
+            const existingIdx = nextList.findIndex((c) => c.sectionId === conflict.sectionId)
+            if (existingIdx >= 0) {
+              nextList[existingIdx] = { ...nextList[existingIdx], remoteHtml: conflict.remoteHtml, type: conflict.type, actorName }
+            } else {
+              nextList.push({ ...conflict, actorName })
+            }
+          })
+          conflictsByPageRef.current.set(localPage.id, nextList)
+        }
+
+        const remoteAppliedCount = result.mergedSections.filter((section) => section.origin === 'remote').length
+        appliedRemoteCount += remoteAppliedCount
+        if (!result.identicalToRemote) anyLocalDifference = true
+
+        if (isActivePage && editorRef.current) {
+          if (remoteAppliedCount > 0) {
+            applyMergedSectionsToEditor(editorRef.current, result.mergedSections)
+            if (projectType === 'document') {
+              setDocumentOutline(deriveDocumentOutline(editorRef.current))
+            } else {
+              renumberAutoSections(editorRef.current)
+              const refreshedSections = deriveSectionsFromDoc(editorRef.current, projectType)
+              setDerivedSections(refreshedSections)
+              setTopLevelH1s(deriveTopLevelH1sFromDoc(editorRef.current))
+            }
+          }
+          const html = editorRef.current.getHTML()
+          nextPages.push({
+            ...localPage,
+            fullContent: html,
+            contentJson: editorRef.current.getJSON(),
+            sections: usesSections ? parseSectionsFromHtml(html) : [],
+            version: remotePage.version,
+          })
+        } else {
+          // Página no activa, o activa pero el editor todavía no está montado:
+          // solo actualizamos state/refs, sin tocar el DOM del editor.
+          nextPages.push({
+            ...localPage,
+            fullContent: result.mergedHtml,
+            contentJson: null,
+            sections: usesSections ? parseSectionsFromHtml(result.mergedHtml) : [],
+            version: remotePage.version,
+          })
+        }
+
+        serverPagesRef.current.set(localPage.id, { contentHtml: remoteHtml, version: remotePage.version })
+      })
+
+      // Páginas remotas nuevas (otra sesión las creó) — se agregan con el
+      // mismo mapeo estándar que la carga inicial.
+      remotePages.forEach((remotePage) => {
+        if (localById.has(remotePage.id)) return
+        nextPages.push(remotePage)
+        serverPagesRef.current.set(remotePage.id, { contentHtml: remotePage.fullContent, version: remotePage.version })
+        appliedRemoteCount += 1
+      })
+
+      setPages(nextPages)
+      if (hadConflicts) setConflictsVersion((v) => v + 1)
+
+      // Anti-eco: si tras el merge ninguna página quedó distinta de remoto (y
+      // sin conflictos pendientes), no hay nada propio que guardar.
+      if (!anyLocalDifference && !hadConflicts) {
+        setIsDirty(false)
+      }
+
+      if (hadConflicts) {
+        showToast({
+          kind: 'warning',
+          text: `${actorName} editó secciones que estás editando — revisa los avisos de conflicto`,
+        })
+      } else if (appliedRemoteCount > 0) {
+        showToast({
+          kind: 'info',
+          text: `${actorName} actualizó ${appliedRemoteCount} sección${appliedRemoteCount === 1 ? '' : 'es'}`,
+          autoHideMs: 3500,
+        })
+      }
+
+      return { ok: true, appliedRemoteCount, hadConflicts }
+    } catch (error) {
+      console.warn('[syncRemoteChanges] failed:', error.message)
+      return { ok: false, error }
+    } finally {
+      syncInFlightRef.current = false
+      if (pendingSyncRef.current) {
+        pendingSyncRef.current = false
+        setTimeout(() => syncRemoteChangesRef.current?.({ actorName }), 250)
+      }
+    }
+  }, [activePageId, pages, projectId, projectType, renumberAutoSections, showToast, snapshotActivePage])
+
+  useEffect(() => {
+    syncRemoteChangesRef.current = syncRemoteChanges
+  }, [syncRemoteChanges])
+
+  // Conecta el "timbre" (broadcast pages_saved de otra sesión, ver
+  // lib/editorPresence.js) a syncRemoteChanges.
+  useEffect(() => {
+    remoteSaveHandlerRef.current = (payload) => {
+      syncRemoteChangesRef.current?.({ actorName: payload?.actorName || 'Otra sesión' })
+    }
+  }, [])
 
   async function handleSave() {
     await saveProjectPages('manual')
@@ -3272,7 +3625,7 @@ export default function ProjectEditor() {
   }
 
   useEffect(() => {
-    if (!isDirty || loadingProject || !projectId || autosaveBlockedRef.current) return undefined
+    if (!isDirty || loadingProject || !projectId) return undefined
 
     const timeoutId = window.setTimeout(() => {
       autosaveRunnerRef.current?.('autosave')
