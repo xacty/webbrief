@@ -2302,12 +2302,63 @@ function findFirstTextblockPosInRange(doc, from, to) {
   return targetPos
 }
 
+// Devuelve el sectionId de la sección que contiene `pos` (según los
+// sectionDivider del doc dado en orden), o null si pos cae antes del primer
+// divider (p.ej. dentro de un __preamble__).
+function findSectionIdContainingPos(doc, pos) {
+  let currentId = null
+  let stopped = false
+  doc.descendants((node, nodePos) => {
+    if (stopped) return false
+    if (node.type.name !== 'sectionDivider') return true
+    if (nodePos > pos) {
+      stopped = true
+      return false
+    }
+    currentId = node.attrs.sectionId
+    return true
+  })
+  return currentId
+}
+
+// Reposiciona el caret al primer textblock de la sección `sectionId` (mismo
+// criterio que getFirstEditableTextPos, acotado al rango de esa sección vía
+// findFirstTextblockPosInRange). Usado tras cualquier mutación estructural
+// que haya podido dejar el caret en una posición mapeada sin sentido (rango
+// reemplazado por applyMergedSectionsToEditor, o doc entero reemplazado por
+// el fallback de syncRemoteChanges). Devuelve true si logró reposicionar.
+function setCaretAtSectionStart(editor, sectionId) {
+  if (!editor || !sectionId) return false
+  const doc = editor.state.doc
+  let dividerPos = null
+  let nextDividerPos = null
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'sectionDivider') return true
+    if (dividerPos === null) {
+      if (node.attrs.sectionId === sectionId) dividerPos = pos
+      return true
+    }
+    if (nextDividerPos === null) nextDividerPos = pos
+    return false
+  })
+  if (dividerPos === null) return false
+  const to = nextDividerPos !== null ? nextDividerPos : doc.content.size
+  const targetPos = findFirstTextblockPosInRange(doc, dividerPos, to)
+  if (targetPos === null) return false
+  editor.commands.setTextSelection(targetPos)
+  return true
+}
+
 // ---------------------------------------------------------------------------
 // applyMergedSectionsToEditor — F3 (colaboración): aplica al editor TipTap en
 // vivo solo las secciones origin:'remote' de un resultado de sectionMerge.mergeSections.
 // Reemplaza cada rango de atrás hacia adelante en UNA sola cadena para que las
-// posiciones ya calculadas no se invaliden entre reemplazos. Devuelve cuántas
-// secciones aplicó.
+// posiciones ya calculadas no se invaliden entre reemplazos. El chain entero
+// corre con addToHistory:false (no debe poder deshacerse con Ctrl+Z: es
+// contenido de OTRA sesión, no una edición local). Devuelve cuántas
+// secciones aplicó. No cubre deletes/reorders/renames remotos puros (sin
+// cambio de innerHtml) — ese caso lo resuelve el caller (syncRemoteChanges)
+// comparando el HTML final contra mergedHtml.
 // ---------------------------------------------------------------------------
 function applyMergedSectionsToEditor(editor, mergedSections) {
   if (!editor || !mergedSections || mergedSections.length === 0) return 0
@@ -2321,7 +2372,12 @@ function applyMergedSectionsToEditor(editor, mergedSections) {
     if (node.type.name === 'sectionDivider') dividers.push({ pos, sectionId: node.attrs.sectionId })
     return true
   })
-  const dividerIndexById = new Map(dividers.map((d, i) => [d.sectionId, i]))
+  // First-wins (espeja toFirstWinsMap de sectionMerge.js): un sectionId
+  // duplicado en el doc no debe pisar el índice de su primera aparición.
+  const dividerIndexById = new Map()
+  dividers.forEach((d, i) => {
+    if (!dividerIndexById.has(d.sectionId)) dividerIndexById.set(d.sectionId, i)
+  })
 
   function rangeForDividerIndex(i) {
     const from = dividers[i].pos
@@ -2355,11 +2411,17 @@ function applyMergedSectionsToEditor(editor, mergedSections) {
 
     // Sección remota nueva (sin divider en el doc actual): el ancla es el
     // final de rango ('to') de la sección anterior en el orden merged que SÍ
-    // exista ya en el doc; pos 0 si no hay ninguna anterior.
+    // exista ya en el doc; pos 0 si no hay ninguna anterior. Si el predecesor
+    // es __preamble__, el ancla es el inicio del primer divider real (el
+    // preámbulo no tiene divider propio, así que no hay 'to' de rango para él).
     let anchorPos = 0
     for (let j = index - 1; j >= 0; j -= 1) {
       const prevId = mergedSections[j].sectionId
-      if (prevId === '__preamble__' || prevId === '__document__') continue
+      if (prevId === '__document__') continue
+      if (prevId === '__preamble__') {
+        anchorPos = dividers.length > 0 ? dividers[0].pos : doc.content.size
+        break
+      }
       const prevIdx = dividerIndexById.get(prevId)
       if (prevIdx !== undefined) {
         anchorPos = rangeForDividerIndex(prevIdx).to
@@ -2380,31 +2442,18 @@ function applyMergedSectionsToEditor(editor, mergedSections) {
   // merge, así el que va "antes" en mergedSections termina más cerca del ancla.
   ops.sort((a, b) => (b.pos - a.pos) || (b.mergedIndex - a.mergedIndex))
 
-  let chain = editor.chain()
+  // setMeta('addToHistory', false) — un solo tr comparte todos los ops del
+  // chain, así que una llamada alcanza: el splice remoto NO debe entrar al
+  // undo stack local. Si no, Ctrl+Z del usuario revertiría contenido de OTRA
+  // sesión (no propio), y el siguiente autosave lo consumiría como si fuera
+  // una edición local legítima.
+  let chain = editor.chain().setMeta('addToHistory', false)
   ops.forEach((op) => {
     chain = chain.insertContentAt({ from: op.from, to: op.to }, op.html)
   })
   chain.run()
 
-  if (affectedSectionId) {
-    const nextDoc = editor.state.doc
-    let dividerPos = null
-    let nextDividerPos = null
-    nextDoc.descendants((node, pos) => {
-      if (node.type.name !== 'sectionDivider') return true
-      if (dividerPos === null) {
-        if (node.attrs.sectionId === affectedSectionId) dividerPos = pos
-        return true
-      }
-      if (nextDividerPos === null) nextDividerPos = pos
-      return false
-    })
-    if (dividerPos !== null) {
-      const to = nextDividerPos !== null ? nextDividerPos : nextDoc.content.size
-      const targetPos = findFirstTextblockPosInRange(nextDoc, dividerPos, to)
-      if (targetPos !== null) editor.commands.setTextSelection(targetPos)
-    }
-  }
+  if (affectedSectionId) setCaretAtSectionStart(editor, affectedSectionId)
 
   return ops.length
 }
@@ -2622,6 +2671,10 @@ export default function ProjectEditor() {
   // Conflictos acumulados por sync remoto. La UI de marca/comparador es F4;
   // por ahora solo se acumulan por sección y se avisan con un toast.
   const conflictsByPageRef = useRef(new Map()) // pageId -> [{ sectionId, sectionName, localHtml, remoteHtml, type, actorName }]
+  // conflictsVersion: bump-only trigger para forzar re-render cuando
+  // conflictsByPageRef cambia (un ref por sí solo no re-renderiza). Todavía
+  // no tiene lector — placeholder a propósito hasta que F4 monte la UI de
+  // marca/comparador de conflictos sobre conflictsByPageRef.
   const [conflictsVersion, setConflictsVersion] = useState(0)
   const syncInFlightRef = useRef(false)
   const pendingSyncRef = useRef(false)
@@ -3304,6 +3357,20 @@ export default function ProjectEditor() {
             }, 0)
           })
         }
+
+        if (sync?.deferred) {
+          // No es un fallo real: otro save o sync ya estaba en curso cuando
+          // quisimos sincronizar (guard de saveInFlightRef/syncInFlightRef en
+          // syncRemoteChanges). Le damos un poco más de tiempo para que
+          // termine y reintentamos UNA vez más — retried:true de una, así que
+          // si ese reintento también 409ea, cae directo al toast final abajo
+          // en vez de volver a encolar otro sync.
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              resolve(autosaveRunnerRef.current?.(source, { retried: true }))
+            }, 400)
+          })
+        }
       }
 
       if (isStaleConflict) {
@@ -3323,6 +3390,15 @@ export default function ProjectEditor() {
     } finally {
       saveInFlightRef.current = false
       setIsSaving(false)
+      // M2: un timbre que llegó mientras este save estaba en curso quedó
+      // marcado pendingSyncRef=true por el guard de syncRemoteChanges (que se
+      // autodefiere si saveInFlightRef.current está en true) y de otro modo
+      // se perdía silenciosamente — acá, con el save ya resuelto (éxito o
+      // error), lo disparamos.
+      if (pendingSyncRef.current) {
+        pendingSyncRef.current = false
+        syncRemoteChangesRef.current?.({ actorName: 'Otra sesión' })
+      }
     }
   }, [activePage, activePageId, canWriteContent, currentUser, loadSidePanelData, pages, projectId, showToast, snapshotActivePage])
 
@@ -3411,6 +3487,15 @@ export default function ProjectEditor() {
 
         if (isActivePage && editorRef.current) {
           if (remoteAppliedCount > 0) {
+            // I1: protege del auto-remove de secciones vacías (handleDocUpdate,
+            // que SÍ se dispara por el insertContentAt de abajo) a los ids
+            // remotos recién insertados — si no, una sección remota que llegó
+            // vacía (p.ej. recién creada del otro lado) se autoborraría antes
+            // de que su autor termine de escribirla.
+            result.mergedSections
+              .filter((section) => section.origin === 'remote')
+              .forEach((section) => protectedEmptySectionIds.current.add(section.sectionId))
+
             applyMergedSectionsToEditor(editorRef.current, result.mergedSections)
             if (projectType === 'document') {
               setDocumentOutline(deriveDocumentOutline(editorRef.current))
@@ -3421,6 +3506,41 @@ export default function ProjectEditor() {
               setTopLevelH1s(deriveTopLevelH1sFromDoc(editorRef.current))
             }
           }
+
+          // C1: applyMergedSectionsToEditor solo reemplaza rangos de secciones
+          // con origin:'remote' (por innerHtml distinto). Un delete remoto puro
+          // (sección ausente de mergedSections, sin cambio de innerHtml en
+          // ninguna otra) o un reorder/rename puro no generan ningún op ahí —
+          // el editor queda con contenido que ya no coincide con mergedHtml
+          // aunque version+base ya avanzaron, y el próximo save "resucitaría"
+          // lo borrado. Si detectamos la diferencia, reemplazamos el doc
+          // entero: es seguro porque mergedHtml YA incorpora el contenido
+          // local sin guardar (lo que cambia acá es estructura/orden/nombre,
+          // no contenido). addToHistory:false por el mismo motivo que en
+          // applyMergedSectionsToEditor — no es una edición local deshacible.
+          // emitUpdate:false (@tiptap/core 3.x: setContent por defecto SÍ
+          // emite update, a diferencia de v2) porque hacemos el post-proceso
+          // (renumerar/derivar secciones) a mano abajo — así evitamos que
+          // handleDocUpdate se dispare por partida doble y, de paso, que su
+          // auto-remove de secciones vacías toque contenido recién sincronizado.
+          if (normalizeHtml(editorRef.current.getHTML()) !== normalizeHtml(result.mergedHtml)) {
+            const caretSectionId = findSectionIdContainingPos(editorRef.current.state.doc, editorRef.current.state.selection.from)
+            editorRef.current.chain().setMeta('addToHistory', false).setContent(result.mergedHtml, { emitUpdate: false }).run()
+            const restored = caretSectionId && setCaretAtSectionStart(editorRef.current, caretSectionId)
+            if (!restored) {
+              const fallbackPos = getFirstEditableTextPos(editorRef.current)
+              if (fallbackPos !== null) editorRef.current.commands.setTextSelection(fallbackPos)
+            }
+            if (projectType === 'document') {
+              setDocumentOutline(deriveDocumentOutline(editorRef.current))
+            } else {
+              renumberAutoSections(editorRef.current)
+              const refreshedSections = deriveSectionsFromDoc(editorRef.current, projectType)
+              setDerivedSections(refreshedSections)
+              setTopLevelH1s(deriveTopLevelH1sFromDoc(editorRef.current))
+            }
+          }
+
           const html = editorRef.current.getHTML()
           nextPages.push({
             ...localPage,
