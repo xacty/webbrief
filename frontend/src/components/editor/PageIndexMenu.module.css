@@ -1,0 +1,120 @@
+.root {
+  display: inline-flex;
+}
+
+/* Trigger — botón discreto acorde a la navbar: fondo transparente, hover
+ * sutil, contador de páginas junto al ícono. Radio --wb-radius-2 por la
+ * regla de border-radius del design system (nunca full/9999px en un
+ * clickable). */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  height: 30px;
+  padding: 0 var(--wb-space-2);
+  border: none;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-color-neutral-600);
+  cursor: pointer;
+  font-family: var(--wb-font-sans);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.trigger:hover {
+  background: var(--wb-color-neutral-100);
+  color: var(--wb-color-neutral-900);
+}
+
+.trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.triggerCount {
+  font-size: var(--wb-text-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Dropdown — portal a document.body, ver PageIndexMenu.jsx. */
+.menu {
+  position: fixed;
+  min-width: 220px;
+  max-width: 280px;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--wb-space-1);
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-md);
+  z-index: var(--wb-z-popover);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-2) var(--wb-space-2);
+  border: 0;
+  border-radius: var(--wb-radius-xs);
+  background: transparent;
+  color: var(--wb-text);
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.item:hover {
+  background: var(--wb-color-neutral-100);
+}
+
+.item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.itemActive {
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-900);
+}
+
+.itemActive:hover {
+  background: var(--wb-color-primary-50);
+}
+
+.itemIndex {
+  flex: 0 0 auto;
+  min-width: 18px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemName {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemCheck {
+  flex: 0 0 auto;
+  color: var(--wb-color-primary-600);
+}
+
+/* Slot vacío reservado para presencia (avatares de colaboradores por
+ * página) en una fase futura. Sin contenido ni lógica por ahora. */
+.itemSlot {
+  flex: 0 0 auto;
+  width: var(--wb-space-4);
+}

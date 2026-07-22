@@ -24,6 +24,7 @@ import CommentComposerPopover from '../components/editor/CommentComposerPopover'
 import CommentMarginCards from '../components/editor/CommentMarginCards'
 import CommentInlinePopover from '../components/editor/CommentInlinePopover'
 import EditorContextMenu from '../components/editor/EditorContextMenu'
+import PageIndexMenu from '../components/editor/PageIndexMenu'
 import ProjectTypeExplainer from '../components/onboarding/ProjectTypeExplainer'
 import webriefFavicon from '../assets/brand/webrief--favicon-v2.svg'
 import {
@@ -4896,6 +4897,7 @@ function Navbar({
         >
           <ChevronRight size={16} />
         </button>
+        <PageIndexMenu pages={pages} activePageId={activePageId} onSelectPage={onPageClick} />
         {canManagePages && (
           <button className={navStyles.navPillAdd} onClick={onAddPage} title="Agregar página">
             <Plus size={16} color="#2a2a2a" />
