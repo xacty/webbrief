@@ -1,0 +1,80 @@
+/* EditorToast — aviso flotante fuera de la navbar.
+   Ver DESIGN-SYSTEM.md §"Component patterns". */
+
+.toast {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--wb-z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  max-width: 520px;
+  padding: 10px 14px;
+  border-radius: var(--wb-radius-3);
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-md);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text);
+  line-height: var(--wb-leading-snug);
+}
+
+.info {
+  border: 1px solid var(--wb-color-neutral-200);
+}
+
+.info svg {
+  color: var(--wb-color-neutral-500);
+  flex-shrink: 0;
+}
+
+.warning {
+  border: 1px solid var(--wb-color-warning-300);
+}
+
+.warning svg {
+  color: var(--wb-color-warning-500);
+  flex-shrink: 0;
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.action {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-primary-600);
+  color: #ffffff;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-semibold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.action:hover {
+  background: var(--wb-color-primary-700);
+}
+
+.close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--wb-radius-xs);
+  background: transparent;
+  color: var(--wb-color-neutral-500);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--wb-color-neutral-200);
+  color: var(--wb-text);
+}

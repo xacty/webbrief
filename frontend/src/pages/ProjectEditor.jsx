@@ -25,6 +25,7 @@ import CommentMarginCards from '../components/editor/CommentMarginCards'
 import CommentInlinePopover from '../components/editor/CommentInlinePopover'
 import EditorContextMenu from '../components/editor/EditorContextMenu'
 import PageIndexMenu from '../components/editor/PageIndexMenu'
+import EditorToast from '../components/editor/EditorToast'
 import ProjectTypeExplainer from '../components/onboarding/ProjectTypeExplainer'
 import webriefFavicon from '../assets/brand/webrief--favicon-v2.svg'
 import {
@@ -38,7 +39,7 @@ import {
   groupCommentsIntoThreads,
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
@@ -2426,6 +2427,8 @@ export default function ProjectEditor() {
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+  // Toast flotante fuera de la navbar — ver DESIGN-SYSTEM.md y showToast() más abajo.
+  const [editorToast, setEditorToast] = useState(null)
   const [editorMode, setEditorMode] = useState(() => initialPersistedEditorViewRef.current?.editorMode || 'brief')
   const [handoffAudience, setHandoffAudience] = useState(() => initialPersistedEditorViewRef.current?.handoffAudience || 'designer')
   const [activity, setActivity] = useState([])
@@ -2475,6 +2478,7 @@ export default function ProjectEditor() {
   const hasResolvedPersistedViewRef = useRef(false)
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
+  const toastTimerRef = useRef(null)
 
   const activePage = pages.find((p) => p.id === activePageId)
   const projectType = inferProjectType(projectMeta, pages)
@@ -3006,6 +3010,37 @@ export default function ProjectEditor() {
     }
   }, [projectType, renumberAutoSections])
 
+  // Toast flotante reutilizable — F3 (colaboración) también lo usará para
+  // avisos de sync/conflicto. kind: 'info' (default) se auto-oculta;
+  // 'warning' persiste hasta que el usuario lo cierra. Un solo toast a la
+  // vez: uno nuevo reemplaza al anterior.
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
+    setEditorToast(null)
+  }, [])
+
+  const showToast = useCallback(({ kind = 'info', text, actionLabel, onAction, autoHideMs }) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
+    setEditorToast({ kind, text, actionLabel, onAction })
+    const hideAfter = autoHideMs ?? (kind === 'warning' ? null : 4000)
+    if (hideAfter) {
+      toastTimerRef.current = setTimeout(() => {
+        toastTimerRef.current = null
+        setEditorToast(null)
+      }, hideAfter)
+    }
+  }, [])
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+  }, [])
+
   const saveProjectPages = useCallback(async (source = 'manual') => {
     if (!projectId || !activePage || saveInFlightRef.current || !canWriteContent) return false
 
@@ -3082,13 +3117,14 @@ export default function ProjectEditor() {
       if (source === 'autosave' && String(error.message || '').includes('otra sesión')) {
         autosaveBlockedRef.current = true
       }
-      setSaveMessage(error.message || 'No se pudo guardar')
+      setSaveMessage('Error')
+      showToast({ kind: 'warning', text: error.message || 'No se pudo guardar' })
       return false
     } finally {
       saveInFlightRef.current = false
       setIsSaving(false)
     }
-  }, [activePage, activePageId, canWriteContent, loadSidePanelData, pages, projectId, snapshotActivePage])
+  }, [activePage, activePageId, canWriteContent, loadSidePanelData, pages, projectId, showToast, snapshotActivePage])
 
   useEffect(() => {
     autosaveRunnerRef.current = saveProjectPages
@@ -4287,6 +4323,7 @@ export default function ProjectEditor() {
           onClose={closeFaqModal}
         />
       )}
+      <EditorToast toast={editorToast} onDismiss={dismissToast} />
       {/* ── NAVBAR ── */}
         <Navbar
         pages={pages}
@@ -4910,14 +4947,24 @@ function Navbar({
 
       {/* Columna derecha: Iconos + Save */}
       <div className={navStyles.navRight}>
-        {isDirty && !isSaving ? (
-          <span className={navStyles.saveStatusChip} aria-live="polite">
-            <span className={navStyles.saveStatusDot} aria-hidden="true" />
-            {saveMessage || 'Sin guardar'}
-          </span>
-        ) : (
-          <span className={navStyles.navSaveStatus}>{saveLabel}</span>
-        )}
+        <span className={navStyles.navSaveCompact} title={saveLabel} aria-live="polite">
+          {isSaving ? (
+            <>
+              <RefreshCw size={13} className={navStyles.navSaveSpin} />
+              Guardando…
+            </>
+          ) : isDirty ? (
+            <>
+              <span className={navStyles.navSaveDot} aria-hidden="true" />
+              Sin guardar
+            </>
+          ) : (
+            <>
+              <Check size={13} className={navStyles.navSaveCheck} />
+              Guardado
+            </>
+          )}
+        </span>
         <Button
           variant="primary"
           size="sm"

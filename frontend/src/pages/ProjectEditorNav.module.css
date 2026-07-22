@@ -340,12 +340,41 @@
   min-width: 0;
 }
 
-.navSaveStatus {
-  min-width: 74px;
+/* Estado de guardado compacto — una sola línea, nunca hace wrap ni empuja
+   las tabs. El texto largo (errores, avisos de colaboración) vive en el
+   toast flotante (EditorToast), no acá; `title` expone el saveLabel
+   completo como tooltip. */
+.navSaveCompact {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--wb-color-neutral-500);
-  font-size: 12px;
-  font-weight: 600;
-  text-align: right;
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  white-space: nowrap;
+}
+
+.navSaveSpin {
+  animation: navSaveSpin 900ms linear infinite;
+}
+
+@keyframes navSaveSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.navSaveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--wb-color-warning-500);
+  flex-shrink: 0;
+}
+
+.navSaveCheck {
+  color: var(--wb-color-success-600);
+  flex-shrink: 0;
 }
 
 .navIcons {
@@ -588,26 +617,3 @@
   color: var(--wb-color-neutral-400);
 }
 
-/* ── Save status chip ── */
-.saveStatusChip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wb-space-1);
-  padding: 4px 10px;
-  border-radius: var(--wb-radius-full);
-  background: var(--wb-color-warning-50);
-  color: var(--wb-color-warning-700);
-  border: 1px solid var(--wb-color-warning-200);
-  font-size: var(--wb-text-xs);
-  font-weight: var(--wb-weight-semibold);
-  white-space: nowrap;
-  line-height: 1;
-}
-
-.saveStatusDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--wb-color-warning-500);
-  flex-shrink: 0;
-}
