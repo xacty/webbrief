@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import styles from './PresenceAvatars.module.css'
 
 const SWATCH_COUNT = 3
@@ -26,6 +27,10 @@ function getInitials(name) {
  * peers, el último círculo colapsa en "+N".
  */
 export default function PresenceAvatars({ peers = [], pages = [] }) {
+  // Sessions cuyo avatarUrl falló al cargar (404, CORS, etc.) — se cae a
+  // iniciales en vez de mostrar el glyph de imagen rota del navegador.
+  const [failedAvatars, setFailedAvatars] = useState(() => new Set())
+
   if (!peers.length) return null
 
   const hasOverflow = peers.length > MAX_VISIBLE
@@ -38,6 +43,7 @@ export default function PresenceAvatars({ peers = [], pages = [] }) {
     const page = pages.find((p) => p.id === peer.pageId)
     const title = page ? `${name} — ${page.name}` : name
     const swatch = hashToSwatch(peer.sessionId || name)
+    const showImage = Boolean(peer.avatarUrl) && !failedAvatars.has(peer.sessionId)
 
     return (
       <span
@@ -45,8 +51,17 @@ export default function PresenceAvatars({ peers = [], pages = [] }) {
         className={`${styles.avatar} ${styles[`swatch${swatch}`]}`}
         title={title}
       >
-        {peer.avatarUrl ? (
-          <img src={peer.avatarUrl} alt={name} className={styles.avatarImg} />
+        {showImage ? (
+          <img
+            src={peer.avatarUrl}
+            alt={name}
+            className={styles.avatarImg}
+            onError={() => {
+              setFailedAvatars((prev) => (
+                prev.has(peer.sessionId) ? prev : new Set(prev).add(peer.sessionId)
+              ))
+            }}
+          />
         ) : (
           getInitials(name)
         )}

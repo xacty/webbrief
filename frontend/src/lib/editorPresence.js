@@ -10,6 +10,11 @@ export function createEditorChannel({ projectId, sessionId, initialState, onPres
 
   let joined = false
   let lastState = { ...initialState }
+  // Guarda de igualdad: 'sync' dispara en cada heartbeat/track de CUALQUIER
+  // miembro del canal, no solo cuando algo relevante cambió. Sin esto,
+  // onPresenceChange propaga un array nuevo por tick y cascada re-renders
+  // en todo lo que recibe remotePeers como prop (Navbar, paneles, canvas).
+  let lastSignature = null
 
   const channel = supabase.channel(`project:${projectId}:editor`, {
     config: { presence: { key: sessionId }, broadcast: { self: false } },
@@ -24,6 +29,12 @@ export function createEditorChannel({ projectId, sessionId, initialState, onPres
         const meta = metas[metas.length - 1]
         if (meta) others.push({ ...meta, sessionId: key })
       })
+      const signature = others
+        .map((o) => `${o.sessionId}:${o.pageId}:${o.sectionId}:${o.name}`)
+        .sort()
+        .join('|')
+      if (signature === lastSignature) return
+      lastSignature = signature
       onPresenceChange(others)
     } catch (error) {
       console.warn('[editorPresence] presence handler:', error.message)

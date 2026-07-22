@@ -6084,6 +6084,14 @@ function PresenceSectionChips({ peers = [], activeSectionId, wrapperRef, editor 
   const [chips, setChips] = useState([])
 
   useEffect(() => {
+    // Caso común: edición en solitario, sin peers de presencia. No tiene
+    // sentido instalar un MutationObserver sobre .ProseMirror (dispararía
+    // en cada keystroke) solo para terminar renderizando nada.
+    if (peers.length === 0) {
+      setChips((prev) => (prev.length === 0 ? prev : []))
+      return undefined
+    }
+
     function rebuild() {
       const wrapper = wrapperRef.current
       const pm = wrapper?.querySelector('.ProseMirror')
