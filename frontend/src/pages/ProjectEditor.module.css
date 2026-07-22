@@ -1225,6 +1225,87 @@
   background: currentColor;
 }
 
+/* Chip de conflicto por sección — overlay clickeable dentro del canvas,
+ * alineado al top-left del sectionDivider correspondiente (el chip de
+ * presencia ya ocupa top-right, ver .presenceSectionChip). A diferencia de
+ * los overlays informativos de arriba, este SÍ acepta puntero: abre
+ * ConflictCompareModal (ver ConflictSectionChips en ProjectEditor.jsx). */
+.conflictSectionChip {
+  position: absolute;
+  top: var(--conflict-chip-top, 0px);
+  left: 0;
+  z-index: var(--wb-z-sticky);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--wb-color-warning-300);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-warning-50);
+  color: var(--wb-color-warning-800);
+  font-family: inherit;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.conflictSectionChip:hover {
+  background: var(--wb-color-warning-100);
+  border-color: var(--wb-color-warning-400);
+}
+
+/* Banner de conflictos 'deleted-local' — vive DENTRO del scroll container del
+ * canvas (no fixed): la sección conflictiva ya no tiene divider en el doc
+ * local, así que no hay dónde anclar un chip de overlay. */
+.deletedLocalConflictBanner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  margin: 0 auto var(--wb-space-3);
+  max-width: var(--wb-content-width);
+}
+
+.deletedLocalConflictRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border: 1px solid var(--wb-color-warning-300);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-warning-50);
+}
+
+.deletedLocalConflictText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wb-color-warning-800);
+  font-size: var(--wb-text-sm);
+}
+
+.deletedLocalConflictBtn {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--wb-color-warning-400);
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-color-warning-800);
+  font-family: inherit;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.deletedLocalConflictBtn:hover {
+  background: var(--wb-color-warning-100);
+}
+
 .rulesPanel {
   padding: 14px 16px 16px;
   border-bottom: 1px solid #e5e7eb;

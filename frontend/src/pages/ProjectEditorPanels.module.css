@@ -311,6 +311,19 @@
   background: var(--wb-color-warning-500);
 }
 
+/* Punto de conflicto: la sección tiene cambios remotos pendientes de revisar
+ * (ver ConflictCompareModal en components/editor/). Mismo tono ámbar que
+ * presenceDotWarning pero con un anillo para diferenciarse de "alguien está
+ * acá ahora" — esto es "alguien editó y hay que decidir qué hacer". */
+.conflictDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-warning-500);
+  box-shadow: 0 0 0 2px var(--wb-color-warning-100);
+}
+
 .h1Divider {
   display: flex;
   align-items: center;

@@ -26,6 +26,7 @@ import CommentInlinePopover from '../components/editor/CommentInlinePopover'
 import EditorContextMenu from '../components/editor/EditorContextMenu'
 import PageIndexMenu from '../components/editor/PageIndexMenu'
 import EditorToast from '../components/editor/EditorToast'
+import ConflictCompareModal from '../components/editor/ConflictCompareModal'
 import ProjectTypeExplainer from '../components/onboarding/ProjectTypeExplainer'
 import webriefFavicon from '../assets/brand/webrief--favicon-v2.svg'
 import {
@@ -2349,6 +2350,31 @@ function setCaretAtSectionStart(editor, sectionId) {
   return true
 }
 
+// Encuentra el rango top-level [from, to) del sectionDivider `sectionId` en
+// `doc` (from = pos del propio divider, to = pos del siguiente divider o fin
+// de doc). Mismo criterio que usa deleteSection para acotar una sección
+// completa (divider incluido). Usado por resolveConflict (F4) para
+// reemplazar/eliminar/insertar-después el rango de una sección en conflicto.
+// Devuelve null si el sectionId no tiene divider vivo en el doc (p.ej. un
+// conflicto deleted-local, cuya sección ya no vive ahí).
+function getSectionRangeById(doc, sectionId) {
+  let dividerPos = null
+  let nextDividerPos = null
+  let found = false
+  doc.forEach((node, offset) => {
+    if (node.type.name === 'sectionDivider') {
+      if (node.attrs.sectionId === sectionId) {
+        dividerPos = offset
+        found = true
+      } else if (found && nextDividerPos === null) {
+        nextDividerPos = offset
+      }
+    }
+  })
+  if (dividerPos === null) return null
+  return { from: dividerPos, to: nextDividerPos !== null ? nextDividerPos : doc.content.size }
+}
+
 // ---------------------------------------------------------------------------
 // applyMergedSectionsToEditor — F3 (colaboración): aplica al editor TipTap en
 // vivo solo las secciones origin:'remote' de un resultado de sectionMerge.mergeSections.
@@ -2672,9 +2698,8 @@ export default function ProjectEditor() {
   // por ahora solo se acumulan por sección y se avisan con un toast.
   const conflictsByPageRef = useRef(new Map()) // pageId -> [{ sectionId, sectionName, localHtml, remoteHtml, type, actorName }]
   // conflictsVersion: bump-only trigger para forzar re-render cuando
-  // conflictsByPageRef cambia (un ref por sí solo no re-renderiza). Todavía
-  // no tiene lector — placeholder a propósito hasta que F4 monte la UI de
-  // marca/comparador de conflictos sobre conflictsByPageRef.
+  // conflictsByPageRef cambia (un ref por sí solo no re-renderiza). Leído por
+  // el useMemo de pageConflicts más abajo (F4: marca de conflicto + comparador).
   const [conflictsVersion, setConflictsVersion] = useState(0)
   const syncInFlightRef = useRef(false)
   const pendingSyncRef = useRef(false)
@@ -2686,6 +2711,30 @@ export default function ProjectEditor() {
 
   const activePage = pages.find((p) => p.id === activePageId)
   const projectType = inferProjectType(projectMeta, pages)
+
+  // F4 (colaboración) — conflictos de la página activa, releídos cuando
+  // conflictsVersion cambia (conflictsByPageRef es un ref: no dispara render
+  // por sí solo, ver comentario arriba).
+  const pageConflicts = useMemo(() => (
+    activePageId ? (conflictsByPageRef.current.get(activePageId) || []) : []
+  ), [conflictsVersion, activePageId])
+  // 'edit' y 'deleted-remote' tienen divider vivo en el doc local → chip en
+  // el canvas + punto en el panel de secciones. 'deleted-local' no tiene
+  // divider (la sección ya no vive en el doc local) → banner aparte.
+  const sectionConflicts = useMemo(() => (
+    pageConflicts.filter((c) => c.type !== 'deleted-local')
+  ), [pageConflicts])
+  const deletedLocalConflicts = useMemo(() => (
+    pageConflicts.filter((c) => c.type === 'deleted-local')
+  ), [pageConflicts])
+  const [openConflict, setOpenConflict] = useState(null)
+  // Cambiar de página con un comparador abierto dejaría el modal apuntando a
+  // una sección que ya no corresponde al doc montado — cerrarlo es más seguro
+  // que intentar reconciliarlo.
+  useEffect(() => {
+    setOpenConflict(null)
+  }, [activePageId])
+
   const {
     canManageProjectMeta,
     canManageProjectStructure: canEditProjectStructure,
@@ -3736,6 +3785,11 @@ export default function ProjectEditor() {
       const nextPages = data.pages.map((page) => mapPersistedPage(page, loadedProjectType))
       setProjectMeta({ ...data.project, projectType: loadedProjectType })
       setPages(nextPages)
+      // F3 (colaboración): este re-GET es un fill point de serverPagesRef igual
+      // que la carga inicial y el post-save — si no se refresca acá, la 'base'
+      // del próximo merge de 3 vías queda stale (pre-propuesta) y puede generar
+      // conflictos falsos con una tercera sesión que edite después.
+      serverPagesRef.current = new Map(nextPages.map((page) => [page.id, { contentHtml: page.fullContent, version: page.version }]))
       setSaveMessage(status === 'accepted' ? 'Propuesta aprobada' : 'Propuesta rechazada')
       setIsDirty(false)
     } catch (error) {
@@ -3743,6 +3797,109 @@ export default function ProjectEditor() {
       setPanelError(error.message || 'No se pudo revisar la propuesta')
     }
   }
+
+  // F4 (colaboración) — resuelve un conflicto de sección elegido en
+  // ConflictCompareModal. A diferencia del merge silencioso de F3
+  // (applyMergedSectionsToEditor, que corre con addToHistory:false porque es
+  // contenido de otra sesión sin decisión humana), acá el usuario decidió
+  // explícitamente: la mutación entra al undo stack normal (puede deshacer SU
+  // decisión con Ctrl+Z). Reusa la mecánica de rangos de deleteSection
+  // (divider → siguiente divider/fin de doc) vía getSectionRangeById.
+  const resolveConflict = useCallback((conflict, action) => {
+    if (!conflict) return
+
+    function closeConflict() {
+      const pageId = activePageId
+      if (pageId) {
+        const list = conflictsByPageRef.current.get(pageId) || []
+        const nextList = list.filter((c) => c.sectionId !== conflict.sectionId)
+        if (nextList.length === 0) conflictsByPageRef.current.delete(pageId)
+        else conflictsByPageRef.current.set(pageId, nextList)
+        setConflictsVersion((v) => v + 1)
+      }
+      setOpenConflict(null)
+    }
+
+    const editor = editorRef.current
+
+    function refreshAfterMutation() {
+      if (!editor) return
+      renumberAutoSections(editor)
+      setDerivedSections(deriveSectionsFromDoc(editor, projectType))
+      setTopLevelH1s(deriveTopLevelH1sFromDoc(editor))
+    }
+
+    if (action === 'keep-mine' || action === 'keep-deleted') {
+      closeConflict()
+      return
+    }
+
+    if (action === 'use-theirs' && editor) {
+      const range = getSectionRangeById(editor.state.doc, conflict.sectionId)
+      if (range) {
+        const html = buildHtmlFromSections([{
+          sectionId: conflict.sectionId,
+          sectionName: conflict.sectionName,
+          innerHtml: conflict.remoteHtml,
+        }])
+        editor.chain().insertContentAt(range, html).run()
+        refreshAfterMutation()
+        setIsDirty(true)
+      }
+      closeConflict()
+      return
+    }
+
+    if (action === 'insert-below' && editor) {
+      const range = getSectionRangeById(editor.state.doc, conflict.sectionId)
+      if (range) {
+        const newId = `s_${Date.now()}`
+        protectedEmptySectionIds.current.add(newId)
+        const html = buildHtmlFromSections([{
+          sectionId: newId,
+          sectionName: `${conflict.sectionName} — versión de ${conflict.actorName}`,
+          innerHtml: conflict.remoteHtml,
+        }])
+        editor.chain().insertContentAt(range.to, html).run()
+        refreshAfterMutation()
+        setIsDirty(true)
+      }
+      closeConflict()
+      return
+    }
+
+    if (action === 'accept-delete' && editor) {
+      const range = getSectionRangeById(editor.state.doc, conflict.sectionId)
+      if (range) {
+        protectedEmptySectionIds.current.delete(conflict.sectionId)
+        editor.chain().deleteRange(range).run()
+        refreshAfterMutation()
+        setIsDirty(true)
+        if (conflict.sectionId === activeSectionId) {
+          const updated = deriveSectionsFromDoc(editor, projectType)
+          setActiveSectionId(updated[0]?.id ?? null)
+        }
+      }
+      closeConflict()
+      return
+    }
+
+    if (action === 'restore-theirs' && editor) {
+      protectedEmptySectionIds.current.add(conflict.sectionId)
+      const html = buildHtmlFromSections([{
+        sectionId: conflict.sectionId,
+        sectionName: conflict.sectionName,
+        innerHtml: conflict.remoteHtml,
+      }])
+      editor.chain().insertContentAt(editor.state.doc.content.size, html).run()
+      refreshAfterMutation()
+      setIsDirty(true)
+      closeConflict()
+      return
+    }
+
+    closeConflict()
+  }, [activePageId, activeSectionId, projectType, renumberAutoSections])
 
   useEffect(() => {
     if (!isDirty || loadingProject || !projectId) return undefined
@@ -4857,6 +5014,12 @@ export default function ProjectEditor() {
         />
       )}
       <EditorToast toast={editorToast} onDismiss={dismissToast} />
+      <ConflictCompareModal
+        open={!!openConflict}
+        conflict={openConflict}
+        onClose={() => setOpenConflict(null)}
+        onResolve={resolveConflict}
+      />
       {/* ── NAVBAR ── */}
         <Navbar
         pages={pages}
@@ -4939,6 +5102,7 @@ export default function ProjectEditor() {
             seoExpanded={seoExpanded}
             onSeoClick={handleSeoPanelClick}
             peers={remotePeers}
+            conflicts={sectionConflicts}
           />
         ) : projectType === 'faq' ? (
           <FaqPanel
@@ -4997,6 +5161,9 @@ export default function ProjectEditor() {
             firstSectionId={derivedSections[0]?.id ?? ''}
             activeSectionId={activeSectionId}
             remotePeers={remotePeers}
+            sectionConflicts={sectionConflicts}
+            deletedLocalConflicts={deletedLocalConflicts}
+            onOpenConflict={setOpenConflict}
             onOpenAddSectionAfter={(sectionId) => openSectionModal(sectionId)}
             onAddSectionAtPos={addSectionAtPos}
             sectionActivities={sectionReviewActivities.filter((item) => item.metadata?.pageId === activePageId)}
@@ -6043,7 +6210,7 @@ function H1Divider({ text, onClick }) {
   )
 }
 
-function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick, peers = [] }) {
+function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick, peers = [], conflicts = [] }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -6109,6 +6276,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
             onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
             onCloseMenu={() => onSetOpenMenuId(null)}
             presencePeers={peers.filter((peer) => peer.sectionId === section.id)}
+            hasConflict={conflicts.some((c) => c.sectionId === section.id)}
           />
         ))}
         {sections.length === 0 && (
@@ -6120,7 +6288,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
 }
 
 // Ítem de sección: nav-button (Tag + nombre + menú) + lista de headings
-function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle, presencePeers = [] }) {
+function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle, presencePeers = [], hasConflict = false }) {
 
   // ── Scroll al heading correspondiente en el editor al hacer click ──
   function handleHeadingClick(e, index) {
@@ -6201,7 +6369,11 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               )}
             </div>
           )}
-          {presencePeers.length > 0 && (
+          {/* F4: un conflicto pendiente en esta sección tiene prioridad visual
+              sobre el punto de presencia — es la señal más urgente de las dos. */}
+          {hasConflict ? (
+            <span className={panelStyles.conflictDot} title="Conflicto de edición" />
+          ) : presencePeers.length > 0 && (
             <span
               className={cx(panelStyles.presenceDot, isActive && panelStyles.presenceDotWarning)}
               title={`${presencePeers.map((peer) => peer.name || 'Alguien').join(', ')} está(n) aquí`}
@@ -6631,6 +6803,80 @@ function PresenceSectionChips({ peers = [], activeSectionId, wrapperRef, editor 
             ? `${chip.names.join(', ')} está${chip.names.length > 1 ? 'n' : ''} editando esta sección`
             : chip.names.join(', ')}
         </div>
+      ))}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ConflictSectionChips — F4 (colaboración): mismo patrón de overlay que
+// PresenceSectionChips (offsetTop del sectionDivider relativo a wrapperRef +
+// MutationObserver/ResizeObserver sobre `.ProseMirror` para recomputar en
+// cada edición/resize), pero CLICKEABLE — abre el comparador de esa sección.
+// Solo cubre conflictos con divider vivo en el doc ('edit' | 'deleted-remote');
+// 'deleted-local' se muestra aparte como banner (ver EditorPanel más arriba).
+// ---------------------------------------------------------------------------
+function ConflictSectionChips({ conflicts = [], wrapperRef, editor, onOpenConflict }) {
+  const [chips, setChips] = useState([])
+
+  useEffect(() => {
+    if (conflicts.length === 0) {
+      setChips((prev) => (prev.length === 0 ? prev : []))
+      return undefined
+    }
+
+    function rebuild() {
+      const wrapper = wrapperRef.current
+      const pm = wrapper?.querySelector('.ProseMirror')
+      if (!pm) {
+        setChips((prev) => (prev.length === 0 ? prev : []))
+        return
+      }
+
+      const next = []
+      conflicts.forEach((conflict) => {
+        const divider = pm.querySelector(`[data-section-divider][data-section-id="${conflict.sectionId}"]`)
+        if (!divider) return
+        next.push({ conflict, top: divider.offsetTop })
+      })
+      setChips(next)
+    }
+
+    rebuild()
+    const timeoutId = setTimeout(rebuild, 50)
+
+    const wrapper = wrapperRef.current
+    const pm = wrapper?.querySelector('.ProseMirror')
+    if (!pm) return () => clearTimeout(timeoutId)
+
+    const mutationObserver = new MutationObserver(rebuild)
+    mutationObserver.observe(pm, { childList: true, subtree: true, characterData: true })
+
+    const resizeObserver = new ResizeObserver(rebuild)
+    resizeObserver.observe(pm)
+
+    return () => {
+      clearTimeout(timeoutId)
+      mutationObserver.disconnect()
+      resizeObserver.disconnect()
+    }
+  }, [conflicts, editor, wrapperRef])
+
+  if (chips.length === 0) return null
+
+  return (
+    <>
+      {chips.map(({ conflict, top }) => (
+        <button
+          key={conflict.sectionId}
+          type="button"
+          className={styles.conflictSectionChip}
+          ref={(node) => setCssVars(node, { '--conflict-chip-top': top })}
+          data-editor-overlay=""
+          onClick={() => onOpenConflict?.(conflict)}
+        >
+          {`⚠ ${conflict.actorName} también editó — Comparar`}
+        </button>
       ))}
     </>
   )
@@ -7742,6 +7988,9 @@ function EditorPanel({
   firstSectionId,
   activeSectionId,
   remotePeers = [],
+  sectionConflicts = [],
+  deletedLocalConflicts = [],
+  onOpenConflict,
   onOpenAddSectionAfter,
   onAddSectionAtPos,
   sectionActivities = [],
@@ -8494,6 +8743,28 @@ function EditorPanel({
           showMarginCards && styles.editorScrollAreaWithMargin,
         )}
       >
+        {/* F4 (colaboración) — conflictos 'deleted-local': la sección ya no
+            vive en el doc (nosotros la borramos) así que no hay divider donde
+            anclar un chip; se listan acá arriba, dentro del scroll container
+            (no fixed) para que convivan con el resto del contenido. */}
+        {projectType === 'page' && deletedLocalConflicts.length > 0 && (
+          <div className={styles.deletedLocalConflictBanner}>
+            {deletedLocalConflicts.map((conflict) => (
+              <div key={conflict.sectionId} className={styles.deletedLocalConflictRow}>
+                <span className={styles.deletedLocalConflictText}>
+                  {`⚠ ${conflict.actorName} editó «${conflict.sectionName}», que tú eliminaste`}
+                </span>
+                <button
+                  type="button"
+                  className={styles.deletedLocalConflictBtn}
+                  onClick={() => onOpenConflict?.(conflict)}
+                >
+                  Revisar
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {projectType !== 'faq' && (
           <div className={seoRulesStyles.topTrayRow} data-seo-tray="">
             <div className={seoRulesStyles.topTraySpacer} />
@@ -8528,6 +8799,14 @@ function EditorPanel({
                   activeSectionId={activeSectionId}
                   wrapperRef={wrapperRef}
                   editor={editor}
+                />
+              )}
+              {projectType === 'page' && (
+                <ConflictSectionChips
+                  conflicts={sectionConflicts}
+                  wrapperRef={wrapperRef}
+                  editor={editor}
+                  onOpenConflict={onOpenConflict}
                 />
               )}
               {projectType === 'page' && canManageSections && activeSectionId && activeSectionAddTop !== null && (

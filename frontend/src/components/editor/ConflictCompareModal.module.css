@@ -1,0 +1,157 @@
+/* ConflictCompareModal — comparador de solo lectura de una sección en
+ * conflicto (F4, ver ProjectEditor.jsx). Dos columnas scrollables dentro del
+ * body del Modal primitive (que ya trae padding + overflow-y). */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--wb-space-4);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-neutral-50);
+  overflow: hidden;
+}
+
+.columnHeader {
+  flex: 0 0 auto;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.badgeLocal,
+.badgeRemote {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--wb-radius-full);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  white-space: nowrap;
+}
+
+.badgeLocal {
+  background: var(--wb-color-primary-100);
+  color: var(--wb-color-primary-800);
+}
+
+.badgeRemote {
+  background: var(--wb-color-warning-100);
+  color: var(--wb-color-warning-800);
+}
+
+.columnBody {
+  flex: 1;
+  min-height: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: var(--wb-space-3);
+}
+
+.emptyState {
+  margin: 0;
+  padding: var(--wb-space-4) 0;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+  font-style: italic;
+  text-align: center;
+}
+
+/* Tipografía del contenido HTML de la sección, a escala reducida — hereda la
+ * jerarquía del canvas (H1 > H2 > H3...) pero comprimida para caber en una
+ * columna de ~330px. Solo selectores de tag: CSS modules no renombra tags,
+ * así que esto aplica igual al HTML inyectado via dangerouslySetInnerHTML. */
+.columnContent {
+  color: var(--wb-text);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-normal);
+}
+
+.columnContent > *:first-child {
+  margin-top: 0;
+}
+
+.columnContent > *:last-child {
+  margin-bottom: 0;
+}
+
+.columnContent h1,
+.columnContent h2,
+.columnContent h3,
+.columnContent h4,
+.columnContent h5,
+.columnContent h6 {
+  margin: 0.7em 0 0.35em;
+  font-weight: var(--wb-weight-semibold);
+  line-height: var(--wb-leading-tight);
+  color: var(--wb-text);
+}
+
+.columnContent h1 { font-size: var(--wb-text-lg); }
+.columnContent h2 { font-size: var(--wb-text-base); }
+.columnContent h3,
+.columnContent h4,
+.columnContent h5,
+.columnContent h6 { font-size: var(--wb-text-sm); }
+
+.columnContent p {
+  margin: 0 0 0.6em;
+}
+
+.columnContent ul,
+.columnContent ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.25em;
+}
+
+.columnContent li {
+  margin: 0.15em 0;
+}
+
+.columnContent a {
+  color: var(--wb-primary);
+}
+
+.columnContent img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--wb-radius-xs);
+}
+
+.columnContent table {
+  width: 100%;
+  margin: 0.5em 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.columnContent th,
+.columnContent td {
+  padding: 4px 8px;
+  border: 1px solid var(--wb-border);
+  font-size: var(--wb-text-xs);
+  text-align: left;
+  vertical-align: top;
+}
+
+.columnContent th {
+  background: var(--wb-surface-muted);
+  font-weight: var(--wb-weight-semibold);
+}
+
+.columnContent [data-cta-button] {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-primary);
+  color: #ffffff;
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  text-decoration: none;
+}
