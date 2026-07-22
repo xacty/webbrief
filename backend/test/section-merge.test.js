@@ -159,3 +159,67 @@ test('local reordena secciones y remoto agrega sección c nueva: orden local se 
   assert.equal(sectionC.origin, 'remote')
   assert.ok(result.structuralNotes.some((n) => n.type === 'remote-add-appended' && n.sectionId === 'c'))
 })
+
+// -------- BUG 1: local borró una sección que remoto editó (branch estructural) --------
+
+test('local borra una sección que remoto editó: conflicto deleted-local, merged respeta la eliminación local', () => {
+  // local pierde la sección b (estructural respecto a base) mientras remoto edita esa misma b.
+  const local = d('a', 'Uno') + '<p>alfa</p>'
+  const remote = d('a', 'Uno') + '<p>alfa</p>' + d('b', 'Dos') + '<p>beta v2</p>'
+  const result = mergeSections({ baseHtml: base, remoteHtml: remote, localHtml: local })
+  assert.equal(result.conflicts.length, 1)
+  assert.deepEqual(result.conflicts[0], {
+    sectionId: 'b',
+    sectionName: 'Dos',
+    localHtml: null,
+    remoteHtml: '<p>beta v2</p>',
+    type: 'deleted-local',
+  })
+  assert.equal(result.mergedSections.find((s) => s.sectionId === 'b'), undefined)
+})
+
+// -------- BUG 2: nombre de sección con ">" --------
+
+test('nombre de sección con ">" no corta el parseo del divider: la sección sobrevive, toma remoto y el nombre round-tripea en mergedHtml', () => {
+  const baseGt = d('a', 'Servicios > Precios') + '<p>alfa</p>' + d('b', 'Dos') + '<p>beta</p>'
+  const remoteGt = d('a', 'Servicios > Precios') + '<p>alfa remota</p>' + d('b', 'Dos') + '<p>beta</p>'
+  const result = mergeSections({ baseHtml: baseGt, remoteHtml: remoteGt, localHtml: baseGt })
+  const sectionA = result.mergedSections.find((s) => s.sectionId === 'a')
+  assert.ok(sectionA, 'la sección a debe sobrevivir al parseo')
+  assert.equal(sectionA.innerHtml, '<p>alfa remota</p>')
+  assert.equal(sectionA.origin, 'remote')
+  const reparsed = splitSections(result.mergedHtml)
+  assert.equal(reparsed.length, 2)
+  assert.equal(reparsed.find((s) => s.sectionId === 'a').sectionName, 'Servicios > Precios')
+})
+
+// -------- BUG 3: divider serializado por TipTap real (data-section-divider="") --------
+
+test('remoto serializado con data-section-divider="" (forma real de TipTap) y mismo contenido que base: identicalToRemote true, 0 conflicts', () => {
+  const dt = (id, name) => `<div data-section-divider="" data-section-id="${id}" data-section-name="${name}"></div>`
+  const remoteTiptap = dt('a', 'Uno') + '<p>alfa</p>' + dt('b', 'Dos') + '<p>beta</p>'
+  const result = mergeSections({ baseHtml: base, remoteHtml: remoteTiptap, localHtml: base })
+  assert.equal(result.conflicts.length, 0)
+  assert.equal(result.identicalToRemote, true)
+})
+
+// -------- BUG 4: contenido antes del primer divider (preámbulo) --------
+
+test('contenido antes del primer divider (preámbulo) se conserva en vez de perderse en silencio', () => {
+  const withPreamble = '<p>intro</p>' + base
+  const result = mergeSections({ baseHtml: withPreamble, remoteHtml: withPreamble, localHtml: withPreamble })
+  assert.ok(result.mergedHtml.includes('<p>intro</p>'))
+  assert.equal(result.identicalToRemote, true)
+})
+
+// -------- BUG 5: sectionIds duplicados --------
+
+test('sectionId duplicado en local (copia-pega) no corrompe el contenido ni crashea: primer-wins, sin duplicar la segunda', () => {
+  const local = d('a', 'Uno') + '<p>alfa</p>' + d('b', 'Dos') + '<p>COPIA-1</p>' + d('b', 'Dos') + '<p>COPIA-2</p>'
+  const result = mergeSections({ baseHtml: base, remoteHtml: base, localHtml: local })
+  const bSections = result.mergedSections.filter((s) => s.sectionId === 'b')
+  assert.equal(bSections.length, 1)
+  assert.equal(bSections[0].innerHtml, '<p>COPIA-1</p>')
+  assert.ok(result.mergedHtml.includes('COPIA-1'))
+  assert.equal((result.mergedHtml.match(/COPIA-2/g) || []).length, 0)
+})
