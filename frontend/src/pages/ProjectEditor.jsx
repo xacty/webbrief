@@ -3242,7 +3242,11 @@ export default function ProjectEditor() {
 
     const content = page.fullContent || buildDocumentHTML(page.sections)
     protectedEmptySectionIds.current = new Set()
-    editorRef.current.commands.setContent(content)
+    // emitUpdate:false (@tiptap/core 3.x: setContent por defecto SÍ emite
+    // update, a diferencia de v2) — esto es una carga de página, no una
+    // edición del usuario; handleDocUpdate marcaría isDirty y dispararía un
+    // autosave fantasma a los 8s. Derivamos secciones a mano abajo.
+    editorRef.current.commands.setContent(content, { emitUpdate: false })
 
     if (projectType === 'document') {
       setDocumentOutline(deriveDocumentOutline(editorRef.current))
@@ -3384,6 +3388,11 @@ export default function ProjectEditor() {
       return true
     } catch (error) {
       const isStaleConflict = String(error.message || '').includes('otra sesión')
+      // Fix B: actorName real en el 409 — si hay exactamente un peer remoto
+      // conectado usamos su nombre (igual que el camino del timbre, ver
+      // handleRemoteSave); con 0 o >1 peers no sabemos a ciencia cierta quién
+      // causó el conflicto, así que dejamos el genérico 'Otra sesión'.
+      const conflictActorName = (remotePeers.length === 1 && remotePeers[0]?.name) || 'Otra sesión'
 
       // Fix del 409: en vez de bloquear el autosave silenciosamente, sincronizamos
       // (merge de 3 vías) y reintentamos una vez con las versiones al día.
@@ -3392,7 +3401,7 @@ export default function ProjectEditor() {
         // concurrencia ANTES de disparar el sync. Si no, syncRemoteChanges ve
         // saveInFlightRef.current en true y se autodefiere (no corre ahora).
         saveInFlightRef.current = false
-        const sync = await syncRemoteChangesRef.current?.({ actorName: 'Otra sesión' })
+        const sync = await syncRemoteChangesRef.current?.({ actorName: conflictActorName })
         if (sync?.ok) {
           // syncRemoteChanges acaba de hacer setPages con las versiones al día,
           // pero ese setState todavía no se aplicó en este mismo tick — pages
@@ -3411,15 +3420,29 @@ export default function ProjectEditor() {
           // No es un fallo real: otro save o sync ya estaba en curso cuando
           // quisimos sincronizar (guard de saveInFlightRef/syncInFlightRef en
           // syncRemoteChanges). Le damos un poco más de tiempo para que
-          // termine y reintentamos UNA vez más — retried:true de una, así que
-          // si ese reintento también 409ea, cae directo al toast final abajo
-          // en vez de volver a encolar otro sync.
+          // termine y reintentamos UNA vez más — retried:true + deferredSync:true
+          // para que, si ese reintento también 409ea, el catch sepa (Fix C)
+          // que no es un conflicto real sino una carrera con un sync en
+          // vuelo, y muestre un toast suave en vez del warning con Actualizar.
           return new Promise((resolve) => {
             setTimeout(() => {
-              resolve(autosaveRunnerRef.current?.(source, { retried: true }))
+              resolve(autosaveRunnerRef.current?.(source, { retried: true, deferredSync: true }))
             }, 400)
           })
         }
+      }
+
+      // Fix C: segundo 409 (options.retried) que llegó después de que el
+      // sync original haya reportado deferred (options.deferredSync) — es
+      // decir, había otro sync ya en vuelo, no un conflicto real. La
+      // convergencia va a llegar sola por el timbre + el próximo autosave;
+      // mostrar el warning con Actualizar acá sería un falso positivo
+      // alarmante. El warning "duro" queda solo para fallos reales de sync
+      // o para un segundo 409 después de un sync que sí reportó ok.
+      if (isStaleConflict && options.retried && options.deferredSync) {
+        setSaveMessage('')
+        showToast({ kind: 'info', text: 'Sincronizando cambios de otra sesión…', autoHideMs: 3000 })
+        return false
       }
 
       if (isStaleConflict) {
@@ -3449,7 +3472,7 @@ export default function ProjectEditor() {
         syncRemoteChangesRef.current?.({ actorName: 'Otra sesión' })
       }
     }
-  }, [activePage, activePageId, canWriteContent, currentUser, loadSidePanelData, pages, projectId, showToast, snapshotActivePage])
+  }, [activePage, activePageId, canWriteContent, currentUser, loadSidePanelData, pages, projectId, remotePeers, showToast, snapshotActivePage])
 
   useEffect(() => {
     autosaveRunnerRef.current = saveProjectPages

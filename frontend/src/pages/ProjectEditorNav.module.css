@@ -349,6 +349,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 96px;
   color: var(--wb-color-neutral-500);
   font-size: var(--wb-text-sm);
   font-weight: var(--wb-weight-medium);

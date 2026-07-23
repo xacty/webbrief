@@ -19,7 +19,7 @@ export default function EditorToast({ toast, onDismiss }) {
   return (
     <div
       className={cn(styles.toast, isWarning ? styles.warning : styles.info)}
-      role="status"
+      role={isWarning ? 'alert' : 'status'}
       aria-live="polite"
     >
       {isWarning ? <AlertTriangle size={15} /> : <Info size={15} />}
