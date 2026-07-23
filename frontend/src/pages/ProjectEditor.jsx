@@ -8351,7 +8351,14 @@ function EditorPanel({
   }, [editor, refreshWordStats])
 
   useEffect(() => {
-    if (editor) editor.setEditable(canWriteContent)
+    // emitUpdate:false — @tiptap/core 3.x: Editor.setEditable(editable) por
+    // defecto SÍ emite 'update' (mismo cambio de default que setContent),
+    // aunque togglear editable no es una edición de contenido. Sin esto, el
+    // primer mount del editor (este efecto corre apenas `editor` existe)
+    // dispara onUpdate → handleDocUpdate → setIsDirty(true) sin que el
+    // usuario haya tocado nada: autosave fantasma a los 8s en CADA carga
+    // inicial del editor (no solo en el cambio de página).
+    if (editor) editor.setEditable(canWriteContent, false)
   }, [canWriteContent, editor])
 
   useEffect(() => {
