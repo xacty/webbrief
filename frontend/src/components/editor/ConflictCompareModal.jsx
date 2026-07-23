@@ -56,6 +56,10 @@ export default function ConflictCompareModal({ open, conflict, onClose, onResolv
   const sectionName = conflict?.sectionName || 'Sección'
   const actorName = conflict?.actorName || 'la otra sesión'
   const type = conflict?.type
+  // Proyectos document no tienen sectionDivider — '__document__' es el
+  // documento entero, no hay "debajo de la sección" donde insertar una
+  // segunda versión, así que ese botón no aplica acá.
+  const isDocument = conflict?.sectionId === '__document__'
 
   function resolve(action) {
     onResolve?.(conflict, action)
@@ -69,8 +73,10 @@ export default function ConflictCompareModal({ open, conflict, onClose, onResolv
     footer = (
       <>
         <Button variant="ghost" onClick={() => resolve('keep-mine')}>Mantener la mía</Button>
-        <Button variant="secondary" onClick={() => resolve('use-theirs')}>Usar la suya</Button>
-        <Button variant="primary" onClick={() => resolve('insert-below')}>Insertar la suya debajo</Button>
+        <Button variant={isDocument ? 'primary' : 'secondary'} onClick={() => resolve('use-theirs')}>Usar la suya</Button>
+        {!isDocument && (
+          <Button variant="primary" onClick={() => resolve('insert-below')}>Insertar la suya debajo</Button>
+        )}
       </>
     )
   } else if (type === 'deleted-remote') {
@@ -95,7 +101,7 @@ export default function ConflictCompareModal({ open, conflict, onClose, onResolv
     <Modal
       open={open && !!conflict}
       onClose={onClose}
-      title={`Conflicto en «${sectionName}»`}
+      title={isDocument ? 'Conflicto en este documento' : `Conflicto en «${sectionName}»`}
       size="lg"
       footer={footer}
     >

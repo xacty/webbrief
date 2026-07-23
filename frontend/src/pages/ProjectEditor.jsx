@@ -2727,6 +2727,13 @@ export default function ProjectEditor() {
   const deletedLocalConflicts = useMemo(() => (
     pageConflicts.filter((c) => c.type === 'deleted-local')
   ), [pageConflicts])
+  // Proyectos document no tienen sectionDivider → syncRemoteChanges genera
+  // conflictos con sectionId='__document__' (ver getSectionRangeById). Sin
+  // divider no hay dónde anclar un chip: se muestra como banner único
+  // (a lo sumo un conflicto por página, cualquiera sea su `type`).
+  const documentConflict = useMemo(() => (
+    pageConflicts.find((c) => c.sectionId === '__document__') || null
+  ), [pageConflicts])
   const [openConflict, setOpenConflict] = useState(null)
   // Cambiar de página con un comparador abierto dejaría el modal apuntando a
   // una sección que ya no corresponde al doc montado — cerrarlo es más seguro
@@ -3868,6 +3875,36 @@ export default function ProjectEditor() {
     }
 
     if (action === 'keep-mine' || action === 'keep-deleted') {
+      closeConflict()
+      return
+    }
+
+    // Proyectos tipo document no tienen sectionDivider — no hay divider para
+    // '__document__' así que getSectionRangeById siempre devuelve null. El
+    // "rango" acá es el documento completo: reemplaza/restaura/elimina todo
+    // el contenido en vez de un tramo entre dividers. 'insert-below' no
+    // aplica (no hay "debajo de la sección" en un doc sin secciones — el
+    // modal ya no ofrece ese botón para este sectionId).
+    if (fresh.sectionId === '__document__' && editor) {
+      const fullRange = { from: 0, to: editor.state.doc.content.size }
+
+      if (action === 'use-theirs' || action === 'restore-theirs') {
+        editor.chain().setContent(fresh.remoteHtml || '<p></p>', { emitUpdate: false }).run()
+        setDocumentOutline(deriveDocumentOutline(editor))
+        setIsDirty(true)
+        closeConflict()
+        return
+      }
+
+      if (action === 'accept-delete') {
+        editor.chain().deleteRange(fullRange).run()
+        setDocumentOutline(deriveDocumentOutline(editor))
+        setIsDirty(true)
+        closeConflict()
+        return
+      }
+
+      // 'keep-mine' / 'keep-deleted' ya están cubiertos arriba (no tocan el doc).
       closeConflict()
       return
     }
@@ -5169,6 +5206,8 @@ export default function ProjectEditor() {
             openMenuId={openMenuId}
             onSetOpenMenuId={setOpenMenuId}
             onExportCsv={() => exportFaqCsv(activePageForRead)}
+            peers={remotePeers}
+            conflicts={sectionConflicts}
           />
         ) : (
           <DocumentOutlinePanel
@@ -5211,6 +5250,7 @@ export default function ProjectEditor() {
             remotePeers={remotePeers}
             sectionConflicts={sectionConflicts}
             deletedLocalConflicts={deletedLocalConflicts}
+            documentConflict={documentConflict}
             onOpenConflict={setOpenConflict}
             onOpenAddSectionAfter={(sectionId) => openSectionModal(sectionId)}
             onAddSectionAtPos={addSectionAtPos}
@@ -6140,7 +6180,7 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
   )
 }
 
-function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv }) {
+function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv, peers = [], conflicts = [] }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -6216,6 +6256,8 @@ function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId,
               menuOpen={openMenuId === `section-${section.id}`}
               onOpenMenu={() => onSetOpenMenuId(`section-${section.id}`)}
               onCloseMenu={() => onSetOpenMenuId(null)}
+              presencePeers={peers.filter((peer) => peer.sectionId === section.id)}
+              hasConflict={conflicts.some((c) => c.sectionId === section.id)}
             />
           )
         })}
@@ -8038,6 +8080,7 @@ function EditorPanel({
   remotePeers = [],
   sectionConflicts = [],
   deletedLocalConflicts = [],
+  documentConflict = null,
   onOpenConflict,
   onOpenAddSectionAfter,
   onAddSectionAtPos,
@@ -8788,9 +8831,6 @@ function EditorPanel({
     <div className={styles.centerPanel}>
       <Toolbar editor={editor} projectId={projectId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
       <TableContextBar editor={editor} />
-      {projectType === 'document' && (
-        null
-      )}
       <div
         ref={scrollAreaRef}
         className={cx(
@@ -8818,6 +8858,25 @@ function EditorPanel({
                 </button>
               </div>
             ))}
+          </div>
+        )}
+        {/* Fast-follow F4: proyectos document no tienen sectionDivider, así
+            que un conflicto '__document__' tampoco tiene dónde anclar un chip
+            en el canvas — mismo patrón de banner que 'deleted-local' arriba. */}
+        {projectType === 'document' && documentConflict && (
+          <div className={styles.deletedLocalConflictBanner}>
+            <div className={styles.deletedLocalConflictRow}>
+              <span className={styles.deletedLocalConflictText}>
+                {`⚠ ${documentConflict.actorName} también editó este documento`}
+              </span>
+              <button
+                type="button"
+                className={styles.deletedLocalConflictBtn}
+                onClick={() => onOpenConflict?.(documentConflict)}
+              >
+                Comparar
+              </button>
+            </div>
           </div>
         )}
         {projectType !== 'faq' && (

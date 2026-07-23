@@ -123,6 +123,11 @@
 
   /* Typographic role tokens (semantic line-heights from decisions.md) */
   --wb-leading-tight:   1.1;
+  /* snug: entre tight (1.1) y normal (1.5) — para títulos/labels cortos en
+     modales, toasts y cards que necesitan algo más de aire que un heading
+     pero menos que texto de párrafo (10+ usos ya en el repo referenciaban
+     este token sin que existiera; caía a line-height heredado). */
+  --wb-leading-snug:    1.375;
   --wb-leading-normal:  1.5;
   --wb-leading-relaxed: 1.75;
 
