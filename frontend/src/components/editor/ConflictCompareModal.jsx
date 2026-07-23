@@ -80,7 +80,9 @@ export default function ConflictCompareModal({ open, conflict, onClose, onResolv
       </>
     )
   } else if (type === 'deleted-remote') {
-    remoteEmptyText = `${actorName} eliminó esta sección`
+    remoteEmptyText = isDocument
+      ? `${actorName} eliminó el contenido del documento`
+      : `${actorName} eliminó esta sección`
     footer = (
       <>
         <Button variant="ghost" onClick={() => resolve('keep-mine')}>Mantener la mía</Button>
@@ -88,7 +90,9 @@ export default function ConflictCompareModal({ open, conflict, onClose, onResolv
       </>
     )
   } else if (type === 'deleted-local') {
-    localEmptyText = 'Tú eliminaste esta sección'
+    localEmptyText = isDocument
+      ? 'Tú eliminaste el contenido del documento'
+      : 'Tú eliminaste esta sección'
     footer = (
       <>
         <Button variant="ghost" onClick={() => resolve('keep-deleted')}>Mantener eliminada</Button>
