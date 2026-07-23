@@ -43,6 +43,7 @@ import { subscribeProjectComments } from '../lib/commentsRealtime'
 import { createEditorChannel } from '../lib/editorPresence'
 import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
+import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
@@ -5939,29 +5940,21 @@ function FloatingEditorBar({
 function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, onRename, onRequestDelete, menuOpen, onOpenMenu, onCloseMenu }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(page.name)
-  const menuTriggerRef = useRef(null)
-  const [menuPos, setMenuPos] = useState(null)
 
   useEffect(() => { setDraft(page.name) }, [page.name])
 
-  // The dropdown is portaled to document.body so it escapes the .navCenter
-  // scroll container (overflow-x: auto clips absolutely-positioned descendants
-  // vertically too). Position is recomputed on scroll/resize while open.
-  useLayoutEffect(() => {
-    if (!menuOpen) { setMenuPos(null); return undefined }
-    function update() {
-      const rect = menuTriggerRef.current?.getBoundingClientRect()
-      if (!rect) return
-      setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
-    }
-    update()
-    window.addEventListener('scroll', update, true)
-    window.addEventListener('resize', update)
-    return () => {
-      window.removeEventListener('scroll', update, true)
-      window.removeEventListener('resize', update)
-    }
-  }, [menuOpen])
+  // El dropdown va portado a document.body porque escapa del contenedor
+  // .navCenter (overflow-x: auto clipea también verticalmente a los
+  // descendientes con position absolute). Estado controlado desde afuera
+  // (openMenuId global de single-open en ProjectEditor) vía menuOpen/
+  // onOpenMenu/onCloseMenu — el hook se limita a exponer posicionamiento +
+  // listeners (click-outside + ESC) sobre ese estado externo.
+  const { close, triggerRef: menuTriggerRef, menuRef, menuStyle: menuPos } = useAnchoredDropdown({
+    placement: 'bottom-end',
+    gap: 4,
+    open: menuOpen,
+    onOpenChange: (next) => (next ? onOpenMenu() : onCloseMenu()),
+  })
 
   function commitRename() {
     setEditing(false)
@@ -6008,20 +6001,21 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
       )}
       {canManagePages && menuOpen && menuPos && typeof document !== 'undefined' && createPortal(
         <div
+          ref={menuRef}
           className={navStyles.navPillMenu}
           style={menuPos}
           onMouseLeave={onCloseMenu}
         >
           <div
             className={navStyles.navPillMenuItem}
-            onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}
+            onClick={(e) => { e.stopPropagation(); close(); setEditing(true) }}
           >
             Renombrar
           </div>
           {canDelete && (
             <div
               className={navStyles.navPillMenuItemDanger}
-              onClick={(e) => { e.stopPropagation(); onCloseMenu(); onRequestDelete() }}
+              onClick={(e) => { e.stopPropagation(); close(); onRequestDelete() }}
             >
               Eliminar
             </div>

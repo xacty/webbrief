@@ -1,7 +1,8 @@
-import React, { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useId, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { MoreVertical } from 'lucide-react'
 import cn from './cn.js'
+import useAnchoredDropdown from '../../hooks/useAnchoredDropdown.js'
 import styles from './KebabMenu.module.css'
 
 /**
@@ -41,101 +42,23 @@ const KebabMenu = forwardRef(function KebabMenu(
   // legacy `align` prop (bottom-end | bottom-start) for backwards compat.
   const resolvedPlacement = placement
     || (align === 'start' ? 'bottom-start' : 'bottom-end')
-  const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState(null)
-  const triggerRef = useRef(null)
-  const menuRef = useRef(null)
   const menuId = useId()
+
+  const { open, setOpen, close, triggerRef, menuRef, menuStyle } = useAnchoredDropdown({
+    placement: resolvedPlacement,
+    gap: 4, // ~var(--wb-space-1)
+  })
 
   useImperativeHandle(ref, () => ({
     close: () => setOpen(false),
     open: () => setOpen(true),
     toggle: () => setOpen((current) => !current),
     focus: () => triggerRef.current?.focus?.(),
-  }), [])
-
-  const close = useCallback(() => {
-    setOpen(false)
-  }, [])
+  }), [setOpen, triggerRef])
 
   useEffect(() => {
     if (typeof onOpenChange === 'function') onOpenChange(open)
   }, [open, onOpenChange])
-
-  // Compute fixed-position coordinates for the portal-rendered dropdown
-  // based on the trigger button's viewport rect. `placement` chooses one of
-  // `bottom-end` (default), `bottom-start`, `top-start`, `top-end`.
-  //
-  // Vertical: `bottom-*` puts the menu under the trigger (`top: rect.bottom + 4`);
-  // `top-*` puts the menu above the trigger (`bottom: viewport.height - rect.top + 4`),
-  // using CSS `bottom` so the menu stays anchored as it grows upward.
-  // Horizontal: `*-end` aligns right edges; `*-start` aligns left edges.
-  const computePosition = useCallback(() => {
-    const node = triggerRef.current
-    if (!node) return null
-    const rect = node.getBoundingClientRect()
-    const vw = typeof window !== 'undefined' ? window.innerWidth : 0
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 0
-    return {
-      placement: resolvedPlacement,
-      rect: {
-        top: rect.top,
-        bottom: rect.bottom,
-        left: rect.left,
-        right: rect.right,
-        width: rect.width,
-      },
-      viewport: { width: vw, height: vh },
-    }
-  }, [resolvedPlacement])
-
-  // Sync position when opening, then on scroll (any ancestor) + resize.
-  useLayoutEffect(() => {
-    if (!open) {
-      setPosition(null)
-      return undefined
-    }
-    function update() {
-      const next = computePosition()
-      if (next) setPosition(next)
-    }
-    update()
-    // Capture-phase scroll catches scrolls in any ancestor scrollable.
-    window.addEventListener('scroll', update, true)
-    window.addEventListener('resize', update)
-    return () => {
-      window.removeEventListener('scroll', update, true)
-      window.removeEventListener('resize', update)
-    }
-  }, [open, computePosition])
-
-  // Click-outside (excluding trigger and menu) + ESC.
-  useEffect(() => {
-    if (!open) return undefined
-
-    function onDocMouseDown(event) {
-      const trigger = triggerRef.current
-      const menu = menuRef.current
-      if (trigger && trigger.contains(event.target)) return
-      if (menu && menu.contains(event.target)) return
-      setOpen(false)
-    }
-
-    function onKeyDown(event) {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        setOpen(false)
-        triggerRef.current?.focus?.()
-      }
-    }
-
-    document.addEventListener('mousedown', onDocMouseDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onDocMouseDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
 
   function handleTriggerClick(event) {
     event.preventDefault()
@@ -148,28 +71,14 @@ const KebabMenu = forwardRef(function KebabMenu(
     event.preventDefault()
     event.stopPropagation()
     if (item?.disabled) return
-    setOpen(false)
+    // close() (en vez de setOpen(false)) devuelve el foco al trigger tras
+    // seleccionar un item.
+    close()
     if (typeof item?.onClick === 'function') item.onClick(event)
   }
 
   // Stop propagation at the trigger wrapper so parent click handlers
   // (e.g. card-as-button openProject) do not fire.
-  // Resolve fixed-position style from the structured `position` payload.
-  // Bottom placements anchor via `top`; top placements anchor via `bottom`
-  // (so the menu grows upward without shifting after layout).
-  let menuStyle = null
-  if (position) {
-    const { placement: p, rect, viewport } = position
-    const gap = 4 // ~var(--wb-space-1)
-    const vertical = p.startsWith('top')
-      ? { bottom: viewport.height - rect.top + gap }
-      : { top: rect.bottom + gap }
-    const horizontal = p.endsWith('end')
-      ? { right: viewport.width - rect.right }
-      : { left: rect.left }
-    menuStyle = { ...vertical, ...horizontal }
-  }
-
   return (
     <div
       className={cn(styles.root, className)}
