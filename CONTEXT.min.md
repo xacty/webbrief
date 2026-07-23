@@ -24,6 +24,7 @@
 - `editor.updates-panel`
 - `editor.handoff`
 - `editor.comments`
+- `editor.collab`
 - `share`
 - `backend.activity`
 - `backend.assets`
@@ -158,8 +159,11 @@
 - `target=editor.updates-panel`
   - `keep`: grouped section activity (one row per section, expandable "Ver detalle" history), compact deliverables, share-link action, internal scroll, bottom-docked content-rules card for document projects; click activity scrolls to section with yellow flash; only section_edited + asset_uploaded events here
 - `target=editor.navbar`
-  - `keep`: logo, back, page pills, save status/button, user icon, bell notifications dropdown
+  - `keep`: logo, back, page pills, save status/button, user icon, bell notifications dropdown; rediseño 2026-07-22: pills con ellipsis (`max-width:150px`, "⋮" siempre visible, `min-width:90px` antes de deslizar), strip deslizable sin scrollbar con fades `mask-image` direccionales + flechas + auto-scroll a pill activa (recalcula en scroll/resize/pages/renames via `pageNamesSignature`); `PageIndexMenu` (icono lista + contador): todas las páginas en orden real con check en activa — elegir NUNCA reordena; avatares de presencia en navRight; estado de guardado compacto (`navSaveCompact`, solo "Guardando…/Sin guardar/Guardado", detalle en title); mensajes largos van a `EditorToast` flotante (warning persiste con acción, info auto-oculta 4s), nunca inline en navbar
   - `watch`: bell dropdown reads non-content events from project_activity; mark-as-read uses metadata.readAt
+- `target=editor.collab`
+  - `keep`: colaboración ligera (2026-07-22, rama `feat/editor-collab-navbar`): canal Supabase Realtime `project:{id}:editor` (Presence + Broadcast "timbre" `pages_saved`, NUNCA contenido en payloads) via `frontend/src/lib/editorPresence.js`; merge 3 vías por sección en `frontend/src/lib/sectionMerge.js` (puro, 19 tests en `backend/test/section-merge.test.js`; tipos de conflicto `edit`/`deleted-remote`/`deleted-local`; pseudo-secciones `__document__`/`__preamble__`); al recibir timbre: `syncRemoteChanges` → GET proyecto → merge → splice TipTap `addToHistory:false` de secciones remote-origin + fallback `setContent` si difiere (cubre deletes/reorders/renames remotos); anti-eco (`identicalToRemote` → clean, sin autosave); 409 ya NO bloquea autosave: sync + retry único (`options.retried`); conflictos por sección → chip warning en gutter + dot ámbar en panel + `ConflictCompareModal` (Mantener/Usar la suya/Insertar debajo; deleted-remote: Aceptar eliminación; deleted-local: banner + Restaurar); resoluciones SÍ entran al undo (decisión humana); presencia: avatares en navRight + "● {name}" por sección (ámbar si misma sección) + dots en índice de páginas
+  - `watch`: `serverPagesRef` es la base del merge — se refresca en load/save-success/sync/proposal-decision; sessionId por pestaña (`crypto.randomUUID`); secciones remote-origin se agregan a `protectedEmptySectionIds` antes del splice (auto-remove); TipTap v3 `setContent` emite update por default → hidratación usa `{ emitUpdate: false }` o genera autosaves fantasma; tipo `document` hace merge pero sin UI de conflictos (solo toast — fast-follow pendiente); comparador es 4to sink `dangerouslySetInnerHTML` sin sanitizar — cablear `sanitizeHtml()` cuando mergee `fix/security-s1-xss-sanitization`
 - `target=editor.handoff`
   - `keep`: copy-safe central content; labels/actions outside selectable text
 - `target=editor.comments`

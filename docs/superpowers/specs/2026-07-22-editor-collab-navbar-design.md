@@ -1,7 +1,10 @@
 # Colaboración ligera en el editor + rediseño de navbar (Enfoque 1)
 
 - Fecha: 2026-07-22
-- Estado: aprobado por el usuario (diseño validado en conversación)
+- Estado: **implementado y verificado en QA de dos sesiones** (2026-07-22, Dev, cuenta claude-bot, dos pestañas)
+- QA passed en vivo: presencia (avatares + indicador por sección + ámbar misma-sección), merge limpio cross-sesión sin recarga, anti-eco (convergencia sin loops de save), conflicto `edit` (chip → comparador → "Usar la suya"), conflicto `deleted-remote` (estado vacío → "Aceptar eliminación"), propagación de borrado estructural (fix C1), undo post-merge no revierte contenido remoto (fix C2), navbar (ellipsis nombre 129 chars, strip + fades + flechas + índice sin reorden, recálculo tras rename)
+- Hallazgos QA corregidos post-implementación: autosave fantasma al hidratar (TipTap v3 `setContent` emitUpdate default), actorName genérico en camino 409, toast alarmante falso en carrera de sync diferido
+- Pendientes aceptados v1: UI de conflictos para tipo `document` (merge funciona, solo toast — fast-follow), dot de conflicto en FaqPanel, sanitización del comparador cuando mergee `fix/security-s1-xss-sanitization`
 - Alcance: frontend only — cero migraciones, cero endpoints nuevos, backend intacto
 - Futuro: Enfoque 2 (merge arbitrado por backend, saves por sección) queda diferido; reutilizará la lógica de `sectionMerge.js` de este spec
 
