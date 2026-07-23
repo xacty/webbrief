@@ -174,7 +174,7 @@ export function buildCreateProjectTour(ctx = {}) {
         target: Q('newproject-type'),
         title: 'Tipo de proyecto',
         body:
-          'Página Web (brief seccionado), Brief (cuestionario), Artículo (editor lineal) o FAQ (preguntas y respuestas). Cada tipo genera una estructura distinta.',
+          'Contenido Web (brief seccionado), Brief (cuestionario), Artículo (editor lineal) o FAQ (preguntas y respuestas). Cada tipo genera una estructura distinta.',
         placement: 'right',
       },
       {
@@ -366,7 +366,7 @@ export function buildNoProjectFallback(ctx = {}) {
         target: null,
         title: 'Necesitas un proyecto primero',
         body:
-          'Para mostrar cómo editar una página, primero hay que crear un proyecto. Vamos a crear uno de prueba llamado "Prueba de tutorial" (Página Web + plantilla E-commerce); podrás editarlo, renombrarlo o eliminarlo cuando termines el tutorial.',
+          'Para mostrar cómo editar una página, primero hay que crear un proyecto. Vamos a crear uno de prueba llamado "Prueba de tutorial" (Contenido Web + plantilla E-commerce); podrás editarlo, renombrarlo o eliminarlo cuando termines el tutorial.',
         placement: 'bottom',
         nextLabel: 'Crear proyecto de prueba',
         hideSkip: true,

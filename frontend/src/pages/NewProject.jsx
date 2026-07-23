@@ -85,7 +85,7 @@ const ESTRUCTURAS = {
 
 const PROJECT_TYPES = {
   page: {
-    label: 'Página Web',
+    label: 'Contenido Web',
     description: 'Brief seccionado para páginas web, landing pages y sitios.',
     previewTitle: 'Estructura sugerida',
     hasTemplate: true,

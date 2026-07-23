@@ -25,7 +25,7 @@ import styles from './ProjectTypeExplainer.module.css';
 
 const TYPE_CONTENT = {
   page: {
-    title: 'Cómo funciona Página Web',
+    title: 'Cómo funciona Contenido Web',
     Icon: Globe,
     bullets: [
       { Icon: Layers, text: 'Multi-página: cambia con las pills del navbar superior. Cada página se divide en secciones que ves en el panel izquierdo.' },
@@ -41,7 +41,7 @@ const TYPE_CONTENT = {
       { Icon: Layers, text: 'Editor lineal: sin secciones, la jerarquía se forma con H1/H2/H3.' },
       { Icon: Ruler, text: 'Reglas de contenido (panel inferior derecho): título, meta, slug y máx. palabras.' },
       { Icon: Search, text: 'SEO metadata en el navbar (icono lápiz) — aparece al final del handoff Dev.' },
-      { Icon: MessageSquare, text: 'Comentarios anclados igual que en Página Web.' },
+      { Icon: MessageSquare, text: 'Comentarios anclados igual que en Contenido Web.' },
     ],
   },
   faq: {

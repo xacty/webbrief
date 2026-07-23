@@ -34,5 +34,5 @@ export function projectTypeLabel(projectType) {
   if (projectType === 'document') return 'Artículo'
   if (projectType === 'faq') return 'FAQs'
   if (projectType === 'brief') return 'Brief'
-  return 'Página Web'
+  return 'Contenido Web'
 }

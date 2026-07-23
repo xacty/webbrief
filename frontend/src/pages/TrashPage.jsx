@@ -50,7 +50,7 @@ const DEMO_TRASH = {
       { id: 'demo-c-arch-2', name: 'Naranja Digital',   slug: 'naranja-digital',   archivedAt: '2026-04-12T09:00:00Z', _demo: true },
     ],
     projects: [
-      { id: 'demo-p-arch-1', name: 'Landing Q1 2026', companyName: 'Agencia Creativa Norte', client: 'Plenna', businessType: 'Página Web', archivedAt: '2026-05-09T15:00:00Z', _demo: true },
+      { id: 'demo-p-arch-1', name: 'Landing Q1 2026', companyName: 'Agencia Creativa Norte', client: 'Plenna', businessType: 'Contenido Web', archivedAt: '2026-05-09T15:00:00Z', _demo: true },
       { id: 'demo-p-arch-2', name: 'Brief Pricing',    companyName: 'Studio Manifiesto',     client: 'Capilea', businessType: 'Brief',      archivedAt: '2026-05-02T11:00:00Z', _demo: true },
       { id: 'demo-p-arch-3', name: 'FAQ Soporte',      companyName: 'Naranja Digital',       client: 'NexxFinance', businessType: 'FAQs',   archivedAt: '2026-04-25T14:00:00Z', _demo: true },
     ],
@@ -60,7 +60,7 @@ const DEMO_TRASH = {
       { id: 'demo-c-trash-1', name: 'Pixel & Form', slug: 'pixel-form', trashedAt: '2026-05-19T12:00:00Z', deleteAfter: '2026-06-18T12:00:00Z', _demo: true },
     ],
     projects: [
-      { id: 'demo-p-trash-1', name: 'Página corporativa', companyName: 'Krea Studio', client: 'Avinova',      businessType: 'Página Web', trashedAt: '2026-05-18T10:00:00Z', deleteAfter: '2026-06-17T10:00:00Z', _demo: true },
+      { id: 'demo-p-trash-1', name: 'Página corporativa', companyName: 'Krea Studio', client: 'Avinova',      businessType: 'Contenido Web', trashedAt: '2026-05-18T10:00:00Z', deleteAfter: '2026-06-17T10:00:00Z', _demo: true },
       { id: 'demo-p-trash-2', name: 'Artículo lanzamiento', companyName: 'Studio Manifiesto', client: 'Plenna', businessType: 'Artículo',  trashedAt: '2026-05-13T16:30:00Z', deleteAfter: '2026-06-12T16:30:00Z', _demo: true },
     ],
   },
