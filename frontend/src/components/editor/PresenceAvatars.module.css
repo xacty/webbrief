@@ -27,14 +27,12 @@
   object-fit: cover;
 }
 
-/* Variante clickeable — mismo look visual que el span, sin romper el
-   overlap/stack (margin-left negativo se hereda de .avatar). */
+/* Variante clickeable — mismo look visual que el span. Solo neutraliza
+   los estilos UA del botón; borde/color/background/font vienen de
+   .avatar y de la clase de swatch aplicadas al mismo elemento. */
 .avatarButton {
   padding: 0;
-  border: 2px solid var(--wb-surface);
-  background: inherit;
-  font: inherit;
-  color: inherit;
+  font-family: inherit;
   cursor: pointer;
   transition: transform 120ms ease;
 }
