@@ -27,6 +27,27 @@
   object-fit: cover;
 }
 
+/* Variante clickeable — mismo look visual que el span, sin romper el
+   overlap/stack (margin-left negativo se hereda de .avatar). */
+.avatarButton {
+  padding: 0;
+  border: 2px solid var(--wb-surface);
+  background: inherit;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.avatarButton:hover {
+  transform: translateY(-1px);
+}
+
+.avatarButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
 .avatarOverflow {
   background: var(--wb-color-neutral-200);
   color: var(--wb-color-neutral-700);

@@ -25,8 +25,12 @@ function getInitials(name) {
  * conectados al canal de presencia del proyecto (ver `lib/editorPresence.js`).
  * Dedupe por sessionId (ya viene único desde el canal). Si hay más de 3
  * peers, el último círculo colapsa en "+N".
+ *
+ * `onPeerClick` es opcional: si se pasa, cada avatar (excepto el chip "+N")
+ * se renderiza como botón accesible que navega a la página/sección donde
+ * está ese colaborador — ver `jumpToPeer` en ProjectEditor.jsx.
  */
-export default function PresenceAvatars({ peers = [], pages = [] }) {
+export default function PresenceAvatars({ peers = [], pages = [], onPeerClick = null }) {
   // Sessions cuyo avatarUrl falló al cargar (404, CORS, etc.) — se cae a
   // iniciales en vez de mostrar el glyph de imagen rota del navegador.
   const [failedAvatars, setFailedAvatars] = useState(() => new Set())
@@ -41,30 +45,51 @@ export default function PresenceAvatars({ peers = [], pages = [] }) {
   function renderAvatar(peer, index) {
     const name = peer.name || 'Alguien'
     const page = pages.find((p) => p.id === peer.pageId)
-    const title = page ? `${name} — ${page.name}` : name
+    const clickable = Boolean(onPeerClick) && Boolean(peer.pageId)
+    const title = page
+      ? `${name} — ${page.name}${clickable ? '. Clic para ir' : ''}`
+      : name
     const swatch = hashToSwatch(peer.sessionId || name)
     const showImage = Boolean(peer.avatarUrl) && !failedAvatars.has(peer.sessionId)
+    const avatarClassName = `${styles.avatar} ${styles[`swatch${swatch}`]}`
+
+    const content = showImage ? (
+      <img
+        src={peer.avatarUrl}
+        alt={name}
+        className={styles.avatarImg}
+        onError={() => {
+          setFailedAvatars((prev) => (
+            prev.has(peer.sessionId) ? prev : new Set(prev).add(peer.sessionId)
+          ))
+        }}
+      />
+    ) : (
+      getInitials(name)
+    )
+
+    if (clickable) {
+      return (
+        <button
+          key={peer.sessionId || index}
+          type="button"
+          className={`${avatarClassName} ${styles.avatarButton}`}
+          title={title}
+          aria-label={`Ir a donde está ${name}`}
+          onClick={() => onPeerClick(peer)}
+        >
+          {content}
+        </button>
+      )
+    }
 
     return (
       <span
         key={peer.sessionId || index}
-        className={`${styles.avatar} ${styles[`swatch${swatch}`]}`}
+        className={avatarClassName}
         title={title}
       >
-        {showImage ? (
-          <img
-            src={peer.avatarUrl}
-            alt={name}
-            className={styles.avatarImg}
-            onError={() => {
-              setFailedAvatars((prev) => (
-                prev.has(peer.sessionId) ? prev : new Set(prev).add(peer.sessionId)
-              ))
-            }}
-          />
-        ) : (
-          getInitials(name)
-        )}
+        {content}
       </span>
     )
   }

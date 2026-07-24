@@ -4115,6 +4115,24 @@ export default function ProjectEditor() {
     navigateToActivity(item)
   }
 
+  // ── Click en avatar de presencia: navega a donde está ese colaborador ──
+  // Reusa navigateToSection (mismo scroll+flash que un click de actividad)
+  // cuando el peer tiene sección. Proyectos tipo document no tienen sección
+  // activa (activeSectionId es null, o '__document__' como virtual) — ahí
+  // alcanza con cambiar de página, igual que un click en la pill de página.
+  function jumpToPeer(peer) {
+    if (!peer?.pageId) return
+
+    if (peer.sectionId && peer.sectionId !== '__document__') {
+      navigateToSection(peer.sectionId, { pageId: peer.pageId })
+      return
+    }
+
+    if (peer.pageId !== activePageId) {
+      handlePageClick(peer.pageId)
+    }
+  }
+
   async function markActivityRead(activityId) {
     try {
       const data = await apiFetch(`/api/projects/${projectId}/activity/${activityId}/read`, {
@@ -5123,6 +5141,7 @@ export default function ProjectEditor() {
         canRenameProject={canManageProjectMeta}
         canSave={canWriteContent}
         onPageClick={handlePageClick}
+        onPeerClick={jumpToPeer}
         onAddPage={addPage}
         onRenamePage={renamePage}
         onRenameProject={renameProject}
@@ -5607,6 +5626,7 @@ function Navbar({
   canRenameProject = true,
   canSave = true,
   onPageClick,
+  onPeerClick,
   onAddPage,
   onRenamePage,
   onRenameProject,
@@ -5740,7 +5760,7 @@ function Navbar({
 
       {/* Columna derecha: Iconos + Save */}
       <div className={navStyles.navRight}>
-        <PresenceAvatars peers={remotePeers} pages={pages} />
+        <PresenceAvatars peers={remotePeers} pages={pages} onPeerClick={onPeerClick} />
         <span className={navStyles.navSaveCompact} title={saveLabel} aria-live="polite">
           {isSaving ? (
             <>
