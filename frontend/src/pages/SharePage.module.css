@@ -61,6 +61,22 @@
   margin-bottom: var(--wb-space-3);
 }
 
+.loginHint {
+  margin: var(--wb-space-3) 0 0;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+}
+
+.loginHint a {
+  color: var(--wb-color-primary-600);
+  font-weight: var(--wb-weight-medium);
+  text-decoration: none;
+}
+
+.loginHint a:hover {
+  text-decoration: underline;
+}
+
 .field {
   display: flex;
   flex-direction: column;

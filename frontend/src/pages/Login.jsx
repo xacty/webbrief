@@ -25,10 +25,11 @@ export default function Login() {
 
     try {
       await signIn(email, password)
-      // Honor a same-origin return_to (used by the OAuth consent flow). Only
-      // allow relative paths to /oauth/authorize to avoid open-redirect.
+      // Honor a same-origin return_to (used by the OAuth consent flow and by
+      // the share-page login link). Only allow relative paths to
+      // /oauth/authorize or /share/ to avoid open-redirect.
       const returnTo = searchParams.get('return_to')
-      if (returnTo && returnTo.startsWith('/oauth/authorize')) {
+      if (returnTo && (returnTo.startsWith('/oauth/authorize') || returnTo.startsWith('/share/'))) {
         navigate(returnTo)
       } else {
         navigate('/dashboard')

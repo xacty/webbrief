@@ -810,6 +810,15 @@ router.post('/', async (req, res) => {
   }
 })
 
+router.get('/:id/access', async (req, res) => {
+  try {
+    const project = await getProjectById(req.params.id, req.currentUser)
+    return res.json({ hasAccess: Boolean(project) })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo verificar el acceso al proyecto' })
+  }
+})
+
 router.get('/:id', async (req, res) => {
   try {
     const project = await getProjectById(req.params.id, req.currentUser)

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
+import { apiFetch } from '../lib/api'
 import { Button, Input, Card } from '../components/ui'
 import styles from './SharePage.module.css'
 
@@ -21,6 +23,8 @@ function publicFetch(path, options = {}) {
 
 export default function SharePage() {
   const { token } = useParams()
+  const navigate = useNavigate()
+  const { isAuthenticated, realCurrentUser, rolePreview, loading: authLoading } = useAuth()
   const [project, setProject] = useState(null)
   const [pages, setPages] = useState([])
   const [loading, setLoading] = useState(true)
@@ -38,6 +42,16 @@ export default function SharePage() {
   const [approvalComment, setApprovalComment] = useState('')
   const [feedback, setFeedback] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // Admin de plataforma navegando con role-preview "Cliente sin cuenta": debe
+  // ver el share exactamente como un visitante anónimo (gate, sin redirect).
+  const isPublicViewerPreview = rolePreview === 'public_viewer' && realCurrentUser?.platformRole === 'admin'
+  const effectiveAuthenticated = isAuthenticated && !isPublicViewerPreview
+
+  // Viewer efímero para usuarios logueados sin acceso al proyecto: NO se
+  // persiste a localStorage, y oculta el botón "Cambiar datos".
+  const [authViewer, setAuthViewer] = useState(null)
+  const [redirecting, setRedirecting] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -64,6 +78,42 @@ export default function SharePage() {
     }
   }, [token])
 
+  useEffect(() => {
+    if (authLoading || !project?.id || !effectiveAuthenticated) return
+    if (authViewer || redirecting) return
+
+    let active = true
+
+    apiFetch(`/api/projects/${project.id}/access`)
+      .then((data) => {
+        if (!active) return
+        if (data?.hasAccess) {
+          setRedirecting(true)
+          navigate(`/project/${project.id}/editor`, { replace: true })
+          return
+        }
+        setAuthViewer({
+          name: realCurrentUser?.fullName || realCurrentUser?.email || '',
+          email: realCurrentUser?.email || '',
+        })
+      })
+      .catch(() => {
+        // Degrade gracefully: nunca bloquear la vista por un fallo del access check.
+        if (!active) return
+        setAuthViewer({
+          name: realCurrentUser?.fullName || realCurrentUser?.email || '',
+          email: realCurrentUser?.email || '',
+        })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [authLoading, effectiveAuthenticated, project?.id, authViewer, redirecting, navigate, realCurrentUser])
+
+  const effectiveViewer = authViewer || viewer
+  const isAutoIdentified = Boolean(authViewer)
+
   function handleIdentify(event) {
     event.preventDefault()
     const nextViewer = { name: name.trim(), email: email.trim().toLowerCase() }
@@ -78,7 +128,7 @@ export default function SharePage() {
 
   async function submitComment(event) {
     event.preventDefault()
-    if (!viewer) return
+    if (!effectiveViewer) return
     setSubmitting(true)
     setFeedback('')
 
@@ -86,8 +136,8 @@ export default function SharePage() {
       await publicFetch(`/api/public/share/${token}/comments`, {
         method: 'POST',
         body: JSON.stringify({
-          authorName: viewer.name,
-          authorEmail: viewer.email,
+          authorName: effectiveViewer.name,
+          authorEmail: effectiveViewer.email,
           body: comment,
         }),
       })
@@ -101,7 +151,7 @@ export default function SharePage() {
   }
 
   async function submitApproval(status) {
-    if (!viewer) return
+    if (!effectiveViewer) return
     setSubmitting(true)
     setFeedback('')
 
@@ -109,8 +159,8 @@ export default function SharePage() {
       await publicFetch(`/api/public/share/${token}/approvals`, {
         method: 'POST',
         body: JSON.stringify({
-          reviewerName: viewer.name,
-          reviewerEmail: viewer.email,
+          reviewerName: effectiveViewer.name,
+          reviewerEmail: effectiveViewer.email,
           status,
           comment: approvalComment,
         }),
@@ -124,7 +174,14 @@ export default function SharePage() {
     }
   }
 
-  if (loading) return <div className={styles.state}>Cargando contenido...</div>
+  // El gate NUNCA debe parpadear antes de un redirect: se mantiene el estado
+  // de carga mientras el auth, el fetch público o la decisión de acceso sigan
+  // pendientes. La decisión se deriva del estado para cubrir también el frame
+  // previo a que el efecto dispare el request.
+  const accessDecisionPending = effectiveAuthenticated && Boolean(project?.id) && !authViewer && !redirecting
+  const stillResolving = loading || authLoading || redirecting || accessDecisionPending
+
+  if (stillResolving) return <div className={styles.state}>Cargando contenido...</div>
   if (error) return <div className={styles.state}>{error}</div>
 
   // Frase completa con concordancia de género/número correcta en español.
@@ -156,7 +213,7 @@ export default function SharePage() {
         </div>
       </header>
 
-      {!viewer && (
+      {!effectiveViewer && (
         <Card padding="md" shadow="sm" radius="md" className={styles.identityCard}>
           <form onSubmit={handleIdentify}>
             <h2 className={styles.cardTitle}>Identifícate para comentar o aprobar</h2>
@@ -178,18 +235,24 @@ export default function SharePage() {
             <Button type="submit" variant="primary" size="md">
               Continuar
             </Button>
+            <p className={styles.loginHint}>
+              ¿Ya tienes cuenta?{' '}
+              <Link to={`/login?return_to=${encodeURIComponent(`/share/${token}`)}`}>Inicia sesión</Link>
+            </p>
           </form>
         </Card>
       )}
 
-      {viewer && (
+      {effectiveViewer && (
         <>
           <Card padding="md" shadow="sm" radius="md" className={styles.feedbackPanel} as="aside">
             <div>
-              <p className={styles.viewerText}>Comentando como {viewer.name} · {viewer.email}</p>
-              <Button variant="ghost" size="sm" type="button" onClick={clearViewer}>
-                Cambiar datos
-              </Button>
+              <p className={styles.viewerText}>Comentando como {effectiveViewer.name} · {effectiveViewer.email}</p>
+              {!isAutoIdentified && (
+                <Button variant="ghost" size="sm" type="button" onClick={clearViewer}>
+                  Cambiar datos
+                </Button>
+              )}
             </div>
 
             <form className={styles.feedbackForm} onSubmit={submitComment}>
