@@ -63,14 +63,71 @@ export function splitSections(html) {
   return sections
 }
 
+// Tag de apertura (o self-closing), quote-aware: el atributo puede contener ">" literal
+// entre comillas dobles (mismo criterio que DIVIDER_RE) sin cortar el tag antes de tiempo.
+const TAG_RE = /<([a-zA-Z][a-zA-Z0-9-]*)((?:[^<>"]|"[^"]*")*)>/g
+const ATTR_RE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*"([^"]*)")?/g
+
+// Canonicaliza el valor de "style": separa declaraciones, normaliza espacios alrededor
+// de ":" y ";", y las reordena alfabéticamente por propiedad. Son propiedades CSS
+// independientes (max-width/height/display/width no compiten entre sí), así que
+// reordenarlas no cambia el resultado visual — solo la forma en que se serializan.
+function normalizeStyleValue(value) {
+  return value
+    .split(';')
+    .map((decl) => decl.trim())
+    .filter(Boolean)
+    .map((decl) => {
+      const idx = decl.indexOf(':')
+      if (idx === -1) return decl
+      const prop = decl.slice(0, idx).trim().toLowerCase()
+      const val = decl.slice(idx + 1).trim()
+      return `${prop}: ${val}`
+    })
+    .sort()
+    .join('; ')
+}
+
+// Reordena los atributos de un tag alfabéticamente por nombre (y, dentro de "style",
+// sus declaraciones) para que dos serializaciones cosméticamente distintas del mismo
+// elemento — p.ej. el HTML crudo guardado en servidor vs. el que re-emite
+// editor.getHTML() al re-serializar un nodo (orden de atributos y de "style" distinto
+// según el orden de addAttributes()/renderHTML de la extensión TipTap) — comparen
+// igual. Los VALORES de cada atributo se preservan tal cual (solo se les hace trim);
+// el self-closing "/>" se normaliza a ">" (void elements no lo necesitan).
+function normalizeTag(tagName, rawAttrs) {
+  const body = rawAttrs.replace(/\/\s*$/, '')
+  const attrs = []
+  let match
+  ATTR_RE.lastIndex = 0
+  while ((match = ATTR_RE.exec(body))) {
+    const [, name, value] = match
+    if (!name) continue
+    const hasValue = value !== undefined
+    attrs.push({
+      name,
+      hasValue,
+      value: hasValue ? (name.toLowerCase() === 'style' ? normalizeStyleValue(value) : value) : null,
+    })
+  }
+  attrs.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  const attrsStr = attrs.map((a) => (a.hasValue ? `${a.name}="${a.value}"` : a.name)).join(' ')
+  return `<${tagName}${attrsStr ? ` ${attrsStr}` : ''}>`
+}
+
 export function normalizeHtml(html) {
-  return (html || '')
+  const collapsed = (html || '')
     // TipTap serializa el atom sin valor de atributo (`data-section-divider=""`);
     // normaliza a la forma bare para que la comparación con HTML construido a mano no falle.
     .replace(/data-section-divider=""/g, 'data-section-divider')
     .replace(/>\s+</g, '><')
     .replace(/\s+/g, ' ')
     .trim()
+  // Canonicaliza atributos por tag: elimina diferencias cosméticas de orden (p.ej.
+  // imágenes: editor.getHTML() re-serializa el nodo con otro orden de atributos —
+  // y de declaraciones dentro de "style" — que el HTML crudo guardado en servidor,
+  // sin ningún cambio real de contenido).
+  return collapsed.replace(TAG_RE, (_match, tagName, rawAttrs) => normalizeTag(tagName, rawAttrs))
 }
 
 export function buildHtmlFromSections(sections) {

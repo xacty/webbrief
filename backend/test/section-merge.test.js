@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { splitSections, mergeSections } from '../../frontend/src/lib/sectionMerge.js'
+import { splitSections, mergeSections, normalizeHtml } from '../../frontend/src/lib/sectionMerge.js'
 
 // Helper local: serializa un divider de sección igual que ProjectEditor.jsx (línea ~891/1132).
 const d = (id, name) => `<div data-section-divider data-section-id="${id}" data-section-name="${name}"></div>`
@@ -229,4 +229,51 @@ test('sectionId duplicado en local (copia-pega) no corrompe el contenido ni cras
   assert.equal(bSections[0].innerHtml, '<p>COPIA-1</p>')
   assert.ok(result.mergedHtml.includes('COPIA-1'))
   assert.equal((result.mergedHtml.match(/COPIA-2/g) || []).length, 0)
+})
+
+// -------- BUG 6: conflictos fantasma en secciones con imágenes (prod, 2026-07-23) --------
+//
+// serverPagesRef guarda el contentHtml crudo del servidor; localHtml sale de
+// snapshotActivePage() -> editor.getHTML(), que re-serializa el nodo imagen vía
+// EditableImageNode.renderHTML (ProjectEditor.jsx). Mismo contenido, orden de
+// atributos (y de declaraciones dentro de "style") distinto -> normalizeHtml
+// debe igualarlos para que changed() no detecte una edición inexistente.
+
+// Forma tal cual quedó persistida en servidor (orden real observado en prod).
+const STORED_IMG =
+  '<img src="https://ik.imagekit.io/webrief/companies/ce6ef0a3-23d9-462b-897e-cf576d0ad720/projects/2a95e4dc-a128-4773-af98-429abbbea852/5e8b48d1-fe79-419d-9c81-56107acd25f5-image.png?tr=w-2400,h-2400,c-at_max,f-auto" alt="image.png" data-width="582" data-original-width="1082" data-original-height="768" data-asset-id="5e8b48d1-fe79-419d-9c81-56107acd25f5" data-file-name="image.png" data-storage-path="/companies/ce6ef0a3-23d9-462b-897e-cf576d0ad720/projects/2a95e4dc-a128-4773-af98-429abbbea852/5e8b48d1-fe79-419d-9c81-56107acd25f5-image.png" style="max-width: 100%; height: auto; display: block; width: 582px;">'
+
+// Misma imagen tal cual la re-serializa editor.getHTML() al hidratar la página:
+// "style" se intercala justo después de "data-width" (orden de addAttributes en
+// EditableImageNode) y dentro de "style" la declaración "width" queda primera
+// (viene del template literal `width:${w}px;max-width:...`), en vez de última.
+const REHYDRATED_IMG =
+  '<img src="https://ik.imagekit.io/webrief/companies/ce6ef0a3-23d9-462b-897e-cf576d0ad720/projects/2a95e4dc-a128-4773-af98-429abbbea852/5e8b48d1-fe79-419d-9c81-56107acd25f5-image.png?tr=w-2400,h-2400,c-at_max,f-auto" alt="image.png" data-width="582" style="width: 582px; max-width: 100%; height: auto; display: block;" data-original-width="1082" data-original-height="768" data-asset-id="5e8b48d1-fe79-419d-9c81-56107acd25f5" data-file-name="image.png" data-storage-path="/companies/ce6ef0a3-23d9-462b-897e-cf576d0ad720/projects/2a95e4dc-a128-4773-af98-429abbbea852/5e8b48d1-fe79-419d-9c81-56107acd25f5-image.png">'
+
+test('normalizeHtml: img con atributos reordenados (simulando editor.getHTML()) normaliza igual que el HTML guardado en servidor', () => {
+  assert.equal(normalizeHtml(STORED_IMG), normalizeHtml(REHYDRATED_IMG))
+})
+
+test('mergeSections: sección con imagen — base en orden servidor, local re-serializado por getHTML() (mismo contenido), remoto con cambio de texto: sin conflicto fantasma, aplica remoto, identicalToRemote true', () => {
+  const baseImg = d('a', 'Uno') + `<p>alfa</p>${STORED_IMG}`
+  const localImg = d('a', 'Uno') + `<p>alfa</p>${REHYDRATED_IMG}` // 0 ediciones reales, solo re-serializado por hidratación
+  const remoteImg = d('a', 'Uno') + `<p>alfa remota</p>${STORED_IMG}`
+  const result = mergeSections({ baseHtml: baseImg, remoteHtml: remoteImg, localHtml: localImg })
+  assert.equal(result.conflicts.length, 0)
+  const sectionA = result.mergedSections.find((s) => s.sectionId === 'a')
+  assert.equal(sectionA.origin, 'remote')
+  assert.equal(sectionA.innerHtml, `<p>alfa remota</p>${STORED_IMG}`)
+  assert.equal(result.identicalToRemote, true)
+})
+
+test('mergeSections: cambio real de imagen (src distinto) en ambos lados sigue produciendo conflicto edit — la normalización no enmascara cambios reales', () => {
+  const baseImg = d('a', 'Uno') + STORED_IMG
+  const localSrcImg = STORED_IMG.replace('5e8b48d1-fe79-419d-9c81-56107acd25f5-image.png', 'local-asset-image.png')
+  const remoteSrcImg = STORED_IMG.replace('5e8b48d1-fe79-419d-9c81-56107acd25f5-image.png', 'remote-asset-image.png')
+  const local = d('a', 'Uno') + localSrcImg
+  const remote = d('a', 'Uno') + remoteSrcImg
+  const result = mergeSections({ baseHtml: baseImg, remoteHtml: remote, localHtml: local })
+  assert.equal(result.conflicts.length, 1)
+  assert.equal(result.conflicts[0].type, 'edit')
+  assert.equal(result.conflicts[0].sectionId, 'a')
 })
