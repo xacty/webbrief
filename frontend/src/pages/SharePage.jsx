@@ -21,6 +21,19 @@ function publicFetch(path, options = {}) {
   })
 }
 
+function readStoredViewer(token) {
+  try {
+    return JSON.parse(window.localStorage.getItem(`share-viewer-${token}`)) || null
+  } catch {
+    return null
+  }
+}
+
+// Tope de espera por la decisión de acceso (perfil + access check). Si no hay
+// veredicto en este plazo, se degrada a la vista anónima (gate) en vez de
+// dejar al visitante clavado en "Cargando contenido...".
+const ACCESS_DECISION_TIMEOUT_MS = 8000
+
 export default function SharePage() {
   const { token } = useParams()
   const navigate = useNavigate()
@@ -29,13 +42,7 @@ export default function SharePage() {
   const [pages, setPages] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [viewer, setViewer] = useState(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem(`share-viewer-${token}`)) || null
-    } catch {
-      return null
-    }
-  })
+  const [viewer, setViewer] = useState(() => readStoredViewer(token))
   const [name, setName] = useState(viewer?.name || '')
   const [email, setEmail] = useState(viewer?.email || '')
   const [comment, setComment] = useState('')
@@ -52,6 +59,26 @@ export default function SharePage() {
   // persiste a localStorage, y oculta el botón "Cambiar datos".
   const [authViewer, setAuthViewer] = useState(null)
   const [redirecting, setRedirecting] = useState(false)
+  const [decisionTimedOut, setDecisionTimedOut] = useState(false)
+
+  // El componente NO se desmonta al navegar entre /share/tokenA y /share/tokenB:
+  // toda decisión previa (auto-identify, redirect, timeout, viewer del gate)
+  // debe resetearse para el nuevo token.
+  useEffect(() => {
+    setAuthViewer(null)
+    setRedirecting(false)
+    setDecisionTimedOut(false)
+    const stored = readStoredViewer(token)
+    setViewer(stored)
+    setName(stored?.name || '')
+    setEmail(stored?.email || '')
+  }, [token])
+
+  // Logout con la página abierta: el viewer derivado de la sesión deja de
+  // tener sentido; se vuelve al flujo anónimo.
+  useEffect(() => {
+    if (!isAuthenticated && authViewer) setAuthViewer(null)
+  }, [isAuthenticated, authViewer])
 
   useEffect(() => {
     let active = true
@@ -81,6 +108,10 @@ export default function SharePage() {
   useEffect(() => {
     if (authLoading || !project?.id || !effectiveAuthenticated) return
     if (authViewer || redirecting) return
+    // Esperar la hidratación del perfil (/api/auth/me): sin ella no se puede
+    // evaluar el role-preview de admin ni construir el viewer auto-identificado
+    // (nombre/email vacíos sin salida). authLoading resuelve antes que el perfil.
+    if (!realCurrentUser) return
 
     let active = true
 
@@ -110,6 +141,17 @@ export default function SharePage() {
       active = false
     }
   }, [authLoading, effectiveAuthenticated, project?.id, authViewer, redirecting, navigate, realCurrentUser])
+
+  // Red de seguridad: si el perfil o el access check nunca resuelven (red
+  // colgada, /api/auth/me caído), tras el timeout se degrada a la vista
+  // anónima con gate en vez de bloquear en "Cargando contenido...".
+  const waitingAccessDecision = effectiveAuthenticated && Boolean(project?.id)
+    && !authViewer && !redirecting && !decisionTimedOut
+  useEffect(() => {
+    if (!waitingAccessDecision) return undefined
+    const id = window.setTimeout(() => setDecisionTimedOut(true), ACCESS_DECISION_TIMEOUT_MS)
+    return () => window.clearTimeout(id)
+  }, [waitingAccessDecision])
 
   const effectiveViewer = authViewer || viewer
   const isAutoIdentified = Boolean(authViewer)
@@ -178,8 +220,7 @@ export default function SharePage() {
   // de carga mientras el auth, el fetch público o la decisión de acceso sigan
   // pendientes. La decisión se deriva del estado para cubrir también el frame
   // previo a que el efecto dispare el request.
-  const accessDecisionPending = effectiveAuthenticated && Boolean(project?.id) && !authViewer && !redirecting
-  const stillResolving = loading || authLoading || redirecting || accessDecisionPending
+  const stillResolving = loading || authLoading || redirecting || waitingAccessDecision
 
   if (stillResolving) return <div className={styles.state}>Cargando contenido...</div>
   if (error) return <div className={styles.state}>{error}</div>
