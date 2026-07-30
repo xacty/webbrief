@@ -52,22 +52,26 @@ import {
 
 console.log('\nlib/editOps.js — schema');
 
-await test('EDIT_OP_NAMES exposes the 12 v1 operations', () => {
+await test('EDIT_OP_NAMES exposes the 16 v1 operations (12 original + 4 table ops)', () => {
   assert.deepEqual(
     [...EDIT_OP_NAMES].sort(),
     [
       'delete_section',
+      'delete_table',
       'find_replace',
       'insert_cta',
       'insert_image_by_url',
       'insert_section',
+      'insert_table',
       'replace_paragraph',
+      'replace_table',
       'set_faq_answer',
       'set_faq_question',
       'set_heading_text',
       'set_page_name',
       'set_section_name',
       'set_seo_metadata',
+      'set_table_cell',
     ].sort(),
   );
 });

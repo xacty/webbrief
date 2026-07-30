@@ -13,7 +13,9 @@
  *   7. Reemplazos masivos controlados   → find_replace
  *   8. Editar pregunta/respuesta en FAQ → set_faq_question / set_faq_answer
  *
- * Plus: set_section_name (rename a section in page/faq projects).
+ * Plus: set_section_name (rename a section in page/faq projects),
+ * insert_cta, insert_image_by_url, set_seo_metadata, and table ops
+ * (insert_table / replace_table / set_table_cell / delete_table).
  *
  * The applier is a pure function. It does NOT call ensureInvariants — the
  * caller does that after every op runs (so invariants kick in once, on the
@@ -32,6 +34,17 @@ import { z } from 'zod';
 
 const headingLevel = z.number().int().min(1).max(6);
 const nonEmptyText = z.string().min(1).max(5000);
+
+const tableCellText = z.string().max(2000).describe('Cell text content (plain text — rendered as a single paragraph).');
+const tableRows = z
+  .array(z.array(tableCellText).min(1).max(12))
+  .min(1)
+  .max(50)
+  .describe(
+    'Table rows as a 2D array of strings, e.g. [["Header A","Header B"],["r1c1","r1c2"]]. ' +
+      'Max 50 rows, max 12 columns per row, 2000 chars per cell. Rows with a different column ' +
+      'count than the widest row are padded with empty cells (a warning is recorded).',
+  );
 
 // Each variant carries a discriminator `op`. We use z.discriminatedUnion so
 // Zod gives concise error messages keyed on the discriminator.
@@ -286,6 +299,95 @@ export const editOpSchema = z.discriminatedUnion('op', [
           'false = replace entirely (drops keys not in `value`).',
       ),
   }),
+
+  // 12. Insert a new table (table/tableRow/tableHeader/tableCell nodes) at the
+  //     end of a section's body, or at the end of the document if no
+  //     sectionId is given.
+  z.object({
+    op: z.literal('insert_table'),
+    sectionId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        'Section to append the table to (inserted at the end of the section body, before the ' +
+          'next sectionDivider). Omit to append at the end of the whole document. Not found → warning.',
+      ),
+    headerRow: z
+      .boolean()
+      .optional()
+      .describe('Default true. If true, the first row is rendered as tableHeader cells (<th>); otherwise all rows use tableCell (<td>).'),
+    rows: tableRows,
+  }),
+
+  // 13. Replace an existing table (by index within scope) with a brand new
+  //     one built from `rows`.
+  z.object({
+    op: z.literal('replace_table'),
+    sectionId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, only tables inside this section are considered. Otherwise the whole document is scanned.'),
+    tableIndex: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('0-based index of the table within the scope (section or document). Default 0 (the first table). Not found → warning.'),
+    headerRow: z
+      .boolean()
+      .optional()
+      .describe('Default true. If true, the first row is rendered as tableHeader cells (<th>); otherwise all rows use tableCell (<td>).'),
+    rows: tableRows,
+  }),
+
+  // 14. Set a single cell's text, preserving whether the cell is a
+  //     tableHeader or tableCell.
+  z.object({
+    op: z.literal('set_table_cell'),
+    sectionId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, only tables inside this section are considered. Otherwise the whole document is scanned.'),
+    tableIndex: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('0-based index of the table within the scope (section or document). Default 0.'),
+    rowIndex: z
+      .number()
+      .int()
+      .min(0)
+      .describe('0-based row index within the table.'),
+    colIndex: z
+      .number()
+      .int()
+      .min(0)
+      .describe('0-based column index within the row.'),
+    text: z
+      .string()
+      .max(2000)
+      .describe('New cell text (plain text — replaces the cell content with a single paragraph).'),
+  }),
+
+  // 15. Delete a table (by index within scope).
+  z.object({
+    op: z.literal('delete_table'),
+    sectionId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('If set, only tables inside this section are considered. Otherwise the whole document is scanned.'),
+    tableIndex: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('0-based index of the table within the scope (section or document). Default 0. Not found → warning.'),
+  }),
 ]);
 
 export const editOpsArraySchema = z
@@ -401,6 +503,72 @@ function replaceNodeText(node, newText) {
   // replaced run — acceptable for v1 since the client supplies plain text.
   if (!node) return;
   node.content = [makeTextNode(newText)];
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Table helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+function makeTableCell(text, isHeader) {
+  return { type: isHeader ? 'tableHeader' : 'tableCell', content: [makeParagraph(text ?? '')] };
+}
+
+/**
+ * Builds a `table` node from a 2D array of cell strings. Rows shorter than
+ * the widest row are padded with empty cells (and a warning is recorded via
+ * `warnings`, if provided) so every row in the resulting table has the same
+ * number of cells — TipTap's table extension expects rectangular tables.
+ */
+function buildTableNode(rows, headerRow, warnings) {
+  const maxCols = Math.max(...rows.map((r) => r.length));
+  let padded = false;
+  const tableRowNodes = rows.map((row, rowIdx) => {
+    const cells = [];
+    for (let c = 0; c < maxCols; c++) {
+      const isHeader = headerRow !== false && rowIdx === 0;
+      const text = row[c];
+      if (text === undefined) padded = true;
+      cells.push(makeTableCell(text ?? '', isHeader));
+    }
+    return { type: 'tableRow', content: cells };
+  });
+  if (padded && warnings) {
+    warnings.push(
+      `insert_table/replace_table: rows had uneven column counts — shorter rows were padded with empty cells to reach ${maxCols} columns`,
+    );
+  }
+  return { type: 'table', content: tableRowNodes };
+}
+
+/**
+ * Finds every top-level `table` node within a scope (a section's body, or
+ * the whole document if `sectionId` is omitted). Mirrors the scoping used by
+ * opDeleteSection/opReplaceParagraph: when `sectionId` is given, only nodes
+ * between that section's divider and the next one are considered. Returns
+ * `{ notFound: true }` when a sectionId was given but no such section exists;
+ * otherwise `{ tables: [{ index }], scopeStart, scopeEnd }` where `index` is the
+ * table node's absolute index in `doc.content`.
+ * Tables are only located at the top level of the scope (nested tables are
+ * not produced by the WeBrief editor, so v1 does not walk into other nodes).
+ */
+function findTablesInScope(doc, sectionId) {
+  let scopeStart = 0;
+  let scopeEnd = doc.content.length;
+
+  if (sectionId) {
+    const section = findSection(doc, sectionId);
+    if (!section || !section.divider) {
+      return { notFound: true };
+    }
+    scopeStart = section.bodyStart;
+    scopeEnd = section.bodyEnd;
+  }
+
+  const tables = [];
+  for (let i = scopeStart; i < scopeEnd; i++) {
+    if (doc.content[i]?.type === 'table') tables.push({ index: i });
+  }
+  return { tables, scopeStart, scopeEnd };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -738,6 +906,134 @@ function opSetSeoMetadata(state, op) {
   };
 }
 
+function opInsertTable(state, op) {
+  const scope = findTablesInScope(state.doc, op.sectionId);
+  if (scope.notFound) {
+    return { op: op.op, matched: false, warning: `sectionId ${op.sectionId} not found` };
+  }
+
+  const localWarnings = [];
+  const tableNode = buildTableNode(op.rows, op.headerRow, localWarnings);
+  const insertAt = scope.scopeEnd;
+  state.doc.content = [
+    ...state.doc.content.slice(0, insertAt),
+    tableNode,
+    ...state.doc.content.slice(insertAt),
+  ];
+
+  return {
+    op: op.op,
+    matched: true,
+    sectionId: op.sectionId ?? null,
+    rows: op.rows.length,
+    cols: tableNode.content[0]?.content.length ?? 0,
+    warning: localWarnings[0],
+  };
+}
+
+function opReplaceTable(state, op) {
+  const scope = findTablesInScope(state.doc, op.sectionId);
+  if (scope.notFound) {
+    return { op: op.op, matched: false, warning: `sectionId ${op.sectionId} not found` };
+  }
+  const tableIndex = op.tableIndex ?? 0;
+  const target = scope.tables[tableIndex];
+  if (!target) {
+    return {
+      op: op.op,
+      matched: false,
+      warning: `tableIndex ${tableIndex} not found in scope (${scope.tables.length} table(s) present)`,
+    };
+  }
+
+  const localWarnings = [];
+  const tableNode = buildTableNode(op.rows, op.headerRow, localWarnings);
+  state.doc.content = [
+    ...state.doc.content.slice(0, target.index),
+    tableNode,
+    ...state.doc.content.slice(target.index + 1),
+  ];
+
+  return {
+    op: op.op,
+    matched: true,
+    sectionId: op.sectionId ?? null,
+    tableIndex,
+    rows: op.rows.length,
+    cols: tableNode.content[0]?.content.length ?? 0,
+    warning: localWarnings[0],
+  };
+}
+
+function opSetTableCell(state, op) {
+  const scope = findTablesInScope(state.doc, op.sectionId);
+  if (scope.notFound) {
+    return { op: op.op, matched: false, warning: `sectionId ${op.sectionId} not found` };
+  }
+  const tableIndex = op.tableIndex ?? 0;
+  const target = scope.tables[tableIndex];
+  if (!target) {
+    return {
+      op: op.op,
+      matched: false,
+      warning: `tableIndex ${tableIndex} not found in scope (${scope.tables.length} table(s) present)`,
+    };
+  }
+
+  const tableNode = state.doc.content[target.index];
+  const row = tableNode.content?.[op.rowIndex];
+  if (!row) {
+    return {
+      op: op.op,
+      matched: false,
+      warning: `rowIndex ${op.rowIndex} not found in table ${tableIndex} (${tableNode.content?.length ?? 0} row(s))`,
+    };
+  }
+  const cell = row.content?.[op.colIndex];
+  if (!cell) {
+    return {
+      op: op.op,
+      matched: false,
+      warning: `colIndex ${op.colIndex} not found in row ${op.rowIndex} of table ${tableIndex} (${row.content?.length ?? 0} column(s))`,
+    };
+  }
+
+  const before = textOfNode(cell);
+  cell.content = [makeParagraph(op.text ?? '')];
+  return {
+    op: op.op,
+    matched: true,
+    sectionId: op.sectionId ?? null,
+    tableIndex,
+    rowIndex: op.rowIndex,
+    colIndex: op.colIndex,
+    before,
+    after: op.text,
+  };
+}
+
+function opDeleteTable(state, op) {
+  const scope = findTablesInScope(state.doc, op.sectionId);
+  if (scope.notFound) {
+    return { op: op.op, matched: false, warning: `sectionId ${op.sectionId} not found` };
+  }
+  const tableIndex = op.tableIndex ?? 0;
+  const target = scope.tables[tableIndex];
+  if (!target) {
+    return {
+      op: op.op,
+      matched: false,
+      warning: `tableIndex ${tableIndex} not found in scope (${scope.tables.length} table(s) present)`,
+    };
+  }
+
+  state.doc.content = [
+    ...state.doc.content.slice(0, target.index),
+    ...state.doc.content.slice(target.index + 1),
+  ];
+  return { op: op.op, matched: true, sectionId: op.sectionId ?? null, tableIndex };
+}
+
 const OPS = {
   set_page_name: opSetPageName,
   set_section_name: opSetSectionName,
@@ -751,6 +1047,10 @@ const OPS = {
   insert_cta: opInsertCta,
   insert_image_by_url: opInsertImageByUrl,
   set_seo_metadata: opSetSeoMetadata,
+  insert_table: opInsertTable,
+  replace_table: opReplaceTable,
+  set_table_cell: opSetTableCell,
+  delete_table: opDeleteTable,
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -810,8 +1110,8 @@ export function applyEditsToContentJson({
     }
     const summary = fn(state, op);
     opsApplied.push(summary);
-    if (!summary.matched && summary.warning) {
-      warnings.push(`${op.op}: ${summary.warning}`);
+    if (summary.warning) {
+      warnings.push(summary.matched ? summary.warning : `${op.op}: ${summary.warning}`);
     }
   }
 

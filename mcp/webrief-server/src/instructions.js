@@ -127,6 +127,10 @@ warning (not an error) so a single typo doesn't abort a batch.
   insert_image_by_url  embed an image by public URL (no upload)
   set_seo_metadata     change titleTag / metaDescription / urlSlug
                        (merge=true by default; merge=false replaces)
+  insert_table         create a table from rows[][] at the end of a section
+  replace_table        swap table N of a section/page for new rows[][]
+  set_table_cell       change one cell's text — by tableIndex/rowIndex/colIndex
+  delete_table         remove table N from a section/page
 
 ## Error code reference
   mcp_token_missing         The MCP token env var is not set or empty
