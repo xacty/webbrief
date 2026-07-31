@@ -44,7 +44,7 @@ import { createEditorChannel } from '../lib/editorPresence'
 import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
@@ -1617,7 +1617,7 @@ function deriveSectionsFromHtmlForSidebar(html) {
           if (node.nodeType === 3) return Boolean(node.textContent?.trim())
           if (node.nodeType !== 1) return false
           const tag = node.tagName?.toLowerCase()
-          if (['img', 'table'].includes(tag)) return true
+          if (['img', 'table', 'hr'].includes(tag)) return true
           if (node.matches?.('[data-cta-button]')) return true
           return Boolean(node.textContent?.trim())
         })
@@ -2198,7 +2198,7 @@ function deriveSectionsFromDoc(editor, projectType) {
     if (!currentSection) return
 
     // Check if node has real content
-    const hasContent = ['ctaButton', 'image', 'table'].includes(node.type)
+    const hasContent = ['ctaButton', 'image', 'table', 'horizontalRule'].includes(node.type)
       || (node.content && node.content.some(
         (child) => child.text && child.text.trim().length > 0
       ))
@@ -7623,6 +7623,11 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
             onClick={handleCtaInsert}
             title="Insertar CTA/button"
           ><MousePointerClick size={16} /></ToolBtn>
+          <ToolBtn
+            disabled={disabled}
+            onClick={() => editor?.chain().focus().setHorizontalRule().run()}
+            title="Insertar separador"
+          ><Minus size={16} /></ToolBtn>
           <label
             className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
             data-wb-tooltip="Insertar imagen"
@@ -9418,6 +9423,7 @@ function blockLabel(element) {
   if (tag === 'blockquote') return 'quote'
   if (tag === 'table') return 'table'
   if (tag === 'img' || element.querySelector?.('img')) return 'img'
+  if (tag === 'hr') return 'hr'
   return 'P'
 }
 
@@ -9510,7 +9516,7 @@ function downloadCsv(baseName, csv) {
 function createHandoffBlock(element, currentSection) {
   const label = blockLabel(element)
   const text = blockText(element)
-  if (!text && !['img', 'table'].includes(label)) return null
+  if (!text && !['img', 'table', 'hr'].includes(label)) return null
   const image = label === 'img' ? parseImageBlockMetadata(element) : null
   const links = extractLinks(element)
   // Para tablas guardamos la matriz estructurada (headers/rows) en vez de un

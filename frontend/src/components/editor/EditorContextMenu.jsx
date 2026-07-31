@@ -4,7 +4,7 @@ import {
   Bold, Italic, Underline, Strikethrough,
   Scissors, Copy, ClipboardPaste, Trash2,
   MessageSquare, Link2, Eraser, Type, ChevronRight,
-  SquareSplitVertical,
+  SquareSplitVertical, Minus,
 } from 'lucide-react'
 import styles from './EditorContextMenu.module.css'
 
@@ -223,6 +223,10 @@ export default function EditorContextMenu({
     })
   }
 
+  function handleInsertHorizontalRule() {
+    safeRun(() => editor.chain().focus().setHorizontalRule().run())
+  }
+
   function handleClearFormatting() {
     safeRun(() => editor.chain().focus().unsetAllMarks().clearNodes().run())
   }
@@ -255,6 +259,7 @@ export default function EditorContextMenu({
         disabled={!hasSelection || !canComment}
       />
       <MenuItem icon={Link2} label="Insertar enlace" shortcut={`${mod}+K`} onSelect={handleInsertLink} disabled={!hasSelection} />
+      <MenuItem icon={Minus} label="Insertar separador" onSelect={handleInsertHorizontalRule} />
       {canAddSectionHere && (
         <>
           <Separator />

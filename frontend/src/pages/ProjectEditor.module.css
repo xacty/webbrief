@@ -1789,6 +1789,16 @@
   font-weight: 600;
 }
 
+/* Separador (hr): mismo look que el canvas (:global(.ProseMirror hr)),
+   replicado acá porque Handoff/Preview pintan el HTML crudo sin pasar por
+   el scope .ProseMirror. */
+.handoffBlockContent hr,
+.previewPage hr {
+  border: none;
+  border-top: 1px solid var(--wb-color-neutral-200);
+  margin: var(--wb-space-4) 0;
+}
+
 .handoffCtaText {
   display: inline-flex;
   align-items: center;
@@ -2028,6 +2038,17 @@
   height: auto;
   display: block;
   border-radius: 4px;
+}
+
+:global(.ProseMirror hr) {
+  border: none;
+  border-top: 1px solid var(--wb-color-neutral-200);
+  margin: var(--wb-space-4) 0;
+}
+
+:global(.ProseMirror hr.ProseMirror-selectednode) {
+  outline: 2px solid var(--wb-color-primary-300);
+  outline-offset: 2px;
 }
 
 :global(.ProseMirror p) {
