@@ -5,6 +5,9 @@ import { WorkspaceProvider, useWorkspace } from './contexts/WorkspaceContext'
 import { TourProvider, useTour } from './components/onboarding/TourContext'
 import AppShell from './components/layout/AppShell'
 import CompanyRedirect from './components/layout/CompanyRedirect'
+// Static import on purpose: the boundary must live in the entry chunk so it can
+// catch other chunks failing to load (stale tab after a deploy).
+import ErrorBoundary from './components/ErrorBoundary'
 import { companyToSlug } from './lib/companySlug'
 import { Select } from './components/ui'
 import {
@@ -265,7 +268,9 @@ function App() {
       <AuthProvider>
         <WorkspaceProvider>
           <TourProvider>
-            <AppRoutes />
+            <ErrorBoundary>
+              <AppRoutes />
+            </ErrorBoundary>
           </TourProvider>
         </WorkspaceProvider>
       </AuthProvider>
