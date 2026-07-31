@@ -52,7 +52,7 @@ import {
 
 console.log('\nlib/editOps.js — schema');
 
-await test('EDIT_OP_NAMES exposes the 16 v1 operations (12 original + 4 table ops)', () => {
+await test('EDIT_OP_NAMES exposes the 17 v1 operations (12 original + 4 table ops + replace_section_content)', () => {
   assert.deepEqual(
     [...EDIT_OP_NAMES].sort(),
     [
@@ -64,6 +64,7 @@ await test('EDIT_OP_NAMES exposes the 16 v1 operations (12 original + 4 table op
       'insert_section',
       'insert_table',
       'replace_paragraph',
+      'replace_section_content',
       'replace_table',
       'set_faq_answer',
       'set_faq_question',

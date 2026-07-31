@@ -35,6 +35,58 @@ import { z } from 'zod';
 const headingLevel = z.number().int().min(1).max(6);
 const nonEmptyText = z.string().min(1).max(5000);
 
+// Shared ordered-block schema — lets callers emit paragraphs and headings in
+// ANY order within a section (e.g. an eyebrow paragraph BEFORE an H2), which
+// insert_section's hardcoded heading-then-body shape cannot express. Used by
+// replace_section_content, insert_section (blocks[] variant), and
+// pages_create's sections[].blocks[]. `level` defaults to 2 when omitted —
+// same default insert_section already used for headingText — so callers that
+// only care about "a heading" don't have to think about level.
+export const blockSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('paragraph'),
+    text: z
+      .string()
+      .max(5000)
+      .describe('Paragraph text (plain — inline marks like bold are not supported). Empty string is allowed for a blank paragraph.'),
+  }),
+  z.object({
+    type: z.literal('heading'),
+    level: z
+      .number()
+      .int()
+      .min(1)
+      .max(6)
+      .default(2)
+      .describe('Heading level 1-6. Defaults to 2 when omitted.'),
+    text: z
+      .string()
+      .min(1)
+      .max(500)
+      .describe('Heading text.'),
+  }),
+]);
+
+export const blockArraySchema = z
+  .array(blockSchema)
+  .min(1)
+  .max(60)
+  .describe(
+    'Ordered list of paragraph/heading blocks, emitted in EXACTLY the order given. Use this instead of ' +
+      'headingText/bodyText-style fields whenever the desired order is not "heading then paragraphs" — ' +
+      'e.g. [{type:"paragraph",text:"SERVICIOS"},{type:"heading",level:2,text:"Tipos de consulta"},' +
+      '{type:"paragraph",text:"Cada mujer..."}] emits the eyebrow paragraph BEFORE the heading.',
+  );
+
+// Builds ProseMirror nodes from a validated blocks[] array (paragraph/heading
+// in caller-given order). Shared by replace_section_content, insert_section,
+// and pages_create.
+export function nodesFromBlocks(blocks) {
+  return blocks.map((block) =>
+    block.type === 'heading' ? makeHeading(block.level ?? 2, block.text) : makeParagraph(block.text),
+  );
+}
+
 const tableCellText = z.string().max(2000).describe('Cell text content (plain text — rendered as a single paragraph).');
 const tableRows = z
   .array(z.array(tableCellText).min(1).max(12))
@@ -134,12 +186,26 @@ export const editOpSchema = z.discriminatedUnion('op', [
       .min(1)
       .max(500)
       .optional()
-      .describe('Optional H2 heading inserted at the start of the new section.'),
+      .describe(
+        'Optional H2 heading inserted at the start of the new section. ' +
+          'Ignored (with a warning) when `blocks` is also provided.',
+      ),
     bodyText: z
       .string()
       .max(20_000)
       .optional()
-      .describe('Optional first-paragraph body text. If omitted, an empty paragraph is inserted so the section is editable.'),
+      .describe(
+        'Optional first-paragraph body text. If omitted, an empty paragraph is inserted so the section is editable. ' +
+          'Ignored (with a warning) when `blocks` is also provided.',
+      ),
+    blocks: blockArraySchema
+      .optional()
+      .describe(
+        'Ordered list of paragraph/heading blocks for the new section body — TAKES PRECEDENCE over ' +
+          'headingText/bodyText (which are ignored, with a warning, if both are supplied). Use this when ' +
+          'the section needs blocks in an order other than "heading then body", e.g. an eyebrow paragraph ' +
+          'before the H2. If omitted, headingText/bodyText control the body as before (unchanged behavior).',
+      ),
   }),
 
   // 6. Delete a section by id (removes the sectionDivider and every node up to
@@ -150,6 +216,25 @@ export const editOpSchema = z.discriminatedUnion('op', [
       .string()
       .min(1)
       .describe('Section to delete. Removes the divider AND every node up to (but not including) the next divider.'),
+  }),
+
+  // 6b. Replace an entire section's body (everything after its
+  //     sectionDivider up to the next divider or end of doc) with an ordered
+  //     list of paragraph/heading blocks. The divider (section name) is left
+  //     untouched. WARNING: any existing tables/CTAs/images/etc. inside the
+  //     section's current body are removed along with everything else —
+  //     re-insert them afterwards (insert_table/insert_cta/insert_image_by_url)
+  //     if the section needs them back.
+  z.object({
+    op: z.literal('replace_section_content'),
+    sectionId: z
+      .string()
+      .min(1)
+      .describe('Section whose entire body will be replaced. Not found → warning.'),
+    blocks: blockArraySchema.describe(
+      'Ordered paragraph/heading blocks that become the new section body, in EXACTLY this order. ' +
+        'Existing tables/CTAs/images/etc. in the section are removed — re-insert them afterwards if needed.',
+    ),
   }),
 
   // 7. Find-and-replace plain text inside text nodes. Optionally scoped to a
@@ -681,10 +766,21 @@ function opInsertSection(state, op) {
   const nodesToInsert = [
     makeSectionDivider(newName ?? 'Section', newSectionId),
   ];
-  if (op.headingText) nodesToInsert.push(makeHeading(2, op.headingText));
-  if (op.bodyText) nodesToInsert.push(makeParagraph(op.bodyText));
-  // Always leave a trailing empty paragraph so the section is editable.
-  if (!op.bodyText) nodesToInsert.push(makeParagraph(''));
+  let warning;
+  if (Array.isArray(op.blocks) && op.blocks.length > 0) {
+    // blocks[] takes precedence over headingText/bodyText — lets callers emit
+    // an arbitrary order (e.g. eyebrow paragraph before the H2), which the
+    // hardcoded heading-then-body shape below cannot express.
+    if (op.headingText || op.bodyText) {
+      warning = 'insert_section: blocks[] takes precedence — headingText/bodyText were ignored';
+    }
+    nodesToInsert.push(...nodesFromBlocks(op.blocks));
+  } else {
+    if (op.headingText) nodesToInsert.push(makeHeading(2, op.headingText));
+    if (op.bodyText) nodesToInsert.push(makeParagraph(op.bodyText));
+    // Always leave a trailing empty paragraph so the section is editable.
+    if (!op.bodyText) nodesToInsert.push(makeParagraph(''));
+  }
 
   state.doc.content = [
     ...state.doc.content.slice(0, insertAt),
@@ -697,6 +793,28 @@ function opInsertSection(state, op) {
     matched: true,
     sectionId: newSectionId,
     insertedAtSectionIndex: clampedIndex,
+    warning,
+  };
+}
+
+function opReplaceSectionContent(state, op) {
+  const section = findSection(state.doc, op.sectionId);
+  if (!section || !section.divider) {
+    return { op: op.op, matched: false, warning: `sectionId ${op.sectionId} not found` };
+  }
+  const blockCountBefore = section.bodyEnd - section.bodyStart;
+  const newNodes = nodesFromBlocks(op.blocks);
+  state.doc.content = [
+    ...state.doc.content.slice(0, section.bodyStart),
+    ...newNodes,
+    ...state.doc.content.slice(section.bodyEnd),
+  ];
+  return {
+    op: op.op,
+    matched: true,
+    sectionId: op.sectionId,
+    blockCountBefore,
+    blockCountAfter: newNodes.length,
   };
 }
 
@@ -1041,6 +1159,7 @@ const OPS = {
   replace_paragraph: opReplaceParagraph,
   insert_section: opInsertSection,
   delete_section: opDeleteSection,
+  replace_section_content: opReplaceSectionContent,
   find_replace: opFindReplace,
   set_faq_question: opSetFaqQuestion,
   set_faq_answer: opSetFaqAnswer,
