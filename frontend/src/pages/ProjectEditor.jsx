@@ -10907,7 +10907,15 @@ function HistoryTabPanel({ activity = [], sections = [], activePageId = '', proj
             <div className={panelStyles.historyItemHeader}>
               <span className={panelStyles.historyItemSection}>{entry.sectionName}</span>
               <span className={panelStyles.historyItemTime}>
-                {entry.actorLabel} · {formatPanelDate(entry.at)}
+                {entry.actorLabel}
+                {entry.source === 'mcp' && (
+                  <>
+                    {' · '}
+                    <span className={panelStyles.historyItemAgentTag}>vía agente</span>
+                  </>
+                )}
+                {' · '}
+                {formatPanelDate(entry.at)}
               </span>
             </div>
             {entry.changeTypes.length > 0 && (
@@ -10955,7 +10963,15 @@ function HistoryDiffModal({ entry, onClose, onRestore }) {
       <div className={panelStyles.diffModal} onClick={(e) => e.stopPropagation()}>
         <h3 className={panelStyles.diffModalTitle}>{entry.sectionName}</h3>
         <p className={panelStyles.diffModalMeta}>
-          {entry.actorLabel} · {formatPanelDate(entry.at)} · {formatActivityChangeTypes(entry.changeTypes) || 'Cambio'}
+          {entry.actorLabel}
+          {entry.source === 'mcp' && (
+            <>
+              {' · '}
+              <span className={panelStyles.historyItemAgentTag}>vía agente</span>
+            </>
+          )}
+          {' · '}
+          {formatPanelDate(entry.at)} · {formatActivityChangeTypes(entry.changeTypes) || 'Cambio'}
         </p>
         <div className={panelStyles.diffPanel}>
           {parts.length === 0 || (parts.length === 1 && !parts[0].added && !parts[0].removed && !parts[0].value) ? (
