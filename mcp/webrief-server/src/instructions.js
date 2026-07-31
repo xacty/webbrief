@@ -80,6 +80,9 @@ edit their projects and pages through the 20 tools below.
    end), and optional sections[] ({ name, headingLevel, headingText,
    paragraphs[] }) for initial content. Omitting sections (or passing [])
    creates the page with a single empty default section ("Sección 1").
+   Each section also accepts blocks[] ({type:'paragraph'|'heading', ...}) —
+   takes precedence over headingLevel/headingText/paragraphs and lets you
+   emit blocks in any order, e.g. an eyebrow paragraph BEFORE the H2.
    Rejects projectType='brief' the same way pages.applyEdits does. Returns
    the new page's id/name/position/version.
 3. pages_previewEdits / pages_applyEdits — use on the page id pages_create
@@ -117,8 +120,11 @@ warning (not an error) so a single typo doesn't abort a batch.
   set_section_name     rename a sectionDivider (by sectionId)
   set_heading_text     change heading text — scoped by sectionId/level/text
   replace_paragraph    replace a paragraph — by paragraphIndex or matchText
-  insert_section       add a new section, optionally with heading + body
+  insert_section       add a new section, optionally with heading + body,
+                       or blocks[] for arbitrary paragraph/heading order
   delete_section       remove a section and its body up to next divider
+  replace_section_content  rewrite a section body as ordered blocks (P/H
+                       any order); existing tables/CTAs/images are removed
   find_replace         bulk text replace; regex meta-chars escaped; case-
                        insensitive by default; optional sectionId scope
   set_faq_question     change the heading of a FAQ section (faq projects)

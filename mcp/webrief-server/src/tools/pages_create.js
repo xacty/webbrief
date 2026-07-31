@@ -2,13 +2,13 @@ import { z } from 'zod';
 import { projectId } from '../schemas/common.js';
 import { checkMcpToken } from '../auth/mcpToken.js';
 import { get, put } from '../lib/webbriefClient.js';
-import { makeSectionDivider, makeHeading, makeParagraph } from '../lib/editOps.js';
+import { makeSectionDivider, makeHeading, makeParagraph, blockArraySchema, nodesFromBlocks } from '../lib/editOps.js';
 import { ensureInvariants, SUPPORTED_PROJECT_TYPES } from '../../../../shared/documentInvariants.js';
 
 export const name = 'pages_create';
 
 export const description =
-  'What: creates a NEW page inside an existing project (page/document/faq — brief refused, same as pages.applyEdits) via PUT /projects/:id/pages (full-replace endpoint). Builds the page contentJson from optional sections (name/headingLevel/headingText/paragraphs) or a single default empty section ("Sección 1") if none are given, serializes contentHtml with the same invariants module pages.applyEdits uses, and resends every existing page verbatim so nothing else is lost, renamed, or reordered. Returns the new page id/name/position/version. ' +
+  'What: creates a NEW page inside an existing project (page/document/faq — brief refused, same as pages.applyEdits) via PUT /projects/:id/pages (full-replace endpoint). Builds the page contentJson from optional sections (name/headingLevel/headingText/paragraphs, or blocks[] for arbitrary paragraph/heading order) or a single default empty section ("Sección 1") if none are given, serializes contentHtml with the same invariants module pages.applyEdits uses, and resends every existing page verbatim so nothing else is lost, renamed, or reordered. Returns the new page id/name/position/version. ' +
   'When: use this to add a page/document/faq page to a project — either blank or pre-populated with initial section content. To edit fine-grained content afterward (headings, paragraphs, CTAs, images, SEO) use pages.previewEdits / pages.applyEdits on the returned page id. ' +
   'Side effects: inserts a new project_pages row at the requested position (default: end); every other page in the project is resent unchanged in the same PUT (full-replace contract) and positions are renumbered 0..N contiguous. ' +
   'Errors: mcp_token_missing, backend_unauthorized, project_not_found, project_not_mutable, invalid_project_type (brief refused), invariants_failed, structure_forbidden (your role can write content but cannot add pages), version_conflict (an existing page changed elsewhere — re-fetch and retry), invalid_request (backend rejected the payload), backend_error.';
@@ -37,7 +37,18 @@ const sectionInput = z.object({
     .array(z.string().min(1).max(5000))
     .max(30)
     .optional()
-    .describe('Optional paragraph texts inserted after the heading (if any). If a section has no heading and no paragraphs, one empty paragraph is inserted so it stays editable.'),
+    .describe(
+      'Optional paragraph texts inserted after the heading (if any). If a section has no heading and no ' +
+        'paragraphs, one empty paragraph is inserted so it stays editable. Ignored when `blocks` is also provided.',
+    ),
+  blocks: blockArraySchema
+    .optional()
+    .describe(
+      'Ordered list of paragraph/heading blocks for this section\'s body — TAKES PRECEDENCE over ' +
+        'headingLevel/headingText/paragraphs (which are ignored if both are supplied). Use this to control ' +
+        'arbitrary block order, e.g. an eyebrow paragraph BEFORE the H2 heading. If omitted, ' +
+        'headingLevel/headingText/paragraphs control the body as before (unchanged behavior).',
+    ),
 });
 
 export const inputSchema = z.object({
@@ -86,6 +97,14 @@ function buildDocFromSections(sections, projectType) {
     const sectionId = crypto.randomUUID();
     const sectionName = section.name ?? autoSectionName(projectType, index + 1);
     content.push(makeSectionDivider(sectionName, sectionId));
+
+    if (Array.isArray(section.blocks) && section.blocks.length > 0) {
+      // blocks[] takes precedence over headingLevel/headingText/paragraphs —
+      // lets callers emit an arbitrary order (e.g. eyebrow paragraph before
+      // the H2), which the heading-then-paragraphs shape below cannot express.
+      content.push(...nodesFromBlocks(section.blocks));
+      return;
+    }
 
     let bodyNodeCount = 0;
     if (section.headingText) {
