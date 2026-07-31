@@ -323,6 +323,26 @@ Keep Prod keys on VPS:
 /var/www/webrief/frontend/.env.production
 ```
 
+### Keepalive del free-tier
+
+Dev free-tier se pausa tras ~7 días sin actividad. El workflow `.github/workflows/keepalive-supabase-dev.yml` hace un `GET` al REST API cada 5 días (`cron '0 12 */5 * *'`) y también acepta `workflow_dispatch` manual.
+
+Secrets del repo `xacty/webbrief`:
+
+```text
+SUPABASE_DEV_URL       = https://iimqxacagxuemwgaunis.supabase.co
+SUPABASE_DEV_ANON_KEY  = <anon/publishable key del proyecto Dev>
+```
+
+Trigger manual y verificación:
+
+```bash
+gh workflow run keepalive-supabase-dev.yml
+gh run list --workflow=keepalive-supabase-dev.yml --limit 5
+```
+
+Si el cron falla varias corridas seguidas (ej. rotación de anon key), la DB terminará pausándose. GitHub notifica los failures por email al owner del repo por defecto.
+
 ## DB Change Flow
 
 ```text

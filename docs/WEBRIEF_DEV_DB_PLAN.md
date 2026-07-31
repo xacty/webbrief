@@ -195,7 +195,7 @@ Hasta ahora aplicabas migraciones directamente a Prod. Con dos DBs:
 
 - **Aplicar mal una migración a Prod en lugar de Dev**: usar nombres distintos en MCP (`supabaseDev` vs `supabaseProd`); evitar tener ambos abiertos simultáneamente al ejecutar destructivos; doble-check del `project_id` antes de cada `apply_migration`.
 - **Schema drift Dev/Prod**: si en algún momento Dev queda atrás, dropear todo y reaplicar `schema.sql` + migraciones desde cero. Dev no tiene data crítica, es seguro.
-- **Free tier de Supabase Dev se pausa por inactividad** (7 días sin actividad → DB se pausa): bastante con tocar el dashboard o correr una query para reactivar. No bloquea trabajo.
+- **Free tier de Supabase Dev se pausa por inactividad** (7 días sin actividad → DB se pausa): mitigado desde 2026-07-30 con un workflow de GitHub Actions ([`.github/workflows/keepalive-supabase-dev.yml`](../.github/workflows/keepalive-supabase-dev.yml)) que hace un GET al REST API cada 5 días. Si por alguna razón aparece pausada (cron falla, key rota, pausa manual), basta con tocar el dashboard o correr una query para reactivar.
 - **Rate limits diferentes Dev vs Prod**: Free tier comparte cuotas con Prod si están en la misma org. Si rompés rate limits en dev, Prod también podría bloquearse temporal. Con cuenta separada se aísla.
 - **Olvidar prefix en ImageKit/Resend**: validar tras el primer upload que el path contiene `dev/`; si no, revisar el código.
 
