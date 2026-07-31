@@ -52,7 +52,7 @@ import {
 
 console.log('\nlib/editOps.js — schema');
 
-await test('EDIT_OP_NAMES exposes the 16 v1 operations (12 original + 4 table ops)', () => {
+await test('EDIT_OP_NAMES exposes the 17 v1 operations (12 original + 4 table ops + replace_section_content)', () => {
   assert.deepEqual(
     [...EDIT_OP_NAMES].sort(),
     [
@@ -64,6 +64,7 @@ await test('EDIT_OP_NAMES exposes the 16 v1 operations (12 original + 4 table op
       'insert_section',
       'insert_table',
       'replace_paragraph',
+      'replace_section_content',
       'replace_table',
       'set_faq_answer',
       'set_faq_question',
@@ -884,6 +885,9 @@ await test('happy path: PUT receives every page with the target modified', async
     assert.ok(putCall, 'expected a PUT call');
     const body = JSON.parse(putCall.options.body);
     assert.equal(body.source, 'mcp');
+    // El backend no calcula el diff: si el MCP no manda sectionEvents,
+    // la edición no deja rastro en el historial.
+    assert.ok(Array.isArray(body.sectionEvents), 'PUT must carry a sectionEvents array');
     assert.equal(body.pages.length, 2);
     const idsInPayload = body.pages.map((p) => p.id).sort();
     assert.deepEqual(idsInPayload, [PAGE_ID, OTHER_PAGE_ID].sort());

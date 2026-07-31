@@ -4427,11 +4427,30 @@ export default function ProjectEditor() {
 
   // ── Restaurar contenido de sección desde un snapshot (history) ──
   function restoreSectionContent(sectionId, htmlAfter) {
-    if (!canWriteContent || !editorRef.current) return false
-    if (typeof htmlAfter !== 'string') return false
+    if (!canWriteContent) {
+      showToast({ kind: 'warning', text: 'No tienes permisos para editar el contenido de este proyecto.' })
+      return false
+    }
+    if (!editorRef.current) {
+      showToast({ kind: 'warning', text: 'El editor todavía no está listo. Espera un momento e intenta de nuevo.' })
+      return false
+    }
+    if (typeof htmlAfter !== 'string') {
+      showToast({ kind: 'warning', text: 'Esta versión no tiene contenido para restaurar.' })
+      return false
+    }
     const editor = editorRef.current
     const { state } = editor
     const { doc } = state
+
+    // Los proyectos tipo document no tienen sectionDivider: el historial usa el id
+    // virtual '__document__', así que se restaura el documento completo.
+    if (sectionId === '__document__') {
+      editor.commands.setContent(htmlAfter || '<p></p>')
+      setIsDirty(true)
+      showToast({ kind: 'info', text: 'Contenido restaurado. Recuerda guardar para que el cambio sea permanente.' })
+      return true
+    }
 
     let dividerEnd = null
     let nextDividerPos = null
@@ -4445,7 +4464,10 @@ export default function ProjectEditor() {
       }
     })
 
-    if (dividerEnd === null) return false
+    if (dividerEnd === null) {
+      showToast({ kind: 'warning', text: 'Esa sección ya no existe en esta página, así que no se puede restaurar.' })
+      return false
+    }
 
     const from = dividerEnd
     const to = nextDividerPos !== null ? nextDividerPos : state.doc.content.size
@@ -4456,6 +4478,8 @@ export default function ProjectEditor() {
       .run()
 
     setIsDirty(true)
+    navigateToSection(sectionId)
+    showToast({ kind: 'info', text: 'Contenido restaurado. Recuerda guardar para que el cambio sea permanente.' })
     return true
   }
 
@@ -5344,6 +5368,7 @@ export default function ProjectEditor() {
           onCreateShareLink={createShareLink}
           onRevokeShareLink={revokeShareLink}
           onRestoreSection={restoreSectionContent}
+          showToast={showToast}
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
           onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
@@ -10807,8 +10832,11 @@ function HistoryTabPanel({ activity = [], sections = [], activePageId = '', proj
             key: `${item.id}-${entry.at || index}`,
             sectionId,
             sectionName,
+            pageId: item.metadata.pageId || '',
+            pageName: item.metadata.pageName || '',
             changeTypes: entry.changeTypes || [],
             actorLabel: entry.actorLabel || item.actorLabel,
+            source: entry.source || '',
             at: entry.at || item.createdAt,
             htmlAfter: typeof entry.htmlAfter === 'string' ? entry.htmlAfter : '',
             htmlBefore: typeof previous?.htmlAfter === 'string' ? previous.htmlAfter : '',
@@ -10879,7 +10907,15 @@ function HistoryTabPanel({ activity = [], sections = [], activePageId = '', proj
             <div className={panelStyles.historyItemHeader}>
               <span className={panelStyles.historyItemSection}>{entry.sectionName}</span>
               <span className={panelStyles.historyItemTime}>
-                {entry.actorLabel} · {formatPanelDate(entry.at)}
+                {entry.actorLabel}
+                {entry.source === 'mcp' && (
+                  <>
+                    {' · '}
+                    <span className={panelStyles.historyItemAgentTag}>vía agente</span>
+                  </>
+                )}
+                {' · '}
+                {formatPanelDate(entry.at)}
               </span>
             </div>
             {entry.changeTypes.length > 0 && (
@@ -10927,7 +10963,15 @@ function HistoryDiffModal({ entry, onClose, onRestore }) {
       <div className={panelStyles.diffModal} onClick={(e) => e.stopPropagation()}>
         <h3 className={panelStyles.diffModalTitle}>{entry.sectionName}</h3>
         <p className={panelStyles.diffModalMeta}>
-          {entry.actorLabel} · {formatPanelDate(entry.at)} · {formatActivityChangeTypes(entry.changeTypes) || 'Cambio'}
+          {entry.actorLabel}
+          {entry.source === 'mcp' && (
+            <>
+              {' · '}
+              <span className={panelStyles.historyItemAgentTag}>vía agente</span>
+            </>
+          )}
+          {' · '}
+          {formatPanelDate(entry.at)} · {formatActivityChangeTypes(entry.changeTypes) || 'Cambio'}
         </p>
         <div className={panelStyles.diffPanel}>
           {parts.length === 0 || (parts.length === 1 && !parts[0].added && !parts[0].removed && !parts[0].value) ? (
@@ -10981,6 +11025,7 @@ function UpdatesPanel({
   onCreateShareLink,
   onRevokeShareLink,
   onRestoreSection,
+  showToast,
   onCreateDeliverable,
   onUpdateDeliverableStatus,
   onApproveDesignerProposal,
@@ -11272,6 +11317,16 @@ function UpdatesPanel({
           entry={diffEntry}
           onClose={() => setDiffEntry(null)}
           onRestore={(html) => {
+            // Entradas viejas sin pageId siguen visibles en todas las páginas: si la
+            // versión es de otra página, su sectionId no está en el documento montado.
+            if (diffEntry.pageId && activePageId && diffEntry.pageId !== activePageId) {
+              setDiffEntry(null)
+              showToast?.({
+                kind: 'warning',
+                text: `Esta versión pertenece a la página "${diffEntry.pageName || 'otra página'}". Ábrela para restaurarla desde ahí.`,
+              })
+              return
+            }
             if (diffEntry.sectionId && onRestoreSection) {
               const ok = onRestoreSection(diffEntry.sectionId, html)
               if (ok) setDiffEntry(null)

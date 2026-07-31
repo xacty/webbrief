@@ -887,6 +887,15 @@
   word-break: break-word;
 }
 
+/* Marca discreta para ediciones hechas por un agente (MCP) en nombre de una
+   cuenta humana. El actor sigue siendo la persona; esto solo distingue el
+   medio. Un tono levemente más marcado que el resto de la línea (muted →
+   neutral-600), sin usar --wb-primary para no leerse como un link. */
+.historyItemAgentTag {
+  color: var(--wb-color-neutral-600);
+  font-weight: var(--wb-weight-medium);
+}
+
 .historyItemChanges {
   color: var(--wb-text-muted);
   font-size: var(--wb-text-xs);

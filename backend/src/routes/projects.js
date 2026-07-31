@@ -1304,6 +1304,7 @@ router.put('/:id/pages', async (req, res) => {
         projectId: project.id,
         currentUser: req.currentUser,
         sectionEvents,
+        source,
       })
     }
 
@@ -1404,6 +1405,7 @@ router.put('/:id/pages', async (req, res) => {
           projectId: project.id,
           currentUser: req.currentUser,
           seoEvents,
+          source,
         })
       }
     }

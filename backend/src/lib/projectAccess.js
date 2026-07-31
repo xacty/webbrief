@@ -274,7 +274,26 @@ export async function logProjectActivity({
   return data
 }
 
-export async function recordSectionEditActivities({ projectId, currentUser, sectionEvents = [] }) {
+// Construye la entrada individual que se agrega a metadata.history[] en cada guardado.
+// Diseño: una misma fila de project_activity acumula entradas de guardados sucesivos que
+// pueden mezclar ediciones humanas y del agente; el campo de fila se pisa en cada save,
+// así que solo la entrada individual puede decir de dónde vino ese cambio concreto.
+// Pura y exportada para poder testear el mapeo de `source` sin tocar Supabase.
+export function buildSectionEditHistoryEntry({ event, currentUser, actor, timestamp, source = 'autosave' }) {
+  return {
+    changeTypes: event.changeTypes,
+    actorId: currentUser?.id || null,
+    actorLabel: actor,
+    at: timestamp,
+    // htmlAfter: snapshot of the section's HTML right after this save.
+    // The previous entry's htmlAfter is "htmlBefore" for diff purposes.
+    // Empty string means snapshot was unavailable (e.g. section_removed).
+    htmlAfter: event.sectionHtml || '',
+    source,
+  }
+}
+
+export async function recordSectionEditActivities({ projectId, currentUser, sectionEvents = [], source = 'autosave' }) {
   if (!projectActivityTableAvailable) {
     if (Date.now() < projectActivityRetryAt) return []
     projectActivityTableAvailable = true
@@ -328,16 +347,7 @@ export async function recordSectionEditActivities({ projectId, currentUser, sect
 
       // Append the current edit to a per-row history so "Ver detalle" can show every change with timestamp + actor.
       const previousHistory = Array.isArray(match?.metadata?.history) ? match.metadata.history : []
-      const historyEntry = {
-        changeTypes: event.changeTypes,
-        actorId: currentUser?.id || null,
-        actorLabel: actor,
-        at: timestamp,
-        // htmlAfter: snapshot of the section's HTML right after this save.
-        // The previous entry's htmlAfter is "htmlBefore" for diff purposes.
-        // Empty string means snapshot was unavailable (e.g. section_removed).
-        htmlAfter: event.sectionHtml || '',
-      }
+      const historyEntry = buildSectionEditHistoryEntry({ event, currentUser, actor, timestamp, source })
       // Cap history to the most recent 50 entries.
       const nextHistory = [historyEntry, ...previousHistory].slice(0, 50)
 
@@ -350,6 +360,7 @@ export async function recordSectionEditActivities({ projectId, currentUser, sect
         changeTypes: event.changeTypes,
         previousIndex: event.previousIndex,
         nextIndex: event.nextIndex,
+        // Campo de fila (legado, se pisa en cada save): el origen real de cada cambio vive en history[].source.
         source: 'autosave',
         history: nextHistory,
       }
@@ -436,10 +447,25 @@ function diffSeoMetadata(previous = {}, next = {}) {
   return { changes, previousValues, nextValues }
 }
 
+// Misma razón de diseño que buildSectionEditHistoryEntry: la fila mezcla guardados
+// sucesivos de distinto origen, así que el origen se graba por entrada, no por fila.
+// Pura y exportada para poder testear el mapeo de `source` sin tocar Supabase.
+export function buildSeoChangeHistoryEntry({ event, currentUser, actor, timestamp, source = 'autosave' }) {
+  return {
+    changeTypes: event.changeTypes,
+    actorId: currentUser?.id || null,
+    actorLabel: actor,
+    at: timestamp,
+    previousValues: event.previousValues,
+    nextValues: event.nextValues,
+    source,
+  }
+}
+
 // Inserta o mergea actividad seo_changed por (project, page, actor) — replica el patrón
 // de recordSectionEditActivities pero scopeado al "virtual section" __seo__.
 // Acumula history[] con cap 50 y se actualiza in-place mientras esté unread.
-export async function recordSeoChangedActivities({ projectId, currentUser, seoEvents = [] }) {
+export async function recordSeoChangedActivities({ projectId, currentUser, seoEvents = [], source = 'autosave' }) {
   if (!projectActivityTableAvailable) {
     if (Date.now() < projectActivityRetryAt) return []
     projectActivityTableAvailable = true
@@ -493,14 +519,7 @@ export async function recordSeoChangedActivities({ projectId, currentUser, seoEv
       })
 
       const previousHistory = Array.isArray(match?.metadata?.history) ? match.metadata.history : []
-      const historyEntry = {
-        changeTypes: event.changeTypes,
-        actorId: currentUser?.id || null,
-        actorLabel: actor,
-        at: timestamp,
-        previousValues: event.previousValues,
-        nextValues: event.nextValues,
-      }
+      const historyEntry = buildSeoChangeHistoryEntry({ event, currentUser, actor, timestamp, source })
       const nextHistory = [historyEntry, ...previousHistory].slice(0, 50)
 
       const metadata = {

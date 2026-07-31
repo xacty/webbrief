@@ -4,6 +4,7 @@ import { checkMcpToken } from '../auth/mcpToken.js';
 import { get, put } from '../lib/webbriefClient.js';
 import { applyEditsToContentJson, editOpsArraySchema } from '../lib/editOps.js';
 import { ensureInvariants, SUPPORTED_PROJECT_TYPES } from '../../../../shared/documentInvariants.js';
+import { buildSectionEventsFromHtml } from '../../../../shared/sectionEvents.js';
 
 export const name = 'pages_applyEdits';
 
@@ -168,18 +169,36 @@ export async function handler(input) {
     };
   });
 
-  // 7. PUT.
+  // 7. Section activity events. The backend does NOT diff on its own: it stores
+  //    whatever the client sends, so without this the MCP edits leave no trace
+  //    in the history. Only the target page changes; the rest go verbatim.
+  let sectionEvents = [];
+  try {
+    sectionEvents = buildSectionEventsFromHtml({
+      pageId: input.pageId,
+      pageName: edited.pageName,
+      previousHtml: targetPage.contentHtml ?? targetPage.content_html ?? '',
+      nextHtml: normalized.contentHtml ?? '',
+    });
+  } catch {
+    // Guardar el contenido del usuario importa más que registrar la actividad:
+    // si el diff falla, se guarda igual y solo se pierde la entrada de historial.
+    sectionEvents = [];
+  }
+
+  // 8. PUT.
   let putResponse;
   try {
     putResponse = await put(`/projects/${input.projectId}/pages`, {
       pages: updatedPagesPayload,
       source: 'mcp',
+      sectionEvents,
     });
   } catch (error) {
     return mapBackendError(error, input.projectId, 'put', input.pageId);
   }
 
-  // 8. Locate the saved page in the response so we can return the new version.
+  // 9. Locate the saved page in the response so we can return the new version.
   const savedPages = putResponse?.pages ?? [];
   const savedPage = savedPages.find((p) => p.id === input.pageId);
   const newVersion = savedPage?.version ?? currentVersion + 1;
