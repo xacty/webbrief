@@ -884,6 +884,9 @@ await test('happy path: PUT receives every page with the target modified', async
     assert.ok(putCall, 'expected a PUT call');
     const body = JSON.parse(putCall.options.body);
     assert.equal(body.source, 'mcp');
+    // El backend no calcula el diff: si el MCP no manda sectionEvents,
+    // la edición no deja rastro en el historial.
+    assert.ok(Array.isArray(body.sectionEvents), 'PUT must carry a sectionEvents array');
     assert.equal(body.pages.length, 2);
     const idsInPayload = body.pages.map((p) => p.id).sort();
     assert.deepEqual(idsInPayload, [PAGE_ID, OTHER_PAGE_ID].sort());
