@@ -3,13 +3,23 @@
 import { Router } from 'express'
 import multer from 'multer'
 import crypto from 'node:crypto'
+import archiver from 'archiver'
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { fetchCompanyUsage, checkCompanyStorageQuota } from '../lib/storageQuota.js'
 import { decideUploadConversion, uploadWithIngest, adjustFileNameForAction, MAX_UPLOAD_BYTES } from '../lib/imageIngest.js'
-import { buildImageKitPath, sanitizeFileName } from '../lib/imagekit.js'
+import {
+  buildImageKitPath,
+  sanitizeFileName,
+  slugifyFileBaseName,
+  deleteFromImageKit,
+  buildImageKitUrl,
+  buildImageKitTransformations,
+} from '../lib/imagekit.js'
+import { findReferencedAssetIds } from '../lib/assetReferences.js'
+import { resolveCompanyAssetForExport, normalizeExportOptions, buildExportFileName } from '../lib/assetExport.js'
 
 const router = Router({ mergeParams: true })
 router.use(requireAuth)
@@ -46,6 +56,50 @@ export function resolveLibraryRole(currentUser, companyId) {
   const membership = (currentUser.memberships || []).find((m) => m.companyId === companyId)
   if (!membership) return null
   return ['manager', 'editor'].includes(membership.role) ? 'write' : 'read'
+}
+
+export function validateAssetFileName(raw) {
+  const name = String(raw ?? '').trim().slice(0, 255)
+  return name || null
+}
+
+// Recorre folders (lista completa de la empresa, cualquier estado de papelera)
+// y devuelve [folderId, ...todos los descendientes] via BFS sobre
+// parent_folder_id. Usado para cascadear trash/restore de carpetas. Si
+// folderId no existe en la lista, devuelve [folderId] (sin descendientes).
+export function collectFolderSubtreeIds(folders, folderId) {
+  const childrenByParent = new Map()
+  for (const folder of folders || []) {
+    const parentId = folder.parent_folder_id || null
+    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, [])
+    childrenByParent.get(parentId).push(folder.id)
+  }
+  const result = []
+  const seen = new Set()
+  const queue = [folderId]
+  while (queue.length) {
+    const current = queue.shift()
+    if (seen.has(current)) continue
+    seen.add(current)
+    result.push(current)
+    for (const childId of childrenByParent.get(current) || []) queue.push(childId)
+  }
+  return result
+}
+
+// Separa assets referenciados (usados en content_html de alguna página) de
+// los que se pueden enviar a la papelera sin riesgo. `kept` solo trae
+// {id, reason} — el fileName para el toast se agrega en el endpoint, que sí
+// tiene la fila completa del asset (mantiene esta función pura y testeable
+// sin depender de qué columnas se hayan seleccionado).
+export function partitionTrashableAssets({ assets, referencedIds }) {
+  const trashable = []
+  const kept = []
+  for (const asset of assets || []) {
+    if (referencedIds.has(asset.id)) kept.push({ id: asset.id, reason: 'referenced' })
+    else trashable.push(asset)
+  }
+  return { trashable, kept }
 }
 
 export function buildLibraryListing({ folders, currentFolderId }) {
@@ -279,6 +333,515 @@ router.post('/assets', rateLimiters.authenticatedUpload, writeAccess, libraryUpl
   } catch (error) {
     console.error('library ingest error', error)
     res.status(502).json({ error: 'No se pudo procesar la imagen. Intenta de nuevo.' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Bulk: mover, papelera, restaurar. Rutas declaradas ANTES de cualquier
+// `/:param` de un solo segmento adicional que pudiera shadowearlas (p. ej.
+// `PATCH /assets/:assetId` más abajo). `/assets/bulk/*` tiene 3 segmentos
+// (assets, bulk, move|trash|restore) así que `:assetId` (2 segmentos) nunca
+// las alcanzaría, pero se respeta el orden pedido como defensa explícita.
+// ---------------------------------------------------------------------------
+
+router.post('/assets/bulk/move', rateLimiters.sensitiveAction, writeAccess, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de archivos' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 archivos por operación' })
+
+    const folderId = req.body?.folderId || null
+    if (folderId) {
+      const { data: folder } = await supabaseAdmin
+        .from('asset_folders')
+        .select('id')
+        .eq('id', folderId)
+        .eq('company_id', req.libraryAccess.companyId)
+        .is('trashed_at', null)
+        .maybeSingle()
+      if (!folder) return res.status(400).json({ error: 'Carpeta destino no encontrada' })
+    }
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('project_assets')
+      .update({ folder_id: folderId })
+      .in('id', ids)
+      .eq('company_id', req.libraryAccess.companyId)
+      .is('trashed_at', null)
+      .select('id')
+    if (error) return res.status(500).json({ error: error.message })
+
+    const movedIds = new Set((updated || []).map((row) => row.id))
+    const failed = ids
+      .filter((id) => !movedIds.has(id))
+      .map((id) => ({ id, reason: 'No encontrado' }))
+
+    if (movedIds.size > 0) {
+      await logSecurityEvent(req, {
+        action: 'library_assets_moved',
+        resourceType: 'project_asset',
+        companyId: req.libraryAccess.companyId,
+        metadata: { count: movedIds.size, folderId, bulk: true },
+      })
+    }
+
+    const status = failed.length === 0 ? 200 : (movedIds.size === 0 ? 400 : 207)
+    return res.status(status).json({ moved: movedIds.size, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron mover los archivos' })
+  }
+})
+
+// POST /assets/bulk/trash { ids, force? } — trashea assets activos de la
+// empresa. Si force !== true, protege los assets referenciados en el
+// content_html de alguna página (findReferencedAssetIds): esos quedan en
+// `kept` con motivo 'referenced' y NO se tocan. force:true salta la
+// protección por completo (no calcula referencias).
+router.post('/assets/bulk/trash', rateLimiters.sensitiveAction, writeAccess, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de archivos' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 archivos por operación' })
+    const force = req.body?.force === true
+
+    const { data: assets, error: assetsError } = await supabaseAdmin
+      .from('project_assets')
+      .select('id, file_name')
+      .in('id', ids)
+      .eq('company_id', req.libraryAccess.companyId)
+      .is('trashed_at', null)
+    if (assetsError) return res.status(500).json({ error: assetsError.message })
+    if (!assets || assets.length === 0) return res.json({ trashed: 0, kept: [] })
+
+    const referencedIds = force ? new Set() : await findReferencedAssetIds(req.libraryAccess.companyId, assets)
+    const { trashable, kept } = partitionTrashableAssets({ assets, referencedIds })
+
+    let trashedCount = 0
+    if (trashable.length > 0) {
+      const timestamp = new Date()
+      const deleteAfter = new Date(timestamp.getTime() + 30 * 24 * 60 * 60 * 1000)
+      const { data: trashedRows, error: trashError } = await supabaseAdmin
+        .from('project_assets')
+        .update({
+          trashed_at: timestamp.toISOString(),
+          delete_after: deleteAfter.toISOString(),
+          deleted_by: req.currentUser.id,
+        })
+        .in('id', trashable.map((asset) => asset.id))
+        .eq('company_id', req.libraryAccess.companyId)
+        .select('id')
+      if (trashError) return res.status(500).json({ error: trashError.message })
+      trashedCount = (trashedRows || []).length
+    }
+
+    const assetById = new Map(assets.map((asset) => [asset.id, asset]))
+    const keptWithFileName = kept.map((item) => ({
+      ...item,
+      fileName: assetById.get(item.id)?.file_name || null,
+    }))
+
+    if (trashedCount > 0) {
+      await logSecurityEvent(req, {
+        action: 'library_assets_trashed',
+        resourceType: 'project_asset',
+        companyId: req.libraryAccess.companyId,
+        metadata: { count: trashedCount, kept: keptWithFileName.length, force, bulk: true },
+      })
+    }
+
+    return res.json({ trashed: trashedCount, kept: keptWithFileName })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo enviar a la papelera' })
+  }
+})
+
+// POST /assets/bulk/restore { ids } — limpia trashed_at/delete_after de
+// assets trasheados de la empresa. Si folder_id apunta a una carpeta que ya
+// no existe o sigue trasheada, el asset se repone en la raíz (folder_id null)
+// en vez de quedar oculto dentro de una carpeta invisible.
+router.post('/assets/bulk/restore', rateLimiters.sensitiveAction, writeAccess, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de archivos' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 archivos por operación' })
+
+    const { data: assets, error: assetsError } = await supabaseAdmin
+      .from('project_assets')
+      .select('id, folder_id')
+      .in('id', ids)
+      .eq('company_id', req.libraryAccess.companyId)
+      .not('trashed_at', 'is', null)
+    if (assetsError) return res.status(500).json({ error: assetsError.message })
+    if (!assets || assets.length === 0) {
+      return res.status(404).json({ error: 'No se encontraron archivos en la papelera' })
+    }
+
+    const { data: folders, error: foldersError } = await supabaseAdmin
+      .from('asset_folders')
+      .select('id')
+      .eq('company_id', req.libraryAccess.companyId)
+      .is('trashed_at', null)
+    if (foldersError) return res.status(500).json({ error: foldersError.message })
+    const validFolderIds = new Set((folders || []).map((folder) => folder.id))
+
+    const keepFolder = assets.filter((asset) => !asset.folder_id || validFolderIds.has(asset.folder_id)).map((asset) => asset.id)
+    const clearFolder = assets.filter((asset) => asset.folder_id && !validFolderIds.has(asset.folder_id)).map((asset) => asset.id)
+
+    let restoredCount = 0
+    if (keepFolder.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('project_assets')
+        .update({ trashed_at: null, delete_after: null })
+        .in('id', keepFolder)
+        .eq('company_id', req.libraryAccess.companyId)
+        .select('id')
+      if (error) return res.status(500).json({ error: error.message })
+      restoredCount += (data || []).length
+    }
+    if (clearFolder.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('project_assets')
+        .update({ trashed_at: null, delete_after: null, folder_id: null })
+        .in('id', clearFolder)
+        .eq('company_id', req.libraryAccess.companyId)
+        .select('id')
+      if (error) return res.status(500).json({ error: error.message })
+      restoredCount += (data || []).length
+    }
+
+    const restoredIds = new Set(assets.map((asset) => asset.id))
+    const failed = ids
+      .filter((id) => !restoredIds.has(id))
+      .map((id) => ({ id, reason: 'No encontrado en la papelera' }))
+
+    if (restoredCount > 0) {
+      await logSecurityEvent(req, {
+        action: 'library_assets_restored',
+        resourceType: 'project_asset',
+        companyId: req.libraryAccess.companyId,
+        metadata: { count: restoredCount, bulk: true },
+      })
+    }
+
+    const status = failed.length === 0 ? 200 : (restoredCount === 0 ? 400 : 207)
+    return res.status(status).json({ restored: restoredCount, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron restaurar los archivos' })
+  }
+})
+
+// POST /assets/export { ids, format?, width?, quality?, ... } — ZIP streaming
+// con archiver, replicando el patrón de POST /:id/assets/export-bulk en
+// projects.js (mismo uso de archiver + buildImageKitUrl/Transformations),
+// pero resolviendo cada asset con resolveCompanyAssetForExport en vez de
+// resolveProjectAssetForExport. A diferencia de projects.js, aquí SOLO se
+// exporta: no hay auto-trash ni headers custom de "kept" — la limpieza
+// post-export (si corresponde) la orquesta el cliente llamando
+// POST /assets/bulk/trash después de confirmar la descarga (ver Task 14;
+// motivo: apiSubmitDownload es form+iframe fire-and-forget y no puede leer
+// headers de la respuesta, hallazgo de Task 10).
+router.post('/assets/export', readAccess, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    if (ids.length === 0) return res.status(400).json({ error: 'No hay archivos seleccionados para exportar' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 archivos por exportación' })
+
+    const resolved = []
+    for (const assetId of ids) {
+      const asset = await resolveCompanyAssetForExport(req.libraryAccess.companyId, { assetId })
+      if (asset) resolved.push(asset)
+    }
+    if (resolved.length === 0) return res.status(404).json({ error: 'No se encontraron assets exportables' })
+
+    const exportOptions = normalizeExportOptions(req.body || {})
+    const baseName = slugifyFileBaseName(req.body?.fileName || 'biblioteca')
+    const zipFileName = `${baseName}.zip`
+
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"; filename*=UTF-8''${encodeURIComponent(zipFileName)}`)
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+
+    const archive = archiver('zip', { zlib: { level: 9 } })
+    archive.on('error', (error) => {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || 'No se pudo crear el zip' })
+        return
+      }
+      res.destroy(error)
+    })
+    archive.pipe(res)
+
+    for (let index = 0; index < resolved.length; index += 1) {
+      const asset = resolved[index]
+      const isSvg = asset.asset_kind === 'svg' || asset.mime_type === 'image/svg+xml'
+      const exportUrl = isSvg
+        ? asset.public_url
+        : buildImageKitUrl(asset.storage_path, buildImageKitTransformations(exportOptions))
+      if (!exportUrl) continue
+
+      const upstream = await fetch(exportUrl)
+      if (!upstream.ok) continue
+
+      const entryFileName = buildExportFileName(
+        asset.file_name,
+        isSvg ? null : exportOptions.format,
+        asset.mime_type,
+        resolved.length > 1 ? `${baseName}-${index + 1}` : baseName
+      )
+      const buffer = Buffer.from(await upstream.arrayBuffer())
+      archive.append(buffer, { name: entryFileName })
+    }
+
+    await archive.finalize()
+  } catch (error) {
+    if (!res.headersSent) {
+      return res.status(500).json({ error: error.message || 'No se pudo exportar el lote de imágenes' })
+    }
+    return res.destroy(error)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Papelera de carpetas: carpeta + descendientes + assets contenidos, todos
+// con la MISMA marca de tiempo. Esa igualdad de timestamp es lo que permite
+// que el restore identifique con precisión qué quedó trasheado por ESTE
+// cascade (y no, por ejemplo, un asset que ya estaba en la papelera antes de
+// que se trasheara la carpeta que lo contiene).
+// ---------------------------------------------------------------------------
+
+router.post('/folders/:folderId/trash', rateLimiters.sensitiveAction, writeAccess, async (req, res) => {
+  try {
+    const { data: folders, error: foldersError } = await supabaseAdmin
+      .from('asset_folders')
+      .select('id, parent_folder_id, trashed_at')
+      .eq('company_id', req.libraryAccess.companyId)
+    if (foldersError) return res.status(500).json({ error: foldersError.message })
+
+    const target = (folders || []).find((folder) => folder.id === req.params.folderId)
+    if (!target) return res.status(404).json({ error: 'Carpeta no encontrada' })
+    if (target.trashed_at) return res.status(400).json({ error: 'La carpeta ya está en la papelera' })
+
+    const subtreeIds = collectFolderSubtreeIds(folders, req.params.folderId)
+    const timestamp = new Date()
+    const deleteAfter = new Date(timestamp.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+    const { data: trashedFolders, error: folderUpdateError } = await supabaseAdmin
+      .from('asset_folders')
+      .update({ trashed_at: timestamp.toISOString(), delete_after: deleteAfter.toISOString() })
+      .in('id', subtreeIds)
+      .eq('company_id', req.libraryAccess.companyId)
+      .is('trashed_at', null)
+      .select('id')
+    if (folderUpdateError) return res.status(500).json({ error: folderUpdateError.message })
+
+    const { data: trashedAssets, error: assetUpdateError } = await supabaseAdmin
+      .from('project_assets')
+      .update({
+        trashed_at: timestamp.toISOString(),
+        delete_after: deleteAfter.toISOString(),
+        deleted_by: req.currentUser.id,
+      })
+      .in('folder_id', subtreeIds)
+      .eq('company_id', req.libraryAccess.companyId)
+      .is('trashed_at', null)
+      .select('id')
+    if (assetUpdateError) return res.status(500).json({ error: assetUpdateError.message })
+
+    await logSecurityEvent(req, {
+      action: 'library_folder_trashed',
+      resourceType: 'asset_folder',
+      resourceId: target.id,
+      companyId: req.libraryAccess.companyId,
+      metadata: {
+        foldersTrashed: (trashedFolders || []).length,
+        assetsTrashed: (trashedAssets || []).length,
+      },
+    })
+
+    return res.json({
+      trashed: true,
+      foldersTrashed: (trashedFolders || []).length,
+      assetsTrashed: (trashedAssets || []).length,
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo enviar la carpeta a la papelera' })
+  }
+})
+
+router.post('/folders/:folderId/restore', rateLimiters.sensitiveAction, writeAccess, async (req, res) => {
+  try {
+    const { data: folders, error: foldersError } = await supabaseAdmin
+      .from('asset_folders')
+      .select('id, parent_folder_id, trashed_at')
+      .eq('company_id', req.libraryAccess.companyId)
+    if (foldersError) return res.status(500).json({ error: foldersError.message })
+
+    const target = (folders || []).find((folder) => folder.id === req.params.folderId)
+    if (!target) return res.status(404).json({ error: 'Carpeta no encontrada' })
+    if (!target.trashed_at) return res.status(400).json({ error: 'La carpeta no está en la papelera' })
+
+    // Solo se restauran los miembros del MISMO cascade (misma marca de
+    // tiempo que la carpeta objetivo) — ver comentario de sección arriba.
+    const cascadeTimestamp = target.trashed_at
+    const subtreeIds = collectFolderSubtreeIds(folders, req.params.folderId)
+
+    const { data: restoredFolders, error: folderUpdateError } = await supabaseAdmin
+      .from('asset_folders')
+      .update({ trashed_at: null, delete_after: null })
+      .in('id', subtreeIds)
+      .eq('company_id', req.libraryAccess.companyId)
+      .eq('trashed_at', cascadeTimestamp)
+      .select('id')
+    if (folderUpdateError) return res.status(500).json({ error: folderUpdateError.message })
+
+    const { data: restoredAssets, error: assetUpdateError } = await supabaseAdmin
+      .from('project_assets')
+      .update({ trashed_at: null, delete_after: null })
+      .in('folder_id', subtreeIds)
+      .eq('company_id', req.libraryAccess.companyId)
+      .eq('trashed_at', cascadeTimestamp)
+      .select('id')
+    if (assetUpdateError) return res.status(500).json({ error: assetUpdateError.message })
+
+    // Si el padre de la carpeta restaurada sigue trasheado (o ya no existe),
+    // la carpeta queda colgando de la raíz en vez de invisible bajo un padre
+    // trasheado.
+    if (target.parent_folder_id) {
+      const parent = folders.find((folder) => folder.id === target.parent_folder_id)
+      if (!parent || parent.trashed_at) {
+        await supabaseAdmin
+          .from('asset_folders')
+          .update({ parent_folder_id: null })
+          .eq('id', target.id)
+          .eq('company_id', req.libraryAccess.companyId)
+      }
+    }
+
+    await logSecurityEvent(req, {
+      action: 'library_folder_restored',
+      resourceType: 'asset_folder',
+      resourceId: target.id,
+      companyId: req.libraryAccess.companyId,
+      metadata: {
+        foldersRestored: (restoredFolders || []).length,
+        assetsRestored: (restoredAssets || []).length,
+      },
+    })
+
+    return res.json({
+      restored: true,
+      foldersRestored: (restoredFolders || []).length,
+      assetsRestored: (restoredAssets || []).length,
+    })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo restaurar la carpeta' })
+  }
+})
+
+// POST /trash/empty — purga definitiva de TODO lo trasheado en la empresa
+// (assets + carpetas). Patrón calcado de purgeProjectAssets (projects.js):
+// imagekit primero (deleteFromImageKit por imagekit_file_id), fallback a
+// supabase.storage.remove solo para filas legacy de otros buckets — hoy
+// TODOS los assets de biblioteca viven en ImageKit (Task 7), así que ese
+// fallback en la práctica no debería ejercitarse contra datos nuevos.
+// Errores de purga de storage se loggean pero NO bloquean el borrado de las
+// filas (mismo criterio que permanent-delete de proyectos).
+router.post('/trash/empty', rateLimiters.sensitiveAction, writeAccess, async (req, res) => {
+  try {
+    const { data: assets, error: assetsError } = await supabaseAdmin
+      .from('project_assets')
+      .select('id, storage_bucket, storage_path, imagekit_file_id, file_size')
+      .eq('company_id', req.libraryAccess.companyId)
+      .not('trashed_at', 'is', null)
+    if (assetsError) return res.status(500).json({ error: assetsError.message })
+
+    let freedBytes = 0
+    const purgeErrors = []
+    const supabasePathsByBucket = new Map()
+
+    for (const asset of assets || []) {
+      if (asset.storage_bucket === 'imagekit') {
+        const result = await deleteFromImageKit(asset.imagekit_file_id)
+        if (!result.ok) purgeErrors.push(`imagekit:${asset.id}:${result.reason}`)
+      } else if (asset.storage_bucket && asset.storage_path) {
+        const list = supabasePathsByBucket.get(asset.storage_bucket) || []
+        list.push(asset.storage_path)
+        supabasePathsByBucket.set(asset.storage_bucket, list)
+      }
+      freedBytes += Number(asset.file_size) || 0
+    }
+
+    for (const [bucket, paths] of supabasePathsByBucket.entries()) {
+      if (paths.length === 0) continue
+      const { error: removeError } = await supabaseAdmin.storage.from(bucket).remove(paths)
+      if (removeError) purgeErrors.push(`supabase:${bucket}:${removeError.message}`)
+    }
+
+    if (purgeErrors.length > 0) {
+      console.warn(`[library] trash/empty company ${req.libraryAccess.companyId}: ${purgeErrors.length} purge errors: ${purgeErrors.join(', ')}`)
+    }
+
+    const assetIds = (assets || []).map((asset) => asset.id)
+    if (assetIds.length > 0) {
+      const { error: deleteAssetsError } = await supabaseAdmin
+        .from('project_assets')
+        .delete()
+        .in('id', assetIds)
+        .eq('company_id', req.libraryAccess.companyId)
+      if (deleteAssetsError) return res.status(500).json({ error: deleteAssetsError.message })
+    }
+
+    const { data: deletedFolders, error: deleteFoldersError } = await supabaseAdmin
+      .from('asset_folders')
+      .delete()
+      .eq('company_id', req.libraryAccess.companyId)
+      .not('trashed_at', 'is', null)
+      .select('id')
+    if (deleteFoldersError) return res.status(500).json({ error: deleteFoldersError.message })
+
+    const purged = assetIds.length
+
+    await logSecurityEvent(req, {
+      action: 'library_trash_emptied',
+      resourceType: 'company',
+      resourceId: req.libraryAccess.companyId,
+      companyId: req.libraryAccess.companyId,
+      metadata: {
+        purged,
+        freedBytes,
+        foldersDeleted: (deletedFolders || []).length,
+        purgeErrors: purgeErrors.length,
+      },
+    })
+
+    return res.json({ purged, freedBytes, foldersDeleted: (deletedFolders || []).length })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo vaciar la papelera' })
+  }
+})
+
+// PATCH /assets/:assetId { fileName } — renombrar. Declarado después de
+// /assets/bulk/* y /assets/export a propósito (aunque Express no lo
+// confundiría por profundidad de path, se respeta el orden pedido: rutas
+// específicas antes que cualquier `/:param`).
+router.patch('/assets/:assetId', rateLimiters.sensitiveAction, writeAccess, async (req, res) => {
+  try {
+    const fileName = validateAssetFileName(req.body?.fileName)
+    if (!fileName) return res.status(400).json({ error: 'Nombre de archivo requerido' })
+
+    const { data, error } = await supabaseAdmin
+      .from('project_assets')
+      .update({ file_name: fileName })
+      .eq('id', req.params.assetId)
+      .eq('company_id', req.libraryAccess.companyId)
+      .select('*')
+      .maybeSingle()
+    if (error) return res.status(500).json({ error: error.message })
+    if (!data) return res.status(404).json({ error: 'Archivo no encontrado' })
+
+    return res.json({ asset: data })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudo renombrar el archivo' })
   }
 })
 
