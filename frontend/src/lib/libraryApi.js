@@ -1,6 +1,6 @@
 // Cliente API de la biblioteca de imágenes por empresa (montada en
 // /api/companies/:companyId/library, ver backend/src/routes/library.js).
-import { apiFetch, apiSubmitDownload, ApiError } from './api'
+import { apiFetch, ApiError } from './api'
 import { supabase } from './supabase'
 
 const base = (companyId) => `/api/companies/${companyId}/library`
@@ -25,21 +25,46 @@ export const renameAsset = (companyId, assetId, fileName) => apiFetch(`${base(co
 export const emptyLibraryTrash = (companyId) => apiFetch(`${base(companyId)}/trash/empty`, { method: 'POST' })
 export const searchLibrary = (companyId, q) => apiFetch(`${base(companyId)}/search?q=${encodeURIComponent(q)}`)
 
-// Contrato real de apiSubmitDownload (lib/api.js): siempre hace POST vía un
-// <form> oculto enviado a un <iframe> oculto (no usa fetch), así que el
-// navegador maneja la descarga nativamente a partir del header
-// Content-Disposition que devuelva el backend. Por eso esta llamada NO
-// recibe blob ni headers de respuesta en JS — no hay forma de leer acá un
-// header como `X-Library-Kept`; si el backend necesita comunicar "kept"
-// (assets no trasheados por estar referenciados) al exportar con
-// trashAfterExport, debe hacerlo por otra vía (p. ej. un endpoint de status
-// aparte), no a través de esta función. `body` se pasa como objeto plano:
-// apiSubmitDownload arma un input oculto por cada key y sólo aplica
-// JSON.stringify a los valores no-string (p. ej. `ids` como array), así que
-// acá NO hay que stringificarlo antes de pasarlo. Mismo patrón que el
-// apiSubmitDownload(path, { items, fileName, ... }) ya usado en
-// ProjectEditor.jsx para el export-bulk del editor.
-export const exportLibraryAssets = (companyId, body) => apiSubmitDownload(`${base(companyId)}/assets/export`, body)
+// Export de biblioteca — fetch→blob, NO apiSubmitDownload. apiSubmitDownload
+// (lib/api.js) hace POST vía un <form> oculto enviado a un <iframe> oculto:
+// fire-and-forget, no expone status ni blob a JS (hallazgo de Task 10 — ver
+// el comentario de uploadLibraryAsset más abajo para el mismo patrón de
+// bearer). LibraryExportModal necesita confirmar que la descarga resolvió
+// 200 ANTES de decidir si manda los ids a la papelera (toggle "Enviar a
+// papelera tras exportar"), así que acá sí hace falta fetch real: leemos la
+// respuesta como blob y disparamos la descarga nosotros mismos con un
+// <a download>, en vez de delegarle la descarga al navegador vía iframe.
+export async function downloadLibraryExport(companyId, { ids, format, width, quality } = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const headers = { 'Content-Type': 'application/json' }
+  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+
+  const response = await fetch(`${base(companyId)}/assets/export`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ids, format, width, quality }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    let payload = null
+    try { payload = text ? JSON.parse(text) : null } catch { payload = null }
+    throw new ApiError(payload?.error || `Error ${response.status}`, response.status, payload)
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const dateStamp = new Date().toISOString().slice(0, 10)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `biblioteca-${dateStamp}.zip`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+
+  return { ok: true }
+}
 
 export async function uploadLibraryAsset({ companyId, folderId, file, onProgress, signal }) {
   const { data: { session } } = await supabase.auth.getSession()

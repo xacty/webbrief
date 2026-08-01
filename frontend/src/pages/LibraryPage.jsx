@@ -9,6 +9,7 @@ import NewFolderModal from '../components/library/NewFolderModal'
 import RenameModal from '../components/library/RenameModal'
 import MoveToFolderModal from '../components/library/MoveToFolderModal'
 import EmptyTrashModal from '../components/library/EmptyTrashModal'
+import LibraryExportModal from '../components/library/LibraryExportModal'
 import UploadDropzone from '../components/library/UploadDropzone'
 import UploadQueuePanel from '../components/library/UploadQueuePanel'
 import { fetchLibrary, moveAssets, trashAssets, restoreAssets, renameAsset, updateFolder, trashFolder } from '../lib/libraryApi'
@@ -24,10 +25,8 @@ function cx(...parts) {
  * (query param `folderId`), filtro de proyecto (`projectId`), vista papelera
  * (`view=trash`), toolbar (Nueva carpeta / Subir imágenes), barra de uso y
  * subida (dropzone + cola + panel flotante de progreso, Task 12),
- * multiselección + mover + renombrar + papelera (Task 13).
- *
- * Export real llega en Task 14 — el botón "Exportar" del toolbar de
- * selección queda deshabilitado hasta entonces.
+ * multiselección + mover + renombrar + papelera (Task 13), export ZIP con
+ * limpieza opcional (Task 14 — ver LibraryExportModal).
  */
 export default function LibraryPage() {
   const { currentCompany } = useWorkspace()
@@ -52,6 +51,7 @@ export default function LibraryPage() {
   const [moveState, setMoveState] = useState(null) // { kind: 'assets', ids } | { kind: 'folder', folder } | null
   const [renameState, setRenameState] = useState(null) // { kind: 'asset' | 'folder', id, name } | null
   const [emptyTrashOpen, setEmptyTrashOpen] = useState(false)
+  const [exportState, setExportState] = useState(null) // { ids } | null
 
   // Cola de subida: vive en un ref (no en estado) porque es un objeto con
   // métodos + un array mutable interno, no un valor serializable — ver
@@ -113,7 +113,7 @@ export default function LibraryPage() {
     if (selectedIds.size === 0) return undefined
     function onKeyDown(event) {
       if (event.key !== 'Escape') return
-      if (moveState || renameState || emptyTrashOpen) return
+      if (moveState || renameState || emptyTrashOpen || exportState) return
       event.stopPropagation()
       clearSelection()
     }
@@ -121,7 +121,7 @@ export default function LibraryPage() {
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [selectedIds, moveState, renameState, emptyTrashOpen])
+  }, [selectedIds, moveState, renameState, emptyTrashOpen, exportState])
 
   function handleFilesPicked(event) {
     const files = Array.from(event.target.files || [])
@@ -324,6 +324,44 @@ export default function LibraryPage() {
     reload()
   }
 
+  // ── Exportar (Task 14) ─────────────────────────────────────────────
+  // LibraryExportModal hace la descarga (fetch→blob) y, si el toggle
+  // "Enviar a papelera tras exportar" está activo, encadena trashAssets —
+  // acá sólo formateamos el aviso final a partir del resultado crudo que
+  // devuelve, mismo criterio que handleMoveConfirm/handleEmptied.
+
+  function openExportModal(ids) {
+    if (!ids?.length) return
+    setExportState({ ids })
+  }
+
+  function closeExportModal() {
+    setExportState(null)
+  }
+
+  async function handleExported(trashResult) {
+    const exportedIds = exportState?.ids || []
+    if (!trashResult) {
+      showNotice('success', 'Exportación descargada')
+    } else if (trashResult.trashError) {
+      showNotice('warning', `Se exportó, pero no se pudo enviar a la papelera: ${trashResult.trashError}`)
+    } else {
+      const trashed = Number(trashResult.trashed || 0)
+      const kept = Array.isArray(trashResult.kept) ? trashResult.kept : []
+      if (kept.length > 0) {
+        const names = kept.map((item) => item.fileName || 'archivo').join(', ')
+        showNotice(
+          'warning',
+          `Exportación descargada · ${trashed} enviada${trashed === 1 ? '' : 's'} a papelera · ${kept.length} conservada${kept.length === 1 ? '' : 's'} (usadas en documentos): ${names}`
+        )
+      } else {
+        showNotice('success', `Exportación descargada · ${trashed} enviada${trashed === 1 ? '' : 's'} a papelera`)
+      }
+    }
+    removeFromSelection(exportedIds)
+    await reload()
+  }
+
   // Workspace not resolved yet — nothing meaningful to render (matches
   // ProjectsPage's guard for the same currentCompany-not-ready window).
   if (!currentCompany) return null
@@ -500,8 +538,8 @@ export default function LibraryPage() {
                       variant="secondary"
                       size="sm"
                       icon={<Download size={14} />}
-                      disabled
-                      title="Se conecta en el siguiente paso"
+                      onClick={() => openExportModal(Array.from(selectedIds))}
+                      disabled={bulkBusy}
                     >
                       Exportar
                     </Button>
@@ -586,6 +624,14 @@ export default function LibraryPage() {
         assetCount={assetCount}
         trashedBytes={data?.usage?.trashedBytes || 0}
         onEmptied={handleEmptied}
+      />
+
+      <LibraryExportModal
+        open={Boolean(exportState)}
+        onClose={closeExportModal}
+        companyId={companyId}
+        ids={exportState?.ids || []}
+        onExported={handleExported}
       />
 
       {panelVisible && queueItems.length > 0 && (

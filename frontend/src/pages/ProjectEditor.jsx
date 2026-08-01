@@ -44,13 +44,16 @@ import { createEditorChannel } from '../lib/editorPresence'
 import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, Images, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { markTaskDone } from '../lib/tutorialState'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
+import { companyToSlug } from '../lib/companySlug'
 import { Modal, Button, Select, HelpPopover } from '../components/ui'
+import LibraryPickerModal from '../components/library/LibraryPickerModal'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -5267,6 +5270,7 @@ export default function ProjectEditor() {
         {editorMode === 'brief' && (
           <EditorPanel
             projectId={projectId}
+            companyId={projectMeta?.companyId || ''}
             projectType={projectType}
             activePageId={activePageId}
             initialContent={activePage?.fullContent || initialContentRef.current}
@@ -7036,10 +7040,12 @@ function parseTooltipTitle(title) {
 const TOOLBAR_GROUP_ORDER = ['history', 'block', 'text', 'color', 'align', 'insert']
 
 
-function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment = false }) {
+function Toolbar({ editor, projectId, companyId, onUndo, onRedo, onAddComment, canComment = false }) {
   const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
   const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
+  const { accessibleCompanies } = useWorkspace()
 
   // ── Overflow handling (Google Docs-style "more" menu) ────────────────
   // The toolbar holds 6 groups separated by dividers. When the container
@@ -7230,6 +7236,50 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
       URL.revokeObjectURL(tempUrl)
       e.target.value = ''
     }
+  }
+
+  // Insertar una imagen ya subida a la biblioteca — a diferencia de
+  // handleImageUpload no hay round-trip al backend (el asset ya existe), así
+  // que insertamos directo en vez del baile temp-placeholder + replaceImageSrc.
+  // Attrs replican el shape que deja handleImageUpload tras el 201
+  // (assetId/fileName/storagePath/originalWidth/originalHeight).
+  // src usa ?tr=w-1600 sobre el public_url cuando el asset vive en ImageKit
+  // (mismo criterio de transform on-the-fly que AssetGrid.assetThumbUrl,
+  // pero a tamaño de inserción en vez de thumbnail) — los assets en
+  // Supabase Storage (SVG passthrough) se insertan con su public_url tal cual.
+  //
+  // insertContent({ type: 'image', attrs }) — mismo patrón que handleCtaInsert
+  // (más abajo) usa para insertar un nodo ctaButton con atributos custom.
+  // Nota de verificación en vivo (para quien audite esto con el inspector):
+  // el <img> que se ve en pantalla mientras se edita (EditableImageView, la
+  // NodeView de React) sólo pinta src/alt en el DOM real — NO refleja
+  // data-asset-id/data-file-name/etc. como atributos del elemento, así que
+  // inspeccionar el DOM en vivo hace parecer que esos attrs "se perdieron".
+  // No es así: confirmado contra el payload real de PUT
+  // /api/projects/:id/pages que tanto `contentJson` (attrs del nodo) como
+  // `contentHtml` (vía renderHTML de EditableImageNode.addAttributes)
+  // incluyen assetId/fileName/storagePath/originalWidth/originalHeight
+  // completos — es el layer de edición en vivo el que es minimal, no el
+  // dato persistido.
+  function handleInsertFromLibrary(asset) {
+    if (!editor || !asset?.public_url) return
+    const isImageKit = asset.storage_bucket === 'imagekit'
+    const src = isImageKit
+      ? `${asset.public_url}${asset.public_url.includes('?') ? '&' : '?'}tr=w-1600`
+      : asset.public_url
+
+    editor.chain().focus().insertContent({
+      type: 'image',
+      attrs: {
+        src,
+        alt: asset.file_name || '',
+        assetId: asset.id || null,
+        fileName: asset.file_name || null,
+        storagePath: asset.storage_path || null,
+        originalWidth: asset.width || null,
+        originalHeight: asset.height || null,
+      },
+    }).run()
   }
 
   function handleLink() {
@@ -7653,19 +7703,58 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
             onClick={() => editor?.chain().focus().setHorizontalRule().run()}
             title="Insertar separador"
           ><Minus size={16} /></ToolBtn>
-          <label
-            className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
-            data-wb-tooltip="Insertar imagen"
-          >
-            <ImageIcon size={16} />
-            <input
-              type="file"
-              accept="image/*"
-              className={toolbarStyles.hiddenFileInput}
-              onChange={handleImageUpload}
+          <div className={toolbarStyles.menu} data-toolbar-menu="">
+            <ToolBtn
+              active={openToolbarMenu === 'image'}
               disabled={disabled}
-            />
-          </label>
+              onClick={() => setOpenToolbarMenu((value) => value === 'image' ? null : 'image')}
+              title="Insertar imagen"
+            >
+              <ImageIcon size={16} />
+              <ChevronDown size={12} />
+            </ToolBtn>
+            {openToolbarMenu === 'image' && (
+              <div className={toolbarStyles.dropdown}>
+                {/* <label> en vez de un botón + ref: el mismo grupo 'insert'
+                    se re-renderiza una SEGUNDA vez dentro del popover de
+                    overflow (ver el loop `groups.filter(...)` más abajo en
+                    el return de Toolbar) cuando el toolbar no tiene lugar —
+                    dos instancias del grupo montadas a la vez. Un ref
+                    compartido (useRef) apuntaría a una sola de las dos
+                    instancias del input y dejaría a la otra sin abrir el
+                    selector de archivos. La label evita el problema:
+                    activa SIEMPRE el input que tiene adentro, sin importar
+                    cuántas copias del grupo existan en el DOM. */}
+                <label
+                  className={toolbarStyles.dropdownItem}
+                  data-wb-tooltip="Subir un archivo nuevo"
+                  onClick={() => setOpenToolbarMenu(null)}
+                >
+                  <ImageIcon size={16} />
+                  <span>Subir archivo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className={toolbarStyles.hiddenFileInput}
+                    onChange={handleImageUpload}
+                    disabled={disabled}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={toolbarStyles.dropdownItem}
+                  onClick={() => {
+                    setOpenToolbarMenu(null)
+                    setLibraryPickerOpen(true)
+                  }}
+                  data-wb-tooltip="Elegir una imagen ya subida"
+                >
+                  <Images size={16} />
+                  <span>Desde biblioteca</span>
+                </button>
+              </div>
+            )}
+          </div>
         </>
       ),
     },
@@ -7674,71 +7763,93 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
   const overflowedSet = new Set(overflowedGroupIds)
   const hasOverflow = overflowedGroupIds.length > 0
 
-  return (
-    <div
-      ref={toolbarRef}
-      className={toolbarStyles.toolbar}
-      data-tour="editor-toolbar"
-      onPointerDownCapture={(event) => {
-        if (!openToolbarMenu) return
-        if (event.target.closest?.('[data-toolbar-menu]')) return
-        setOpenToolbarMenu(null)
-      }}
-    >
-      {/* All groups rendered inline. Overflowed ones get .toolbarGroupHidden
-          (display:none) — they stay in the DOM so their refs remain valid
-          for re-measurement on resize. Dividers only render BETWEEN
-          adjacent visible groups so the toolbar reads cleanly. */}
-      {groups.map((group, idx) => {
-        const isHidden = overflowedSet.has(group.id)
-        const prevGroup = idx > 0 ? groups[idx - 1] : null
-        const showDividerBefore = idx > 0 && !isHidden && prevGroup && !overflowedSet.has(prevGroup.id)
-        return (
-          <RFragment key={group.id}>
-            {showDividerBefore && <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />}
-            <div
-              ref={(el) => { groupRefs.current[group.id] = el }}
-              className={cx(toolbarStyles.toolbarGroup, isHidden && toolbarStyles.toolbarGroupHidden)}
-              data-toolbar-group={group.id}
-            >
-              {group.node}
-            </div>
-          </RFragment>
-        )
-      })}
+  // Link inverso del picker ("Ver imágenes del proyecto") — resuelve la
+  // empresa del proyecto actual dentro de las accesibles al usuario para
+  // armar /c/{slug}/library?projectId={id}. accessibleCompanies viene de
+  // WorkspaceContext (ya cubre todas las empresas para admin/qa, ver
+  // GET /api/companies) — si por algún motivo no resuelve (carga en curso,
+  // o el usuario no tiene esa empresa entre las suyas) el link simplemente
+  // no se muestra, sin romper el picker.
+  const projectCompany = accessibleCompanies.find((company) => company.id === companyId)
+  const projectCompanySlug = projectCompany ? companyToSlug(projectCompany) : ''
+  const projectLibraryHref = projectCompanySlug && projectId
+    ? `/c/${projectCompanySlug}/library?projectId=${projectId}`
+    : null
 
-      {hasOverflow && (
-        <>
-          <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
-          <div className={toolbarStyles.toolbarMoreWrap} data-toolbar-menu="" ref={moreBtnRef}>
-            <ToolBtn
-              active={moreMenuOpen}
-              disabled={disabled}
-              onClick={() => setMoreMenuOpen((value) => !value)}
-              title="Más herramientas"
-            >
-              <MoreVertical size={16} />
-            </ToolBtn>
-            {moreMenuOpen && (
-              <div className={toolbarStyles.moreMenuPopover}>
-                {/* Re-render the overflowed groups inside the popover.
-                    Same JSX as the toolbar copy → clicks fire the same
-                    editor actions; dropdowns inside groups open relative
-                    to their .menu container as they normally do. */}
-                {groups
-                  .filter((g) => overflowedSet.has(g.id))
-                  .map((group, idx) => (
-                    <RFragment key={group.id}>
-                      {idx > 0 && <div className={toolbarStyles.moreMenuDivider} />}
-                      <div className={toolbarStyles.moreMenuGroup}>{group.node}</div>
-                    </RFragment>
-                  ))}
+  return (
+    <>
+      <div
+        ref={toolbarRef}
+        className={toolbarStyles.toolbar}
+        data-tour="editor-toolbar"
+        onPointerDownCapture={(event) => {
+          if (!openToolbarMenu) return
+          if (event.target.closest?.('[data-toolbar-menu]')) return
+          setOpenToolbarMenu(null)
+        }}
+      >
+        {/* All groups rendered inline. Overflowed ones get .toolbarGroupHidden
+            (display:none) — they stay in the DOM so their refs remain valid
+            for re-measurement on resize. Dividers only render BETWEEN
+            adjacent visible groups so the toolbar reads cleanly. */}
+        {groups.map((group, idx) => {
+          const isHidden = overflowedSet.has(group.id)
+          const prevGroup = idx > 0 ? groups[idx - 1] : null
+          const showDividerBefore = idx > 0 && !isHidden && prevGroup && !overflowedSet.has(prevGroup.id)
+          return (
+            <RFragment key={group.id}>
+              {showDividerBefore && <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />}
+              <div
+                ref={(el) => { groupRefs.current[group.id] = el }}
+                className={cx(toolbarStyles.toolbarGroup, isHidden && toolbarStyles.toolbarGroupHidden)}
+                data-toolbar-group={group.id}
+              >
+                {group.node}
               </div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
+            </RFragment>
+          )
+        })}
+
+        {hasOverflow && (
+          <>
+            <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
+            <div className={toolbarStyles.toolbarMoreWrap} data-toolbar-menu="" ref={moreBtnRef}>
+              <ToolBtn
+                active={moreMenuOpen}
+                disabled={disabled}
+                onClick={() => setMoreMenuOpen((value) => !value)}
+                title="Más herramientas"
+              >
+                <MoreVertical size={16} />
+              </ToolBtn>
+              {moreMenuOpen && (
+                <div className={toolbarStyles.moreMenuPopover}>
+                  {/* Re-render the overflowed groups inside the popover.
+                      Same JSX as the toolbar copy → clicks fire the same
+                      editor actions; dropdowns inside groups open relative
+                      to their .menu container as they normally do. */}
+                  {groups
+                    .filter((g) => overflowedSet.has(g.id))
+                    .map((group, idx) => (
+                      <RFragment key={group.id}>
+                        {idx > 0 && <div className={toolbarStyles.moreMenuDivider} />}
+                        <div className={toolbarStyles.moreMenuGroup}>{group.node}</div>
+                      </RFragment>
+                    ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      <LibraryPickerModal
+        open={libraryPickerOpen}
+        onClose={() => setLibraryPickerOpen(false)}
+        companyId={companyId}
+        onInsert={handleInsertFromLibrary}
+        projectLibraryHref={projectLibraryHref}
+      />
+    </>
   )
 }
 
@@ -8097,6 +8208,7 @@ function TableInlineButtons({ editor, wrapperRef }) {
 // ---------------------------------------------------------------------------
 function EditorPanel({
   projectId,
+  companyId = '',
   projectType = 'page',
   activePageId = null,
   initialContent,
@@ -8873,7 +8985,7 @@ function EditorPanel({
 
   return (
     <div className={styles.centerPanel}>
-      <Toolbar editor={editor} projectId={projectId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
+      <Toolbar editor={editor} projectId={projectId} companyId={companyId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
       <TableContextBar editor={editor} />
       <div
         ref={scrollAreaRef}
