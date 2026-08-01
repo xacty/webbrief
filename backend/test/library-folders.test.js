@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { wouldCreateFolderCycle, validateFolderName, resolveLibraryRole } from '../src/routes/library.js'
+import { wouldCreateFolderCycle, validateFolderName, resolveLibraryRole, buildLibraryListing } from '../src/routes/library.js'
 
 test('wouldCreateFolderCycle: detecta mover a descendiente y a sí misma', () => {
   const folders = [
@@ -32,4 +32,18 @@ test('resolveLibraryRole: admin write, manager/editor write en su empresa, qa re
   assert.equal(resolveLibraryRole(qa, 'c1'), 'read')
   assert.equal(resolveLibraryRole(manager, 'c1'), 'write')
   assert.equal(resolveLibraryRole(outsider, 'c1'), null)
+})
+
+test('buildLibraryListing: separa subcarpetas del folder actual y filtra papelera', () => {
+  const folders = [
+    { id: 'a', parent_folder_id: null, trashed_at: null },
+    { id: 'b', parent_folder_id: 'a', trashed_at: null },
+    { id: 'z', parent_folder_id: null, trashed_at: '2026-07-01' },
+  ]
+  const out = buildLibraryListing({ folders, currentFolderId: null })
+  assert.deepEqual(out.subfolders.map((f) => f.id), ['a'])
+  assert.deepEqual(out.breadcrumb, [])
+  const inA = buildLibraryListing({ folders, currentFolderId: 'a' })
+  assert.deepEqual(inA.subfolders.map((f) => f.id), ['b'])
+  assert.deepEqual(inA.breadcrumb.map((f) => f.id), ['a'])
 })
