@@ -117,7 +117,7 @@ export default function FolderUploadConfirmModal({
       closeOnBackdrop={!busy}
     >
       <p className={styles.summary}>
-        {accepted.length} imagen{accepted.length === 1 ? '' : 'es'} · {formatBytes(totalBytes)}
+        {accepted.length} {accepted.length === 1 ? 'imagen' : 'imágenes'} · {formatBytes(totalBytes)}
       </p>
 
       {paths.length > 0 && (
@@ -133,7 +133,7 @@ export default function FolderUploadConfirmModal({
                 <span className={styles.treeName}>{name}</span>
                 {info?.count > 0 && (
                   <span className={styles.treeCount}>
-                    {info.count} imagen{info.count === 1 ? '' : 'es'}
+                    {info.count} {info.count === 1 ? 'imagen' : 'imágenes'}
                   </span>
                 )}
               </div>
@@ -186,7 +186,7 @@ export default function FolderUploadConfirmModal({
           disabled={busy || accepted.length === 0}
           onClick={handleConfirm}
         >
-          Subir {accepted.length} imagen{accepted.length === 1 ? '' : 'es'}
+          Subir {accepted.length} {accepted.length === 1 ? 'imagen' : 'imágenes'}
         </Button>
       </div>
     </Modal>

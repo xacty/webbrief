@@ -114,7 +114,7 @@ export default function MoveToFolderModal({ open, onClose, folders = [], moveSta
   const count = moveState?.kind === 'assets' ? moveState.ids.length : 1
   const title = moveState?.kind === 'folder'
     ? `Mover la carpeta «${moveState.folder?.name || ''}»`
-    : `Mover ${count} imagen${count === 1 ? '' : 'es'}`
+    : `Mover ${count} ${count === 1 ? 'imagen' : 'imágenes'}`
 
   return (
     <Modal

@@ -114,7 +114,7 @@ export default function LibraryExportModal({ open, onClose, companyId, ids = [],
     <Modal
       open={open}
       onClose={onClose}
-      title={`Exportar ${count} imagen${count === 1 ? '' : 'es'}`}
+      title={`Exportar ${count} ${count === 1 ? 'imagen' : 'imágenes'}`}
       ariaDescribedBy={descId}
       closeOnEscape={!busy}
       closeOnBackdrop={!busy}

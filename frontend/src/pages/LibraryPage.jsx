@@ -220,8 +220,8 @@ export default function LibraryPage() {
       const moved = Number(result?.moved || 0)
       const failed = Array.isArray(result?.failed) ? result.failed.length : 0
       showNotice('success', failed > 0
-        ? `${moved} imagen${moved === 1 ? '' : 'es'} movida${moved === 1 ? '' : 's'} · ${failed} no procesada${failed === 1 ? '' : 's'}`
-        : `${moved} imagen${moved === 1 ? '' : 'es'} movida${moved === 1 ? '' : 's'}`)
+        ? `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'} · ${failed} no procesada${failed === 1 ? '' : 's'}`
+        : `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'}`)
       removeFromSelection(moveState.ids)
     } else if (moveState.kind === 'folder') {
       await updateFolder(companyId, moveState.folder.id, { parentFolderId: targetFolderId })
@@ -258,7 +258,7 @@ export default function LibraryPage() {
 
   async function handleTrashAssets(ids) {
     if (!ids?.length) return
-    const label = `${ids.length} imagen${ids.length === 1 ? '' : 'es'}`
+    const label = `${ids.length} ${ids.length === 1 ? 'imagen' : 'imágenes'}`
     if (!window.confirm(`¿Enviar ${label} a la papelera?`)) return
     setBulkBusy(true)
     try {
@@ -272,7 +272,7 @@ export default function LibraryPage() {
           `${trashed} enviada${trashed === 1 ? '' : 's'} a papelera · ${kept.length} conservada${kept.length === 1 ? '' : 's'} (usadas en documentos): ${names}`
         )
       } else {
-        showNotice('success', `${trashed} imagen${trashed === 1 ? '' : 'es'} enviada${trashed === 1 ? '' : 's'} a papelera`)
+        showNotice('success', `${trashed} ${trashed === 1 ? 'imagen' : 'imágenes'} enviada${trashed === 1 ? '' : 's'} a papelera`)
       }
       removeFromSelection(ids)
       await reload()
@@ -293,7 +293,7 @@ export default function LibraryPage() {
       const failed = Array.isArray(result?.failed) ? result.failed.length : 0
       showNotice('success', failed > 0
         ? `${restored} restaurada${restored === 1 ? '' : 's'} · ${failed} no encontrada${failed === 1 ? '' : 's'} en la papelera`
-        : `${restored} imagen${restored === 1 ? '' : 'es'} restaurada${restored === 1 ? '' : 's'}`)
+        : `${restored} ${restored === 1 ? 'imagen' : 'imágenes'} restaurada${restored === 1 ? '' : 's'}`)
       clearSelection()
       await reload()
     } catch (err) {
@@ -309,7 +309,7 @@ export default function LibraryPage() {
       const result = await trashFolder(companyId, folder.id)
       const assetsTrashed = Number(result?.assetsTrashed || 0)
       showNotice('success', assetsTrashed > 0
-        ? `Carpeta enviada a papelera junto con ${assetsTrashed} imagen${assetsTrashed === 1 ? '' : 'es'}`
+        ? `Carpeta enviada a papelera junto con ${assetsTrashed} ${assetsTrashed === 1 ? 'imagen' : 'imágenes'}`
         : 'Carpeta enviada a papelera')
       await reload()
     } catch (err) {
@@ -377,8 +377,8 @@ export default function LibraryPage() {
   const assetCount = data?.assets?.length ?? 0
   const folderCount = data?.subfolders?.length ?? 0
   const metaText = isTrash
-    ? `${assetCount} imagen${assetCount === 1 ? '' : 'es'} en papelera`
-    : `${assetCount} imagen${assetCount === 1 ? '' : 'es'} · ${folderCount} carpeta${folderCount === 1 ? '' : 's'}`
+    ? `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} en papelera`
+    : `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} · ${folderCount} carpeta${folderCount === 1 ? '' : 's'}`
   const selectionCount = selectedIds.size
 
   return (

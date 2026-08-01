@@ -77,7 +77,7 @@ export default function UploadQueuePanel({ items = [], onRetry, onClose, onAllDo
           <p className={styles.headerTitle}>{headerTitle}</p>
           {!hasActive && issueCount > 0 && (
             <p className={styles.headerSubtitle}>
-              {issueCount} imagen{issueCount === 1 ? '' : 'es'} no se {issueCount === 1 ? 'subió' : 'subieron'}
+              {issueCount} {issueCount === 1 ? 'imagen' : 'imágenes'} no se {issueCount === 1 ? 'subió' : 'subieron'}
             </p>
           )}
         </div>
