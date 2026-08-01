@@ -1,0 +1,41 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.track {
+  flex: 1;
+  min-width: 80px;
+  height: 6px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-neutral-200);
+  overflow: hidden;
+}
+
+/* Width is set per-instance via the --fill-pct custom property (same
+   pattern as the segmented-control indicator — see DESIGN-SYSTEM.md §3). */
+.fill {
+  height: 100%;
+  width: var(--fill-pct, 0%);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-600);
+  transition: width 240ms ease, background-color 200ms ease;
+}
+
+.fillWarn {
+  background: var(--wb-color-warning-500);
+}
+
+.fillFull {
+  background: var(--wb-color-danger-600);
+}
+
+.label {
+  flex-shrink: 0;
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text-muted);
+  white-space: nowrap;
+}
