@@ -1,0 +1,51 @@
+/* Envoltorio del contenido central de LibraryPage. Sin ancho/flex propios
+   a propósito: al ser hijo de .page (display:flex; flex-direction:column)
+   se estira al 100% igual que .pageBody lo hacía antes de este wrapper —
+   ver DESIGN-SYSTEM.md §"min-width: 0 on flex children" para el porqué de
+   no reintroducir constraints acá. */
+.zone {
+  position: relative;
+}
+
+/* z-index en --wb-z-overlay (900): por debajo de --wb-z-modal (1000) para
+   que FolderUploadConfirmModal quede siempre por encima si llega a abrirse
+   mientras el overlay todavía está pintado — no debe romper el stacking
+   de modales (regla dura del task). */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--wb-color-primary-600);
+  border-radius: var(--wb-radius-3);
+  background: color-mix(in srgb, var(--wb-color-primary-50) 85%, transparent);
+  pointer-events: none;
+}
+
+.overlayCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wb-space-2);
+  padding: var(--wb-space-6);
+  text-align: center;
+}
+
+.overlayIcon {
+  color: var(--wb-color-primary-600);
+}
+
+.overlayTitle {
+  margin: 0;
+  font-size: var(--wb-text-lg);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-color-primary-800);
+}
+
+.overlaySubtitle {
+  margin: 0;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-primary-700);
+}

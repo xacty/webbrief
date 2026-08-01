@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronRight, FolderPlus, Trash2, Upload, X } from 'lucide-react'
 import { useWorkspace } from '../contexts/WorkspaceContext'
@@ -6,16 +6,19 @@ import { Button } from '../components/ui'
 import AssetGrid from '../components/library/AssetGrid'
 import StorageUsageBar from '../components/library/StorageUsageBar'
 import NewFolderModal from '../components/library/NewFolderModal'
+import UploadDropzone from '../components/library/UploadDropzone'
+import UploadQueuePanel from '../components/library/UploadQueuePanel'
 import { fetchLibrary } from '../lib/libraryApi'
+import { createUploadQueue, enqueueFiles } from '../lib/uploadQueue'
 import styles from './LibraryPage.module.css'
 
 /**
  * Biblioteca de imágenes por empresa. Orquestador: breadcrumb de carpetas
  * (query param `folderId`), filtro de proyecto (`projectId`), vista papelera
- * (`view=trash`), toolbar (Nueva carpeta / Subir imágenes) y barra de uso.
+ * (`view=trash`), toolbar (Nueva carpeta / Subir imágenes), barra de uso y
+ * subida (dropzone + cola + panel flotante de progreso, Task 12).
  *
- * Subida (dropzone, cola, panel de progreso), multiselección, mover y
- * export llegan en Tasks 12-14 — este componente solo lista y navega.
+ * Multiselección, mover y export llegan en Tasks 13-14.
  */
 export default function LibraryPage() {
   const { currentCompany } = useWorkspace()
@@ -30,6 +33,15 @@ export default function LibraryPage() {
   const [data, setData] = useState(null)
   const [loadState, setLoadState] = useState('loading')
   const [newFolderOpen, setNewFolderOpen] = useState(false)
+
+  // Cola de subida: vive en un ref (no en estado) porque es un objeto con
+  // métodos + un array mutable interno, no un valor serializable — ver
+  // frontend/src/lib/uploadQueue.js. `queueItems` es la copia inmutable
+  // que createUploadQueue va empujando vía onUpdate para que React pueda
+  // re-renderizar UploadQueuePanel.
+  const queueRef = useRef(null)
+  const [queueItems, setQueueItems] = useState([])
+  const [panelVisible, setPanelVisible] = useState(false)
 
   const reload = useCallback(async () => {
     if (!companyId) return
@@ -46,6 +58,37 @@ export default function LibraryPage() {
   useEffect(() => {
     reload()
   }, [reload])
+
+  // (Re)crea la cola cuando la empresa activa queda resuelta (o cambia).
+  // Limpia el estado visible de una eventual empresa anterior para no
+  // arrastrar filas de subida de otro workspace.
+  useEffect(() => {
+    if (!companyId) return
+    setQueueItems([])
+    setPanelVisible(false)
+    queueRef.current = createUploadQueue({
+      companyId,
+      onUpdate: (items) => setQueueItems(items),
+    })
+  }, [companyId])
+
+  function handleFilesPicked(event) {
+    const files = Array.from(event.target.files || [])
+    event.target.value = '' // permite volver a elegir el mismo archivo más tarde
+    const queue = queueRef.current
+    if (!files.length || !queue) return
+    enqueueFiles(queue, files, folderId)
+    setPanelVisible(true)
+  }
+
+  function handleRetryUpload(id) {
+    queueRef.current?.retry(id)
+  }
+
+  function handleCloseQueuePanel() {
+    queueRef.current?.clearDone()
+    setPanelVisible(false)
+  }
 
   function goToFolder(id) {
     setSearchParams(id ? { folderId: id } : {})
@@ -153,14 +196,13 @@ export default function LibraryPage() {
                 >
                   Subir imágenes
                 </Button>
-                {/* Task 12 wires the dropzone/queue + onChange handler here.
-                    No handler yet on purpose. */}
                 <input
                   type="file"
                   id="library-file-input"
                   multiple
-                  accept=".jpg,.jpeg,.png,.webp,.svg"
+                  accept=".jpg,.jpeg,.png,.webp,.gif,.svg"
                   hidden
+                  onChange={handleFilesPicked}
                 />
               </div>
             )}
@@ -168,26 +210,35 @@ export default function LibraryPage() {
         </div>
       </header>
 
-      <div className={styles.pageBody}>
-        <AssetGrid
-          folders={data?.subfolders || []}
-          assets={data?.assets || []}
-          loading={loadState === 'loading'}
-          error={loadState === 'error'}
-          onRetry={reload}
-          onOpenFolder={goToFolder}
-          canWrite={canWrite}
-          view={view}
-        />
+      <UploadDropzone
+        companyId={companyId}
+        folderId={folderId}
+        folderLabel={pageTitle}
+        queueRef={queueRef}
+        disabled={!showToolbarActions}
+        onQueued={() => setPanelVisible(true)}
+      >
+        <div className={styles.pageBody}>
+          <AssetGrid
+            folders={data?.subfolders || []}
+            assets={data?.assets || []}
+            loading={loadState === 'loading'}
+            error={loadState === 'error'}
+            onRetry={reload}
+            onOpenFolder={goToFolder}
+            canWrite={canWrite}
+            view={view}
+          />
 
-        <footer className={styles.footer}>
-          <StorageUsageBar usage={data?.usage} />
-          <button type="button" className={styles.trashToggle} onClick={toggleTrashView}>
-            <Trash2 size={14} aria-hidden="true" />
-            {isTrash ? 'Volver a la biblioteca' : 'Papelera'}
-          </button>
-        </footer>
-      </div>
+          <footer className={styles.footer}>
+            <StorageUsageBar usage={data?.usage} />
+            <button type="button" className={styles.trashToggle} onClick={toggleTrashView}>
+              <Trash2 size={14} aria-hidden="true" />
+              {isTrash ? 'Volver a la biblioteca' : 'Papelera'}
+            </button>
+          </footer>
+        </div>
+      </UploadDropzone>
 
       <NewFolderModal
         open={newFolderOpen}
@@ -196,6 +247,15 @@ export default function LibraryPage() {
         parentFolderId={folderId}
         onCreated={reload}
       />
+
+      {panelVisible && queueItems.length > 0 && (
+        <UploadQueuePanel
+          items={queueItems}
+          onRetry={handleRetryUpload}
+          onClose={handleCloseQueuePanel}
+          onAllDone={reload}
+        />
+      )}
     </div>
   )
 }
