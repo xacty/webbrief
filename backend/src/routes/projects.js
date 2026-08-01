@@ -7,12 +7,17 @@ import {
   buildImageKitTransformations,
   buildImageKitUrl,
   deleteFromImageKit,
-  parseImageKitPathFromUrl,
   sanitizeFileName,
   slugifyFileBaseName,
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
+import {
+  buildExportFileName,
+  getExtensionFromMimeType,
+  normalizeExportOptions,
+  resolveProjectAssetForExport,
+} from '../lib/assetExport.js'
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
@@ -471,104 +476,9 @@ function coerceUuid(value) {
     : crypto.randomUUID()
 }
 
-function getExtensionFromMimeType(mimeType, fileName = '') {
-  const normalizedName = String(fileName || '').toLowerCase()
-  if (mimeType === 'image/jpeg' || normalizedName.endsWith('.jpg') || normalizedName.endsWith('.jpeg')) return 'jpg'
-  if (mimeType === 'image/png' || normalizedName.endsWith('.png')) return 'png'
-  if (mimeType === 'image/webp' || normalizedName.endsWith('.webp')) return 'webp'
-  if (mimeType === 'image/svg+xml' || normalizedName.endsWith('.svg')) return 'svg'
-  return 'bin'
-}
-
 function canExportProjectAsset(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
   return ['admin', 'manager', 'editor', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
-}
-
-function normalizeExportPreset(preset = '') {
-  const normalizedPreset = String(preset || 'original').trim().toLowerCase()
-
-  switch (normalizedPreset) {
-    case 'web':
-    case 'webp':
-      return { width: 1600, height: 1600, fit: 'at_max', format: 'webp', quality: 85 }
-    case 'jpg':
-    case 'jpeg':
-      return { width: 2400, height: 2400, fit: 'at_max', format: 'jpg', quality: 90 }
-    case 'png':
-      return { width: 2400, height: 2400, fit: 'at_max', format: 'png' }
-    case 'original':
-    default:
-      return {}
-  }
-}
-
-const EXPORT_CROP_MODES = new Set(['extract', 'pad_extract', 'pad_resize'])
-const EXPORT_FOCUS_VALUES = new Set([
-  'center', 'top', 'left', 'bottom', 'right',
-  'top_left', 'top_right', 'bottom_left', 'bottom_right',
-  'auto', 'face',
-])
-
-function normalizeExportOptions(query = {}) {
-  const presetOptions = normalizeExportPreset(query.preset)
-  const width = Number(query.width)
-  const height = Number(query.height)
-  const quality = Number(query.quality)
-  const fit = query.fit ? String(query.fit).trim() : presetOptions.fit
-  const format = query.format ? String(query.format).trim().toLowerCase() : presetOptions.format
-  const cropMode = query.cropMode ? String(query.cropMode).trim().toLowerCase() : ''
-  const focus = query.focus ? String(query.focus).trim().toLowerCase() : ''
-  const x = Number(query.x)
-  const y = Number(query.y)
-
-  return {
-    width: Number.isFinite(width) && width > 0 ? width : presetOptions.width || null,
-    height: Number.isFinite(height) && height > 0 ? height : presetOptions.height || null,
-    quality: Number.isFinite(quality) && quality > 0 ? quality : presetOptions.quality || null,
-    fit: fit || null,
-    format: format || null,
-    cropMode: EXPORT_CROP_MODES.has(cropMode) ? cropMode : null,
-    x: Number.isFinite(x) && x >= 0 ? Math.round(x) : null,
-    y: Number.isFinite(y) && y >= 0 ? Math.round(y) : null,
-    focus: EXPORT_FOCUS_VALUES.has(focus) ? focus : null,
-  }
-}
-
-function buildExportFileName(fileName, requestedFormat = null, fallbackMimeType = '', requestedBaseName = '') {
-  const safeName = sanitizeFileName(fileName || 'image')
-  const baseName = requestedBaseName
-    ? slugifyFileBaseName(requestedBaseName)
-    : (safeName.replace(/\.[^.]+$/u, '') || 'image')
-  const extension = requestedFormat || getExtensionFromMimeType(fallbackMimeType, safeName)
-  return `${baseName}.${extension}`
-}
-
-async function resolveProjectAssetForExport(projectId, { assetId = null, src = '' } = {}) {
-  if (assetId) {
-    const { data, error } = await supabaseAdmin
-      .from('project_assets')
-      .select('id, project_id, file_name, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, width, height, render_inline')
-      .eq('project_id', projectId)
-      .eq('id', assetId)
-      .maybeSingle()
-
-    if (error) throw error
-    return data
-  }
-
-  const parsedPath = parseImageKitPathFromUrl(src)
-  if (!parsedPath) return null
-
-  const { data, error } = await supabaseAdmin
-    .from('project_assets')
-    .select('id, project_id, file_name, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, width, height, render_inline')
-    .eq('project_id', projectId)
-    .eq('storage_path', parsedPath)
-    .maybeSingle()
-
-  if (error) throw error
-  return data
 }
 
 async function resolveProjectAssetsForBulkExport(projectId, items = []) {
