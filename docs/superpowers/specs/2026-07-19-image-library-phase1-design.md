@@ -3,7 +3,7 @@
 - Fecha: 2026-07-19
 - Rama: `feat/image-library`
 - Estado: aprobado en conversación (diseño + mockup de flujo de 7 pasos); pendiente revisión final de este documento
-- Versión objetivo: bump MINOR → `2.11.0` en el commit deployable de la feature
+- Versión objetivo: bump MINOR → `2.13.0` en el commit deployable de la feature (F0 — auto-conversión en subidas existentes, rama `feat/upload-auto-convert` — ocupó `2.12.0`)
 
 ## 1. Contexto y objetivo
 
@@ -19,9 +19,9 @@ WeBrief hoy maneja imágenes solo como assets atados a un proyecto (subidas desd
 |---|---|
 | Usuarios | Solo equipo interno (admin, managers, editors). Nada en share público. |
 | Ámbito | Biblioteca a nivel empresa + vista filtrada por proyecto ("ambas vistas"). |
-| Originales | No se guardan. Ingesta convierte a ≤2400px WebP calidad ~80 y descarta el original (solo transita por memoria). |
+| Originales | No se guardan. Ingesta convierte fotos a ≤2560px WebP q80 y descarta el original (solo transita por memoria). PNG conserva formato sin pérdida (solo resize). Tope 2560 = big image threshold de WordPress. |
 | Limpieza | Modo importar→exportar→limpiar: toggle "enviar a papelera tras exportar" visible y activado por defecto en exports de biblioteca. |
-| Formatos | JPG/PNG/WebP (se convierten) + SVG (passthrough a Supabase Storage, sin conversión). Sin HEIC/TIFF en v1. |
+| Formatos | Fotos JPG/WebP → WebP q80; PNG → sin pérdida (resize); GIF y SVG → passthrough. Sin HEIC/TIFF en v1. |
 | Límite por archivo | 30 MB en la ingesta de biblioteca (el flujo del editor mantiene su límite actual de 8 MB). |
 | Presupuesto | Estricto free tier. Contador de uso visible. |
 | Cuota por cliente | **100 MB por empresa** (default), columna `companies.storage_quota_mb`. |
@@ -88,8 +88,8 @@ Notas:
 `POST /api/companies/:id/library/assets` (multer memoria, límite 30 MB, `rateLimiters.authenticatedUpload`):
 
 1. Validar permiso (ver §8) y cuota (ver §5) **antes** de aceptar el archivo.
-2. Raster (JPG/PNG/WebP): subir a ImageKit con **pre-transformación** `w-2400,f-webp,q-80` — el original nunca se persiste. Carpeta ImageKit: `companies/{companyId}/library/{folderId}`.
-   - Sin upscale: imágenes ≤2400px solo se recomprimen. *(Verificar en plan: sintaxis exacta `transformation.pre` del SDK y comportamiento no-upscale; fallback: fetch transformado + upload como hace `/assets/convert` hoy.)*
+2. Raster: vía la lib compartida `backend/src/lib/imageIngest.js` (construida en F0) — fotos con pre-transformación `w-2560,h-2560,c-at_max,f-webp,q-80`, PNG solo `w-2560,h-2560,c-at_max` conservando formato; el original nunca se persiste. Carpeta ImageKit: `companies/{companyId}/library/{folderId}`.
+   - Verificado en F0 con smoke test contra ImageKit Dev: pre-transformación aceptada por el SDK y sin upscale de imágenes más chicas (`c-at_max`).
 3. SVG: passthrough a Supabase Storage `project-assets` (límite actual 8 MB aplica), `asset_kind='svg'`.
 4. Insertar fila `project_assets` con `company_id`, `folder_id`, `origin='upload'`, `source_metadata`, dimensiones/tamaño reales post-conversión.
 5. Respuesta por archivo (el frontend sube en cola, N paralelo bajo, p. ej. 3): `{ ok, asset }` o `{ ok:false, reason }` — el panel flotante muestra progreso, ahorro (`8,2 MB → 290 KB`) y reintento individual.
@@ -173,9 +173,9 @@ Rutas `bulk/*` declaradas antes de `/:id` (lección del repo). Los endpoints exi
 
 ## 12. Verificaciones pendientes (fase de plan)
 
-1. Sintaxis exacta de pre-transformación en upload del SDK ImageKit y comportamiento no-upscale; fallback definido en §4.
-2. Estrategia de purga de papelera (lazy vs. job) según lo que ya exista para `delete_after`.
-3. Límite Nginx `client_max_body_size` en VPS para el endpoint de 30 MB (ajuste de config en deploy).
+1. ~~Sintaxis de pre-transformación y no-upscale~~ — **resuelto en F0** (smoke test contra ImageKit Dev, 2026-07-19).
+2. Estrategia de purga de papelera (lazy vs. job) según lo que ya exista para `delete_after`. Decisión tomada en el plan: purga manual v1 ("Vaciar papelera"); `delete_after` queda sembrado para un job futuro.
+3. Límite Nginx `client_max_body_size` en VPS para el endpoint de 30 MB (ajuste de config en deploy — aplica ya al deploy de F0).
 
 ## 13. Estimación (tiempo de ejecución de agente)
 

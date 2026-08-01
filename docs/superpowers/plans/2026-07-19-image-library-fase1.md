@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Biblioteca de imágenes por empresa con carpetas anidadas, ingesta con conversión automática a WebP ≤2400px (original descartado), cuota de 100 MB por empresa, acciones bulk, export ZIP con "papelera tras exportar", y picker "Desde biblioteca" en el editor.
+**Goal:** Biblioteca de imágenes por empresa con carpetas anidadas, ingesta con conversión automática (fotos → WebP q80 ≤2560px, PNG sin pérdida, original descartado), cuota de 100 MB por empresa, acciones bulk, export ZIP con "papelera tras exportar", y picker "Desde biblioteca" en el editor.
 
 **Architecture:** Nueva tabla `asset_folders` + extensión de `project_assets` (`company_id`, `folder_id`, `origin`, `source_metadata`; `project_id` nullable). Router nuevo `backend/src/routes/library.js` montado en `/api/companies/:companyId/library` (mergeParams). Ingesta vía ImageKit con pre-transformación en el upload (fallback codificado: subir original temporal → fetch transformado → re-subir → borrar temporal). Cuota centralizada en `lib/storageQuota.js` aplicada en biblioteca, editor y conversiones. Frontend: sub-ruta `library` bajo `/c/:companySlug/*` + link de sidebar, componentes en `frontend/src/components/library/`.
 
@@ -20,7 +20,7 @@
 - NO deployar, NO tocar Supabase Prod, NO `git push` sin pedido explícito del usuario. Migración solo en Dev (MCP `supabaseDev`).
 
 **Hechos del código existente (verificados):**
-- SDK: `@imagekit/nodejs` — `imagekit.files.upload({ file: await toFile(buffer, name), fileName, folder, useUniqueFileName:false, overwriteFile:false, tags })` en `backend/src/lib/imagekit.js:141-159`. Transformaciones URL vía `buildImageKitTransformations` (opciones `width/height/format/quality/fit/cropMode/x/y/focus`) + `buildImageKitUrl` (líneas 79-130). Prefijo Dev/Prod: `applyImageKitFolderPrefix`.
+- SDK: `@imagekit/nodejs` — `imagekit.files.upload({ file: await toFile(buffer, name), fileName, folder, useUniqueFileName:false, overwriteFile:false, tags })` en `backend/src/lib/imagekit.js:141-159`. Tras mergear F0, `uploadToImageKit` acepta `preTransformation` (string estilo `w-2560,h-2560,c-at_max,f-webp,q-80`) y existe `backend/src/lib/imageIngest.js` con la política de conversión completa. Transformaciones URL vía `buildImageKitTransformations` (opciones `width/height/format/quality/fit/cropMode/x/y/focus`) + `buildImageKitUrl` (líneas 79-130). Prefijo Dev/Prod: `applyImageKitFolderPrefix`.
 - Upload editor existente: `POST /api/projects/:id/assets` en `backend/src/routes/projects.js:1993` (multer memoria, instancia línea ~42; raster→ImageKit, SVG→Supabase Storage `project-assets`). Copiar de ahí el branch SVG y el shape de inserción en `project_assets`.
 - Helpers export NO exportados hoy: `normalizeExportOptions` (projects.js:509), `buildExportFileName` (:534), `resolveProjectAssetForExport` (:543). Export bulk ZIP con `archiver`: `POST /:id/assets/export-bulk` (:2159). Convert-and-save: `POST /:id/assets/convert` (:2341) — usar como referencia del fallback de ingesta.
 - Permisos: `canWriteProjectContent(currentUser, companyId)` en `backend/src/lib/projectAccess.js:97` (ya es company-scoped). `requireAuth` se aplica dentro de cada router (ver cómo lo hace projects.js).
@@ -232,157 +232,20 @@ export async function resolveCompanyAssetForExport(companyId, { assetId = null }
 - [ ] **Step 3:** `cd backend && npm test` → la suite completa verde ES el test de este task (refactor sin cambio de comportamiento).
 - [ ] **Step 4: Commit** — `git add backend/src/lib/assetExport.js backend/src/routes/projects.js && git commit -m "refactor(backend): extraer helpers de export de assets a lib compartida"`
 
-### Task 4: Ingesta con pre-transformación — `lib/libraryIngest.js` (TDD)
+### Task 4: Ingesta — lib compartida `imageIngest` (YA construida en F0)
 
-**Files:**
-- Modify: `backend/src/lib/imagekit.js` (extender `uploadToImageKit` con `preTransformation` opcional)
-- Create: `backend/src/lib/libraryIngest.js`
-- Test: `backend/test/library-ingest.test.js`
+**Pre-requisito de rama:** F0 (`feat/upload-auto-convert`, commits `7dfe889` lib + `2d617d2` wiring + `3ac1067` v2.12.0) debe estar mergeado aquí — vía `git merge main` si F0 ya llegó a main, o mergeando la rama F0 directamente. Verificar: `ls backend/src/lib/imageIngest.js` existe y `grep preTransformation backend/src/lib/imagekit.js` matchea.
 
-- [ ] **Step 1:** Extender `uploadToImageKit` (backward-compatible):
+**Qué provee la lib** (`backend/src/lib/imageIngest.js`, tests en `backend/test/image-ingest.test.js`, smoke-verificada contra ImageKit Dev — pre-transformación aceptada por el SDK y no-upscale con `c-at_max` confirmados):
 
-```js
-export async function uploadToImageKit({ buffer, fileName, folder, tags, preTransformation = null }) {
-  if (!isImageKitConfigured()) {
-    throw new Error('ImageKit no está configurado en el backend')
-  }
-  const payload = {
-    file: await toFile(buffer, sanitizeFileName(fileName)),
-    fileName: sanitizeFileName(fileName),
-    folder: applyImageKitFolderPrefix(folder),
-    useUniqueFileName: false,
-    overwriteFile: false,
-    tags,
-  }
-  if (preTransformation) payload.transformation = { pre: preTransformation }
-  return imagekit.files.upload(payload)
-}
-```
+- Constantes: `MAX_INGEST_WIDTH = 2560`, `PHOTO_WEBP_QUALITY = 80`, `MAX_UPLOAD_BYTES = 30 MB`.
+- `decideUploadConversion({ mimeType, size })` → `{ ok: true, action: 'photo-webp' | 'png-resize' | 'passthrough' }` o `{ ok: false, reason: 'size_exceeded' | 'unsupported_mime' }`. Fotos (JPEG/WebP) → webp q80; PNG → resize sin pérdida conservando formato; GIF y SVG → passthrough.
+- `uploadWithIngest({ buffer, fileName, folder, tags, mimeType, size, uploadFn? })` → `{ ok, action, converted, finalName, mimeType, upload }` — aplica la pre-transformación correcta y ajusta extensión/mime.
+- `adjustFileNameForAction(fileName, action)` y `mimeTypeForAction(mime, action)`.
 
-Verificar en `node_modules/@imagekit/nodejs` (README o types) que `transformation.pre` existe en el upload. Si NO existiera en esta versión del SDK, NO bloquear: el fallback del Step 3 cubre el 100% de los casos y el primario se marca deshabilitado con `PRE_TRANSFORM_SUPPORTED = false` en `libraryIngest.js`.
-
-- [ ] **Step 2: Test que falla**
-
-```js
-import assert from 'node:assert/strict'
-import { test } from 'node:test'
-import { buildLibraryPreTransform, decideIngestPlan, LIBRARY_MAX_WIDTH } from '../src/lib/libraryIngest.js'
-
-test('buildLibraryPreTransform: cadena esperada', () => {
-  assert.equal(buildLibraryPreTransform(), `w-${LIBRARY_MAX_WIDTH},f-webp,q-80`)
-})
-
-test('decideIngestPlan: raster va a imagekit con conversión', () => {
-  const plan = decideIngestPlan({ mimeType: 'image/jpeg', size: 10 * 1024 * 1024 })
-  assert.deepEqual(plan, { ok: true, kind: 'image', target: 'imagekit', convert: true })
-})
-
-test('decideIngestPlan: svg pasa directo a storage', () => {
-  const plan = decideIngestPlan({ mimeType: 'image/svg+xml', size: 100 * 1024 })
-  assert.deepEqual(plan, { ok: true, kind: 'svg', target: 'storage', convert: false })
-})
-
-test('decideIngestPlan: rechaza mime no soportado y tamaño excedido', () => {
-  assert.equal(decideIngestPlan({ mimeType: 'image/heic', size: 1000 }).ok, false)
-  assert.equal(decideIngestPlan({ mimeType: 'application/pdf', size: 1000 }).ok, false)
-  const big = decideIngestPlan({ mimeType: 'image/png', size: 31 * 1024 * 1024 })
-  assert.equal(big.ok, false)
-  assert.equal(big.reason, 'size_exceeded')
-})
-
-test('ingestRasterToLibrary: usa pre-transform y no persiste el original (cliente inyectado)', async () => {
-  const { ingestRasterToLibrary } = await import('../src/lib/libraryIngest.js')
-  const calls = []
-  const fakeUpload = async (args) => { calls.push(args); return { fileId: 'f1', url: 'https://ik/x.webp', filePath: '/x.webp', size: 300, width: 2400, height: 1200, fileType: 'image/webp' } }
-  const result = await ingestRasterToLibrary({
-    buffer: Buffer.from('img'),
-    fileName: 'foto.jpg',
-    folder: '/companies/c1/library/root',
-    uploadFn: fakeUpload,
-  })
-  assert.equal(calls.length, 1)
-  assert.equal(calls[0].preTransformation, 'w-2400,f-webp,q-80')
-  assert.match(calls[0].fileName, /\.webp$/)
-  assert.equal(result.upload.fileId, 'f1')
-})
-```
-
-- [ ] **Step 3: Implementación**
-
-```js
-// backend/src/lib/libraryIngest.js
-// Ingesta de biblioteca: el original NUNCA se persiste — solo transita por
-// memoria. Primario: pre-transformación de ImageKit en el upload. Fallback
-// (si el SDK/plan no soporta transformation.pre): subir original a carpeta
-// temporal, fetch de la URL transformada, re-subir convertido, borrar temporal.
-import {
-  uploadToImageKit,
-  deleteFromImageKit,
-  buildImageKitUrl,
-  buildImageKitTransformations,
-  slugifyFileBaseName,
-} from './imagekit.js'
-
-export const LIBRARY_MAX_WIDTH = 2400
-export const LIBRARY_QUALITY = 80
-export const LIBRARY_MAX_FILE_BYTES = 30 * 1024 * 1024
-export const PRE_TRANSFORM_SUPPORTED = true
-
-const RASTER_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp'])
-
-export function buildLibraryPreTransform() {
-  return `w-${LIBRARY_MAX_WIDTH},f-webp,q-${LIBRARY_QUALITY}`
-}
-
-export function decideIngestPlan({ mimeType = '', size = 0 } = {}) {
-  if (size > LIBRARY_MAX_FILE_BYTES) return { ok: false, reason: 'size_exceeded' }
-  if (RASTER_MIMES.has(mimeType)) return { ok: true, kind: 'image', target: 'imagekit', convert: true }
-  if (mimeType === 'image/svg+xml') return { ok: true, kind: 'svg', target: 'storage', convert: false }
-  return { ok: false, reason: 'unsupported_mime' }
-}
-
-export function buildLibraryFileName(assetId, originalName) {
-  return `${assetId}-${slugifyFileBaseName(originalName)}.webp`
-}
-
-export async function ingestRasterToLibrary({ buffer, fileName, folder, assetId = null, uploadFn = uploadToImageKit }) {
-  const finalName = buildLibraryFileName(assetId || crypto.randomUUID(), fileName)
-  if (PRE_TRANSFORM_SUPPORTED) {
-    const upload = await uploadFn({
-      buffer,
-      fileName: finalName,
-      folder,
-      tags: ['library-asset'],
-      preTransformation: buildLibraryPreTransform(),
-    })
-    return { upload, converted: true }
-  }
-  return ingestViaFallback({ buffer, fileName: finalName, folder, uploadFn })
-}
-
-async function ingestViaFallback({ buffer, fileName, folder, uploadFn }) {
-  const tempName = `tmp-${fileName}`
-  const temp = await uploadFn({ buffer, fileName: tempName, folder: `${folder}/tmp`, tags: ['library-tmp'] })
-  try {
-    const url = buildImageKitUrl(
-      temp.filePath,
-      buildImageKitTransformations({ width: LIBRARY_MAX_WIDTH, format: 'webp', quality: LIBRARY_QUALITY })
-    )
-    const upstream = await fetch(url)
-    if (!upstream.ok) throw new Error('No se pudo obtener la imagen convertida')
-    const converted = Buffer.from(await upstream.arrayBuffer())
-    const upload = await uploadFn({ buffer: converted, fileName, folder, tags: ['library-asset'] })
-    return { upload, converted: true }
-  } finally {
-    if (temp?.fileId) await deleteFromImageKit(temp.fileId)
-  }
-}
-```
-
-Nota: `crypto` es global en Node 20+; no requiere import.
-
-- [ ] **Step 4:** `npm test` → los 5 tests nuevos PASS + suite verde.
-- [ ] **Step 5: Commit** — `git add backend/src/lib/imagekit.js backend/src/lib/libraryIngest.js backend/test/library-ingest.test.js && git commit -m "feat(backend): pipeline de ingesta de biblioteca con pre-transformación WebP"`
+- [ ] **Step 1:** Hacer el merge del pre-requisito si falta y correr `cd backend && npm test` (la suite ya incluye los tests de la lib) → verde.
+- [ ] **Step 2:** NO crear `libraryIngest.js` ni duplicar lógica — Task 7 importa directo de `imageIngest.js`. Si la biblioteca necesitara un helper específico (p. ej. naming con slug), agregarlo a `imageIngest.js` con test.
+- [ ] **Step 3: Commit** — solo el merge, si se hizo aquí.
 
 ### Task 5: Router de biblioteca — carpetas CRUD (TDD del ciclo)
 
@@ -653,20 +516,20 @@ Import arriba: `import { fetchCompanyUsage } from '../lib/storageQuota.js'`.
 ```js
 import multer from 'multer'
 import crypto from 'node:crypto'
-import { decideIngestPlan, ingestRasterToLibrary, LIBRARY_MAX_FILE_BYTES } from '../lib/libraryIngest.js'
+import { decideUploadConversion, uploadWithIngest, adjustFileNameForAction, MAX_UPLOAD_BYTES } from '../lib/imageIngest.js'
 import { checkCompanyStorageQuota } from '../lib/storageQuota.js'
-import { buildImageKitPath } from '../lib/imagekit.js'
+import { buildImageKitPath, sanitizeFileName } from '../lib/imagekit.js'
 
 const libraryUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: LIBRARY_MAX_FILE_BYTES },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 })
 
 router.post('/assets', rateLimiters.authenticatedUpload, writeAccess, libraryUpload.single('file'), async (req, res) => {
   try {
     const file = req.file
     if (!file) return res.status(400).json({ error: 'Archivo requerido' })
-    const plan = decideIngestPlan({ mimeType: file.mimetype, size: file.size })
+    const plan = decideUploadConversion({ mimeType: file.mimetype, size: file.size })
     if (!plan.ok) {
       const messages = {
         size_exceeded: 'El archivo supera el límite de 30 MB',
@@ -681,22 +544,29 @@ router.post('/assets', rateLimiters.authenticatedUpload, writeAccess, libraryUpl
     const assetId = crypto.randomUUID()
     let assetRow
 
-    if (plan.target === 'imagekit') {
+    if (file.mimetype !== 'image/svg+xml') {
       const ikFolder = buildImageKitPath('companies', req.libraryAccess.companyId, 'library', folderId || 'root')
-      const { upload } = await ingestRasterToLibrary({
-        buffer: file.buffer, fileName: file.originalname, folder: ikFolder, assetId,
+      const ingest = await uploadWithIngest({
+        buffer: file.buffer,
+        fileName: `${assetId}-${sanitizeFileName(file.originalname)}`,
+        folder: ikFolder,
+        tags: ['library-asset'],
+        mimeType: file.mimetype,
+        size: file.size,
       })
+      if (!ingest.ok) return res.status(400).json({ error: 'Archivo inválido', code: ingest.reason })
+      const upload = ingest.upload
       assetRow = {
         id: assetId,
         company_id: req.libraryAccess.companyId,
         project_id: null,
         folder_id: folderId,
         uploaded_by: req.currentUser.id,
-        file_name: file.originalname,
+        file_name: adjustFileNameForAction(file.originalname, ingest.action),
         storage_bucket: 'imagekit',
         storage_path: upload.filePath,
         imagekit_file_id: upload.fileId || null,
-        mime_type: upload.fileType || 'image/webp',
+        mime_type: ingest.mimeType,
         asset_kind: 'image',
         public_url: upload.url || null,
         file_size: upload.size || 0,
@@ -724,7 +594,7 @@ router.post('/assets', rateLimiters.authenticatedUpload, writeAccess, libraryUpl
     if (error) return res.status(500).json({ error: error.message })
     res.status(201).json({
       asset,
-      savings: plan.convert
+      savings: plan.action !== 'passthrough'
         ? { originalBytes: file.size, finalBytes: asset.file_size }
         : null,
     })
@@ -754,7 +624,7 @@ router.use((error, req, res, next) => {
 curl -s -X POST "http://localhost:3000/api/companies/<companyId>/library/assets" -H "Authorization: Bearer <token claude-bot>" -F "file=@/ruta/foto.jpg" | head -c 400
 ```
 
-Esperado: 201 con `asset.mime_type: "image/webp"`, `width ≤ 2400`, `savings.finalBytes` ≪ `originalBytes`. Si ImageKit devolviera error por `transformation.pre`, cambiar `PRE_TRANSFORM_SUPPORTED` a `false` (activa fallback) y re-probar.
+Esperado: 201 con `asset.mime_type: "image/webp"`, `width ≤ 2560`, `savings.finalBytes` ≪ `originalBytes`. (La pre-transformación ya está smoke-verificada en F0; este curl valida el wiring del endpoint, no la lib.)
 
 - [ ] **Step 4: Commit** — `git add backend/src/routes/library.js && git commit -m "feat(backend): ingesta de biblioteca con conversión automática y cuota"`
 
@@ -1177,7 +1047,7 @@ export function createUploadQueue({ companyId, onUpdate, concurrency = 3 }) {
 ```
 
 - [ ] **Step 2: UploadDropzone** — envuelve el contenido de LibraryPage; escucha `dragenter/over/leave/drop` en el contenedor; overlay `position:absolute; inset:0; border: 2px dashed var(--wb-color-primary-600); background: color-mix(in srgb, var(--wb-color-primary-50) 85%, transparent); z-index: var(--wb-z-overlay)` con texto "Suelta para subir en «{carpeta actual}»" + subtexto de formatos. En `drop`: `readDroppedItems`; si `folderName` → abrir `FolderUploadConfirmModal` con `{files, excluded, folderName}`; si no → `partitionFiles` y `queue.add(...)` directo a la carpeta actual (excluidos → toast). Input file oculto `id="library-file-input"` multiple accept=".jpg,.jpeg,.png,.webp,.svg" conecta el botón "Subir imágenes".
-- [ ] **Step 3: FolderUploadConfirmModal** — Modal con: árbol resumido (carpeta raíz + subcarpetas con conteos, derivado de `relativePath`), total (`N imágenes · X MB`), nota azul de conversión ("Se convertirán a WebP ≤2400px al subir"), bloque ámbar de excluidos (nombre + motivo), CTA `Subir N imágenes`. Al confirmar: crear carpetas vía `createFolder` en orden (raíz → hijas, cache path→id), luego `queue.add` con cada archivo apuntando al `folderId` de su `relativePath`. Sin estimación de ahorro exacta — usar "~97%" fijo del spec.
+- [ ] **Step 3: FolderUploadConfirmModal** — Modal con: árbol resumido (carpeta raíz + subcarpetas con conteos, derivado de `relativePath`), total (`N imágenes · X MB`), nota azul de conversión ("Se convertirán a WebP ≤2560px al subir; los PNG conservan su formato"), bloque ámbar de excluidos (nombre + motivo), CTA `Subir N imágenes`. Al confirmar: crear carpetas vía `createFolder` en orden (raíz → hijas, cache path→id), luego `queue.add` con cada archivo apuntando al `folderId` de su `relativePath`. Sin estimación de ahorro exacta — usar "~97%" fijo del spec.
 - [ ] **Step 4: UploadQueuePanel** — card `position: fixed` abajo-derecha (`right: var(--wb-space-6); bottom: var(--wb-space-6); z-index: var(--wb-z-toast); width: 320px; box-shadow: var(--wb-shadow-card)`); header "Subiendo X de N" (o "Subida completa · ahorro {sum original → sum final}") + minimizar/cerrar; filas: nombre truncado + estado (barra de progreso 4px / "convirtiendo…" / check verde con `original → final` formateado / error rojo con botón Reintentar). Al completarse todo: refrescar listado (`onAllDone`) y toast resumen. "Cerrar" solo si no hay activos (si hay, confirm nativo).
 - [ ] **Step 5:** Integrar en LibraryPage (estado `queueItems`, `queue` en `useRef`, `onAllDone: reload`). `npx vite build` → OK.
 - [ ] **Step 6: Commit** — `git add frontend/src/components/library/ frontend/src/lib/uploadQueue.js frontend/src/pages/LibraryPage.jsx frontend/src/pages/LibraryPage.module.css && git commit -m "feat(frontend): subida con cola, panel de progreso y carpetas arrastradas"`
@@ -1203,7 +1073,7 @@ export function createUploadQueue({ companyId, onUpdate, concurrency = 3 }) {
 - Modify: `frontend/src/pages/LibraryPage.jsx` (abrir export modal)
 - Modify: `frontend/src/pages/ProjectEditor.jsx` (picker + link)
 
-- [ ] **Step 1: LibraryExportModal** — formato segmented (WebP/PNG/JPG — patrón segmented control de DESIGN-SYSTEM §3), ancho máx (Input numérico, default 2400), calidad (Input numérico 1-100, default 80), toggle "Enviar a papelera tras exportar" (default ON, persistir preferencia en `localStorage['wb:library:trashAfterExport']`), texto de ayuda "Recuperables por 30 días". Submit: `exportLibraryAssets(companyId, { ids, format, width, quality, trashAfterExport })`; si el response header `X-Library-Kept` trae items, toast "«{fileName}» está usada en documentos — se exportó pero se conserva" (leer header: `apiSubmitDownload` debe exponerlo; si no lo expone, cambiar el contrato del backend para devolver los kept como query previa: llamada `trashAssets` separada post-descarga desde el cliente — decidirlo al implementar y documentar en el commit).
+- [ ] **Step 1: LibraryExportModal** — formato segmented (WebP/PNG/JPG — patrón segmented control de DESIGN-SYSTEM §3), ancho máx (Input numérico, default 2560), calidad (Input numérico 1-100, default 80), toggle "Enviar a papelera tras exportar" (default ON, persistir preferencia en `localStorage['wb:library:trashAfterExport']`), texto de ayuda "Recuperables por 30 días". Submit: `exportLibraryAssets(companyId, { ids, format, width, quality, trashAfterExport })`; si el response header `X-Library-Kept` trae items, toast "«{fileName}» está usada en documentos — se exportó pero se conserva" (leer header: `apiSubmitDownload` debe exponerlo; si no lo expone, cambiar el contrato del backend para devolver los kept como query previa: llamada `trashAssets` separada post-descarga desde el cliente — decidirlo al implementar y documentar en el commit).
 - [ ] **Step 2: Picker en el editor.** En `ProjectEditor.jsx`, junto al input file de imagen (~7662), agregar opción "Desde biblioteca" (mismo menú/flujo donde vive "subir imagen"; grep el handler del input). Abre `LibraryPickerModal` (`companyId` viene del proyecto cargado — grep `company_id` en el fetch del proyecto): búsqueda (`searchLibrary` con debounce 300ms) + grid compacto + carpetas navegables (reusar `fetchLibrary`); al confirmar, insertar con el mismo comando que usa el flujo de imagen por URL existente (attrs `src: public_url` con `?tr=w-1600` si es imagekit, `assetId`, `fileName`, `storagePath`) — grep cómo construye attrs el upload actual y replicar.
 - [ ] **Step 3: Link inverso.** En LibraryPage, si `projectId` en query: chip "Filtrando por proyecto {nombre} ✕" (quitar = volver a raíz). En el editor, botón/entrada "Ver imágenes del proyecto" (donde viva el acceso natural — junto al picker) que navega a `/c/{slug}/library?projectId={id}`.
 - [ ] **Step 4:** `npx vite build` → OK. Commit — `git add frontend/src/components/library/ frontend/src/pages/LibraryPage.jsx frontend/src/pages/ProjectEditor.jsx && git commit -m "feat(frontend): export con limpieza opcional y picker desde biblioteca"`
@@ -1216,8 +1086,8 @@ export function createUploadQueue({ companyId, onUpdate, concurrency = 3 }) {
 - [ ] **Step 1:** `cd backend && npm test` → TODA la suite verde. `cd frontend && npx vite build` → OK.
 - [ ] **Step 2 (sesión principal, no subagent):** verificación browser con dev server + cuenta `claude-bot` (el usuario loguea — ver memoria de workflow): checklist = los 7 pasos del mockup + cuota (subir hasta 80% → barra ámbar; 100% → bloqueo con mensaje; vaciar papelera libera). Guardar screenshots de evidencia.
 - [ ] **Step 3: Docs.** Agregar a `CONTEXT.min.md`: target `library` (keep/watch), hechos nuevos (rutas library, cuota, tabla asset_folders, project_id nullable). `DESIGN-SYSTEM.md` §5: componentes library. `CONTEXT.md`: entrada de sesión.
-- [ ] **Step 4: Bump MINOR** — `cd frontend && npm version minor --no-git-tag-version` (2.10.0 → 2.11.0).
-- [ ] **Step 5: Commits finales** — `git add CONTEXT.min.md CONTEXT.md DESIGN-SYSTEM.md && git commit -m "docs(context): biblioteca de imágenes F1"` y luego `git add frontend/package.json frontend/package-lock.json && git commit -m "chore(release): v2.11.0"`.
+- [ ] **Step 4: Bump MINOR** — `cd frontend && npm version minor --no-git-tag-version` (2.12.0 → 2.13.0; F0 ya ocupó 2.12.0).
+- [ ] **Step 5: Commits finales** — `git add CONTEXT.min.md CONTEXT.md DESIGN-SYSTEM.md && git commit -m "docs(context): biblioteca de imágenes F1"` y luego `git add frontend/package.json frontend/package-lock.json && git commit -m "chore(release): v2.13.0"`.
 - [ ] **Step 6:** Reporte final al usuario: qué quedó commiteado, qué quedó dirty y por qué, migración pendiente de Prod (`20260719_image_library.sql`) y ajuste Nginx `client_max_body_size 35m` para el deploy (NO ejecutar el deploy).
 
 ---
