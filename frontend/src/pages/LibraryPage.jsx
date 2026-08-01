@@ -575,6 +575,7 @@ export default function LibraryPage() {
             onToggleSelect={toggleSelected}
             onRenameAsset={openRenameAsset}
             onMoveAsset={(asset) => openMoveAssetsModal([asset.id])}
+            onExportAsset={(asset) => openExportModal([asset.id])}
             onTrashAsset={(asset) => handleTrashAssets([asset.id])}
             onRenameFolder={openRenameFolder}
             onMoveFolder={openMoveFolderModal}

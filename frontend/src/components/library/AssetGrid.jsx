@@ -1,4 +1,4 @@
-import { Folder, Images, Move, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { Download, Folder, Images, Move, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { Button, KebabMenu } from '../ui'
 import EmptyState from '../onboarding/EmptyState'
 import styles from './AssetGrid.module.css'
@@ -52,6 +52,7 @@ export default function AssetGrid({
   onToggleSelect,
   onRenameAsset,
   onMoveAsset,
+  onExportAsset,
   onTrashAsset,
   onRenameFolder,
   onMoveFolder,
@@ -211,6 +212,7 @@ export default function AssetGrid({
                   items={[
                     { label: 'Renombrar', icon: <Pencil size={14} />, onClick: () => onRenameAsset?.(asset) },
                     { label: 'Mover a carpeta', icon: <Move size={14} />, onClick: () => onMoveAsset?.(asset) },
+                    { label: 'Exportar', icon: <Download size={14} />, onClick: () => onExportAsset?.(asset) },
                     {
                       label: 'Enviar a papelera',
                       icon: <Trash2 size={14} />,
