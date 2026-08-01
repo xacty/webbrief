@@ -47,3 +47,13 @@ test('buildLibraryListing: separa subcarpetas del folder actual y filtra papeler
   assert.deepEqual(inA.subfolders.map((f) => f.id), ['b'])
   assert.deepEqual(inA.breadcrumb.map((f) => f.id), ['a'])
 })
+
+test('buildLibraryListing: expone allFolders (activas, toda la empresa) para el árbol de MoveToFolderModal', () => {
+  const folders = [
+    { id: 'a', parent_folder_id: null, trashed_at: null },
+    { id: 'b', parent_folder_id: 'a', trashed_at: null },
+    { id: 'z', parent_folder_id: null, trashed_at: '2026-07-01' },
+  ]
+  const out = buildLibraryListing({ folders, currentFolderId: 'a' })
+  assert.deepEqual(out.allFolders.map((f) => f.id), ['a', 'b'])
+})

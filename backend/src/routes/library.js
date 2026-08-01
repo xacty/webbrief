@@ -102,6 +102,13 @@ export function partitionTrashableAssets({ assets, referencedIds }) {
   return { trashable, kept }
 }
 
+// `allFolders` (todas las carpetas activas de la empresa, cualquier
+// profundidad) se agrega al retorno de esta función — no sólo Task 6
+// (listado por carpeta) la consume. Task 13 (MoveToFolderModal, frontend)
+// necesita el árbol COMPLETO para dejar elegir cualquier carpeta destino, y
+// `subfolders` sólo trae los hijos directos de `currentFolderId`. La query
+// de folders en GET / ya trae todas las filas de la empresa antes de este
+// filtro — `active` ya era ese universo completo, sólo faltaba exponerlo.
 export function buildLibraryListing({ folders, currentFolderId }) {
   const active = (folders || []).filter((f) => !f.trashed_at)
   const byId = new Map(active.map((f) => [f.id, f]))
@@ -112,7 +119,7 @@ export function buildLibraryListing({ folders, currentFolderId }) {
     breadcrumb.unshift(cursor)
     cursor = cursor.parent_folder_id ? byId.get(cursor.parent_folder_id) : null
   }
-  return { subfolders, breadcrumb }
+  return { subfolders, breadcrumb, allFolders: active }
 }
 
 // Middleware: resuelve companyId + rol; adjunta req.libraryAccess

@@ -1,0 +1,17 @@
+/* Mirrors NewFolderModal.module.css form/actions — see
+   DESIGN-SYSTEM.md §"Modal anatomy". */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-3);
+  margin-top: var(--wb-space-1);
+  padding-top: var(--wb-space-4);
+  border-top: 1px solid var(--wb-border);
+}

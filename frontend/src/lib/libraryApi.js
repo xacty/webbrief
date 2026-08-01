@@ -21,6 +21,7 @@ export const restoreFolder = (companyId, folderId) => apiFetch(`${base(companyId
 export const moveAssets = (companyId, ids, folderId) => apiFetch(`${base(companyId)}/assets/bulk/move`, { method: 'POST', body: JSON.stringify({ ids, folderId }) })
 export const trashAssets = (companyId, ids, { force } = {}) => apiFetch(`${base(companyId)}/assets/bulk/trash`, { method: 'POST', body: JSON.stringify({ ids, force }) })
 export const restoreAssets = (companyId, ids) => apiFetch(`${base(companyId)}/assets/bulk/restore`, { method: 'POST', body: JSON.stringify({ ids }) })
+export const renameAsset = (companyId, assetId, fileName) => apiFetch(`${base(companyId)}/assets/${assetId}`, { method: 'PATCH', body: JSON.stringify({ fileName }) })
 export const emptyLibraryTrash = (companyId) => apiFetch(`${base(companyId)}/trash/empty`, { method: 'POST' })
 export const searchLibrary = (companyId, q) => apiFetch(`${base(companyId)}/search?q=${encodeURIComponent(q)}`)
 
