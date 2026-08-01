@@ -18,6 +18,7 @@ import {
   normalizeExportOptions,
   resolveProjectAssetForExport,
 } from '../lib/assetExport.js'
+import { checkCompanyStorageQuota } from '../lib/storageQuota.js'
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
@@ -1987,6 +1988,11 @@ router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file
       return res.status(400).json({ error: 'Los SVG no pueden superar 8 MB' })
     }
 
+    const quota = await checkCompanyStorageQuota(project.company_id, req.file?.size || 0)
+    if (!quota.allowed) {
+      return res.status(413).json({ error: quota.message, code: quota.code })
+    }
+
     const assetId = crypto.randomUUID()
     const extension = getExtensionFromMimeType(originalMime, originalName)
     const imageKitFolder = buildImageKitPath('companies', project.company_id, 'projects', project.id)
@@ -2329,6 +2335,11 @@ router.post('/:id/assets/convert', rateLimiters.authenticatedUpload, async (req,
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
     if (!canWriteProjectContent(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede guardar imagenes en este proyecto' })
+    }
+
+    const quota = await checkCompanyStorageQuota(project.company_id, 0)
+    if (!quota.allowed) {
+      return res.status(413).json({ error: quota.message, code: quota.code })
     }
 
     const source = await resolveProjectAssetForExport(project.id, {
