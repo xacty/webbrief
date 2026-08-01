@@ -9,6 +9,7 @@ const { version: APP_VERSION } = _require('../../frontend/package.json')
 import cors from 'cors'
 import authRoutes from './routes/auth.js'
 import companiesRoutes from './routes/companies.js'
+import libraryRoutes from './routes/library.js'
 import projectsRoutes from './routes/projects.js'
 import commentsRoutes from './routes/comments.js'
 import usersRoutes from './routes/users.js'
@@ -54,6 +55,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 // Rutas de autenticación y datos
 app.use('/api/auth', authRoutes)
 app.use('/api/auth', mcpTokensRoutes)
+app.use('/api/companies/:companyId/library', libraryRoutes)
 app.use('/api/companies', companiesRoutes)
 app.use('/api/projects', projectsRoutes)
 app.use('/api/projects', commentsRoutes)
