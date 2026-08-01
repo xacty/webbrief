@@ -3,7 +3,8 @@ import multer from 'multer'
 import crypto from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { hashToken, logProjectActivity } from '../lib/projectAccess.js'
-import { uploadToImageKit, buildImageKitPath } from '../lib/imagekit.js'
+import { buildImageKitPath, deleteFromImageKit } from '../lib/imagekit.js'
+import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { publicAntiScrapingHeaders, rateLimiters } from '../middleware/security.js'
 import {
@@ -462,7 +463,12 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
     }
 
     const maxFileMb = project.brief_max_file_mb || 10
-    if (req.file.size > maxFileMb * 1024 * 1024) {
+    // F0: los raster (JPEG/PNG/WebP) se convierten en la ingesta — su tope por
+    // archivo es el de la lib (30 MB) y el presupuesto se verifica con el
+    // tamaño YA convertido. GIF, SVG y documentos se almacenan tal cual, así
+    // que conservan los checks originales.
+    const isConvertibleRaster = ['image/jpeg', 'image/png', 'image/webp'].includes(mime)
+    if (!isConvertibleRaster && req.file.size > maxFileMb * 1024 * 1024) {
       return res.status(400).json({ error: `El archivo supera el tope de ${maxFileMb} MB por archivo` })
     }
 
@@ -473,7 +479,7 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
       .is('trashed_at', null)
     if (budgetError) return res.status(500).json({ error: budgetError.message })
     const usedBytes = (existingAssets || []).reduce((sum, a) => sum + (a.file_size || 0), 0)
-    if (usedBytes + req.file.size > PROJECT_TOTAL_BUDGET_BYTES) {
+    if (!isConvertibleRaster && usedBytes + req.file.size > PROJECT_TOTAL_BUDGET_BYTES) {
       const remainingMb = Math.max(0, Math.floor((PROJECT_TOTAL_BUDGET_BYTES - usedBytes) / (1024 * 1024)))
       return res.status(400).json({ error: `Presupuesto del proyecto agotado. Restan ${remainingMb} MB.` })
     }
@@ -486,21 +492,41 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
     let publicUrl = null
     let imagekitFileId = null
     let assetKind
+    let storedFileName = originalName
+    let storedMime = mime
+    let storedSize = req.file.size
 
     if (isImage && mime !== 'image/svg+xml') {
       const folder = buildImageKitPath('companies', project.company_id, 'projects', project.id, 'brief')
-      const uploadName = `${assetId}-${safeName}`
-      const uploadResponse = await uploadToImageKit({
+      const ingest = await uploadWithIngest({
         buffer: req.file.buffer,
-        fileName: uploadName,
+        fileName: `${assetId}-${safeName}`,
         folder,
         tags: ['brief-document', 'public-upload'],
+        mimeType: mime,
+        size: req.file.size,
       })
+      if (!ingest.ok) {
+        return res.status(400).json({
+          error: ingest.reason === 'size_exceeded'
+            ? 'La imagen supera el tope de 30 MB'
+            : `Tipo de archivo no permitido (${mime})`,
+        })
+      }
+      const uploadResponse = ingest.upload
+      storedSize = uploadResponse.size || req.file.size
+      if (usedBytes + storedSize > PROJECT_TOTAL_BUDGET_BYTES) {
+        if (uploadResponse.fileId) await deleteFromImageKit(uploadResponse.fileId)
+        const remainingMb = Math.max(0, Math.floor((PROJECT_TOTAL_BUDGET_BYTES - usedBytes) / (1024 * 1024)))
+        return res.status(400).json({ error: `Presupuesto del proyecto agotado. Restan ${remainingMb} MB.` })
+      }
       storageBucket = 'imagekit'
-      storagePath = uploadResponse.filePath || `${folder}/${uploadName}`
+      storagePath = uploadResponse.filePath || `${folder}/${ingest.finalName}`
       publicUrl = uploadResponse.url || null
       imagekitFileId = uploadResponse.fileId || null
       assetKind = 'image'
+      storedFileName = adjustFileNameForAction(originalName, ingest.action)
+      storedMime = ingest.mimeType
     } else {
       const path = `${project.id}/${assetId}-${safeName}`
       const { error: uploadError } = await supabaseAdmin.storage
@@ -529,14 +555,14 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
         page_id: null,
         section_id: null,
         uploaded_by: null, // public upload, no auth user
-        file_name: originalName,
+        file_name: storedFileName,
         storage_bucket: storageBucket,
         storage_path: storagePath,
         imagekit_file_id: imagekitFileId,
-        mime_type: mime,
+        mime_type: storedMime,
         asset_kind: assetKind,
         public_url: publicUrl,
-        file_size: req.file.size,
+        file_size: storedSize,
         render_inline: false,
       })
       .select('id, file_name, mime_type, file_size, public_url, created_at')

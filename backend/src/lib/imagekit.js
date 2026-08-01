@@ -143,19 +143,25 @@ export async function uploadToImageKit({
   fileName,
   folder,
   tags,
+  preTransformation = null,
 }) {
   if (!isImageKitConfigured()) {
     throw new Error('ImageKit no está configurado en el backend')
   }
 
-  return imagekit.files.upload({
+  const payload = {
     file: await toFile(buffer, sanitizeFileName(fileName)),
     fileName: sanitizeFileName(fileName),
     folder: applyImageKitFolderPrefix(folder),
     useUniqueFileName: false,
     overwriteFile: false,
     tags,
-  })
+  }
+  // La pre-transformación se aplica ANTES de persistir: el archivo original
+  // nunca queda almacenado en ImageKit, solo la versión ya convertida.
+  if (preTransformation) payload.transformation = { pre: preTransformation }
+
+  return imagekit.files.upload(payload)
 }
 
 export async function deleteFromImageKit(fileId) {

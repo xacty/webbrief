@@ -12,6 +12,7 @@ import {
   slugifyFileBaseName,
   uploadToImageKit,
 } from '../lib/imagekit.js'
+import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
@@ -39,9 +40,12 @@ import {
 } from '../lib/projectAccess.js'
 
 const router = Router()
+// 30 MB: las fotos se convierten en la ingesta (imageIngest) así que el
+// original solo transita por memoria; los SVG mantienen su tope de 8 MB
+// con un check dentro de la ruta.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 30 * 1024 * 1024 },
 })
 
 // Brief documents pueden ser hasta 50 MB por archivo (10/25/50 selectionable
@@ -2069,21 +2073,34 @@ router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file
     if (!isSvg && !isRaster) {
       return res.status(400).json({ error: 'Solo se aceptan JPEG, PNG, WebP o SVG' })
     }
+    if (isSvg && req.file.size > 8 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Los SVG no pueden superar 8 MB' })
+    }
 
     const assetId = crypto.randomUUID()
     const extension = getExtensionFromMimeType(originalMime, originalName)
     const imageKitFolder = buildImageKitPath('companies', project.company_id, 'projects', project.id)
     const uploadFileName = `${assetId}-${sanitizeFileName(originalName || `asset.${extension}`)}`
 
-    const uploadResponse = await uploadToImageKit({
+    const ingest = await uploadWithIngest({
       buffer: req.file.buffer,
       fileName: uploadFileName,
       folder: imageKitFolder,
       tags: ['project-asset'],
+      mimeType: isSvg ? 'image/svg+xml' : originalMime,
+      size: req.file.size,
     })
+    if (!ingest.ok) {
+      return res.status(400).json({
+        error: ingest.reason === 'size_exceeded'
+          ? 'El archivo supera el límite de 30 MB'
+          : 'Solo se aceptan JPEG, PNG, WebP o SVG',
+      })
+    }
+    const uploadResponse = ingest.upload
 
     const originalUrl = uploadResponse.url || null
-    const imagePath = uploadResponse.filePath || buildImageKitPath(imageKitFolder, uploadFileName)
+    const imagePath = uploadResponse.filePath || buildImageKitPath(imageKitFolder, ingest.finalName)
     const transformedUrl = isSvg
       ? originalUrl
       : buildImageKitUrl(imagePath, ['w-2400', 'h-2400', 'c-at_max', 'f-auto'])
@@ -2097,11 +2114,11 @@ router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file
         page_id: req.body.pageId || null,
         section_id: req.body.sectionId || null,
         uploaded_by: req.currentUser.id,
-        file_name: originalName,
+        file_name: adjustFileNameForAction(originalName, ingest.action),
         storage_bucket: 'imagekit',
         storage_path: imagePath,
         imagekit_file_id: uploadResponse.fileId || null,
-        mime_type: uploadResponse.fileType || originalMime,
+        mime_type: ingest.mimeType,
         asset_kind: isSvg ? 'svg' : 'image',
         public_url: originalUrl,
         file_size: uploadResponse.size || req.file.size || req.file.buffer.byteLength,
