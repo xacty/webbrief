@@ -90,7 +90,7 @@ Notas:
 1. Validar permiso (ver §8) y cuota (ver §5) **antes** de aceptar el archivo.
 2. Raster: vía la lib compartida `backend/src/lib/imageIngest.js` (construida en F0) — fotos con pre-transformación `w-2560,h-2560,c-at_max,f-webp,q-80`, PNG solo `w-2560,h-2560,c-at_max` conservando formato; el original nunca se persiste. Carpeta ImageKit: `companies/{companyId}/library/{folderId}`.
    - Verificado en F0 con smoke test contra ImageKit Dev: pre-transformación aceptada por el SDK y sin upscale de imágenes más chicas (`c-at_max`).
-3. SVG: passthrough a Supabase Storage `project-assets` (límite actual 8 MB aplica), `asset_kind='svg'`.
+3. SVG: passthrough (sin conversión), límite 8 MB, `asset_kind='svg'`. *(Corrección post-implementación: desde F0 los SVG también viven en ImageKit vía el flujo unificado — el bucket Supabase `project-assets` quedó vestigial, solo filas legacy.)*
 4. Insertar fila `project_assets` con `company_id`, `folder_id`, `origin='upload'`, `source_metadata`, dimensiones/tamaño reales post-conversión.
 5. Respuesta por archivo (el frontend sube en cola, N paralelo bajo, p. ej. 3): `{ ok, asset }` o `{ ok:false, reason }` — el panel flotante muestra progreso, ahorro (`8,2 MB → 290 KB`) y reintento individual.
 

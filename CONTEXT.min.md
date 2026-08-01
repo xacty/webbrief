@@ -36,6 +36,7 @@
 - `companies.bulk`
 - `projects.bulk`
 - `move-company`
+- `library`
 
 ## Core Facts
 
@@ -194,6 +195,9 @@
 - `target=move-company`
   - `keep`: lista del Select solo muestra empresas donde el user es manager (admin global ve todas); excluye la empresa source; modal reusable single-card y bulk; submit POST `/api/projects/bulk/move-company` con `{ ids, target_company_id }`; backend valida target permission ANTES del loop (fast-fail 403); cada project move logged como `project_moved` con `metadata.from_company_id` + `metadata.to_company_id`
   - `watch`: respuesta 207 Multi-Status si parcial; UI refresh local tras success
+- `target=library`
+  - `keep`: ingesta SIEMPRE convierte (foto→WebP q80 ≤2560, PNG lossless resize, GIF/SVG passthrough) y NUNCA persiste el original; cuota por empresa cuenta activos+papelera con "Vaciar papelera" como válvula; auto-trash post-export solo vía cliente tras descarga confirmada y NUNCA toca assets referenciados en páginas (partition `kept` con reason `referenced`); carpetas: ciclos rechazados, papelera en cascada con timestamp de correlación (restore solo revive miembros de SU cascada); rutas bulk/* declaradas antes de rutas con :param; multiselección solo assets (carpetas via kebab singular); picker del editor inserta por URL pública con attrs completos (assetId/fileName/storagePath)
+  - `watch`: `resolveLibraryRole` lee camelCase de req.currentUser; export sin rate limiter (espejo de export-bulk); tope 100 ids en bulk/export; el input file del toolbar del editor vive duplicado cuando hay overflow — usar label+input propio, jamás ref compartida; `buildLibraryListing` expone `allFolders` para el árbol del MoveToFolderModal
 
 ## New Data/Auth Baseline
 
@@ -217,7 +221,8 @@
 - editor save/load is real; save is manual via navbar button and persists `content_html` + `content_json`
 - editor autosave persists pages with `source=autosave`; generic `brief_saved` activity is intentionally not emitted
 - page save uses simple `version` conflict guard
-- raster uploads go through backend to Supabase Storage and convert to WebP; SVG uploads are non-inline attachments
+- image ingest (F0, v2.12.0): TODO upload de imagen (editor, brief público, biblioteca) pasa por `backend/src/lib/imageIngest.js` — fotos JPEG/WebP → WebP q80 ≤2560px vía pre-transformación ImageKit (original NUNCA se persiste), PNG sin pérdida solo-resize, GIF/SVG passthrough; límite 30 MB raster (SVG 8 MB); TODOS los assets viven en ImageKit incluidos SVG (bucket Supabase `project-assets` vestigial, solo filas legacy); presupuesto del brief se verifica post-conversión
+- biblioteca de imágenes (F1, v2.13.0): tabla `asset_folders` (anidamiento por `parent_folder_id`, papelera con cascada por timestamp de correlación) + `project_assets` extendida (`company_id` backfilled, `folder_id`, `origin`, `source_metadata`; `project_id` AHORA NULLABLE); cuota por empresa `companies.storage_quota_mb` (default 100 MB, cuenta activos+papelera, enforcement centralizado en `lib/storageQuota.js` aplicado en biblioteca+editor+convert → 413 `quota_exceeded`); router `routes/library.js` en `/api/companies/:companyId/library` (mergeParams, montado ANTES de companiesRoutes; roles camelCase de req.currentUser: admin/manager/editor write, qa read); frontend: ruta `/c/:slug/library` + sidebar `Biblioteca`, componentes en `components/library/`, cola de subida concurrencia 3, export ZIP fetch→blob y limpieza post-export orquestada por el CLIENTE (`apiSubmitDownload` NO expone headers), picker "Desde biblioteca" en el editor (dropdown del botón imagen; label+input propio por la duplicación del toolbar overflow)
 - Supabase remote schema is synced with `supabase/schema.sql` for archive/trash columns, deliverables, comments, approvals, share links, assets, activity/notifications/page versions; `project-assets` bucket is public with 8 MB image/SVG limit
 - Supabase remote schema includes `companies.is_test`, `companies.created_for_testing_by`, `profiles.platform_role='qa'`, `profiles.avatar_url`, and public `user-avatars` bucket
 - Supabase remote DB has `security_events`, `security_blocks`, `rate_limit_buckets` tables and `get_auth_audit_events`, `consume_rate_limit` RPCs applied (migrations under `supabase/migrations/20260506_*`); EXECUTE on the two new RPCs is restricted to `service_role` only via `20260506_security_rpc_grants_hardening.sql` so the anon key cannot reach them through `/rest/v1/rpc/*`

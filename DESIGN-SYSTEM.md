@@ -411,6 +411,23 @@ take a consistent `size`/`variant` API where applicable. The `Select`
 component is a branded listbox (replaces native `<select>` for any user-
 facing dropdown).
 
+### Biblioteca de imágenes (`frontend/src/components/library/`)
+
+| Component | When to use |
+|---|---|
+| `AssetGrid` | Grid de carpetas + assets con selección (solo assets), kebab por card, estados skeleton/vacío/error/papelera. |
+| `StorageUsageBar` | Barra de cuota por empresa (ok / warn ≥80% / full) con breakdown de papelera. |
+| `UploadDropzone` | Overlay drag & drop que envuelve el contenido; detecta carpetas (webkitGetAsEntry). |
+| `UploadQueuePanel` | Panel flotante bottom-right de subidas (progreso, conversión, ahorro, reintento, filas de excluidos). |
+| `FolderUploadConfirmModal` | Confirmación de carpeta arrastrada: árbol, totales, excluidos. |
+| `NewFolderModal` / `MoveToFolderModal` | CRUD y mover con árbol indentado (usa `allFolders` del listado). |
+| `LibraryExportModal` | Export ZIP con transformación + toggle "papelera tras exportar" (limpieza client-side post-descarga). |
+| `LibraryPickerModal` | "Desde biblioteca" en el editor: búsqueda debounced + navegación + insertar. |
+
+Patrón compartido: avisos vía banner inline de página (estilo `feedbackNotice`
+de ProjectsPage) — no existe sistema global de toasts fuera del editor; no
+inventar uno nuevo.
+
 ---
 
 ## 6. Anti-patterns — do NOT
