@@ -141,18 +141,13 @@
   box-shadow: var(--wb-shadow-sm);
 }
 
-/* Kebab ahora vive en la fila inferior (junto al nombre), no flotando
-   sobre la miniatura. Reveal-on-hover/focus, igual criterio que antes;
-   el slot se reserva siempre para que la fila no salte de tamaño. */
+/* Kebab vive en la fila inferior (junto al nombre), no flotando sobre la
+   miniatura. Siempre visible (iteración UX F1, punto 1 — antes era
+   reveal-on-hover/focus; el patrón resultó poco descubrible en touch y en
+   escaneo rápido). El slot sigue reservando su ancho para que la fila no
+   salte de tamaño. */
 .kebabSlot {
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.assetCard:hover .kebabSlot,
-.assetCard:focus-within .kebabSlot {
-  opacity: 1;
 }
 
 .cardFooter {
@@ -250,4 +245,168 @@
   font-weight: var(--wb-weight-medium);
   white-space: nowrap;
   pointer-events: none;
+}
+
+/* Visually-hidden utility — same pattern as Button.module.css .srOnly.
+   Each CSS module keeps its own copy (co-located styles convention, see
+   DESIGN-SYSTEM.md); used for the "Acciones" list-header label. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Vista lista (punto 6, iteración UX F1) ─────────────────────────────
+   Tabla real (no CSS grid de filas) para que los headers sorteables usen
+   semántica nativa <th scope="col" aria-sort>. Filas comparten el MISMO
+   modelo de interacción que las cards de grilla (click selecciona, dblclick
+   abre Lightbox, right-click abre LibraryContextMenu, drag mueve) — los
+   handlers viven una sola vez en AssetGrid.jsx y se reusan en ambos layouts,
+   ver el comentario de cabecera del componente. */
+
+.listTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--wb-text-sm);
+}
+
+.listTable thead th {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.sortHeaderBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  cursor: pointer;
+}
+
+.sortHeaderBtn:hover {
+  color: var(--wb-text);
+}
+
+.sortArrow {
+  color: var(--wb-color-primary-600);
+}
+
+.listTable tbody tr {
+  cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.listTable tbody td {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-bottom: 1px solid var(--wb-border);
+  color: var(--wb-text);
+  white-space: nowrap;
+}
+
+.listNameCell {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  min-width: 0;
+}
+
+.listNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listCell {
+  color: var(--wb-text-muted);
+}
+
+.listActionsHeader,
+.listActionsCell {
+  width: 40px;
+  text-align: right;
+}
+
+/* Carpetas — siempre "on top" de la tabla, mismo tratamiento visual que
+   .folderChip (icono primary, fondo levemente distinto al de un asset). */
+.folderRow {
+  background: var(--wb-surface);
+}
+
+.folderRow:hover {
+  background: var(--wb-surface-muted);
+}
+
+.folderRowDragOver {
+  background: var(--wb-color-primary-50);
+  box-shadow: inset 0 0 0 1px var(--wb-color-primary-500);
+}
+
+.assetRow:hover {
+  background: var(--wb-surface-muted);
+}
+
+.assetRowSelected {
+  background: var(--wb-color-primary-50);
+  box-shadow: inset 3px 0 0 var(--wb-color-primary-500);
+}
+
+.assetRowSelected:hover {
+  background: var(--wb-color-primary-100);
+}
+
+/* No cursor override here — trashed rows stay selectable (click toggles
+   selection for bulk-restore, same as .assetCardTrashed in grid mode).
+   Only the visual treatment dims. */
+.assetRowTrashed {
+  opacity: 0.55;
+  filter: grayscale(40%);
+}
+
+/* Ancho reservado SIEMPRE (seleccionado o no) para que el thumb/nombre no
+   salten de posición al togglear selección — ver DESIGN-SYSTEM.md
+   §"Stable layouts — no jumpy reflows". */
+.listCheckSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.listCheckIcon {
+  color: var(--wb-color-primary-600);
+}
+
+.listThumb {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wb-radius-xs);
+  object-fit: cover;
+  background: var(--wb-surface-muted);
+}
+
+.listThumbFallback {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wb-radius-xs);
+  background: var(--wb-surface-muted);
+  color: var(--wb-text-muted);
 }

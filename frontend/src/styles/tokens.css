@@ -224,6 +224,19 @@
   --wb-tooltip-bg:                 #3c4043;
   --wb-tooltip-text:               #ffffff;
 
+  /* Action toast (library undo snackbar — iteración UX F1, punto 2).
+     Same "theme-lock" rationale as the tooltip above: a bottom-floating
+     confirmation pill (Google Drive-style) must stay legible immediately,
+     so it stays one fixed dark surface regardless of light/dark theme
+     instead of the raw --wb-color-neutral-900/50 scale (which FLIPS in
+     dark mode — see "Flipped neutral scale" below — and would silently
+     turn this into a near-white pill with dark text). Value matches
+     --wb-color-neutral-900/50's light-mode value. Do NOT override in
+     [data-theme="dark"]. */
+  --wb-toast-bg:                   #0f172a;
+  --wb-toast-text:                 #f8fafc;
+  --wb-toast-hover-bg:             rgba(255, 255, 255, 0.12); /* translucent white overlay for hover states on the fixed-dark toast — same rationale as --wb-glass-* alpha overlays below */
+
   /* Comments (highlight on <span data-comment-id>) */
   --wb-comment-highlight:          rgba(254, 240, 138, 0.5); /* matches existing #fef08a at ~50% alpha */
   --wb-comment-highlight-active:   rgba(254, 240, 138, 0.9);

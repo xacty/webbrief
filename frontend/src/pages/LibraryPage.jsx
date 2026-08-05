@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronRight, Download, FolderPlus, Move, RotateCcw, Trash2, Upload, X } from 'lucide-react'
+import { ChevronRight, FolderPlus, Trash2, Upload, X } from 'lucide-react'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { Button } from '../components/ui'
 import AssetGrid from '../components/library/AssetGrid'
@@ -13,21 +13,49 @@ import EmptyTrashModal from '../components/library/EmptyTrashModal'
 import LibraryExportModal from '../components/library/LibraryExportModal'
 import UploadDropzone from '../components/library/UploadDropzone'
 import UploadQueuePanel from '../components/library/UploadQueuePanel'
+import LibraryToolbar from '../components/library/LibraryToolbar'
+import LibraryContextMenu from '../components/library/LibraryContextMenu'
+import AssetInfoModal from '../components/library/AssetInfoModal'
+import ActionToast from '../components/library/ActionToast'
 import { fetchLibrary, moveAssets, trashAssets, restoreAssets, renameAsset, updateFolder, trashFolder } from '../lib/libraryApi'
 import { createUploadQueue, enqueueFiles, formatBytes } from '../lib/uploadQueue'
+import { filterAssetsByType, sortAssets } from '../lib/libraryAssetUtils'
 import styles from './LibraryPage.module.css'
 
 function cx(...parts) {
   return parts.filter(Boolean).join(' ')
 }
 
+const LAYOUT_STORAGE_KEY = 'wb:library:layout'
+
+function readStoredLayout() {
+  if (typeof window === 'undefined') return 'grid'
+  try {
+    return window.localStorage.getItem(LAYOUT_STORAGE_KEY) === 'list' ? 'list' : 'grid'
+  } catch {
+    return 'grid'
+  }
+}
+
+// Los 5 valores que el Select de orden (punto 3) representa directamente.
+// Los headers sorteables de la vista lista (punto 6) comparten el MISMO
+// estado sortField/sortDir pero además permiten dimensions/format, que el
+// Select no expone como opción — cuando sortField/sortDir cae fuera de
+// este set, el Select simplemente muestra su placeholder ("Ordenar") en
+// vez de fingir que matchea una de sus 5 opciones.
+const SORT_SELECT_KEYS = new Set(['name_asc', 'name_desc', 'date_asc', 'date_desc', 'size_desc'])
+
 /**
  * Biblioteca de imágenes por empresa. Orquestador: breadcrumb de carpetas
  * (query param `folderId`), filtro de proyecto (`projectId`), vista papelera
  * (`view=trash`), toolbar (Nueva carpeta / Subir imágenes), barra de uso y
- * subida (dropzone + cola + panel flotante de progreso, Task 12),
- * multiselección + mover + renombrar + papelera (Task 13), export ZIP con
- * limpieza opcional (Task 14 — ver LibraryExportModal).
+ * subida (dropzone + cola + panel flotante de progreso), multiselección +
+ * mover + renombrar + papelera + export ZIP con limpieza opcional, y —
+ * iteración UX F1 — (1) kebab siempre visible, (2) toast flotante con
+ * Deshacer para mover/papelera, (3) barra persistente que muta entre modo
+ * "orden + filtro" y modo "selección" sin reflow, (4) right-click
+ * customizado (LibraryContextMenu), (5) panel de información por asset, y
+ * (6) toggle grilla/lista con headers sorteables.
  */
 export default function LibraryPage() {
   const { currentCompany } = useWorkspace()
@@ -48,16 +76,38 @@ export default function LibraryPage() {
   // ProjectsPage (grep `selectedIds` ahí).
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  // Banner superior — DESDE esta iteración (punto 2) sólo se usa para
+  // errores. Los avisos de éxito de mover/papelera/exportar/restaurar pasan
+  // al toast flotante (`actionToast` más abajo); ver showActionToast.
   const [notice, setNotice] = useState(null) // { tone: 'success' | 'warning', message } | null
   const [moveState, setMoveState] = useState(null) // { kind: 'assets', ids } | { kind: 'folder', folder } | null
   const [renameState, setRenameState] = useState(null) // { kind: 'asset' | 'folder', id, name } | null
   const [emptyTrashOpen, setEmptyTrashOpen] = useState(false)
   const [exportState, setExportState] = useState(null) // { ids } | null
-  const [lightboxIndex, setLightboxIndex] = useState(null) // index into data.assets | null
+  const [lightboxIndex, setLightboxIndex] = useState(null) // index into visibleAssets | null
   // Highlights the "Biblioteca" breadcrumb root crumb while an internal
   // asset/folder drag hovers it — same drop contract as AssetGrid's folder
   // chips (see moveAssetsAndNotify/moveFolderAndNotify below).
   const [rootDragOver, setRootDragOver] = useState(false)
+
+  // Orden + filtro de tipo + layout (puntos 3 y 6 de la iteración UX F1) —
+  // client-side sobre `data.assets`, estado LOCAL (no URL, instrucción
+  // explícita). `layout` persiste en localStorage; sort/filter no.
+  const [sortField, setSortField] = useState('date')
+  const [sortDir, setSortDir] = useState('desc')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [layout, setLayout] = useState(readStoredLayout)
+
+  // Toast flotante inferior con Deshacer (punto 2) — ver ActionToast.jsx.
+  // Un solo toast a la vez: showActionToast reemplaza el anterior sin
+  // acumular (setState de un único slot, no una lista).
+  const [actionToast, setActionToast] = useState(null) // { id, message, subMessage?, onUndo? } | null
+
+  // Right-click customizado (punto 4) — ver LibraryContextMenu.jsx.
+  const [contextMenu, setContextMenu] = useState(null) // { x, y, kind, asset?, folder?, index?, ids? } | null
+
+  // Panel de información (punto 5) — ver AssetInfoModal.jsx.
+  const [infoAsset, setInfoAsset] = useState(null)
 
   // Cola de subida: vive en un ref (no en estado) porque es un objeto con
   // métodos + un array mutable interno, no un valor serializable — ver
@@ -97,10 +147,13 @@ export default function LibraryPage() {
     })
   }, [companyId])
 
-  // Cambiar de carpeta/proyecto/vista invalida cualquier selección previa —
-  // evita accionar en bulk sobre ids que ya no están a la vista.
+  // Cambiar de carpeta/proyecto/vista invalida cualquier selección y
+  // context menu previos — evita accionar en bulk sobre ids que ya no
+  // están a la vista, o dejar un menú contextual apuntando a un asset que
+  // ya no está montado.
   useEffect(() => {
     setSelectedIds(new Set())
+    setContextMenu(null)
   }, [folderId, projectId, view])
 
   // Los avisos de éxito se ocultan solos; los de advertencia (p. ej.
@@ -113,13 +166,26 @@ export default function LibraryPage() {
     return () => window.clearTimeout(timer)
   }, [notice])
 
-  // ESC limpia la selección sin robar el ESC a un modal abierto (el propio
-  // Modal ya maneja su cierre; acá sólo evitamos que ambos actúen a la vez).
+  // Auto-cierre del toast de acción a los 15s. Keyed en `actionToast?.id`
+  // (no en el objeto completo) para que SÓLO una acción nueva reinicie el
+  // timer — cerrar/deshacer ponen actionToast en null, lo que también
+  // limpia el timer anterior vía el cleanup de este mismo efecto sin
+  // programar uno nuevo (el guard de arriba corta antes del setTimeout).
+  useEffect(() => {
+    if (!actionToast) return undefined
+    const timer = window.setTimeout(() => setActionToast(null), 15000)
+    return () => window.clearTimeout(timer)
+  }, [actionToast?.id])
+
+  // ESC limpia la selección sin robar el ESC a un modal/menú abierto (cada
+  // overlay maneja su propio cierre; acá sólo evitamos que dos actúen a la
+  // vez — p. ej. que un ESC cierre el LibraryContextMenu Y también borre la
+  // selección en el mismo golpe de tecla).
   useEffect(() => {
     if (selectedIds.size === 0) return undefined
     function onKeyDown(event) {
       if (event.key !== 'Escape') return
-      if (moveState || renameState || emptyTrashOpen || exportState || lightboxIndex !== null) return
+      if (moveState || renameState || emptyTrashOpen || exportState || lightboxIndex !== null || contextMenu || infoAsset) return
       event.stopPropagation()
       clearSelection()
     }
@@ -127,7 +193,7 @@ export default function LibraryPage() {
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [selectedIds, moveState, renameState, emptyTrashOpen, exportState, lightboxIndex])
+  }, [selectedIds, moveState, renameState, emptyTrashOpen, exportState, lightboxIndex, contextMenu, infoAsset])
 
   function handleFilesPicked(event) {
     const files = Array.from(event.target.files || [])
@@ -173,6 +239,24 @@ export default function LibraryPage() {
     setNotice(null)
   }
 
+  // ── Toast de acción con Deshacer (punto 2) ─────────────────────────────
+
+  function showActionToast({ message, subMessage, onUndo }) {
+    setActionToast({ id: Date.now(), message, subMessage, onUndo })
+  }
+
+  function closeActionToast() {
+    setActionToast(null)
+  }
+
+  async function handleUndoToast() {
+    const undo = actionToast?.onUndo
+    // Cierra ANTES de ejecutar el undo — evita que un doble click alcance a
+    // disparar la acción dos veces mientras el await está en vuelo.
+    setActionToast(null)
+    if (undo) await undo()
+  }
+
   function toggleSelected(id) {
     setSelectedIds((current) => {
       const next = new Set(current)
@@ -187,13 +271,12 @@ export default function LibraryPage() {
   }
 
   // Quita sólo los ids indicados de la selección, en vez de vaciarla toda.
-  // Importante porque handleMoveConfirm/handleTrashAssets se llaman tanto
-  // desde el toolbar bulk (ids === selectedIds completo) como desde el
-  // kebab de un solo asset (que puede no estar seleccionado, o el usuario
-  // puede tener OTROS assets seleccionados aparte) — no queremos que una
-  // acción de kebab sobre un asset suelto borre una selección bulk
-  // no relacionada. Mismo criterio que ProjectsPage: sus acciones de kebab
-  // por-proyecto nunca llaman clearSelection().
+  // Importante porque handleMoveConfirm/handleTrashAssets/handleRestoreAssets
+  // se llaman tanto desde el toolbar bulk (ids === selectedIds completo)
+  // como desde el kebab/context menu de un solo asset (que puede no estar
+  // seleccionado, o el usuario puede tener OTROS assets seleccionados
+  // aparte) — no queremos que una acción suelta borre una selección bulk
+  // no relacionada. Mismo criterio que ProjectsPage.
   function removeFromSelection(ids) {
     setSelectedIds((current) => {
       if (current.size === 0) return current
@@ -219,29 +302,70 @@ export default function LibraryPage() {
     setMoveState(null)
   }
 
-  // Mutación compartida por dos caminos: el modal MoveToFolderModal (kebab
-  // "Mover"/"Mover a carpeta") y el drag & drop nativo sobre folder chips /
-  // el crumb "Biblioteca" (ver handleDropAssets/handleDropFolder). Estas
-  // dos funciones NO atrapan errores — MoveToFolderModal.handleConfirm ya
-  // envuelve su llamada a onConfirm en try/catch para mostrar el error
-  // inline en el modal; el camino de drag & drop (sin modal) hace su
-  // propio try/catch más abajo y lo manda al banner.
+  // Mutación compartida por tres caminos: el modal MoveToFolderModal (kebab
+  // "Mover"/"Mover a carpeta"), el drag & drop nativo sobre folder chips/
+  // filas/el crumb "Biblioteca", y LibraryContextMenu ("Mover"/"Mover a
+  // carpeta"). Estas dos funciones NO atrapan errores — MoveToFolderModal.
+  // handleConfirm ya envuelve su llamada a onConfirm en try/catch para
+  // mostrar el error inline en el modal; el camino de drag & drop (sin
+  // modal) hace su propio try/catch más abajo y lo manda al banner.
+  //
+  // Deshacer (punto 2.a): snapshotea el folder_id PREVIO de cada asset
+  // ANTES de mutar — `data.assets` todavía refleja el estado pre-move en
+  // este punto porque `reload()` corre después. El undo agrupa los ids
+  // movidos por su carpeta origen (un asset por selección puede venir de
+  // carpetas distintas si el usuario seleccionó a través de un filtro/
+  // búsqueda) y hace UNA llamada a moveAssets por grupo, no una por id.
   async function moveAssetsAndNotify(ids, targetFolderId) {
+    const prevFolderById = new Map(
+      (data?.assets || [])
+        .filter((asset) => ids.includes(asset.id))
+        .map((asset) => [asset.id, asset.folder_id ?? null])
+    )
+
     const result = await moveAssets(companyId, ids, targetFolderId)
     const moved = Number(result?.moved || 0)
     const failed = Array.isArray(result?.failed) ? result.failed.length : 0
-    showNotice('success', failed > 0
-      ? `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'} · ${failed} no procesada${failed === 1 ? '' : 's'}`
-      : `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'}`)
+    const failedIds = new Set((result?.failed || []).map((item) => item.id))
+    const movedIds = ids.filter((id) => !failedIds.has(id))
+
+    showActionToast({
+      message: failed > 0
+        ? `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'} · ${failed} no procesada${failed === 1 ? '' : 's'}`
+        : `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'}`,
+      onUndo: movedIds.length > 0 ? async () => {
+        const groups = new Map()
+        for (const id of movedIds) {
+          const prevFolder = prevFolderById.get(id) ?? null
+          const key = prevFolder ?? '__root__'
+          if (!groups.has(key)) groups.set(key, [])
+          groups.get(key).push(id)
+        }
+        for (const [key, groupIds] of groups) {
+          await moveAssets(companyId, groupIds, key === '__root__' ? null : key)
+        }
+        await reload()
+      } : undefined,
+    })
     removeFromSelection(ids)
     await reload()
   }
 
   // Named `movedFolderId` (not `folderId`) to avoid shadowing the outer
   // `folderId` (current URL folder, from searchParams) declared above.
+  // Deshacer (punto 2.b): snapshotea el parent_folder_id previo desde
+  // `data.allFolders` (árbol completo, no sólo `subfolders` — la carpeta
+  // movida puede no ser hija directa de la vista actual).
   async function moveFolderAndNotify(movedFolderId, targetFolderId) {
+    const prevParentId = (data?.allFolders || []).find((folder) => folder.id === movedFolderId)?.parent_folder_id ?? null
     await updateFolder(companyId, movedFolderId, { parentFolderId: targetFolderId })
-    showNotice('success', 'Carpeta movida')
+    showActionToast({
+      message: 'Carpeta movida',
+      onUndo: async () => {
+        await updateFolder(companyId, movedFolderId, { parentFolderId: prevParentId })
+        await reload()
+      },
+    })
     await reload()
   }
 
@@ -254,9 +378,10 @@ export default function LibraryPage() {
     }
   }
 
-  // ── Drag & drop para mover (folder chips + crumb "Biblioteca") ────────
+  // ── Drag & drop para mover (folder chips/filas + crumb "Biblioteca") ──
   // Mismas mutaciones que arriba, pero sin modal que capture el reject —
-  // acá el error (p. ej. 400 por ciclo de carpetas) va directo al banner.
+  // acá el error (p. ej. 400 por ciclo de carpetas) va directo al banner
+  // (no al toast: es un fallo, no una acción para ofrecer deshacer).
   async function handleDropAssets(ids, targetFolderId) {
     if (!ids?.length || !companyId) return
     try {
@@ -336,6 +461,11 @@ export default function LibraryPage() {
   }
 
   // ── Papelera ────────────────────────────────────────────────────────
+  // Deshacer (punto 2.c): usa `trashedIds` — los ids EFECTIVAMENTE
+  // trasheados que devuelve el backend (backend/src/routes/library.js,
+  // POST /assets/bulk/trash), no `ids` del request — algunos pueden haber
+  // quedado en `kept` por estar referenciados en un documento y esos NUNCA
+  // se tocaron, así que no hay nada que deshacer sobre ellos.
 
   async function handleTrashAssets(ids) {
     if (!ids?.length) return
@@ -345,16 +475,19 @@ export default function LibraryPage() {
     try {
       const result = await trashAssets(companyId, ids)
       const trashed = Number(result?.trashed || 0)
+      const trashedIds = Array.isArray(result?.trashedIds) ? result.trashedIds : []
       const kept = Array.isArray(result?.kept) ? result.kept : []
-      if (kept.length > 0) {
-        const names = kept.map((item) => item.fileName || 'archivo').join(', ')
-        showNotice(
-          'warning',
-          `${trashed} enviada${trashed === 1 ? '' : 's'} a papelera · ${kept.length} conservada${kept.length === 1 ? '' : 's'} (usadas en documentos): ${names}`
-        )
-      } else {
-        showNotice('success', `${trashed} ${trashed === 1 ? 'imagen' : 'imágenes'} enviada${trashed === 1 ? '' : 's'} a papelera`)
-      }
+      const subMessage = kept.length > 0
+        ? `${kept.length} conservada${kept.length === 1 ? '' : 's'} (usadas en documentos): ${kept.map((item) => item.fileName || 'archivo').join(', ')}`
+        : undefined
+      showActionToast({
+        message: `${trashed} ${trashed === 1 ? 'imagen' : 'imágenes'} enviada${trashed === 1 ? '' : 's'} a papelera`,
+        subMessage,
+        onUndo: trashedIds.length > 0 ? async () => {
+          await restoreAssets(companyId, trashedIds)
+          await reload()
+        } : undefined,
+      })
       removeFromSelection(ids)
       await reload()
     } catch (err) {
@@ -364,18 +497,24 @@ export default function LibraryPage() {
     }
   }
 
-  async function handleRestoreSelected() {
-    const ids = Array.from(selectedIds)
-    if (!ids.length) return
+  // Generalizado a `ids` explícitos (no sólo `selectedIds`) para que tanto
+  // el toolbar bulk (ids === selección completa) como el kebab/context menu
+  // de un solo asset trasheado (ids === [asset.id], puede no estar
+  // seleccionado) compartan un único chokepoint — mismo criterio que
+  // handleTrashAssets/moveAssetsAndNotify.
+  async function handleRestoreAssets(ids) {
+    if (!ids?.length) return
     setBulkBusy(true)
     try {
       const result = await restoreAssets(companyId, ids)
       const restored = Number(result?.restored || 0)
       const failed = Array.isArray(result?.failed) ? result.failed.length : 0
-      showNotice('success', failed > 0
-        ? `${restored} restaurada${restored === 1 ? '' : 's'} · ${failed} no encontrada${failed === 1 ? '' : 's'} en la papelera`
-        : `${restored} ${restored === 1 ? 'imagen' : 'imágenes'} restaurada${restored === 1 ? '' : 's'}`)
-      clearSelection()
+      showActionToast({
+        message: failed > 0
+          ? `${restored} restaurada${restored === 1 ? '' : 's'} · ${failed} no encontrada${failed === 1 ? '' : 's'} en la papelera`
+          : `${restored} ${restored === 1 ? 'imagen' : 'imágenes'} restaurada${restored === 1 ? '' : 's'}`,
+      })
+      removeFromSelection(ids)
       await reload()
     } catch (err) {
       showNotice('warning', err.message || 'No se pudo restaurar')
@@ -384,14 +523,21 @@ export default function LibraryPage() {
     }
   }
 
+  // Enviar una carpeta a papelera NO ofrece deshacer — el punto 2 del plan
+  // sólo pide undo para (a) mover assets, (b) mover carpeta y (c) papelera
+  // de assets; el trash de carpeta pasa al mismo toast por consistencia
+  // (el banner ya no se usa para esto) pero sin `onUndo` — ActionToast
+  // omite el botón "Deshacer" cuando no lo recibe.
   async function handleTrashFolder(folder) {
     if (!window.confirm(`¿Enviar la carpeta "${folder.name}" a la papelera? También se enviará todo su contenido.`)) return
     try {
       const result = await trashFolder(companyId, folder.id)
       const assetsTrashed = Number(result?.assetsTrashed || 0)
-      showNotice('success', assetsTrashed > 0
-        ? `Carpeta enviada a papelera junto con ${assetsTrashed} ${assetsTrashed === 1 ? 'imagen' : 'imágenes'}`
-        : 'Carpeta enviada a papelera')
+      showActionToast({
+        message: assetsTrashed > 0
+          ? `Carpeta enviada a papelera junto con ${assetsTrashed} ${assetsTrashed === 1 ? 'imagen' : 'imágenes'}`
+          : 'Carpeta enviada a papelera',
+      })
       await reload()
     } catch (err) {
       showNotice('warning', err.message || 'No se pudo enviar la carpeta a la papelera')
@@ -401,15 +547,17 @@ export default function LibraryPage() {
   function handleEmptied({ purged = 0, freedBytes = 0, foldersDeleted = 0 } = {}) {
     const parts = [`${purged} archivo${purged === 1 ? '' : 's'} eliminado${purged === 1 ? '' : 's'}`]
     if (foldersDeleted > 0) parts.push(`${foldersDeleted} carpeta${foldersDeleted === 1 ? '' : 's'} eliminada${foldersDeleted === 1 ? '' : 's'}`)
-    showNotice('success', `Papelera vaciada · ${parts.join(' · ')} (${formatBytes(freedBytes)} liberados)`)
+    showActionToast({ message: `Papelera vaciada · ${parts.join(' · ')} (${formatBytes(freedBytes)} liberados)` })
     reload()
   }
 
-  // ── Exportar (Task 14) ─────────────────────────────────────────────
+  // ── Exportar ────────────────────────────────────────────────────────
   // LibraryExportModal hace la descarga (fetch→blob) y, si el toggle
   // "Enviar a papelera tras exportar" está activo, encadena trashAssets —
-  // acá sólo formateamos el aviso final a partir del resultado crudo que
-  // devuelve, mismo criterio que handleMoveConfirm/handleEmptied.
+  // acá sólo formateamos el toast final a partir del resultado crudo que
+  // devuelve, mismo criterio que handleMoveConfirm/handleEmptied. El undo
+  // (cuando hubo auto-trash) reusa el mismo `trashedIds` de la respuesta
+  // de trashAssets (punto 2.c), gratis una vez que el backend lo expone.
 
   function openExportModal(ids) {
     if (!ids?.length) return
@@ -423,24 +571,91 @@ export default function LibraryPage() {
   async function handleExported(trashResult) {
     const exportedIds = exportState?.ids || []
     if (!trashResult) {
-      showNotice('success', 'Exportación descargada')
+      showActionToast({ message: 'Exportación descargada' })
     } else if (trashResult.trashError) {
+      // Fallo real (el export sí bajó, pero el trash posterior no) — se
+      // queda en el banner, no hay nada que deshacer.
       showNotice('warning', `Se exportó, pero no se pudo enviar a la papelera: ${trashResult.trashError}`)
     } else {
       const trashed = Number(trashResult.trashed || 0)
+      const trashedIds = Array.isArray(trashResult.trashedIds) ? trashResult.trashedIds : []
       const kept = Array.isArray(trashResult.kept) ? trashResult.kept : []
-      if (kept.length > 0) {
-        const names = kept.map((item) => item.fileName || 'archivo').join(', ')
-        showNotice(
-          'warning',
-          `Exportación descargada · ${trashed} enviada${trashed === 1 ? '' : 's'} a papelera · ${kept.length} conservada${kept.length === 1 ? '' : 's'} (usadas en documentos): ${names}`
-        )
-      } else {
-        showNotice('success', `Exportación descargada · ${trashed} enviada${trashed === 1 ? '' : 's'} a papelera`)
-      }
+      const subMessage = kept.length > 0
+        ? `${kept.length} conservada${kept.length === 1 ? '' : 's'} (usadas en documentos): ${kept.map((item) => item.fileName || 'archivo').join(', ')}`
+        : undefined
+      showActionToast({
+        message: `Exportación descargada · ${trashed} enviada${trashed === 1 ? '' : 's'} a papelera`,
+        subMessage,
+        onUndo: trashedIds.length > 0 ? async () => {
+          await restoreAssets(companyId, trashedIds)
+          await reload()
+        } : undefined,
+      })
     }
     removeFromSelection(exportedIds)
     await reload()
+  }
+
+  // ── Orden / filtro de tipo / layout (puntos 3 y 6) ─────────────────────
+
+  function handleSortSelectChange(value) {
+    const separatorIndex = value.lastIndexOf('_')
+    if (separatorIndex < 0) return
+    setSortField(value.slice(0, separatorIndex))
+    setSortDir(value.slice(separatorIndex + 1))
+  }
+
+  // Compartido con los headers sorteables de la vista lista — clic sobre el
+  // campo activo alterna asc/desc; clic sobre uno nuevo lo activa con la
+  // dirección "natural" para ese campo (nombre arranca A-Z, el resto
+  // arranca con lo más grande/reciente primero).
+  function handleSortFieldClick(field) {
+    if (field === sortField) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir(field === 'name' ? 'asc' : 'desc')
+    }
+  }
+
+  function handleLayoutChange(next) {
+    setLayout(next)
+    try {
+      window.localStorage.setItem(LAYOUT_STORAGE_KEY, next)
+    } catch {
+      // Swallow QuotaExceededError o denial en modo privado — mismo guard
+      // que LibraryExportModal.writeTrashAfterExportPref.
+    }
+  }
+
+  // ── Right-click customizado (punto 4) ─────────────────────────────────
+  // `bulk` sólo cuando ≥2 seleccionadas Y el target del right-click ES
+  // parte de esa selección — right-click sobre una imagen NO seleccionada
+  // (aunque haya selección activa en otras) siempre abre el menú de ESA
+  // imagen sola, como Drive. La selección en sí NUNCA se muta acá — el
+  // menú sólo decide qué ítems mostrar, no cambia `selectedIds`.
+
+  function openAssetContextMenu(event, asset, index) {
+    event.preventDefault()
+    const bulk = selectedIds.size >= 2 && selectedIds.has(asset.id)
+    const ids = bulk ? Array.from(selectedIds) : [asset.id]
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      kind: isTrash ? (bulk ? 'trash-selection' : 'trash-asset') : (bulk ? 'selection' : 'asset'),
+      asset,
+      index,
+      ids,
+    })
+  }
+
+  function openFolderContextMenu(event, folder) {
+    event.preventDefault()
+    setContextMenu({ x: event.clientX, y: event.clientY, kind: 'folder', folder })
+  }
+
+  function closeContextMenu() {
+    setContextMenu(null)
   }
 
   // Workspace not resolved yet — nothing meaningful to render (matches
@@ -455,12 +670,21 @@ export default function LibraryPage() {
   const breadcrumbChain = !isTrash ? data?.breadcrumb || [] : []
   const currentFolder = breadcrumbChain.length ? breadcrumbChain[breadcrumbChain.length - 1] : null
   const pageTitle = isTrash ? 'Papelera' : currentFolder?.name || 'Biblioteca'
-  const assetCount = data?.assets?.length ?? 0
+  const rawAssets = data?.assets || []
+  const assetCount = rawAssets.length
   const folderCount = data?.subfolders?.length ?? 0
   const metaText = isTrash
     ? `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} en papelera`
     : `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} · ${folderCount} carpeta${folderCount === 1 ? '' : 's'}`
   const selectionCount = selectedIds.size
+
+  // Orden + filtro de tipo client-side (punto 3) — el filtro de tipo no
+  // aplica en papelera (la toolbar tampoco lo muestra ahí, ver
+  // LibraryToolbar). El Lightbox navega sobre esta MISMA lista (ver más
+  // abajo) para que prev/next siga el orden visual que el usuario ve.
+  const typeFilteredAssets = isTrash ? rawAssets : filterAssetsByType(rawAssets, typeFilter)
+  const visibleAssets = sortAssets(typeFilteredAssets, sortField, sortDir)
+  const sortSelectValue = SORT_SELECT_KEYS.has(`${sortField}_${sortDir}`) ? `${sortField}_${sortDir}` : ''
 
   return (
     <div className={styles.page}>
@@ -549,20 +773,6 @@ export default function LibraryPage() {
                 />
               </div>
             )}
-
-            {isTrash && canWrite && (
-              <div className={styles.headerActions}>
-                <Button
-                  type="button"
-                  variant="danger"
-                  icon={<Trash2 size={16} />}
-                  onClick={() => setEmptyTrashOpen(true)}
-                  disabled={assetCount === 0}
-                >
-                  Vaciar papelera
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       </header>
@@ -587,96 +797,40 @@ export default function LibraryPage() {
             </div>
           )}
 
-          {canWrite && selectionCount > 0 && (
-            <div className={styles.bulkToolbar} role="toolbar" aria-label="Acciones masivas">
-              <strong className={styles.bulkInfo}>
-                {selectionCount} imagen{selectionCount === 1 ? '' : 'es'} seleccionada{selectionCount === 1 ? '' : 's'}
-              </strong>
-              <div className={styles.bulkActions}>
-                {isTrash ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      icon={<RotateCcw size={14} />}
-                      onClick={handleRestoreSelected}
-                      disabled={bulkBusy}
-                      aria-label={`Restaurar ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'}`}
-                    >
-                      Restaurar seleccionadas
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearSelection}
-                      disabled={bulkBusy}
-                      aria-label="Cancelar selección"
-                    >
-                      Cancelar
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      icon={<Move size={14} />}
-                      onClick={() => openMoveAssetsModal(Array.from(selectedIds))}
-                      disabled={bulkBusy}
-                      aria-label={`Mover ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'} a otra carpeta`}
-                    >
-                      Mover
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      icon={<Download size={14} />}
-                      onClick={() => openExportModal(Array.from(selectedIds))}
-                      disabled={bulkBusy}
-                      aria-label={`Exportar ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'}`}
-                    >
-                      Exportar
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      size="sm"
-                      icon={<Trash2 size={14} />}
-                      onClick={() => handleTrashAssets(Array.from(selectedIds))}
-                      disabled={bulkBusy}
-                      aria-label={`Enviar ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'} a la papelera`}
-                    >
-                      Papelera
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearSelection}
-                      disabled={bulkBusy}
-                      aria-label="Cancelar selección"
-                    >
-                      Cancelar
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
+          <LibraryToolbar
+            isTrash={isTrash}
+            canWrite={canWrite}
+            selectionCount={selectionCount}
+            bulkBusy={bulkBusy}
+            sortValue={sortSelectValue}
+            onSortChange={handleSortSelectChange}
+            typeFilter={typeFilter}
+            onTypeFilterChange={setTypeFilter}
+            layout={layout}
+            onLayoutChange={handleLayoutChange}
+            onMove={() => openMoveAssetsModal(Array.from(selectedIds))}
+            onExport={() => openExportModal(Array.from(selectedIds))}
+            onTrash={() => handleTrashAssets(Array.from(selectedIds))}
+            onRestore={() => handleRestoreAssets(Array.from(selectedIds))}
+            onCancel={clearSelection}
+            onEmptyTrash={() => setEmptyTrashOpen(true)}
+            emptyTrashDisabled={assetCount === 0}
+          />
 
           <AssetGrid
             folders={data?.subfolders || []}
-            assets={data?.assets || []}
+            assets={visibleAssets}
+            totalAssetCount={assetCount}
             loading={loadState === 'loading'}
             error={loadState === 'error'}
             onRetry={reload}
             onOpenFolder={goToFolder}
             canWrite={canWrite}
             view={view}
+            layout={layout}
+            sortField={sortField}
+            sortDir={sortDir}
+            onSortFieldClick={handleSortFieldClick}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelected}
             onOpenLightbox={setLightboxIndex}
@@ -684,11 +838,14 @@ export default function LibraryPage() {
             onMoveAsset={(asset) => openMoveAssetsModal([asset.id])}
             onExportAsset={(asset) => openExportModal([asset.id])}
             onTrashAsset={(asset) => handleTrashAssets([asset.id])}
+            onInfoAsset={setInfoAsset}
             onRenameFolder={openRenameFolder}
             onMoveFolder={openMoveFolderModal}
             onTrashFolder={handleTrashFolder}
             onDropAssets={handleDropAssets}
             onDropFolder={handleDropFolder}
+            onAssetContextMenu={openAssetContextMenu}
+            onFolderContextMenu={openFolderContextMenu}
           />
 
           <footer className={styles.footer}>
@@ -708,7 +865,7 @@ export default function LibraryPage() {
 
       {lightboxIndex !== null && (
         <Lightbox
-          assets={data?.assets || []}
+          assets={visibleAssets}
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onNavigate={setLightboxIndex}
@@ -758,6 +915,32 @@ export default function LibraryPage() {
         onExported={handleExported}
       />
 
+      <AssetInfoModal
+        open={Boolean(infoAsset)}
+        onClose={() => setInfoAsset(null)}
+        asset={infoAsset}
+        folders={data?.allFolders || []}
+      />
+
+      <LibraryContextMenu
+        open={Boolean(contextMenu)}
+        position={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+        menu={contextMenu}
+        onClose={closeContextMenu}
+        onPreview={(index) => setLightboxIndex(index)}
+        onInfo={(asset) => setInfoAsset(asset)}
+        onRename={openRenameAsset}
+        onMove={(ids) => openMoveAssetsModal(ids)}
+        onExport={(ids) => openExportModal(ids)}
+        onTrash={(ids) => handleTrashAssets(ids)}
+        onDeselectAll={clearSelection}
+        onOpenFolder={goToFolder}
+        onRenameFolder={openRenameFolder}
+        onMoveFolder={openMoveFolderModal}
+        onTrashFolder={handleTrashFolder}
+        onRestore={(ids) => handleRestoreAssets(ids)}
+      />
+
       {panelVisible && queueItems.length > 0 && (
         <UploadQueuePanel
           items={queueItems}
@@ -766,6 +949,8 @@ export default function LibraryPage() {
           onAllDone={reload}
         />
       )}
+
+      <ActionToast toast={actionToast} onUndo={handleUndoToast} onClose={closeActionToast} />
     </div>
   )
 }

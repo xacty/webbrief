@@ -418,12 +418,13 @@ router.post('/assets/bulk/trash', rateLimiters.sensitiveAction, writeAccess, asy
       .eq('company_id', req.libraryAccess.companyId)
       .is('trashed_at', null)
     if (assetsError) return res.status(500).json({ error: assetsError.message })
-    if (!assets || assets.length === 0) return res.json({ trashed: 0, kept: [] })
+    if (!assets || assets.length === 0) return res.json({ trashed: 0, trashedIds: [], kept: [] })
 
     const referencedIds = force ? new Set() : await findReferencedAssetIds(req.libraryAccess.companyId, assets)
     const { trashable, kept } = partitionTrashableAssets({ assets, referencedIds })
 
     let trashedCount = 0
+    let trashedIds = []
     if (trashable.length > 0) {
       const timestamp = new Date()
       const deleteAfter = new Date(timestamp.getTime() + 30 * 24 * 60 * 60 * 1000)
@@ -439,6 +440,13 @@ router.post('/assets/bulk/trash', rateLimiters.sensitiveAction, writeAccess, asy
         .select('id')
       if (trashError) return res.status(500).json({ error: trashError.message })
       trashedCount = (trashedRows || []).length
+      // Expuesto además del contador para que el frontend pueda ofrecer
+      // "Deshacer" sobre exactamente los ids que quedaron trasheados (no
+      // sobre `ids` del request, que puede incluir ids `kept` por estar
+      // referenciados — ver ActionToast/moveAssetsAndNotify-equivalente en
+      // LibraryPage.jsx). Aditivo: no cambia el shape existente, sólo agrega
+      // el campo.
+      trashedIds = (trashedRows || []).map((row) => row.id)
     }
 
     const assetById = new Map(assets.map((asset) => [asset.id, asset]))
@@ -456,7 +464,7 @@ router.post('/assets/bulk/trash', rateLimiters.sensitiveAction, writeAccess, asy
       })
     }
 
-    return res.json({ trashed: trashedCount, kept: keptWithFileName })
+    return res.json({ trashed: trashedCount, trashedIds, kept: keptWithFileName })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo enviar a la papelera' })
   }
