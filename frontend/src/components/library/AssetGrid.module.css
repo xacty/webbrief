@@ -228,24 +228,8 @@
   font-size: var(--wb-text-sm);
 }
 
-/* Drag ghost — pill flotante fuera de pantalla usada sólo como snapshot
-   para dataTransfer.setDragImage cuando se arrastran 2+ assets
-   seleccionados (ver AssetGrid.jsx createDragGhost). Nunca visible en el
-   viewport real. */
-.dragGhost {
-  position: fixed;
-  top: -1000px;
-  left: -1000px;
-  padding: var(--wb-space-2) var(--wb-space-3);
-  border-radius: var(--wb-radius-2);
-  background: var(--wb-color-primary-600);
-  color: #ffffff; /* keep literal — text on solid brand bg, no token */
-  font-family: var(--wb-font-sans);
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-medium);
-  white-space: nowrap;
-  pointer-events: none;
-}
+/* Drag ghost moved to organizer/dnd.module.css in O2.a (createDragGhost
+   now lives in organizer/dnd.js, shared with future callers). */
 
 /* Visually-hidden utility — same pattern as Button.module.css .srOnly.
    Each CSS module keeps its own copy (co-located styles convention, see
@@ -266,7 +250,7 @@
    Tabla real (no CSS grid de filas) para que los headers sorteables usen
    semántica nativa <th scope="col" aria-sort>. Filas comparten el MISMO
    modelo de interacción que las cards de grilla (click selecciona, dblclick
-   abre Lightbox, right-click abre LibraryContextMenu, drag mueve) — los
+   abre Lightbox, right-click abre el ItemContextMenu, drag mueve) — los
    handlers viven una sola vez en AssetGrid.jsx y se reusan en ambos layouts,
    ver el comentario de cabecera del componente. */
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronRight, FolderPlus, Trash2, Upload, X } from 'lucide-react'
+import {
+  ChevronRight, Download, Eye, FolderOpen, FolderPlus, Info, Move, Pencil, RotateCcw, Trash2, Upload, X, XCircle,
+} from 'lucide-react'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { Button } from '../components/ui'
 import AssetGrid from '../components/library/AssetGrid'
@@ -14,9 +16,9 @@ import LibraryExportModal from '../components/library/LibraryExportModal'
 import UploadDropzone from '../components/library/UploadDropzone'
 import UploadQueuePanel from '../components/library/UploadQueuePanel'
 import LibraryToolbar from '../components/library/LibraryToolbar'
-import LibraryContextMenu from '../components/library/LibraryContextMenu'
+import ItemContextMenu from '../components/organizer/ItemContextMenu'
 import AssetInfoModal from '../components/library/AssetInfoModal'
-import ActionToast from '../components/library/ActionToast'
+import ActionToast from '../components/organizer/ActionToast'
 import { fetchLibrary, moveAssets, trashAssets, restoreAssets, renameAsset, updateFolder, trashFolder } from '../lib/libraryApi'
 import { createUploadQueue, enqueueFiles, formatBytes } from '../lib/uploadQueue'
 import { filterAssetsByType, sortAssets } from '../lib/libraryAssetUtils'
@@ -54,8 +56,9 @@ const SORT_SELECT_KEYS = new Set(['name_asc', 'name_desc', 'date_asc', 'date_des
  * iteración UX F1 — (1) kebab siempre visible, (2) toast flotante con
  * Deshacer para mover/papelera, (3) barra persistente que muta entre modo
  * "orden + filtro" y modo "selección" sin reflow, (4) right-click
- * customizado (LibraryContextMenu), (5) panel de información por asset, y
- * (6) toggle grilla/lista con headers sorteables.
+ * customizado (ItemContextMenu, genérico desde O2.a — ver
+ * buildContextMenuItems), (5) panel de información por asset, y (6) toggle
+ * grilla/lista con headers sorteables.
  */
 export default function LibraryPage() {
   const { currentCompany } = useWorkspace()
@@ -103,7 +106,8 @@ export default function LibraryPage() {
   // acumular (setState de un único slot, no una lista).
   const [actionToast, setActionToast] = useState(null) // { id, message, subMessage?, onUndo? } | null
 
-  // Right-click customizado (punto 4) — ver LibraryContextMenu.jsx.
+  // Right-click customizado (punto 4) — ver organizer/ItemContextMenu.jsx
+  // + buildContextMenuItems más abajo (traduce este shape a `items`).
   const [contextMenu, setContextMenu] = useState(null) // { x, y, kind, asset?, folder?, index?, ids? } | null
 
   // Panel de información (punto 5) — ver AssetInfoModal.jsx.
@@ -179,7 +183,7 @@ export default function LibraryPage() {
 
   // ESC limpia la selección sin robar el ESC a un modal/menú abierto (cada
   // overlay maneja su propio cierre; acá sólo evitamos que dos actúen a la
-  // vez — p. ej. que un ESC cierre el LibraryContextMenu Y también borre la
+  // vez — p. ej. que un ESC cierre el ItemContextMenu Y también borre la
   // selección en el mismo golpe de tecla).
   useEffect(() => {
     if (selectedIds.size === 0) return undefined
@@ -304,7 +308,7 @@ export default function LibraryPage() {
 
   // Mutación compartida por tres caminos: el modal MoveToFolderModal (kebab
   // "Mover"/"Mover a carpeta"), el drag & drop nativo sobre folder chips/
-  // filas/el crumb "Biblioteca", y LibraryContextMenu ("Mover"/"Mover a
+  // filas/el crumb "Biblioteca", y el ItemContextMenu ("Mover"/"Mover a
   // carpeta"). Estas dos funciones NO atrapan errores — MoveToFolderModal.
   // handleConfirm ya envuelve su llamada a onConfirm en try/catch para
   // mostrar el error inline en el modal; el camino de drag & drop (sin
@@ -658,6 +662,65 @@ export default function LibraryPage() {
     setContextMenu(null)
   }
 
+  // Arma la lista de `items` para ItemContextMenu (`components/organizer/`,
+  // O2.a) a partir del `contextMenu` armado arriba. Este mapeo ES el
+  // conocimiento de dominio que antes vivía DENTRO de
+  // LibraryContextMenu.renderItems() — el componente genérico sólo sabe
+  // pintar `{ type, icon, label, onSelect, destructive, disabled }`.
+  // Mismos labels/orden/íconos que antes, sólo cambió DÓNDE vive la
+  // decisión de qué mostrar.
+  function buildContextMenuItems(menu) {
+    if (!menu) return []
+    switch (menu.kind) {
+      case 'asset': {
+        const { asset, index, ids } = menu
+        return [
+          { type: 'item', icon: Eye, label: 'Vista previa', onSelect: () => setLightboxIndex(index) },
+          { type: 'item', icon: Info, label: 'Información', onSelect: () => setInfoAsset(asset) },
+          { type: 'separator' },
+          { type: 'item', icon: Pencil, label: 'Renombrar', onSelect: () => openRenameAsset(asset) },
+          { type: 'item', icon: Move, label: 'Mover a carpeta', onSelect: () => openMoveAssetsModal(ids) },
+          { type: 'item', icon: Download, label: 'Exportar', onSelect: () => openExportModal(ids) },
+          { type: 'separator' },
+          { type: 'item', icon: Trash2, label: 'Enviar a papelera', destructive: true, onSelect: () => handleTrashAssets(ids) },
+        ]
+      }
+      case 'selection': {
+        const { ids } = menu
+        return [
+          { type: 'header', label: `${ids.length} seleccionadas` },
+          { type: 'separator' },
+          { type: 'item', icon: Move, label: 'Mover', onSelect: () => openMoveAssetsModal(ids) },
+          { type: 'item', icon: Download, label: 'Exportar', onSelect: () => openExportModal(ids) },
+          { type: 'item', icon: Trash2, label: 'Enviar a papelera', destructive: true, onSelect: () => handleTrashAssets(ids) },
+          { type: 'separator' },
+          { type: 'item', icon: XCircle, label: 'Deseleccionar todo', onSelect: () => clearSelection() },
+        ]
+      }
+      case 'folder': {
+        const { folder } = menu
+        return [
+          { type: 'item', icon: FolderOpen, label: 'Abrir', onSelect: () => goToFolder(folder.id) },
+          { type: 'separator' },
+          { type: 'item', icon: Pencil, label: 'Renombrar', onSelect: () => openRenameFolder(folder) },
+          { type: 'item', icon: Move, label: 'Mover', onSelect: () => openMoveFolderModal(folder) },
+          { type: 'separator' },
+          { type: 'item', icon: Trash2, label: 'Enviar a papelera', destructive: true, onSelect: () => handleTrashFolder(folder) },
+        ]
+      }
+      case 'trash-asset': {
+        const { ids } = menu
+        return [{ type: 'item', icon: RotateCcw, label: 'Restaurar', onSelect: () => handleRestoreAssets(ids) }]
+      }
+      case 'trash-selection': {
+        const { ids } = menu
+        return [{ type: 'item', icon: RotateCcw, label: `Restaurar ${ids.length}`, onSelect: () => handleRestoreAssets(ids) }]
+      }
+      default:
+        return []
+    }
+  }
+
   // Workspace not resolved yet — nothing meaningful to render (matches
   // ProjectsPage's guard for the same currentCompany-not-ready window).
   if (!currentCompany) return null
@@ -685,6 +748,7 @@ export default function LibraryPage() {
   const typeFilteredAssets = isTrash ? rawAssets : filterAssetsByType(rawAssets, typeFilter)
   const visibleAssets = sortAssets(typeFilteredAssets, sortField, sortDir)
   const sortSelectValue = SORT_SELECT_KEYS.has(`${sortField}_${sortDir}`) ? `${sortField}_${sortDir}` : ''
+  const contextMenuItems = buildContextMenuItems(contextMenu)
 
   return (
     <div className={styles.page}>
@@ -922,23 +986,11 @@ export default function LibraryPage() {
         folders={data?.allFolders || []}
       />
 
-      <LibraryContextMenu
+      <ItemContextMenu
         open={Boolean(contextMenu)}
         position={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
-        menu={contextMenu}
+        items={contextMenuItems}
         onClose={closeContextMenu}
-        onPreview={(index) => setLightboxIndex(index)}
-        onInfo={(asset) => setInfoAsset(asset)}
-        onRename={openRenameAsset}
-        onMove={(ids) => openMoveAssetsModal(ids)}
-        onExport={(ids) => openExportModal(ids)}
-        onTrash={(ids) => handleTrashAssets(ids)}
-        onDeselectAll={clearSelection}
-        onOpenFolder={goToFolder}
-        onRenameFolder={openRenameFolder}
-        onMoveFolder={openMoveFolderModal}
-        onTrashFolder={handleTrashFolder}
-        onRestore={(ids) => handleRestoreAssets(ids)}
       />
 
       {panelVisible && queueItems.length > 0 && (

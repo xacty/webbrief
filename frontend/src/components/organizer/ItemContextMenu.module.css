@@ -1,7 +1,7 @@
-/* Right-click customizado — ver el comentario de cabecera de
-   LibraryContextMenu.jsx. Mismas dimensiones/espaciado que KebabMenu.module.css
+/* Right-click customizado genérico — ver el comentario de cabecera de
+   ItemContextMenu.jsx. Mismas dimensiones/espaciado que KebabMenu.module.css
    (radius-2, shadow-md, popover z-index) para que ambos menús contextuales
-   de la biblioteca se sientan como el mismo sistema. */
+   se sientan como el mismo sistema. */
 
 .menu {
   position: fixed;
@@ -18,7 +18,8 @@
   user-select: none;
 }
 
-/* Header no-clickable — "N seleccionadas" (kind='selection'/'trash-selection'). */
+/* Header no-clickable — entrada `{ type: 'header' }` (p. ej. "N
+   seleccionadas"). */
 .header {
   padding: var(--wb-space-2) var(--wb-space-3);
   font-size: var(--wb-text-xs);

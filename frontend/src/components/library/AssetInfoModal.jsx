@@ -7,8 +7,8 @@ import styles from './AssetInfoModal.module.css'
 /**
  * Panel de información (iteración UX F1, punto 5) — sólo lectura: miniatura
  * chica + filas etiqueta/valor. Abre desde el kebab de AssetGrid ("Información",
- * primer item) y desde LibraryContextMenu (mismo item, right-click). Usa
- * `Modal` de ui/ — ver DESIGN-SYSTEM.md §"Modal anatomy".
+ * primer item) y desde el ItemContextMenu (organizer/, mismo item,
+ * right-click). Usa `Modal` de ui/ — ver DESIGN-SYSTEM.md §"Modal anatomy".
  *
  * `folders` es `data.allFolders` (árbol completo activo de la empresa, ya
  * expuesto por el backend para MoveToFolderModal — ver CONTEXT.min

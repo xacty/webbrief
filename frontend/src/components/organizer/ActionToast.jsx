@@ -3,13 +3,15 @@ import { Button } from '../ui'
 import styles from './ActionToast.module.css'
 
 /**
- * Toast flotante inferior con Deshacer (iteración UX F1, punto 2).
+ * Toast flotante inferior con Deshacer (iteración UX F1, punto 2; movido a
+ * `components/organizer/` en O2.a — ya era genérico, sin conocimiento de
+ * assets, así que la extracción es un move verbatim).
  *
  * Reemplaza el banner superior (`showNotice`) de LibraryPage para las
  * acciones de mover/papelera — ver el comentario de sección en
  * LibraryPage.jsx ("Toast de acción con Deshacer"). El banner se conserva
  * SOLO para errores y para el resto de la página; este componente es
- * deliberadamente scoped a la biblioteca (no es un sistema global de
+ * deliberadamente scoped a acciones puntuales (no es un sistema global de
  * toasts — DESIGN-SYSTEM.md documenta que el resto del shell usa banners
  * inline; ésta es la excepción explícita pedida por el dueño de producto
  * para dar una red de seguridad inmediata en acciones de mover/papelera).
@@ -18,9 +20,9 @@ import styles from './ActionToast.module.css'
  * "Deshacer" sólo se renderiza cuando `onUndo` está presente — algunas
  * acciones (p. ej. enviar una carpeta a papelera, vaciar la papelera) usan
  * el mismo toast como feedback liviano sin ofrecer deshacer. El auto-cierre
- * a los 15s y la limpieza del timer viven en LibraryPage (ver `showActionToast`
- * / `useEffect` keyed en `toast?.id`) — este componente es puramente
- * presentacional.
+ * a los 15s y la limpieza del timer viven en el caller (ver `showActionToast`
+ * / `useEffect` keyed en `toast?.id` en LibraryPage.jsx) — este componente
+ * es puramente presentacional.
  */
 export default function ActionToast({ toast, onUndo, onClose }) {
   if (!toast) return null

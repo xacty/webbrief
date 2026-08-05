@@ -4,6 +4,7 @@ import { Button, KebabMenu } from '../ui'
 import EmptyState from '../onboarding/EmptyState'
 import { formatBytes } from '../../lib/uploadQueue'
 import { assetImageUrl, formatDateEs, formatDimensions, mimeLabel } from '../../lib/libraryAssetUtils'
+import { ASSET_DRAG_TYPE, FOLDER_DRAG_TYPE, createDragGhost, dragHasAnyType, isInternalDragLeave } from '../organizer/dnd'
 import styles from './AssetGrid.module.css'
 
 function cx(...parts) {
@@ -31,24 +32,9 @@ function useIsNarrowViewport(breakpoint) {
   return isNarrow
 }
 
-// Drag & drop mime types (Task: iteración UX F1). Namespaced so
-// UploadDropzone can tell internal card drags apart from OS file drags —
-// see the isInternalDrag filter in UploadDropzone.jsx.
-const ASSET_DRAG_TYPE = 'application/x-webrief-assets'
-const FOLDER_DRAG_TYPE = 'application/x-webrief-folder'
-
-// Off-screen pill used as the custom drag image when a multi-selection is
-// dragged together (see handleAssetDragStart). Built with a CSS module
-// class (tokens, no inline styles) even though the element itself is
-// never visible on-screen — only used as the browser's drag-image
-// snapshot, then removed on the next tick.
-function createDragGhost(text) {
-  const el = document.createElement('div')
-  el.className = styles.dragGhost
-  el.textContent = text
-  document.body.appendChild(el)
-  return el
-}
+// Drag & drop mime types + drag-ghost + dragover/dragleave guards now live
+// in organizer/dnd.js (O2.a — shared with ProjectsPage down the line). See
+// that file's header comment for the mime-namespacing rationale.
 
 function sortIndicator(field, sortField, sortDir) {
   if (field !== sortField) return null
@@ -98,8 +84,9 @@ function ariaSortValue(field, sortField, sortDir) {
  * LibraryPage; este componente sólo arma los payloads y llama
  * onDropAssets/onDropFolder.
  *
- * Right-click (punto 4 — LibraryContextMenu, ver LibraryPage.jsx): SOLO
- * sobre cards/filas de imagen y folder chips/filas — onAssetContextMenu /
+ * Right-click (punto 4 — ItemContextMenu en organizer/, ver LibraryPage.jsx
+ * buildContextMenuItems): SOLO sobre cards/filas de imagen y folder
+ * chips/filas — onAssetContextMenu /
  * onFolderContextMenu delegan la decisión de qué variante de menú mostrar
  * (single vs bulk) a LibraryPage, que conoce `selectedIds`. Fuera de esos
  * targets no se intercepta el evento — el menú nativo del navegador queda
@@ -219,20 +206,18 @@ export default function AssetGrid({
 
   function handleFolderDragOver(event, folder) {
     if (!canWrite) return
-    const types = event.dataTransfer.types || []
-    if (!types.includes(ASSET_DRAG_TYPE) && !types.includes(FOLDER_DRAG_TYPE)) return
+    if (!dragHasAnyType(event, [ASSET_DRAG_TYPE, FOLDER_DRAG_TYPE])) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     if (dragOverFolderId !== folder.id) setDragOverFolderId(folder.id)
   }
 
-  // Checks relatedTarget containment so hovering between a chip's own
-  // children (icon/name/kebab) doesn't flicker the highlight on and off —
-  // dragleave fires on every child boundary crossing, not just when the
-  // pointer actually leaves the chip/row.
+  // isInternalDragLeave checks relatedTarget containment so hovering
+  // between a chip's own children (icon/name/kebab) doesn't flicker the
+  // highlight on and off — dragleave fires on every child boundary
+  // crossing, not just when the pointer actually leaves the chip/row.
   function handleFolderDragLeave(event, folderId) {
-    const related = event.relatedTarget
-    if (related && event.currentTarget.contains(related)) return
+    if (isInternalDragLeave(event)) return
     setDragOverFolderId((current) => (current === folderId ? null : current))
   }
 

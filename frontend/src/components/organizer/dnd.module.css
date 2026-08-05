@@ -1,0 +1,19 @@
+/* Drag ghost — pill flotante fuera de pantalla usada sólo como snapshot
+   para dataTransfer.setDragImage cuando se arrastran 2+ elementos
+   seleccionados (ver createDragGhost en dnd.js). Nunca visible en el
+   viewport real. Movido verbatim desde library/AssetGrid.module.css en
+   O2.a. */
+.dragGhost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-primary-600);
+  color: #ffffff; /* keep literal — text on solid brand bg, no token */
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  white-space: nowrap;
+  pointer-events: none;
+}

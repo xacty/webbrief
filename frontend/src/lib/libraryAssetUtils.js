@@ -4,6 +4,11 @@
 // comparadores de orden sobre `data.assets`. Sin dependencias de React ni
 // de la API — funciones puras, fáciles de razonar y de mover si hiciera
 // falta testearlas en el futuro.
+//
+// Los comparadores primitivos (string/número/fecha + aplicar asc/desc)
+// viven en `components/organizer/sorting.js` desde O2.a — acá sólo se
+// decide QUÉ campo de un asset alimenta cada comparador.
+import { compareStrings, compareNumbers, compareDates, sortWithDirection } from '../components/organizer/sorting'
 
 const MIME_LABELS = {
   'image/webp': 'WebP',
@@ -57,24 +62,23 @@ export function assetImageUrl(asset, width) {
 function compareAssets(a, b, field) {
   switch (field) {
     case 'size':
-      return (a.file_size || 0) - (b.file_size || 0)
+      return compareNumbers(a.file_size, b.file_size)
     case 'dimensions':
-      return (a.width || 0) * (a.height || 0) - (b.width || 0) * (b.height || 0)
+      return compareNumbers((a.width || 0) * (a.height || 0), (b.width || 0) * (b.height || 0))
     case 'format':
-      return mimeLabel(a.mime_type).localeCompare(mimeLabel(b.mime_type), 'es')
+      return compareStrings(mimeLabel(a.mime_type), mimeLabel(b.mime_type))
     case 'date':
-      return new Date(a.created_at || 0) - new Date(b.created_at || 0)
+      return compareDates(a.created_at, b.created_at)
     case 'name':
     default:
-      return (a.file_name || '').localeCompare(b.file_name || '', 'es')
+      return compareStrings(a.file_name, b.file_name)
   }
 }
 
 // Orden client-side sobre `data.assets` (punto 3 — nunca toca el fetch).
 // `field` es uno de name|date|size|dimensions|format; `dir` asc|desc.
 export function sortAssets(assets, field, dir) {
-  const sorted = [...(assets || [])].sort((a, b) => compareAssets(a, b, field))
-  return dir === 'desc' ? sorted.reverse() : sorted
+  return sortWithDirection(assets, (a, b) => compareAssets(a, b, field), dir)
 }
 
 export function filterAssetsByType(assets, typeFilter) {
