@@ -1,45 +1,114 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+/* ── Folder chips ────────────────────────────────────────────────────
+   Folders are no longer grid cards — a compact horizontal chip row above
+   the asset grid (feedback de producto, iteración post-Task 13). */
+
+.folderSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+}
+
+.folderSectionTitle {
+  margin: 0;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.folderChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wb-space-2);
+}
+
+.folderChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  max-width: 240px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.folderChip:hover {
+  border-color: var(--wb-color-primary-300);
+}
+
+.folderChip:focus-visible {
+  outline: none;
+  border-color: var(--wb-color-primary-300);
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.folderChipDragOver {
+  border-color: var(--wb-color-primary-500);
+  background: var(--wb-color-primary-50);
+}
+
+.folderChipIcon {
+  flex-shrink: 0;
+  color: var(--wb-color-primary-600);
+}
+
+.folderChipName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wb-text-sm);
+}
+
+.folderChipCount {
+  flex-shrink: 0;
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text-muted);
+}
+
+.folderChipKebab {
+  flex-shrink: 0;
+  display: inline-flex;
+  margin-left: var(--wb-space-1);
+}
+
+/* ── Asset grid ──────────────────────────────────────────────────────── */
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: var(--wb-space-4);
 }
 
-.folderCard,
+/* Card estilo Google Drive: fondo tenue (nunca blanco puro), padding
+   compacto, radius de card 8px con la imagen interna en un radius menor
+   (4px) — jerarquía anidada explícita pedida por el product owner. */
 .assetCard {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: var(--wb-space-2);
   min-width: 0;
-  padding: var(--wb-space-3);
+  padding: var(--wb-space-2);
   border: 1px solid var(--wb-border);
   border-radius: var(--wb-radius-2);
-  background: var(--wb-surface);
+  background: var(--wb-color-neutral-50);
 }
-
-.folderCard {
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  text-align: center;
-  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
-}
-
-.folderCard:hover,
-.folderCard:focus-visible {
-  border-color: var(--wb-color-primary-300);
-  box-shadow: var(--wb-shadow-sm);
-  transform: translateY(-1px);
-  outline: none;
-}
-
-/* ── Selección (Task 13) ─────────────────────────────────────────────
-   Sólo assets son seleccionables — ver comentario en AssetGrid.jsx. */
 
 .assetCardSelectable {
   cursor: pointer;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
 
 .assetCardSelectable:focus-visible {
@@ -48,89 +117,57 @@
 }
 
 .assetCardSelected {
-  border-color: var(--wb-color-primary-500);
-  box-shadow: var(--wb-shadow-sm);
+  background: var(--wb-color-primary-50);
+  border-color: var(--wb-color-primary-300);
 }
 
-/* Checkbox top-right — oculto en reposo, visible en hover/focus/selected/
-   select-mode. Mismo criterio que ProjectsPage .projectSelectLabel. */
-.selectLabel {
+/* Check badge — esquina superior derecha de la foto, sólo cuando está
+   seleccionada. Círculo decorativo no-clickable: cae dentro de la
+   excepción de --wb-radius-full para "status pill / notification
+   indicator" del Border-radius rule en DESIGN-SYSTEM.md (no es un botón). */
+.selectedBadge {
   position: absolute;
   top: var(--wb-space-2);
   right: var(--wb-space-2);
+  z-index: var(--wb-z-base);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--wb-space-6);
-  height: var(--wb-space-6);
-  border-radius: var(--wb-radius-2);
-  background: var(--wb-surface);
-  border: 1px solid var(--wb-border);
-  cursor: pointer;
-  z-index: var(--wb-z-base);
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.assetCard:hover .selectLabel,
-.assetCard:focus-within .selectLabel,
-.assetCardSelected .selectLabel,
-.assetCardInSelectMode .selectLabel {
-  opacity: 1;
-}
-
-.selectCheckbox {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: var(--wb-color-primary-500);
-}
-
-/* Kebab top-left — misma lógica de reveal-on-hover que el checkbox, en la
-   esquina opuesta para no competir por espacio en cards de 160px. Aplica a
-   folder y asset cards por igual. */
-.kebabSlot {
-  position: absolute;
-  top: var(--wb-space-2);
-  left: var(--wb-space-2);
-  z-index: var(--wb-z-base);
-  border-radius: var(--wb-radius-2);
-  background: var(--wb-surface);
+  width: 20px;
+  height: 20px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-600);
+  color: #ffffff; /* keep literal — icon on solid brand-color badge, no token (same exception as Button primary text) */
   box-shadow: var(--wb-shadow-sm);
+}
+
+/* Kebab ahora vive en la fila inferior (junto al nombre), no flotando
+   sobre la miniatura. Reveal-on-hover/focus, igual criterio que antes;
+   el slot se reserva siempre para que la fila no salte de tamaño. */
+.kebabSlot {
+  flex-shrink: 0;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 
-.folderCard:hover .kebabSlot,
-.folderCard:focus-within .kebabSlot,
 .assetCard:hover .kebabSlot,
 .assetCard:focus-within .kebabSlot {
   opacity: 1;
 }
 
-.folderIcon {
-  display: inline-flex;
+.cardFooter {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--wb-radius-2);
-  background: var(--wb-color-primary-50);
-  color: var(--wb-color-primary-600);
-}
-
-.folderCount {
-  font-size: var(--wb-text-xs);
-  color: var(--wb-text-muted);
+  gap: var(--wb-space-1);
+  min-width: 0;
 }
 
 .cardName {
-  width: 100%;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: center;
   font-size: var(--wb-text-sm);
   color: var(--wb-text);
 }
@@ -142,14 +179,16 @@
   filter: grayscale(40%);
 }
 
+/* Thumb apaisado (4:3), NO cuadrado — radius menor que la card que lo
+   contiene (jerarquía anidada, ver comentario en .assetCard). */
 .thumbWrap {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: var(--wb-radius-2);
+  border-radius: var(--wb-radius-xs);
   background: var(--wb-surface-muted);
 }
 
@@ -165,7 +204,7 @@
 }
 
 .skeletonCard {
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   border-radius: var(--wb-radius-2);
   background: var(--wb-surface-muted);
   animation: libraryCardPulse 1.4s ease-in-out infinite;
@@ -192,4 +231,23 @@
   margin: 0;
   color: var(--wb-danger);
   font-size: var(--wb-text-sm);
+}
+
+/* Drag ghost — pill flotante fuera de pantalla usada sólo como snapshot
+   para dataTransfer.setDragImage cuando se arrastran 2+ assets
+   seleccionados (ver AssetGrid.jsx createDragGhost). Nunca visible en el
+   viewport real. */
+.dragGhost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-primary-600);
+  color: #ffffff; /* keep literal — text on solid brand bg, no token */
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  white-space: nowrap;
+  pointer-events: none;
 }

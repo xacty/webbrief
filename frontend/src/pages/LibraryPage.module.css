@@ -60,6 +60,7 @@
 .breadcrumbLink {
   background: transparent;
   border: 0;
+  border-radius: var(--wb-radius-xs);
   padding: 0;
   font: inherit;
   color: var(--wb-color-primary-600);
@@ -69,6 +70,17 @@
 
 .breadcrumbLink:hover {
   text-decoration: underline;
+}
+
+/* Drop target — dragging an asset/folder chip onto "Biblioteca" moves it
+   to the library root (folderId: null). box-shadow (not border/padding)
+   so the highlight never changes the button's box size — a padding/border
+   toggle here would shift the rest of the breadcrumb + title row on every
+   dragover (see DESIGN-SYSTEM.md §"Stable layouts — no jumpy reflows"). */
+.breadcrumbLinkDragOver {
+  background: var(--wb-color-primary-50);
+  box-shadow: 0 0 0 2px var(--wb-color-primary-500);
+  text-decoration: none;
 }
 
 .breadcrumbSep {

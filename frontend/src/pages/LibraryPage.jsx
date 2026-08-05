@@ -4,6 +4,7 @@ import { ChevronRight, Download, FolderPlus, Move, RotateCcw, Trash2, Upload, X 
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { Button } from '../components/ui'
 import AssetGrid from '../components/library/AssetGrid'
+import Lightbox from '../components/library/Lightbox'
 import StorageUsageBar from '../components/library/StorageUsageBar'
 import NewFolderModal from '../components/library/NewFolderModal'
 import RenameModal from '../components/library/RenameModal'
@@ -52,6 +53,11 @@ export default function LibraryPage() {
   const [renameState, setRenameState] = useState(null) // { kind: 'asset' | 'folder', id, name } | null
   const [emptyTrashOpen, setEmptyTrashOpen] = useState(false)
   const [exportState, setExportState] = useState(null) // { ids } | null
+  const [lightboxIndex, setLightboxIndex] = useState(null) // index into data.assets | null
+  // Highlights the "Biblioteca" breadcrumb root crumb while an internal
+  // asset/folder drag hovers it — same drop contract as AssetGrid's folder
+  // chips (see moveAssetsAndNotify/moveFolderAndNotify below).
+  const [rootDragOver, setRootDragOver] = useState(false)
 
   // Cola de subida: vive en un ref (no en estado) porque es un objeto con
   // métodos + un array mutable interno, no un valor serializable — ver
@@ -113,7 +119,7 @@ export default function LibraryPage() {
     if (selectedIds.size === 0) return undefined
     function onKeyDown(event) {
       if (event.key !== 'Escape') return
-      if (moveState || renameState || emptyTrashOpen || exportState) return
+      if (moveState || renameState || emptyTrashOpen || exportState || lightboxIndex !== null) return
       event.stopPropagation()
       clearSelection()
     }
@@ -121,7 +127,7 @@ export default function LibraryPage() {
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [selectedIds, moveState, renameState, emptyTrashOpen, exportState])
+  }, [selectedIds, moveState, renameState, emptyTrashOpen, exportState, lightboxIndex])
 
   function handleFilesPicked(event) {
     const files = Array.from(event.target.files || [])
@@ -213,21 +219,96 @@ export default function LibraryPage() {
     setMoveState(null)
   }
 
+  // Mutación compartida por dos caminos: el modal MoveToFolderModal (kebab
+  // "Mover"/"Mover a carpeta") y el drag & drop nativo sobre folder chips /
+  // el crumb "Biblioteca" (ver handleDropAssets/handleDropFolder). Estas
+  // dos funciones NO atrapan errores — MoveToFolderModal.handleConfirm ya
+  // envuelve su llamada a onConfirm en try/catch para mostrar el error
+  // inline en el modal; el camino de drag & drop (sin modal) hace su
+  // propio try/catch más abajo y lo manda al banner.
+  async function moveAssetsAndNotify(ids, targetFolderId) {
+    const result = await moveAssets(companyId, ids, targetFolderId)
+    const moved = Number(result?.moved || 0)
+    const failed = Array.isArray(result?.failed) ? result.failed.length : 0
+    showNotice('success', failed > 0
+      ? `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'} · ${failed} no procesada${failed === 1 ? '' : 's'}`
+      : `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'}`)
+    removeFromSelection(ids)
+    await reload()
+  }
+
+  // Named `movedFolderId` (not `folderId`) to avoid shadowing the outer
+  // `folderId` (current URL folder, from searchParams) declared above.
+  async function moveFolderAndNotify(movedFolderId, targetFolderId) {
+    await updateFolder(companyId, movedFolderId, { parentFolderId: targetFolderId })
+    showNotice('success', 'Carpeta movida')
+    await reload()
+  }
+
   async function handleMoveConfirm(targetFolderId) {
     if (!moveState || !companyId) return
     if (moveState.kind === 'assets') {
-      const result = await moveAssets(companyId, moveState.ids, targetFolderId)
-      const moved = Number(result?.moved || 0)
-      const failed = Array.isArray(result?.failed) ? result.failed.length : 0
-      showNotice('success', failed > 0
-        ? `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'} · ${failed} no procesada${failed === 1 ? '' : 's'}`
-        : `${moved} ${moved === 1 ? 'imagen' : 'imágenes'} movida${moved === 1 ? '' : 's'}`)
-      removeFromSelection(moveState.ids)
+      await moveAssetsAndNotify(moveState.ids, targetFolderId)
     } else if (moveState.kind === 'folder') {
-      await updateFolder(companyId, moveState.folder.id, { parentFolderId: targetFolderId })
-      showNotice('success', 'Carpeta movida')
+      await moveFolderAndNotify(moveState.folder.id, targetFolderId)
     }
-    await reload()
+  }
+
+  // ── Drag & drop para mover (folder chips + crumb "Biblioteca") ────────
+  // Mismas mutaciones que arriba, pero sin modal que capture el reject —
+  // acá el error (p. ej. 400 por ciclo de carpetas) va directo al banner.
+  async function handleDropAssets(ids, targetFolderId) {
+    if (!ids?.length || !companyId) return
+    try {
+      await moveAssetsAndNotify(ids, targetFolderId)
+    } catch (err) {
+      showNotice('warning', err.message || 'No se pudo mover')
+    }
+  }
+
+  // Named `draggedFolderId` (not `folderId`) to avoid shadowing the outer
+  // `folderId` (current URL folder, from searchParams) declared above.
+  async function handleDropFolder(draggedFolderId, targetFolderId) {
+    if (!draggedFolderId || !companyId || draggedFolderId === targetFolderId) return
+    try {
+      await moveFolderAndNotify(draggedFolderId, targetFolderId)
+    } catch (err) {
+      showNotice('warning', err.message || 'No se pudo mover la carpeta')
+    }
+  }
+
+  function handleRootDragOver(event) {
+    if (!canWrite) return
+    const types = event.dataTransfer.types || []
+    if (!types.includes('application/x-webrief-assets') && !types.includes('application/x-webrief-folder')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (!rootDragOver) setRootDragOver(true)
+  }
+
+  function handleRootDragLeave(event) {
+    const related = event.relatedTarget
+    if (related && event.currentTarget.contains(related)) return
+    setRootDragOver(false)
+  }
+
+  function handleRootDrop(event) {
+    event.preventDefault()
+    setRootDragOver(false)
+    if (!canWrite) return
+    const assetsPayload = event.dataTransfer.getData('application/x-webrief-assets')
+    if (assetsPayload) {
+      let ids = []
+      try {
+        ids = JSON.parse(assetsPayload)
+      } catch {
+        ids = []
+      }
+      if (Array.isArray(ids) && ids.length) handleDropAssets(ids, null)
+      return
+    }
+    const draggedFolderId = event.dataTransfer.getData('application/x-webrief-folder')
+    if (draggedFolderId) handleDropFolder(draggedFolderId, null)
   }
 
   // ── Renombrar (asset o carpeta) ────────────────────────────────────────
@@ -388,7 +469,14 @@ export default function LibraryPage() {
           <div className={styles.titleRow}>
             <div className={styles.headerMain}>
               <nav className={styles.breadcrumb} aria-label="Carpetas">
-                <button type="button" className={styles.breadcrumbLink} onClick={goToRoot}>
+                <button
+                  type="button"
+                  className={cx(styles.breadcrumbLink, rootDragOver && styles.breadcrumbLinkDragOver)}
+                  onClick={goToRoot}
+                  onDragOver={handleRootDragOver}
+                  onDragLeave={handleRootDragLeave}
+                  onDrop={handleRootDrop}
+                >
                   Biblioteca
                 </button>
                 {isTrash && (
@@ -514,10 +602,18 @@ export default function LibraryPage() {
                       icon={<RotateCcw size={14} />}
                       onClick={handleRestoreSelected}
                       disabled={bulkBusy}
+                      aria-label={`Restaurar ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'}`}
                     >
                       Restaurar seleccionadas
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={clearSelection} disabled={bulkBusy}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearSelection}
+                      disabled={bulkBusy}
+                      aria-label="Cancelar selección"
+                    >
                       Cancelar
                     </Button>
                   </>
@@ -530,6 +626,7 @@ export default function LibraryPage() {
                       icon={<Move size={14} />}
                       onClick={() => openMoveAssetsModal(Array.from(selectedIds))}
                       disabled={bulkBusy}
+                      aria-label={`Mover ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'} a otra carpeta`}
                     >
                       Mover
                     </Button>
@@ -540,6 +637,7 @@ export default function LibraryPage() {
                       icon={<Download size={14} />}
                       onClick={() => openExportModal(Array.from(selectedIds))}
                       disabled={bulkBusy}
+                      aria-label={`Exportar ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'}`}
                     >
                       Exportar
                     </Button>
@@ -550,10 +648,18 @@ export default function LibraryPage() {
                       icon={<Trash2 size={14} />}
                       onClick={() => handleTrashAssets(Array.from(selectedIds))}
                       disabled={bulkBusy}
+                      aria-label={`Enviar ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'} a la papelera`}
                     >
                       Papelera
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" onClick={clearSelection} disabled={bulkBusy}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearSelection}
+                      disabled={bulkBusy}
+                      aria-label="Cancelar selección"
+                    >
                       Cancelar
                     </Button>
                   </>
@@ -573,6 +679,7 @@ export default function LibraryPage() {
             view={view}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelected}
+            onOpenLightbox={setLightboxIndex}
             onRenameAsset={openRenameAsset}
             onMoveAsset={(asset) => openMoveAssetsModal([asset.id])}
             onExportAsset={(asset) => openExportModal([asset.id])}
@@ -580,6 +687,8 @@ export default function LibraryPage() {
             onRenameFolder={openRenameFolder}
             onMoveFolder={openMoveFolderModal}
             onTrashFolder={handleTrashFolder}
+            onDropAssets={handleDropAssets}
+            onDropFolder={handleDropFolder}
           />
 
           <footer className={styles.footer}>
@@ -596,6 +705,15 @@ export default function LibraryPage() {
           </footer>
         </div>
       </UploadDropzone>
+
+      {lightboxIndex !== null && (
+        <Lightbox
+          assets={data?.assets || []}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
+      )}
 
       <NewFolderModal
         open={newFolderOpen}

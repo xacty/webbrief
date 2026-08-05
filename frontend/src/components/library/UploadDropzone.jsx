@@ -29,7 +29,19 @@ export default function UploadDropzone({
   const [confirmState, setConfirmState] = useState(null) // { folderName, accepted, excluded } | null
   const dragCounter = useRef(0)
 
+  // AssetGrid cards/folder chips are draggable too (Task: iteración UX F1
+  // drag & drop para mover) and set custom `application/x-webrief-*` mime
+  // types with no OS files attached. Without this filter, a drag started
+  // on a card would still fire dragenter here (types is non-empty) and pop
+  // this dropzone's "suelta para subir" overlay over an internal move —
+  // explicitly excluded so only real OS file drags open it.
+  function isInternalDrag(event) {
+    const types = Array.from(event.dataTransfer?.types || [])
+    return types.some((type) => type.startsWith('application/x-webrief-'))
+  }
+
   function hasFiles(event) {
+    if (isInternalDrag(event)) return false
     return Array.from(event.dataTransfer?.types || []).includes('Files')
   }
 
