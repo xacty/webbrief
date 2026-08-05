@@ -29,12 +29,14 @@
 }
 
 .message {
+  min-width: 0;
   font-size: var(--wb-text-sm);
   font-weight: var(--wb-weight-medium);
   line-height: var(--wb-leading-snug);
 }
 
 .subMessage {
+  min-width: 0;
   font-size: var(--wb-text-xs);
   color: var(--wb-toast-text);
   opacity: 0.75;
