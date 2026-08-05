@@ -1,0 +1,64 @@
+/* El shell (.bar/.barSelected/.left/.right) vive en
+   organizer/MorphingToolbar.module.css. Lo que queda acá es contenido
+   específico de ProjectsPage que se monta DENTRO de esos slots — mismo
+   patrón que library/LibraryToolbar.module.css. */
+
+.selectionInfo {
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text);
+  white-space: nowrap;
+}
+
+.searchField {
+  width: 240px;
+}
+
+.sortSelect {
+  min-width: 150px;
+}
+
+.typeSelect {
+  min-width: 150px;
+}
+
+/* ── Toggle Grid/Lista ───────────────────────────────────────────────── */
+
+.layoutToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 2px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-3);
+  background: var(--wb-surface-muted);
+}
+
+.layoutButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-text-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.layoutButton:hover {
+  color: var(--wb-text);
+}
+
+.layoutButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.layoutButtonActive {
+  background: var(--wb-surface);
+  color: var(--wb-color-primary-600);
+  box-shadow: var(--wb-shadow-xs);
+}

@@ -42,17 +42,31 @@
   gap: var(--wb-space-6);
 }
 
+/* Breadcrumb — pre-existing shell classes, wired up for the first time by
+   ProjectsPage's folder navigation (Ola 2, O2.c; only renders "si hay
+   anidamiento", ver ProjectsPage.jsx). .breadcrumbGroup and
+   .breadcrumbLinkDragOver added now to match LibraryPage.module.css's
+   breadcrumb (§"Biblioteca de imágenes" grammar) — same drop-target-highlight
+   contract as the "Biblioteca" root crumb there. */
 .breadcrumb {
   display: flex;
   align-items: center;
-  gap: var(--wb-space-2);
+  flex-wrap: wrap;
+  gap: var(--wb-space-1);
   font-size: var(--wb-text-sm);
   color: var(--wb-text-muted);
+}
+
+.breadcrumbGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
 }
 
 .breadcrumbLink {
   background: transparent;
   border: 0;
+  border-radius: var(--wb-radius-xs);
   padding: 0;
   font: inherit;
   color: var(--wb-primary);
@@ -64,14 +78,32 @@
   text-decoration: underline;
 }
 
+/* Drop target — dragging a project/folder onto the root crumb moves it to
+   the company root (folderId: null). box-shadow (not border/padding) so
+   the highlight never resizes the button — see DESIGN-SYSTEM.md §"Stable
+   layouts — no jumpy reflows". */
+.breadcrumbLinkDragOver {
+  background: var(--wb-color-primary-50);
+  box-shadow: 0 0 0 2px var(--wb-color-primary-500);
+  text-decoration: none;
+}
+
 .breadcrumbSep {
   color: var(--wb-text-muted);
   opacity: 0.6;
+  flex-shrink: 0;
 }
 
 .breadcrumbCurrent {
   color: var(--wb-text);
   font-weight: var(--wb-weight-medium);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  flex-wrap: wrap;
 }
 
 .titleRow {
@@ -140,126 +172,14 @@
   font-size: var(--wb-text-sm);
 }
 
-.projectGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--wb-space-4);
-}
-
-.projectCard {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--wb-space-4);
-  min-height: 180px;
-  padding: var(--wb-space-5);
-  border: 1px solid var(--wb-border);
-  border-radius: var(--wb-radius-md);
-  background: var(--wb-surface);
-  box-shadow: var(--wb-shadow-card);
-  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-  cursor: pointer;
-}
-
-.projectCard:hover,
-.projectCard:focus-visible {
-  transform: translateY(-2px);
-  border-color: var(--wb-color-primary-100);
-  box-shadow: var(--wb-shadow-card-hover);
-  outline: none;
-}
-
-.projectCardSelected {
-  border-color: var(--wb-color-primary-500);
-  box-shadow: var(--wb-shadow-md);
-}
-
-.projectCardSelected:hover,
-.projectCardSelected:focus-visible {
-  border-color: var(--wb-color-primary-500);
-}
-
-.projectSelectLabel {
-  position: absolute;
-  top: var(--wb-space-3);
-  right: var(--wb-space-3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--wb-space-6);
-  height: var(--wb-space-6);
-  border-radius: var(--wb-radius-2);
-  background: var(--wb-surface);
-  border: 1px solid var(--wb-border);
-  cursor: pointer;
-  z-index: var(--wb-z-base);
-  /* Hidden by default; revealed on hover/focus, while in select mode, or
-   * while this card is selected. Keeps the resting card visually clean. */
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.projectCard:hover .projectSelectLabel,
-.projectCard:focus-within .projectSelectLabel,
-.projectCardSelected .projectSelectLabel,
-.projectCardInSelectMode .projectSelectLabel {
-  opacity: 1;
-}
-
-.projectSelectCheckbox {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-  accent-color: var(--wb-color-primary-500);
-}
-
-.bulkToolbar {
-  position: sticky;
-  top: var(--wb-space-3);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--wb-space-4);
-  padding: var(--wb-space-3) var(--wb-space-4);
-  background: var(--wb-surface);
-  border: 1px solid var(--wb-color-primary-500);
-  border-radius: var(--wb-radius-md);
-  box-shadow: var(--wb-shadow-md);
-  z-index: var(--wb-z-sticky);
-}
-
-.bulkInfo {
-  display: flex;
-  align-items: center;
-  gap: var(--wb-space-3);
-  flex-wrap: wrap;
-  font-size: var(--wb-text-sm);
-  color: var(--wb-text);
-}
-
-.bulkLink {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  color: var(--wb-color-primary-500);
-  font-family: var(--wb-font-sans);
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-medium);
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.bulkLink:hover {
-  color: var(--wb-color-primary-700);
-}
-
-.bulkActions {
-  display: flex;
-  align-items: center;
-  gap: var(--wb-space-2);
-  flex-wrap: wrap;
-}
+/* .projectGrid/.projectCard* et al moved to
+   components/projects/ProjectGrid.module.css (Ola 2, O2.c) — verified via
+   grep that no other workspace page (TeamPage/ActivityPage) referenced
+   them, so this is a pure relocation, not a behavior change. The old
+   sticky `.bulkToolbar`/.bulkInfo/.bulkLink/.bulkActions selection bar is
+   REMOVED outright (not relocated) — it's replaced by
+   components/organizer/MorphingToolbar (see ProjectsToolbar.jsx), which
+   owns its own CSS module. */
 
 .feedbackNotice {
   padding: var(--wb-space-3) var(--wb-space-4);
@@ -268,61 +188,6 @@
   border-radius: var(--wb-radius-md);
   color: var(--wb-color-success-700);
   font-size: var(--wb-text-sm);
-}
-
-.projectTop {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--wb-space-3);
-  /* Reserve room for the absolute checkbox at top-right (32 px + gap). */
-  padding-right: var(--wb-space-7);
-}
-
-.projectTypeChip {
-  display: inline-flex;
-  align-items: center;
-  padding: var(--wb-space-1) var(--wb-space-3);
-  border-radius: var(--wb-radius-full);
-  background: var(--wb-color-primary-50);
-  color: var(--wb-color-primary-700);
-  font-size: var(--wb-text-xs);
-  font-weight: var(--wb-weight-bold);
-  letter-spacing: 0.02em;
-}
-
-.projectKebabSlot {
-  display: inline-flex;
-  margin-left: auto;
-}
-
-.projectBody {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wb-space-1);
-}
-
-.projectName {
-  margin: 0;
-  font-size: var(--wb-text-lg);
-  font-weight: var(--wb-weight-bold);
-  line-height: var(--wb-leading-snug);
-  color: var(--wb-text);
-}
-
-.projectTimestamp {
-  margin: 0;
-  color: var(--wb-text-muted);
-  font-size: var(--wb-text-sm);
-}
-
-.projectActions {
-  /* Action buttons live flush at the bottom of the card, no border separator —
-   * the chip at the top already provides visual structure. */
-  display: flex;
-  align-items: center;
-  gap: var(--wb-space-2);
-  margin-top: auto;
 }
 
 .inviteForm {
@@ -518,30 +383,6 @@
   }
 }
 
-.addProjectCard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--wb-space-2);
-  min-height: 180px;
-  border: 1.5px dashed var(--wb-border);
-  border-radius: var(--wb-radius-md);
-  background: transparent;
-  color: var(--wb-text-muted);
-  font-family: var(--wb-font-sans);
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-medium);
-  cursor: pointer;
-  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
-}
-
-.addProjectCard:hover {
-  border-color: var(--wb-primary);
-  color: var(--wb-primary);
-  background: var(--wb-primary-soft);
-}
-
 .emptyState {
   padding: var(--wb-space-5);
   border: 1px dashed var(--wb-border);
@@ -623,15 +464,6 @@
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .projectTop {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .projectGrid {
-    grid-template-columns: 1fr;
   }
 }
 

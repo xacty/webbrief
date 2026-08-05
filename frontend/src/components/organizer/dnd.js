@@ -9,10 +9,20 @@ import styles from './dnd.module.css'
 // mismo drop target distinga arrastres internos (cards/filas de la propia
 // app) de arrastres de archivos del sistema operativo (ver el filtro
 // isInternalDrag en UploadDropzone.jsx), y que distintos dominios (assets,
-// carpetas, y a futuro proyectos) no choquen entre sí en el mismo
-// dataTransfer.
+// carpetas, y proyectos) no choquen entre sí en el mismo dataTransfer.
 export const ASSET_DRAG_TYPE = 'application/x-webrief-assets'
+// FOLDER_DRAG_TYPE es genérico a nivel de FORMA de dato (un solo id de
+// carpeta), no de dominio — tanto asset_folders (biblioteca) como
+// project_folders (Ola 2, ProjectsPage) lo reusan tal cual. Nunca hay
+// ambigüedad en runtime: biblioteca y proyectos son páginas distintas, así
+// que un drag nunca cruza de una a otra.
 export const FOLDER_DRAG_TYPE = 'application/x-webrief-folder'
+// PROJECT_DRAG_TYPE, en cambio, SÍ necesita ser su propio tipo namespaced
+// (Ola 2, O2.c) — a diferencia de FOLDER_DRAG_TYPE, este lleva una LISTA de
+// ids (JSON, mismo contrato que ASSET_DRAG_TYPE) y esos ids son de
+// `projects`, un dominio distinto de `project_assets` — no deben
+// confundirse aunque ambos sean "una lista de ids seleccionados".
+export const PROJECT_DRAG_TYPE = 'application/x-webrief-projects'
 
 // Pill flotante fuera de pantalla usada como imagen de arrastre custom
 // cuando se arrastra una multi-selección junta (ver handleAssetDragStart
