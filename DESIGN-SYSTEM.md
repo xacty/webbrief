@@ -426,7 +426,21 @@ facing dropdown).
 
 Patrón compartido: avisos vía banner inline de página (estilo `feedbackNotice`
 de ProjectsPage) — no existe sistema global de toasts fuera del editor; no
-inventar uno nuevo.
+inventar uno nuevo. Excepción deliberada: `organizer/ActionToast` (abajo) es
+el toast de acción-con-deshacer para mover/papelera — no lo generalices a
+notificaciones.
+
+### Organización compartida (`frontend/src/components/organizer/`)
+
+| Pieza | Cuándo usarla |
+|---|---|
+| `ActionToast` | Toast inferior flotante con "Deshacer" (15s) para acciones reversibles (mover, papelera). Uno a la vez. |
+| `ItemContextMenu` | Right-click con items PLANOS `{type:'item'|'header'|'separator', ...}` — cero conocimiento de dominio; el caller arma los items. |
+| `MorphingToolbar` | Shell sticky de altura fija con slots left/right que mutan entre idle y selección — cero reflow del contenido. |
+| `dnd.js` | Mime types namespaced (`x-webrief-assets/-folder/-projects`), createDragGhost, guards de dragover/leave. |
+| `sorting.js` | Comparadores genéricos (strings locale es, números, fechas) + sortWithDirection. |
+
+Consumidores: `components/library/` (biblioteca de imágenes) y `components/projects/` (organización de proyectos — ProjectGrid, ProjectsToolbar y modales de carpetas). Cambios aquí afectan AMBAS superficies.
 
 ---
 
