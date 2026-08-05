@@ -27,10 +27,13 @@ test('resolveLibraryRole: admin write, manager/editor write en su empresa, qa re
   const admin = { platformRole: 'admin', memberships: [] }
   const qa = { platformRole: 'qa', memberships: [] }
   const manager = { platformRole: 'user', memberships: [{ companyId: 'c1', role: 'manager' }] }
+  const companyAdmin = { platformRole: 'user', memberships: [{ companyId: 'c1', role: 'admin' }] }
   const outsider = { platformRole: 'user', memberships: [{ companyId: 'c2', role: 'editor' }] }
   assert.equal(resolveLibraryRole(admin, 'c1'), 'write')
   assert.equal(resolveLibraryRole(qa, 'c1'), 'read')
   assert.equal(resolveLibraryRole(manager, 'c1'), 'write')
+  // 'admin' de EMPRESA (membresía, no platform) es tier máximo — bug F1-T5 corregido
+  assert.equal(resolveLibraryRole(companyAdmin, 'c1'), 'write')
   assert.equal(resolveLibraryRole(outsider, 'c1'), null)
 })
 

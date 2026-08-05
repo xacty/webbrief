@@ -42,7 +42,10 @@ export function resolveCompanyRole(currentUser, companyId) {
   if (currentUser.platformRole === 'qa') return 'read'
   const membership = (currentUser.memberships || []).find((m) => m.companyId === companyId)
   if (!membership) return null
-  return ['manager', 'editor'].includes(membership.role) ? 'write' : 'read'
+  // 'admin' de empresa es tier máximo de membresía (ver projectAccess.js:
+  // role === 'admin' || role === 'manager') — omitirlo dejaba a los admin
+  // de empresa en solo-lectura en biblioteca y carpetas (bug desde F1-T5).
+  return ['admin', 'manager', 'editor'].includes(membership.role) ? 'write' : 'read'
 }
 
 // planFolderDeletion(folders, projects, folderId) — semántica de borrado de
