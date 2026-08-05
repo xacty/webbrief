@@ -3118,6 +3118,101 @@ router.post('/bulk/move-company', rateLimiters.sensitiveAction, async (req, res)
   }
 })
 
+// ---------------------------------------------------------------------------
+// Bulk move-to-folder — POST /api/projects/bulk/move-to-folder
+// body: { ids: string[], folderId: string|null }
+// Same pattern as /bulk/archive: per-id permission check
+// (canManageProjectLifecycle), partial 207. folderId must belong to the SAME
+// company as each project (validated per-row, since `ids` can span
+// companies for a platform admin); null means "move to root" (no folder).
+// Cache invalidation is a frontend concern — nothing to do here.
+// ---------------------------------------------------------------------------
+router.post('/bulk/move-to-folder', rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    const folderId = req.body?.folderId ? String(req.body.folderId) : null
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de proyectos' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 proyectos por operación' })
+
+    // Cachea la validación de "la carpeta destino pertenece a esta empresa"
+    // por companyId, para no repetir el mismo SELECT en el caso común de
+    // que todos los proyectos movidos sean de la misma empresa.
+    const folderValidByCompany = new Map()
+    async function folderBelongsToCompany(companyId) {
+      if (!folderId) return true
+      if (folderValidByCompany.has(companyId)) return folderValidByCompany.get(companyId)
+      const { data } = await supabaseAdmin
+        .from('project_folders')
+        .select('id')
+        .eq('id', folderId)
+        .eq('company_id', companyId)
+        .maybeSingle()
+      const ok = Boolean(data)
+      folderValidByCompany.set(companyId, ok)
+      return ok
+    }
+
+    let moved = 0
+    const failed = []
+
+    for (const projectId of ids) {
+      try {
+        const project = await getProjectById(projectId, req.currentUser)
+        if (!project) {
+          failed.push({ id: projectId, reason: 'Proyecto no encontrado' })
+          continue
+        }
+        if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
+          failed.push({ id: projectId, reason: 'Sin permisos' })
+          continue
+        }
+        if (!(await folderBelongsToCompany(project.company_id))) {
+          failed.push({ id: projectId, reason: 'Carpeta destino no encontrada' })
+          continue
+        }
+
+        const { error } = await supabaseAdmin
+          .from('projects')
+          .update({ folder_id: folderId })
+          .eq('id', project.id)
+
+        if (error) {
+          failed.push({ id: projectId, reason: error.message || 'Error al mover' })
+          continue
+        }
+
+        await logProjectActivity({
+          projectId: project.id,
+          currentUser: req.currentUser,
+          eventType: 'project_moved_to_folder',
+          subjectType: 'project',
+          subjectId: project.id,
+          title: folderId ? 'Proyecto movido a carpeta' : 'Proyecto movido a la raíz',
+          metadata: { bulk: true, folderId },
+        })
+
+        await logSecurityEvent(req, {
+          action: 'project_moved_to_folder',
+          resourceType: 'project',
+          resourceId: project.id,
+          companyId: project.company_id,
+          projectId: project.id,
+          metadata: { bulk: true, folderId },
+        })
+
+        moved += 1
+      } catch (perItemError) {
+        failed.push({ id: projectId, reason: perItemError?.message || 'Error inesperado' })
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : (moved === 0 ? 400 : 207)
+    return res.status(status).json({ moved, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron mover los proyectos' })
+  }
+})
+
 async function scheduleLifecycleNotifications(projectId, projectType, trashedAt) {
   const { error } = await supabaseAdmin.rpc('schedule_project_lifecycle_notifications', {
     p_project_id: projectId,

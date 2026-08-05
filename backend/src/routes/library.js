@@ -9,6 +9,7 @@ import { rateLimiters } from '../middleware/security.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { fetchCompanyUsage, checkCompanyStorageQuota } from '../lib/storageQuota.js'
+import { wouldCreateFolderCycle, validateFolderName, resolveCompanyRole } from '../lib/folderTree.js'
 import { decideUploadConversion, uploadWithIngest, adjustFileNameForAction, MAX_UPLOAD_BYTES } from '../lib/imageIngest.js'
 import {
   buildImageKitPath,
@@ -24,39 +25,16 @@ import { resolveCompanyAssetForExport, normalizeExportOptions, buildExportFileNa
 const router = Router({ mergeParams: true })
 router.use(requireAuth)
 
-export function validateFolderName(raw) {
-  const name = String(raw ?? '').trim().slice(0, 80)
-  return name || null
-}
-
-export function wouldCreateFolderCycle(folders, folderId, nextParentId) {
-  if (!nextParentId) return false
-  if (nextParentId === folderId) return true
-  const byId = new Map(folders.map((f) => [f.id, f]))
-  let cursor = byId.get(nextParentId)
-  const seen = new Set()
-  while (cursor) {
-    if (cursor.id === folderId) return true
-    if (seen.has(cursor.id)) return false
-    seen.add(cursor.id)
-    cursor = cursor.parent_folder_id ? byId.get(cursor.parent_folder_id) : null
-  }
-  return false
-}
-
-// NOTA: req.currentUser lo arma loadCurrentUser() en middleware/auth.js con
-// forma camelCase (platformRole, memberships: [{ companyId, companyName, role }]),
-// igual que lib/projectAccess.js (canWriteProjectContent, getCompanyRole, etc).
-// El plan original de este task asumía snake_case (platform_role/company_id);
-// se ajusta aquí a la forma real para que requireLibraryAccess funcione.
-export function resolveLibraryRole(currentUser, companyId) {
-  if (!currentUser) return null
-  if (currentUser.platformRole === 'admin') return 'write'
-  if (currentUser.platformRole === 'qa') return 'read'
-  const membership = (currentUser.memberships || []).find((m) => m.companyId === companyId)
-  if (!membership) return null
-  return ['manager', 'editor'].includes(membership.role) ? 'write' : 'read'
-}
+// wouldCreateFolderCycle, validateFolderName y resolveLibraryRole vivían acá
+// y se movieron a lib/folderTree.js (Ola 2 / O2.b) para compartirlos con
+// routes/projectFolders.js. Se re-exportan bajo el mismo nombre para no
+// romper la API pública de este módulo ni los tests existentes
+// (library-folders.test.js los importa desde routes/library.js).
+// resolveLibraryRole no tenía nada específico de biblioteca — se generalizó
+// a resolveCompanyRole; acá queda como alias local (se sigue usando dentro
+// de este archivo) y re-exportado con el nombre viejo.
+export { wouldCreateFolderCycle, validateFolderName }
+export const resolveLibraryRole = resolveCompanyRole
 
 export function validateAssetFileName(raw) {
   const name = String(raw ?? '').trim().slice(0, 255)
