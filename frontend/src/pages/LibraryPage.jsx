@@ -583,7 +583,12 @@ export default function LibraryPage() {
           />
 
           <footer className={styles.footer}>
-            <StorageUsageBar usage={data?.usage} />
+            <StorageUsageBar
+              usage={data?.usage}
+              onGoLibrary={isTrash ? toggleTrashView : goToRoot}
+              onGoTrash={isTrash ? undefined : toggleTrashView}
+              onEmptyTrash={() => setEmptyTrashOpen(true)}
+            />
             <button type="button" className={styles.trashToggle} onClick={toggleTrashView}>
               <Trash2 size={14} aria-hidden="true" />
               {isTrash ? 'Volver a la biblioteca' : 'Papelera'}

@@ -1,41 +1,120 @@
 .wrap {
   display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.meterRow {
+  display: flex;
   align-items: center;
   gap: var(--wb-space-3);
   min-width: 0;
-  flex: 1;
 }
 
 .track {
   flex: 1;
   min-width: 80px;
-  height: 6px;
+  height: 8px;
+  display: flex;
   border-radius: var(--wb-radius-full);
   background: var(--wb-color-neutral-200);
   overflow: hidden;
 }
 
-/* Width is set per-instance via the --fill-pct custom property (same
-   pattern as the segmented-control indicator — see DESIGN-SYSTEM.md §3). */
-.fill {
+/* Ancho por segmento vía custom property (mismo patrón --seg-* del
+   segmented control — ver DESIGN-SYSTEM.md §3). */
+.segment {
+  width: var(--seg-pct, 0%);
   height: 100%;
-  width: var(--fill-pct, 0%);
-  border-radius: var(--wb-radius-full);
-  background: var(--wb-color-primary-600);
-  transition: width 240ms ease, background-color 200ms ease;
+  transition: width 240ms ease;
 }
 
-.fillWarn {
-  background: var(--wb-color-warning-500);
-}
-
-.fillFull {
-  background: var(--wb-color-danger-600);
-}
+.segLibrary { background: var(--wb-color-primary-600); }
+.segDocument { background: var(--wb-color-success-600); }
+.segBrief { background: var(--wb-color-warning-600); }
+.segTrashed { background: var(--wb-color-neutral-400); }
 
 .label {
   flex-shrink: 0;
   font-size: var(--wb-text-xs);
   color: var(--wb-text-muted);
   white-space: nowrap;
+}
+
+.labelWarn {
+  color: var(--wb-color-warning-700);
+  font-weight: var(--wb-weight-medium);
+}
+
+.labelFull {
+  color: var(--wb-color-danger-700);
+  font-weight: var(--wb-weight-medium);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wb-space-2) var(--wb-space-4);
+  font-size: var(--wb-text-xs);
+  color: var(--wb-color-neutral-600);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.legendItemClickable {
+  cursor: pointer;
+  border-radius: var(--wb-radius-xs);
+}
+
+.legendItemClickable:hover {
+  color: var(--wb-text);
+  text-decoration: underline;
+}
+
+.legendBytes {
+  color: var(--wb-text-muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--wb-radius-full);
+  flex-shrink: 0;
+}
+
+.dotLibrary { background: var(--wb-color-primary-600); }
+.dotDocument { background: var(--wb-color-success-600); }
+.dotBrief { background: var(--wb-color-warning-600); }
+.dotTrashed { background: var(--wb-color-neutral-400); }
+.dotFree { background: var(--wb-color-neutral-200); }
+
+.emptyTrashCta {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-color-primary-600);
+  cursor: pointer;
+  border-radius: var(--wb-radius-xs);
+  white-space: nowrap;
+}
+
+.emptyTrashCta:hover {
+  color: var(--wb-color-primary-700);
+  text-decoration: underline;
 }

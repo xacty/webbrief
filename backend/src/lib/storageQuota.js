@@ -8,16 +8,47 @@ import { supabaseAdmin } from './supabase.js'
 const DEFAULT_QUOTA_MB = 100
 const MB = 1024 * 1024
 
+// Desglose por categoría (estilo "qué ocupa espacio"): precedencia
+// papelera > adjuntos de brief (uploaded_by null = subida pública) >
+// biblioteca (sin proyecto) > en documentos (subidas del editor).
 export function summarizeUsage(rows = []) {
   let activeBytes = 0
   let trashedBytes = 0
+  let libraryBytes = 0
+  let documentBytes = 0
+  let briefBytes = 0
+  const counts = { library: 0, document: 0, brief: 0, trashed: 0 }
+
   for (const row of rows) {
     const size = Number(row?.file_size)
     if (!Number.isFinite(size) || size <= 0) continue
-    if (row?.trashed_at) trashedBytes += size
-    else activeBytes += size
+    if (row?.trashed_at) {
+      trashedBytes += size
+      counts.trashed += 1
+      continue
+    }
+    activeBytes += size
+    if (!row?.uploaded_by) {
+      briefBytes += size
+      counts.brief += 1
+    } else if (!row?.project_id) {
+      libraryBytes += size
+      counts.library += 1
+    } else {
+      documentBytes += size
+      counts.document += 1
+    }
   }
-  return { usedBytes: activeBytes + trashedBytes, activeBytes, trashedBytes }
+
+  return {
+    usedBytes: activeBytes + trashedBytes,
+    activeBytes,
+    trashedBytes,
+    libraryBytes,
+    documentBytes,
+    briefBytes,
+    counts,
+  }
 }
 
 export function evaluateQuota({ usedBytes = 0, quotaMb = DEFAULT_QUOTA_MB, incomingBytes = 0 } = {}) {
@@ -40,7 +71,7 @@ export function evaluateQuota({ usedBytes = 0, quotaMb = DEFAULT_QUOTA_MB, incom
 export async function fetchCompanyUsage(companyId) {
   const { data, error } = await supabaseAdmin
     .from('project_assets')
-    .select('file_size, trashed_at')
+    .select('file_size, trashed_at, project_id, uploaded_by')
     .eq('company_id', companyId)
   if (error) throw new Error(`No se pudo calcular el uso de almacenamiento: ${error.message}`)
   return summarizeUsage(data || [])
