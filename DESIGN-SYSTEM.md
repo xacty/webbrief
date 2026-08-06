@@ -423,6 +423,7 @@ facing dropdown).
 | `NewFolderModal` / `MoveToFolderModal` | CRUD y mover con árbol indentado (usa `allFolders` del listado). |
 | `LibraryExportModal` | Export ZIP con transformación + toggle "papelera tras exportar" (limpieza client-side post-descarga). |
 | `LibraryPickerModal` | "Desde biblioteca" en el editor: búsqueda debounced + navegación + insertar. |
+| `ProjectAssetGroups` | Tabs Documentos/Briefs: encabezado por proyecto (nombre + conteo + "Descargar todas") sobre un `AssetGrid` con acciones reducidas. Los índices de lightbox/context-menu son posicionales sobre la lista aplanada de todos los grupos. |
 
 Patrón compartido: avisos vía banner inline de página (estilo `feedbackNotice`
 de ProjectsPage) — no existe sistema global de toasts fuera del editor; no

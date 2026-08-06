@@ -41,7 +41,11 @@ export function assetTypeCategory(asset) {
 // icono de archivo y se descargan directo desde su public_url.
 export function isImageAsset(asset) {
   const mime = asset?.mime_type || ''
-  return mime.startsWith('image/')
+  // `startsWith('image')` y no `'image/'`: hay filas legacy con mime_type
+  // exactamente `"image"` (verificado en datos reales). El fallback por
+  // dimensiones cubre cualquier otra fila vieja sin mime confiable.
+  if (mime.startsWith('image')) return true
+  return Boolean(asset?.width && asset?.height)
 }
 
 export function formatDimensions(width, height) {
