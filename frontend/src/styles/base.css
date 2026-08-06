@@ -139,3 +139,11 @@ a {
     0%, 100% { background-color: rgba(254, 249, 195, 0.75); }
   }
 }
+
+/* Clase global para el highlight temporal al navegar por deep-link. Vive aquí
+   y no en un CSS module porque el plugin de CSS modules renombra el
+   animation-name aunque los keyframes sean globales. */
+.wb-section-flash {
+  animation: sectionFlash 1200ms ease-out forwards;
+  border-radius: var(--wb-radius-2);
+}

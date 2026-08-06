@@ -186,6 +186,9 @@
 
 .printHide {
   /* default: visible — hidden in @media print below */
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
 }
 
 @media (max-width: 760px) {
