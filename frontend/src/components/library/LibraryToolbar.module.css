@@ -9,6 +9,23 @@
   white-space: nowrap;
 }
 
+/* F1.2-B punto 2: mismo tratamiento que ProjectsToolbar.module.css
+   .searchField — el Input por defecto mide 40px (ver ui/Input.module.css)
+   pero el Select `size="sm"` contiguo mide 32px (ver ui/Select.module.css
+   .triggerSm); igualamos hacia el más CHICO en vez de agrandar el Select.
+   `input` es selector de TAG, no de módulo, así que no requiere tocar
+   Input.jsx. Mismo ancho (280px) que ProjectsToolbar por consistencia
+   entre ambas toolbars, aunque el placeholder de acá ("Buscar por nombre
+   de archivo") es un poco más corto — ver cálculo en ese archivo. */
+.searchField {
+  width: 280px;
+}
+
+.searchField input {
+  height: 32px;
+  font-size: var(--wb-text-sm);
+}
+
 .sortSelect {
   min-width: 160px;
 }

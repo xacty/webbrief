@@ -72,6 +72,7 @@
   color: var(--wb-primary);
   cursor: pointer;
   font-weight: var(--wb-weight-medium);
+  transition: background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
 .breadcrumbLink:hover {
@@ -81,11 +82,15 @@
 /* Drop target — dragging a project/folder onto the root crumb moves it to
    the company root (folderId: null). box-shadow (not border/padding) so
    the highlight never resizes the button — see DESIGN-SYSTEM.md §"Stable
-   layouts — no jumpy reflows". */
+   layouts — no jumpy reflows". F1.2-B punto 1c: bg+box-shadow ya existían
+   idénticos a LibraryPage.module.css (diagnóstico: sutileza, no ausencia —
+   ver reporte) — se suma transform:scale (compositing puro) para
+   reforzar. */
 .breadcrumbLinkDragOver {
   background: var(--wb-color-primary-50);
   box-shadow: 0 0 0 2px var(--wb-color-primary-500);
   text-decoration: none;
+  transform: scale(1.04);
 }
 
 .breadcrumbSep {

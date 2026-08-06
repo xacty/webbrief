@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  ChevronRight, Download, Eye, FolderOpen, FolderPlus, Info, Move, Pencil, RotateCcw, Trash2, Upload, X, XCircle,
+  ChevronRight, Download, Eye, FolderOpen, FolderPlus, FolderUp, Info, Move, Pencil, RefreshCw, RotateCcw, Trash2,
+  Upload, X, XCircle,
 } from 'lucide-react'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { Button } from '../components/ui'
@@ -15,12 +16,13 @@ import EmptyTrashModal from '../components/library/EmptyTrashModal'
 import LibraryExportModal from '../components/library/LibraryExportModal'
 import UploadDropzone from '../components/library/UploadDropzone'
 import UploadQueuePanel from '../components/library/UploadQueuePanel'
+import FolderUploadConfirmModal from '../components/library/FolderUploadConfirmModal'
 import LibraryToolbar from '../components/library/LibraryToolbar'
 import ItemContextMenu from '../components/organizer/ItemContextMenu'
 import AssetInfoModal from '../components/library/AssetInfoModal'
 import ActionToast from '../components/organizer/ActionToast'
 import { fetchLibrary, moveAssets, trashAssets, restoreAssets, renameAsset, updateFolder, trashFolder } from '../lib/libraryApi'
-import { createUploadQueue, enqueueFiles, formatBytes } from '../lib/uploadQueue'
+import { createUploadQueue, enqueueFiles, formatBytes, partitionEntries, readPickedDirectoryFiles } from '../lib/uploadQueue'
 import { filterAssetsByType, sortAssets } from '../lib/libraryAssetUtils'
 import styles from './LibraryPage.module.css'
 
@@ -46,6 +48,15 @@ function readStoredLayout() {
 // este set, el Select simplemente muestra su placeholder ("Ordenar") en
 // vez de fingir que matchea una de sus 5 opciones.
 const SORT_SELECT_KEYS = new Set(['name_asc', 'name_desc', 'date_asc', 'date_desc', 'size_desc'])
+
+// Right-click de fondo (F1.2-B, punto 3): qué NO cuenta como "zona vacía".
+// Cubre cards de asset (role="button"), chips/filas de carpeta
+// (role="button" o <tr>), headers de tabla (<thead>), cualquier botón/
+// input/select real, y la toolbar entera (role="toolbar", ver
+// organizer/MorphingToolbar.jsx) — ahí el right-click nativo sigue siendo
+// útil (copiar texto del buscador, etc.), así que no se intercepta.
+const BACKGROUND_MENU_IGNORE_SELECTOR =
+  'button, a, input, textarea, select, tr, thead, [role="button"], [role="menu"], [role="toolbar"], [role="dialog"]'
 
 /**
  * Biblioteca de imágenes por empresa. Orquestador: breadcrumb de carpetas
@@ -73,6 +84,13 @@ export default function LibraryPage() {
   const [data, setData] = useState(null)
   const [loadState, setLoadState] = useState('loading')
   const [newFolderOpen, setNewFolderOpen] = useState(false)
+  // "Subir carpeta" disparada desde el menú de fondo (F1.2-B, punto 3,
+  // bonus) — mismo modal de confirmación que ya usa el drag&drop de una
+  // carpeta arrastrada (UploadDropzone.jsx), pero acá el origen es un
+  // <input type="file" webkitdirectory> elegido por diálogo nativo en vez
+  // de arrastrado. Estado PROPIO (no se toca UploadDropzone) para no tocar
+  // ese flujo ya probado — ver handleFolderFilesPicked más abajo.
+  const [folderConfirmState, setFolderConfirmState] = useState(null) // { folderName, accepted, excluded } | null
 
   // Selección múltiple (sólo assets — ver AssetGrid.jsx), toolbar bulk y
   // modales de mover/renombrar/vaciar papelera. Mismo patrón que
@@ -100,6 +118,14 @@ export default function LibraryPage() {
   const [sortDir, setSortDir] = useState('desc')
   const [typeFilter, setTypeFilter] = useState('all')
   const [layout, setLayout] = useState(readStoredLayout)
+
+  // Búsqueda por nombre de archivo (F1.2-B, punto 2 — la barra no tenía
+  // search antes de este fix). Debounce 200ms + estado LOCAL, mismo patrón
+  // que ProjectsPage.jsx (searchInput/search). Filtra `rawAssets` dentro de
+  // la carpeta/vista actual; las carpetas nunca se filtran por texto,
+  // igual que ProjectsPage nunca filtra childFolders.
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
 
   // Toast flotante inferior con Deshacer (punto 2) — ver ActionToast.jsx.
   // Un solo toast a la vez: showActionToast reemplaza el anterior sin
@@ -160,6 +186,12 @@ export default function LibraryPage() {
     setContextMenu(null)
   }, [folderId, projectId, view])
 
+  // Búsqueda debounced 200ms — mismo patrón que ProjectsPage.jsx.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(searchInput.trim().toLowerCase()), 200)
+    return () => window.clearTimeout(timer)
+  }, [searchInput])
+
   // Los avisos de éxito se ocultan solos; los de advertencia (p. ej.
   // "conservadas por estar referenciadas") persisten hasta que el usuario
   // los cierra — mismo criterio que EditorToast (ver CONTEXT.min.md
@@ -206,6 +238,20 @@ export default function LibraryPage() {
     if (!files.length || !queue) return
     enqueueFiles(queue, files, folderId)
     setPanelVisible(true)
+  }
+
+  // "Subir carpeta" (punto 3, bonus) — mismo árbol de revisión que arrastrar
+  // una carpeta (readDroppedItems + FolderUploadConfirmModal), pero desde el
+  // diálogo nativo del <input webkitdirectory>. Ver readPickedDirectoryFiles
+  // en uploadQueue.js para el porqué del mismo shape {file, relativePath}.
+  function handleFolderFilesPicked(event) {
+    const fileList = event.target.files
+    event.target.value = ''
+    if (!fileList?.length) return
+    const { files, folderName } = readPickedDirectoryFiles(fileList)
+    if (!files.length) return
+    const { accepted, excluded } = partitionEntries(files)
+    setFolderConfirmState({ folderName, accepted, excluded })
   }
 
   function handleRetryUpload(id) {
@@ -658,6 +704,21 @@ export default function LibraryPage() {
     setContextMenu({ x: event.clientX, y: event.clientY, kind: 'folder', folder })
   }
 
+  // Right-click en zona vacía (punto 3) — se cuelga del contenedor del
+  // CONTENIDO (`.pageBody`, ver el JSX más abajo), no de toda la página, así
+  // que el header (título/breadcrumb) queda afuera a propósito. "Zona
+  // vacía" = target que NO matchea BACKGROUND_MENU_IGNORE_SELECTOR — cards/
+  // chips/filas ya tienen su propio onContextMenu más específico (arriba),
+  // así que este handler sólo necesita EXCLUIRLOS via closest() para no
+  // pisarlos cuando el evento burbujea (algunos de esos handlers no llaman
+  // stopPropagation, así que sin este guard el menú de fondo se abriría
+  // DEMÁS de el de la card).
+  function openPageContextMenu(event) {
+    if (event.target.closest(BACKGROUND_MENU_IGNORE_SELECTOR)) return
+    event.preventDefault()
+    setContextMenu({ x: event.clientX, y: event.clientY, kind: isTrash ? 'page-trash' : 'page' })
+  }
+
   function closeContextMenu() {
     setContextMenu(null)
   }
@@ -716,6 +777,31 @@ export default function LibraryPage() {
         const { ids } = menu
         return [{ type: 'item', icon: RotateCcw, label: `Restaurar ${ids.length}`, onSelect: () => handleRestoreAssets(ids) }]
       }
+      // Right-click en zona vacía (punto 3) — items de PÁGINA, no de un
+      // asset/carpeta puntual. "Nueva carpeta"/"Subir imágenes"/"Subir
+      // carpeta" sólo si canWrite (mismo gate que los botones del header,
+      // showToolbarActions); "Actualizar" siempre visible, reusa el mismo
+      // `reload()` que el botón "Reintentar" de AssetGrid en estado error.
+      case 'page': {
+        const items = []
+        if (canWrite) {
+          items.push(
+            { type: 'item', icon: FolderPlus, label: 'Nueva carpeta', onSelect: () => setNewFolderOpen(true) },
+            { type: 'item', icon: Upload, label: 'Subir imágenes', onSelect: () => document.getElementById('library-file-input')?.click() },
+            { type: 'item', icon: FolderUp, label: 'Subir carpeta', onSelect: () => document.getElementById('library-folder-input')?.click() },
+            { type: 'separator' }
+          )
+        }
+        items.push({ type: 'item', icon: RefreshCw, label: 'Actualizar', onSelect: () => reload() })
+        return items
+      }
+      case 'page-trash': {
+        const items = [{ type: 'item', icon: RefreshCw, label: 'Actualizar', onSelect: () => reload() }]
+        if (canWrite && assetCount > 0) {
+          items.push({ type: 'separator' }, { type: 'item', icon: Trash2, label: 'Vaciar papelera', destructive: true, onSelect: () => setEmptyTrashOpen(true) })
+        }
+        return items
+      }
       default:
         return []
     }
@@ -741,11 +827,16 @@ export default function LibraryPage() {
     : `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} · ${folderCount} carpeta${folderCount === 1 ? '' : 's'}`
   const selectionCount = selectedIds.size
 
-  // Orden + filtro de tipo client-side (punto 3) — el filtro de tipo no
-  // aplica en papelera (la toolbar tampoco lo muestra ahí, ver
-  // LibraryToolbar). El Lightbox navega sobre esta MISMA lista (ver más
-  // abajo) para que prev/next siga el orden visual que el usuario ve.
-  const typeFilteredAssets = isTrash ? rawAssets : filterAssetsByType(rawAssets, typeFilter)
+  // Búsqueda + orden + filtro de tipo client-side (puntos 2 y 3) — la
+  // búsqueda SÍ aplica en papelera (útil para encontrar un archivo
+  // trasheado por nombre); el filtro de tipo no (la toolbar tampoco lo
+  // muestra ahí, ver LibraryToolbar). El Lightbox navega sobre esta MISMA
+  // lista (ver más abajo) para que prev/next siga el orden visual que el
+  // usuario ve.
+  const searchedAssets = search
+    ? rawAssets.filter((asset) => (asset.file_name || '').toLowerCase().includes(search))
+    : rawAssets
+  const typeFilteredAssets = isTrash ? searchedAssets : filterAssetsByType(searchedAssets, typeFilter)
   const visibleAssets = sortAssets(typeFilteredAssets, sortField, sortDir)
   const sortSelectValue = SORT_SELECT_KEYS.has(`${sortField}_${sortDir}`) ? `${sortField}_${sortDir}` : ''
   const contextMenuItems = buildContextMenuItems(contextMenu)
@@ -835,6 +926,23 @@ export default function LibraryPage() {
                   hidden
                   onChange={handleFilesPicked}
                 />
+                {/* "Subir carpeta" (punto 3, bonus) — sin botón visible propio
+                    a propósito (elegido lo más simple: sólo vive en el menú
+                    de right-click de fondo, ver buildContextMenuItems 'page');
+                    este input es el target que ese item dispara por id, mismo
+                    patrón que library-file-input de arriba.
+                    webkitdirectory/directory no son props React reconocidas,
+                    pero React 16+ pasa atributos desconocidos tal cual al DOM
+                    — el browser los interpreta igual que en HTML plano. */}
+                <input
+                  type="file"
+                  id="library-folder-input"
+                  webkitdirectory=""
+                  directory=""
+                  multiple
+                  hidden
+                  onChange={handleFolderFilesPicked}
+                />
               </div>
             )}
           </div>
@@ -849,7 +957,7 @@ export default function LibraryPage() {
         disabled={!showToolbarActions}
         onQueued={() => setPanelVisible(true)}
       >
-        <div className={styles.pageBody}>
+        <div className={styles.pageBody} onContextMenu={openPageContextMenu}>
           {notice && (
             <div className={cx(styles.notice, notice.tone === 'warning' && styles.noticeWarning)} role="status">
               <span>{notice.message}</span>
@@ -866,6 +974,8 @@ export default function LibraryPage() {
             canWrite={canWrite}
             selectionCount={selectionCount}
             bulkBusy={bulkBusy}
+            searchValue={searchInput}
+            onSearchChange={setSearchInput}
             sortValue={sortSelectValue}
             onSortChange={handleSortSelectChange}
             typeFilter={typeFilter}
@@ -984,6 +1094,26 @@ export default function LibraryPage() {
         onClose={() => setInfoAsset(null)}
         asset={infoAsset}
         folders={data?.allFolders || []}
+      />
+
+      {/* Instancia PROPIA (no la de UploadDropzone, que sólo abre por
+          drag&drop) para el flujo "Subir carpeta" disparado desde el menú de
+          fondo — ver handleFolderFilesPicked. Mismo patrón que el resto de
+          los modales de esta página: siempre montado, gateado por su propio
+          `open`. */}
+      <FolderUploadConfirmModal
+        open={Boolean(folderConfirmState)}
+        companyId={companyId}
+        parentFolderId={folderId}
+        queueRef={queueRef}
+        folderName={folderConfirmState?.folderName}
+        accepted={folderConfirmState?.accepted || []}
+        excluded={folderConfirmState?.excluded || []}
+        onClose={() => setFolderConfirmState(null)}
+        onConfirmed={() => {
+          setFolderConfirmState(null)
+          setPanelVisible(true)
+        }}
       />
 
       <ItemContextMenu

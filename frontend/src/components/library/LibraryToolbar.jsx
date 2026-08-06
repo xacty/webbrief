@@ -1,5 +1,5 @@
-import { Download, LayoutGrid, List, Move, RotateCcw, Trash2 } from 'lucide-react'
-import { Button, Select } from '../ui'
+import { Download, LayoutGrid, List, Move, RotateCcw, Search, Trash2 } from 'lucide-react'
+import { Button, Input, Select } from '../ui'
 import MorphingToolbar from '../organizer/MorphingToolbar'
 import styles from './LibraryToolbar.module.css'
 
@@ -43,12 +43,22 @@ const TYPE_OPTIONS = [
  * No conoce la API — LibraryPage pasa callbacks ya resueltos (igual patrón
  * que MoveToFolderModal/RenameModal: este componente sólo posee el layout
  * y delega toda mutación hacia arriba).
+ *
+ * Búsqueda (F1.2-B, punto 2): nueva — antes esta barra no tenía search.
+ * Mismo patrón client-side que ProjectsToolbar (debounce vive en
+ * LibraryPage, acá sólo el input controlado), filtra por nombre de archivo
+ * dentro de la carpeta/vista actual. Compacta a la altura de los Select
+ * `size="sm"` contiguos vía `.searchField input` en el CSS module — ver
+ * comentario ahí para el porqué (Input por defecto mide 40px, los Select
+ * de esta barra 32px).
  */
 export default function LibraryToolbar({
   isTrash = false,
   canWrite = false,
   selectionCount = 0,
   bulkBusy = false,
+  searchValue = '',
+  onSearchChange,
   sortValue,
   onSortChange,
   typeFilter = 'all',
@@ -71,6 +81,16 @@ export default function LibraryToolbar({
     </strong>
   ) : (
     <>
+      <Input
+        type="search"
+        fullWidth={false}
+        icon={<Search size={16} />}
+        aria-label="Buscar por nombre de archivo"
+        placeholder="Buscar por nombre de archivo"
+        value={searchValue}
+        onChange={(event) => onSearchChange?.(event.target.value)}
+        className={styles.searchField}
+      />
       <Select
         size="sm"
         fullWidth={false}

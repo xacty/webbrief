@@ -1,4 +1,4 @@
-import { Archive, Building2, LayoutGrid, List, Move, Trash2 } from 'lucide-react'
+import { Archive, Building2, LayoutGrid, List, Move, Search, Trash2 } from 'lucide-react'
 import { Button, Input, Select } from '../ui'
 import MorphingToolbar from '../organizer/MorphingToolbar'
 import { projectTypeLabel } from '../../lib/companyFormatters'
@@ -78,6 +78,7 @@ export default function ProjectsToolbar({
       <Input
         type="search"
         fullWidth={false}
+        icon={<Search size={16} />}
         aria-label="Buscar por nombre o cliente"
         placeholder="Buscar por nombre o cliente"
         value={searchValue}

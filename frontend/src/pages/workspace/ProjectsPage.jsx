@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  Archive, Building2, ChevronRight, Copy, ExternalLink, FolderOpen, FolderPlus, Move, Pencil, Plus, Trash2, XCircle,
+  Archive, Building2, ChevronRight, Copy, ExternalLink, FolderOpen, FolderPlus, Move, Pencil, Plus, RefreshCw,
+  Trash2, XCircle,
 } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -55,6 +56,15 @@ function readStoredLayout() {
 // sorteable pero cae fuera de este set — igual que dimensions/format en la
 // biblioteca, el Select simplemente muestra su placeholder en ese caso.
 const SORT_SELECT_KEYS = new Set(['activity_desc', 'name_asc', 'name_desc'])
+
+// Right-click de fondo (F1.2-B, punto 3) — misma constante que
+// LibraryPage.jsx (co-located styles convention, ver el comentario de
+// cabecera de ProjectGrid.module.css para el porqué de duplicar en vez de
+// importar entre superficies hermanas). Cubre cards de proyecto
+// (role="button"), chips/filas de carpeta, filas de tabla, headers,
+// cualquier control real, y la toolbar (role="toolbar").
+const BACKGROUND_MENU_IGNORE_SELECTOR =
+  'button, a, input, textarea, select, tr, thead, [role="button"], [role="menu"], [role="toolbar"], [role="dialog"]'
 
 function compareProjectsBy(a, b, field) {
   if (field === 'name') return compareStrings(a.name, b.name)
@@ -297,6 +307,36 @@ export default function ProjectsPage() {
 
   function openProject(projectId) {
     navigate(`/project/${projectId}/editor`)
+  }
+
+  // "Actualizar" del menú de fondo (punto 3) — refresca company+projects+
+  // members (mismo endpoint que el efecto de mount de arriba) Y folders
+  // (fetch independiente) en un solo golpe. Función NUEVA e independiente
+  // en vez de extraer el `loadCompany` de dentro del useEffect de mount:
+  // ese efecto ya tiene su propio guard `active` contra condiciones de
+  // carrera por unmount/cambio de companyId a mitad de un fetch — un
+  // refresh manual disparado por el usuario no comparte ese ciclo de vida,
+  // así que se mantiene aparte para no tocar un efecto que ya funciona
+  // (stability bias, ver AI_GLOBAL.md).
+  async function handleManualReload() {
+    if (!companyId) return
+    try {
+      const [companyData, foldersData] = await Promise.all([
+        apiFetch(`/api/companies/${companyId}`),
+        fetchProjectFolders(companyId).catch(() => null),
+      ])
+      setCompany(companyData.company)
+      setProjects(companyData.projects)
+      setMembers(companyData.members)
+      writeCompanyCache(companyId, companyData)
+      setError('')
+      if (foldersData) {
+        setFolders(foldersData.folders || [])
+        setFoldersRole(foldersData.role || null)
+      }
+    } catch (err) {
+      setError(err.message || 'No se pudo actualizar')
+    }
   }
 
   function openMoveModal(ids) {
@@ -774,6 +814,18 @@ export default function ProjectsPage() {
     setContextMenu({ x: event.clientX, y: event.clientY, kind: 'folder', folder })
   }
 
+  // Right-click en zona vacía (punto 3) — mismo criterio que
+  // LibraryPage.jsx openPageContextMenu: se cuelga del contenedor del
+  // CONTENIDO (`.projectsSection`, ver el JSX más abajo, no de toda la
+  // página, así que el header queda afuera), y sólo abre cuando el target
+  // NO matchea BACKGROUND_MENU_IGNORE_SELECTOR (cards/chips/filas/toolbar/
+  // controles reales ya tienen su propio manejo más específico).
+  function openPageContextMenu(event) {
+    if (event.target.closest(BACKGROUND_MENU_IGNORE_SELECTOR)) return
+    event.preventDefault()
+    setContextMenu({ x: event.clientX, y: event.clientY, kind: 'page' })
+  }
+
   function closeContextMenu() {
     setContextMenu(null)
   }
@@ -817,6 +869,23 @@ export default function ProjectsPage() {
           { type: 'separator' },
           { type: 'item', icon: Trash2, label: 'Eliminar', destructive: true, onSelect: () => openDeleteFolderModal(folder) },
         ]
+      }
+      // Right-click en zona vacía (punto 3) — items de PÁGINA. "Nueva
+      // carpeta"/"Nuevo proyecto" respetan los MISMOS gates que sus botones
+      // homólogos del header (canManageFolders / canCreateProjects);
+      // "Nuevo proyecto" navega EXACTO igual que el botón "+ Proyecto"
+      // existente (mismo `navigate` call, ver headerActions más abajo).
+      case 'page': {
+        const items = []
+        if (canManageFolders) {
+          items.push({ type: 'item', icon: FolderPlus, label: 'Nueva carpeta', onSelect: openNewFolderModal })
+        }
+        if (canCreateProjects) {
+          items.push({ type: 'item', icon: Plus, label: 'Nuevo proyecto', onSelect: () => navigate(`/new-project?companyId=${companyId}`) })
+        }
+        if (items.length) items.push({ type: 'separator' })
+        items.push({ type: 'item', icon: RefreshCw, label: 'Actualizar', onSelect: handleManualReload })
+        return items
       }
       default:
         return []
@@ -958,7 +1027,7 @@ export default function ProjectsPage() {
 
           <div className={styles.pageBody}>
             <div className={styles.tabPanel}>
-              <section className={styles.projectsSection}>
+              <section className={styles.projectsSection} onContextMenu={openPageContextMenu}>
                 {feedbackNotice && (
                   <div className={styles.feedbackNotice} role="status">
                     {feedbackNotice}

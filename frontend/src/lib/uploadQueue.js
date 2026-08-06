@@ -26,7 +26,7 @@ export const ACCEPTED_MIMES = new Set([
 export const MAX_FILE_BYTES = 30 * 1024 * 1024
 
 export const EXCLUDE_REASON_LABELS = {
-  unsupported: 'Formato no compatible',
+  unsupported: 'Formato no compatible — por ahora solo imágenes (JPG, PNG, WebP, GIF o SVG)',
   too_big: 'Supera 30 MB',
 }
 
@@ -87,6 +87,31 @@ export async function readDroppedItems(dataTransferItems) {
     }
   }
   for (const entry of entries) await walk(entry, '')
+  return { files, folderName }
+}
+
+// Convierte el FileList de un <input type="file" webkitdirectory> — la
+// carpeta se elige vía diálogo nativo en vez de arrastrarse (F1.2-B, punto
+// 3: "Subir carpeta" desde el menú de biblioteca) — al mismo shape
+// { files: [{file, relativePath}], folderName } que readDroppedItems, para
+// que AMBOS caminos alimenten el mismo FolderUploadConfirmModal sin que le
+// importe el origen. `file.webkitRelativePath` llega como
+// "CarpetaRaiz/sub/archivo.jpg"; le sacamos el nombre de archivo para
+// quedarnos con la ruta de carpeta (mismo formato que folderName/prefix en
+// readDroppedItems: un archivo suelto directo en la carpeta raíz
+// seleccionada llega con relativePath === folderName, sin el nombre de
+// archivo).
+export function readPickedDirectoryFiles(fileList) {
+  const files = []
+  let folderName = null
+  for (const file of Array.from(fileList || [])) {
+    const full = file.webkitRelativePath || ''
+    const segments = full.split('/')
+    segments.pop() // descarta el nombre de archivo, nos quedamos con la carpeta
+    const relativePath = segments.join('/')
+    if (!folderName && segments.length) folderName = segments[0]
+    files.push({ file, relativePath })
+  }
   return { files, folderName }
 }
 

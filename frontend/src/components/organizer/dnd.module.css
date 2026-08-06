@@ -1,19 +1,118 @@
-/* Drag ghost — pill flotante fuera de pantalla usada sólo como snapshot
-   para dataTransfer.setDragImage cuando se arrastran 2+ elementos
-   seleccionados (ver createDragGhost en dnd.js). Nunca visible en el
-   viewport real. Movido verbatim desde library/AssetGrid.module.css en
-   O2.a. */
-.dragGhost {
+/* Ghost de arrastre custom estilo Google Drive (F1.2-B, punto 1a) — ver
+   createItemDragGhost en dnd.js. TODO fuera de pantalla (position:fixed,
+   top/left negativos): nunca visible en el viewport real, sólo existe como
+   snapshot para dataTransfer.setDragImage. */
+
+.dragCardWrap {
   position: fixed;
   top: -1000px;
   left: -1000px;
-  padding: var(--wb-space-2) var(--wb-space-3);
-  border-radius: var(--wb-radius-2);
-  background: var(--wb-color-primary-600);
-  color: #ffffff; /* keep literal — text on solid brand bg, no token */
-  font-family: var(--wb-font-sans);
-  font-size: var(--wb-text-sm);
-  font-weight: var(--wb-weight-medium);
-  white-space: nowrap;
+  width: 132px; /* 120px card + hasta 12px de offset del apilado */
   pointer-events: none;
+}
+
+.dragCard {
+  position: relative; /* en flujo normal: define el alto real de .dragCardWrap:
+                          las capas apiladas son position:absolute y no
+                          contribuyen al alto, así que el wrap termina
+                          midiendo exactamente lo que mide esta card */
+  z-index: 2;
+  width: 120px;
+  overflow: hidden;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-lg);
+  transform: rotate(-3deg);
+  font-family: var(--wb-font-sans);
+}
+
+.dragCardThumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 80px;
+  background: var(--wb-surface-muted);
+  color: var(--wb-text-muted);
+}
+
+.dragCardThumbImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dragCardIcon {
+  width: 28px;
+  height: 28px;
+}
+
+.dragCardName {
+  display: block;
+  padding: var(--wb-space-1) var(--wb-space-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text);
+}
+
+/* Apilado (multi-selección) — 2 capas detrás de .dragCard, offset diagonal
+   creciente (6px / 12px), sin contenido propio: sólo la silueta de la card
+   para leerse como un mazo, mismo ancho/alto que .dragCard (nunca más
+   grandes/chicas — eso leería como un bug de tamaño, no como un mazo).
+   `left/right` en vez de `width` porque .dragCardWrap SÍ tiene ancho
+   explícito (132px = 120px card + 12px de offset máximo): con left:Npx +
+   right:(12-N)px el ancho resultante da EXACTO 120px sin importar el
+   offset — ver comentario de .dragCardWrap arriba para el porqué de esos
+   132px. Vertical es la mecánica inversa: .dragCardWrap NO tiene alto
+   explícito (lo define .dragCard en flujo normal — un height:100% acá
+   quedaría en auto y colapsaría a 0), así que top:Npx + bottom:-Npx sí
+   preserva el alto real de .dragCard (bottom negativo empuja el borde
+   inferior de la capa más allá del borde ya resuelto del wrap). */
+.dragCardLayer {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  right: 6px; /* 12 (offset máximo) - 6 (offset de esta capa) = ancho 120px */
+  bottom: -6px;
+  z-index: 1;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  box-shadow: var(--wb-shadow-md);
+  transform: rotate(-3deg);
+}
+
+.dragCardLayerBack {
+  left: 12px;
+  top: 12px;
+  right: 0; /* 12 - 12 = ancho 120px */
+  bottom: -12px;
+  z-index: 0;
+  opacity: 0.85;
+}
+
+/* Badge circular con el contador — cae dentro de la excepción de
+   --wb-radius-full para "status pill" del Border-radius rule (decorativo,
+   no clickable). */
+.dragCardBadge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--wb-space-1);
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-600);
+  color: #ffffff; /* keep literal — text on solid brand bg, same exception as Button primary text */
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-semibold);
+  box-shadow: var(--wb-shadow-sm);
 }

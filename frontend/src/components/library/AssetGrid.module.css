@@ -40,7 +40,7 @@
   background: var(--wb-surface);
   color: var(--wb-text);
   cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
 .folderChip:hover {
@@ -53,9 +53,23 @@
   box-shadow: 0 0 0 3px var(--wb-color-primary-200);
 }
 
+/* Reforzado F1.2-B punto 1c: el border+bg ya existían (el problema
+   reportado era sutileza, no ausencia — ver AI_GLOBAL.md/reporte) — se
+   suma transform:scale para un "pop" claro estilo Google Drive. Seguro
+   para reflow: transform es puramente compositing, no cambia el box model
+   (ver DESIGN-SYSTEM.md §"Stable layouts"). */
 .folderChipDragOver {
   border-color: var(--wb-color-primary-500);
   background: var(--wb-color-primary-50);
+  transform: scale(1.04);
+}
+
+/* Origen del drag (punto 1b) — atenúa el/los item(s) que se están
+   arrastrando. Vive acá (no en dnd.module.css) porque se aplica junto a
+   clases ya scoped a este módulo (folderChip/folderRow/assetCard/
+   assetRow); ProjectGrid.module.css repite la misma regla verbatim. */
+.dragSourceDimmed {
+  opacity: 0.5;
 }
 
 .folderChipIcon {
@@ -228,8 +242,8 @@
   font-size: var(--wb-text-sm);
 }
 
-/* Drag ghost moved to organizer/dnd.module.css in O2.a (createDragGhost
-   now lives in organizer/dnd.js, shared with future callers). */
+/* Drag ghost vive en organizer/dnd.module.css (createItemDragGhost en
+   dnd.js, F1.2-B punto 1a) — compartido con ProjectGrid.module.css. */
 
 /* Visually-hidden utility — same pattern as Button.module.css .srOnly.
    Each CSS module keeps its own copy (co-located styles convention, see
@@ -333,9 +347,14 @@
   background: var(--wb-surface-muted);
 }
 
+/* Reforzado F1.2-B punto 1c (2px en vez de 1px) — mismo diagnóstico que
+   .folderChipDragOver: no estaba roto, pero un ring de 1px se perdía en el
+   escaneo rápido. Sin transform acá a propósito: aplicar scale a un <tr>
+   dentro de una tabla es propenso a recortes/artefactos entre browsers, así
+   que la fila se refuerza sólo por color/grosor del ring. */
 .folderRowDragOver {
   background: var(--wb-color-primary-50);
-  box-shadow: inset 0 0 0 1px var(--wb-color-primary-500);
+  box-shadow: inset 0 0 0 2px var(--wb-color-primary-500);
 }
 
 .assetRow:hover {

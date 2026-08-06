@@ -4,7 +4,10 @@ import { Button, KebabMenu } from '../ui'
 import EmptyState from '../onboarding/EmptyState'
 import { formatBytes } from '../../lib/uploadQueue'
 import { assetImageUrl, formatDateEs, formatDimensions, mimeLabel } from '../../lib/libraryAssetUtils'
-import { ASSET_DRAG_TYPE, FOLDER_DRAG_TYPE, createDragGhost, dragHasAnyType, isInternalDragLeave } from '../organizer/dnd'
+import {
+  ASSET_DRAG_TYPE, FOLDER_DRAG_TYPE, FOLDER_ICON_MARKUP, IMAGE_ICON_MARKUP,
+  createItemDragGhost, dragHasAnyType, isInternalDragLeave,
+} from '../organizer/dnd'
 import styles from './AssetGrid.module.css'
 
 function cx(...parts) {
@@ -134,6 +137,12 @@ export default function AssetGrid({
   // Highlights the folder chip/row currently under a drag — only ever one
   // at a time, so a single id (not a Set) is enough.
   const [dragOverFolderId, setDragOverFolderId] = useState(null)
+  // Origen del drag activo (F1.2-B punto 1b — feedback estilo Google Drive):
+  // atenúa (opacity .5) los items que se están arrastrando. `draggingAssetIds`
+  // cubre single Y multi (multi atenúa TODA la selección, no sólo la card
+  // bajo el cursor); las carpetas nunca son multi, así que un id alcanza.
+  const [draggingAssetIds, setDraggingAssetIds] = useState(EMPTY_SELECTION)
+  const [draggingFolderId, setDraggingFolderId] = useState(null)
 
   if (loading) {
     return (
@@ -202,6 +211,15 @@ export default function AssetGrid({
     }
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(FOLDER_DRAG_TYPE, folder.id)
+    setDraggingFolderId(folder.id)
+    const ghost = createItemDragGhost({ label: folder.name, iconMarkup: FOLDER_ICON_MARKUP })
+    event.dataTransfer.setDragImage(ghost, 20, 20)
+    window.setTimeout(() => ghost.remove(), 0)
+  }
+
+  function handleFolderDragEnd() {
+    setDragOverFolderId(null)
+    setDraggingFolderId(null)
   }
 
   function handleFolderDragOver(event, folder) {
@@ -272,11 +290,25 @@ export default function AssetGrid({
     const ids = selectedIds.has(asset.id) && selectedIds.size > 0 ? Array.from(selectedIds) : [asset.id]
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(ASSET_DRAG_TYPE, JSON.stringify(ids))
-    if (ids.length > 1) {
-      const ghost = createDragGhost(`${ids.length} imágenes`)
-      event.dataTransfer.setDragImage(ghost, 16, 16)
-      window.setTimeout(() => ghost.remove(), 0)
-    }
+    setDraggingAssetIds(new Set(ids))
+    // Clona el <img> YA CARGADO de la card/fila origen — nunca un <img src>
+    // nuevo, que podría no pintar a tiempo para el snapshot de
+    // setDragImage (ver comentario en createItemDragGhost). Sin thumb
+    // (asset sin miniatura), cae al ícono de fallback (mismo que
+    // .thumbFallback/.listThumbFallback más abajo).
+    const thumbEl = event.currentTarget.querySelector('img')
+    const ghost = createItemDragGhost({
+      label: asset.file_name,
+      thumbEl,
+      iconMarkup: thumbEl ? null : IMAGE_ICON_MARKUP,
+      count: ids.length,
+    })
+    event.dataTransfer.setDragImage(ghost, 20, 20)
+    window.setTimeout(() => ghost.remove(), 0)
+  }
+
+  function handleAssetDragEnd() {
+    setDraggingAssetIds(EMPTY_SELECTION)
   }
 
   function assetKebabItems(asset) {
@@ -312,14 +344,18 @@ export default function AssetGrid({
                   tabIndex={0}
                   draggable={canWrite}
                   aria-label={folder.name}
-                  className={cx(styles.folderChip, dragOverFolderId === folder.id && styles.folderChipDragOver)}
+                  className={cx(
+                    styles.folderChip,
+                    dragOverFolderId === folder.id && styles.folderChipDragOver,
+                    draggingFolderId === folder.id && styles.dragSourceDimmed
+                  )}
                   onClick={() => handleFolderActivate(folder.id)}
                   onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
                   onDragStart={(event) => handleFolderDragStart(event, folder)}
                   onDragOver={(event) => handleFolderDragOver(event, folder)}
                   onDragLeave={(event) => handleFolderDragLeave(event, folder.id)}
                   onDrop={(event) => handleFolderDrop(event, folder)}
-                  onDragEnd={() => setDragOverFolderId(null)}
+                  onDragEnd={handleFolderDragEnd}
                   onContextMenu={canWrite ? (event) => onFolderContextMenu?.(event, folder) : undefined}
                 >
                   <Folder size={16} className={styles.folderChipIcon} aria-hidden="true" />
@@ -391,7 +427,11 @@ export default function AssetGrid({
               return (
                 <tr
                   key={folder.id}
-                  className={cx(styles.folderRow, dragOverFolderId === folder.id && styles.folderRowDragOver)}
+                  className={cx(
+                    styles.folderRow,
+                    dragOverFolderId === folder.id && styles.folderRowDragOver,
+                    draggingFolderId === folder.id && styles.dragSourceDimmed
+                  )}
                   tabIndex={0}
                   aria-label={folder.name}
                   draggable={canWrite}
@@ -401,7 +441,7 @@ export default function AssetGrid({
                   onDragOver={(event) => handleFolderDragOver(event, folder)}
                   onDragLeave={(event) => handleFolderDragLeave(event, folder.id)}
                   onDrop={(event) => handleFolderDrop(event, folder)}
-                  onDragEnd={() => setDragOverFolderId(null)}
+                  onDragEnd={handleFolderDragEnd}
                   onContextMenu={canWrite ? (event) => onFolderContextMenu?.(event, folder) : undefined}
                 >
                   <td className={styles.listNameCell}>
@@ -443,7 +483,12 @@ export default function AssetGrid({
               return (
                 <tr
                   key={asset.id}
-                  className={cx(styles.assetRow, isSelected && styles.assetRowSelected, isTrash && styles.assetRowTrashed)}
+                  className={cx(
+                    styles.assetRow,
+                    isSelected && styles.assetRowSelected,
+                    isTrash && styles.assetRowTrashed,
+                    draggingAssetIds.has(asset.id) && styles.dragSourceDimmed
+                  )}
                   aria-selected={isSelected}
                   tabIndex={canWrite ? 0 : undefined}
                   draggable={canWrite && !isTrash}
@@ -451,6 +496,7 @@ export default function AssetGrid({
                   onDoubleClick={canWrite ? () => onOpenLightbox?.(index) : undefined}
                   onKeyDown={canWrite ? (event) => handleAssetKeyDown(event, asset.id, index) : undefined}
                   onDragStart={canWrite && !isTrash ? (event) => handleAssetDragStart(event, asset) : undefined}
+                  onDragEnd={canWrite && !isTrash ? handleAssetDragEnd : undefined}
                   onContextMenu={canWrite ? (event) => onAssetContextMenu?.(event, asset, index) : undefined}
                 >
                   <td className={styles.listNameCell}>
@@ -503,12 +549,14 @@ export default function AssetGrid({
                   styles.assetCard,
                   canWrite && styles.assetCardSelectable,
                   isTrash && styles.assetCardTrashed,
-                  isSelected && styles.assetCardSelected
+                  isSelected && styles.assetCardSelected,
+                  draggingAssetIds.has(asset.id) && styles.dragSourceDimmed
                 )}
                 onClick={canWrite ? (event) => handleAssetClick(event, asset.id) : undefined}
                 onDoubleClick={canWrite ? () => onOpenLightbox?.(index) : undefined}
                 onKeyDown={canWrite ? (event) => handleAssetKeyDown(event, asset.id, index) : undefined}
                 onDragStart={canWrite && !isTrash ? (event) => handleAssetDragStart(event, asset) : undefined}
+                onDragEnd={canWrite && !isTrash ? handleAssetDragEnd : undefined}
                 onContextMenu={canWrite ? (event) => onAssetContextMenu?.(event, asset, index) : undefined}
               >
                 {isSelected && (
@@ -547,7 +595,11 @@ export default function AssetGrid({
       )}
 
       {isFilteredToZero && (
-        <EmptyState icon={Images} title="No hay imágenes de este tipo en esta carpeta" />
+        <EmptyState
+          icon={Images}
+          title="No se encontraron imágenes"
+          body="Prueba con otro texto de búsqueda o quita el filtro de tipo."
+        />
       )}
     </div>
   )

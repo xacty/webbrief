@@ -52,7 +52,7 @@
   background: var(--wb-surface);
   color: var(--wb-text);
   cursor: pointer;
-  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
 .folderChip:hover {
@@ -65,9 +65,22 @@
   box-shadow: 0 0 0 3px var(--wb-color-primary-200);
 }
 
+/* Reforzado F1.2-B punto 1c: el border+bg ya existían idénticos a
+   AssetGrid.module.css (el reporte de "no veo cambio" era sutileza visual,
+   no un highlight ausente/roto — ver reporte) — se suma transform:scale
+   para un "pop" claro estilo Google Drive. transform es puro compositing,
+   no reflowea nada (DESIGN-SYSTEM.md §"Stable layouts"). */
 .folderChipDragOver {
   border-color: var(--wb-color-primary-500);
   background: var(--wb-color-primary-50);
+  transform: scale(1.04);
+}
+
+/* Origen del drag (punto 1b) — atenúa el/los item(s) que se están
+   arrastrando. Misma regla verbatim que AssetGrid.module.css (co-located
+   styles convention, ver comentario de cabecera del archivo). */
+.dragSourceDimmed {
+  opacity: 0.5;
 }
 
 .folderChipIcon {
@@ -341,9 +354,12 @@
   background: var(--wb-surface-muted);
 }
 
+/* Reforzado F1.2-B punto 1c (2px en vez de 1px) — ver el mismo comentario
+   en AssetGrid.module.css. Sin transform en filas de tabla a propósito
+   (riesgo de recorte/artefactos con <tr> entre browsers). */
 .folderRowDragOver {
   background: var(--wb-color-primary-50);
-  box-shadow: inset 0 0 0 1px var(--wb-color-primary-500);
+  box-shadow: inset 0 0 0 2px var(--wb-color-primary-500);
 }
 
 .projectRow:hover {

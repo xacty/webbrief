@@ -4,7 +4,8 @@ import { Button, KebabMenu } from '../ui'
 import EmptyState from '../onboarding/EmptyState'
 import { formatRelativeDate, projectTypeLabel } from '../../lib/companyFormatters'
 import {
-  FOLDER_DRAG_TYPE, PROJECT_DRAG_TYPE, createDragGhost, dragHasAnyType, isInternalDragLeave,
+  FOLDER_DRAG_TYPE, PROJECT_DRAG_TYPE, FOLDER_ICON_MARKUP, PROJECT_ICON_MARKUP,
+  createItemDragGhost, dragHasAnyType, isInternalDragLeave,
 } from '../organizer/dnd'
 import styles from './ProjectGrid.module.css'
 
@@ -112,6 +113,11 @@ export default function ProjectGrid({
   const isNarrowViewport = useIsNarrowViewport(LIST_FORCE_GRID_BREAKPOINT)
   const effectiveLayout = isNarrowViewport ? 'grid' : layout
   const [dragOverFolderId, setDragOverFolderId] = useState(null)
+  // Origen del drag activo (F1.2-B punto 1b) — mismo criterio que
+  // AssetGrid.jsx: atenúa (opacity .5) el/los item(s) que se están
+  // arrastrando, quitado en dragend.
+  const [draggingProjectIds, setDraggingProjectIds] = useState(EMPTY_SELECTION)
+  const [draggingFolderId, setDraggingFolderId] = useState(null)
 
   // ── Activación de carpetas ────────────────────────────────────────────
   // Un click sobre un folder chip/fila mientras hay proyectos seleccionados
@@ -139,6 +145,15 @@ export default function ProjectGrid({
     }
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(FOLDER_DRAG_TYPE, folder.id)
+    setDraggingFolderId(folder.id)
+    const ghost = createItemDragGhost({ label: folder.name, iconMarkup: FOLDER_ICON_MARKUP })
+    event.dataTransfer.setDragImage(ghost, 20, 20)
+    window.setTimeout(() => ghost.remove(), 0)
+  }
+
+  function handleFolderDragEnd() {
+    setDragOverFolderId(null)
+    setDraggingFolderId(null)
   }
 
   // Un chip/fila de carpeta COMO DESTINO puede recibir un PROJECT_DRAG_TYPE
@@ -250,11 +265,16 @@ export default function ProjectGrid({
     const ids = selectedIds.has(project.id) && selectedIds.size > 0 ? Array.from(selectedIds) : [project.id]
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(PROJECT_DRAG_TYPE, JSON.stringify(ids))
-    if (ids.length > 1) {
-      const ghost = createDragGhost(`${ids.length} proyectos`)
-      event.dataTransfer.setDragImage(ghost, 16, 16)
-      window.setTimeout(() => ghost.remove(), 0)
-    }
+    setDraggingProjectIds(new Set(ids))
+    // Los proyectos nunca tienen miniatura (a diferencia de los assets) —
+    // siempre ícono de fallback, nunca clone de <img>.
+    const ghost = createItemDragGhost({ label: project.name, iconMarkup: PROJECT_ICON_MARKUP, count: ids.length })
+    event.dataTransfer.setDragImage(ghost, 20, 20)
+    window.setTimeout(() => ghost.remove(), 0)
+  }
+
+  function handleProjectDragEnd() {
+    setDraggingProjectIds(EMPTY_SELECTION)
   }
 
   function projectKebabItems(project) {
@@ -324,14 +344,18 @@ export default function ProjectGrid({
                 tabIndex={0}
                 draggable={canManageFolders}
                 aria-label={folder.name}
-                className={cx(styles.folderChip, dragOverFolderId === folder.id && styles.folderChipDragOver)}
+                className={cx(
+                  styles.folderChip,
+                  dragOverFolderId === folder.id && styles.folderChipDragOver,
+                  draggingFolderId === folder.id && styles.dragSourceDimmed
+                )}
                 onClick={() => handleFolderActivate(folder.id)}
                 onKeyDown={(event) => handleFolderKeyDown(event, folder.id)}
                 onDragStart={(event) => handleFolderDragStart(event, folder)}
                 onDragOver={(event) => handleFolderDragOver(event, folder)}
                 onDragLeave={(event) => handleFolderDragLeave(event, folder.id)}
                 onDrop={(event) => handleFolderDrop(event, folder)}
-                onDragEnd={() => setDragOverFolderId(null)}
+                onDragEnd={handleFolderDragEnd}
                 onContextMenu={canManageFolders ? (event) => onFolderContextMenu?.(event, folder) : undefined}
               >
                 <Folder size={16} className={styles.folderChipIcon} aria-hidden="true" />
@@ -383,7 +407,11 @@ export default function ProjectGrid({
             {showFolders && folders.map((folder) => (
               <tr
                 key={folder.id}
-                className={cx(styles.folderRow, dragOverFolderId === folder.id && styles.folderRowDragOver)}
+                className={cx(
+                  styles.folderRow,
+                  dragOverFolderId === folder.id && styles.folderRowDragOver,
+                  draggingFolderId === folder.id && styles.dragSourceDimmed
+                )}
                 tabIndex={0}
                 aria-label={folder.name}
                 draggable={canManageFolders}
@@ -393,7 +421,7 @@ export default function ProjectGrid({
                 onDragOver={(event) => handleFolderDragOver(event, folder)}
                 onDragLeave={(event) => handleFolderDragLeave(event, folder.id)}
                 onDrop={(event) => handleFolderDrop(event, folder)}
-                onDragEnd={() => setDragOverFolderId(null)}
+                onDragEnd={handleFolderDragEnd}
                 onContextMenu={canManageFolders ? (event) => onFolderContextMenu?.(event, folder) : undefined}
               >
                 <td className={styles.listNameCell}>
@@ -422,7 +450,11 @@ export default function ProjectGrid({
               return (
                 <tr
                   key={project.id}
-                  className={cx(styles.projectRow, isSelected && styles.projectRowSelected)}
+                  className={cx(
+                    styles.projectRow,
+                    isSelected && styles.projectRowSelected,
+                    draggingProjectIds.has(project.id) && styles.dragSourceDimmed
+                  )}
                   aria-selected={isSelected}
                   tabIndex={0}
                   draggable={canOrganize}
@@ -430,6 +462,7 @@ export default function ProjectGrid({
                   onDoubleClick={() => onOpenProject?.(project.id)}
                   onKeyDown={(event) => handleRowKeyDown(event, project.id)}
                   onDragStart={canOrganize ? (event) => handleProjectDragStart(event, project) : undefined}
+                  onDragEnd={canOrganize ? handleProjectDragEnd : undefined}
                   onContextMenu={canOrganize ? (event) => onProjectContextMenu?.(event, project) : undefined}
                 >
                   <td className={styles.listNameCell}>
@@ -465,6 +498,7 @@ export default function ProjectGrid({
             const cardClassNames = [styles.projectCard]
             if (isSelected) cardClassNames.push(styles.projectCardSelected)
             if (inSelectMode) cardClassNames.push(styles.projectCardInSelectMode)
+            if (draggingProjectIds.has(project.id)) cardClassNames.push(styles.dragSourceDimmed)
             return (
               <article
                 key={project.id}
@@ -476,6 +510,7 @@ export default function ProjectGrid({
                 onClick={() => handleCardActivate(project.id)}
                 onKeyDown={(event) => handleCardKeyDown(event, project.id)}
                 onDragStart={canOrganize ? (event) => handleProjectDragStart(event, project) : undefined}
+                onDragEnd={canOrganize ? handleProjectDragEnd : undefined}
                 onContextMenu={canOrganize ? (event) => onProjectContextMenu?.(event, project) : undefined}
               >
                 {canOrganize && (

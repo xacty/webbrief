@@ -66,6 +66,7 @@
   color: var(--wb-color-primary-600);
   cursor: pointer;
   font-weight: var(--wb-weight-medium);
+  transition: background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
 .breadcrumbLink:hover {
@@ -76,11 +77,15 @@
    to the library root (folderId: null). box-shadow (not border/padding)
    so the highlight never changes the button's box size — a padding/border
    toggle here would shift the rest of the breadcrumb + title row on every
-   dragover (see DESIGN-SYSTEM.md §"Stable layouts — no jumpy reflows"). */
+   dragover (see DESIGN-SYSTEM.md §"Stable layouts — no jumpy reflows").
+   F1.2-B punto 1c: bg+box-shadow ya existían — se suma transform:scale
+   (compositing puro, no reflowea) para reforzar el highlight, mismo
+   tratamiento que .folderChipDragOver en AssetGrid.module.css. */
 .breadcrumbLinkDragOver {
   background: var(--wb-color-primary-50);
   box-shadow: 0 0 0 2px var(--wb-color-primary-500);
   text-decoration: none;
+  transform: scale(1.04);
 }
 
 .breadcrumbSep {

@@ -9,8 +9,24 @@
   white-space: nowrap;
 }
 
+/* F1.2-B punto 2: el Input base mide 40px (ver ui/Input.module.css) pero
+   los Select contiguos usan size="sm" (32px, ver ui/Select.module.css
+   .triggerSm) — igualamos hacia el más CHICO en vez de agrandar los
+   Select. `input` es selector de TAG (no de módulo), así que pega
+   directo sobre el <input> real que Input.jsx renderiza sin tener que
+   tocar ese componente compartido. No tocamos padding-left: lo define
+   Input.module.css .hasIcon_left según el ancho del ícono — sólo achicamos
+   alto/tipografía para calzar con los Select sm.
+   Ancho: 280px (no los ~260px sugeridos) porque "Buscar por nombre o
+   cliente" a text-sm con el padding-left del ícono deja ~210px útiles —
+   28 caracteres a ~8px/char rozaban el corte a 260px. */
 .searchField {
-  width: 240px;
+  width: 280px;
+}
+
+.searchField input {
+  height: 32px;
+  font-size: var(--wb-text-sm);
 }
 
 .sortSelect {
