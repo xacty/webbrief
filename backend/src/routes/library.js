@@ -100,6 +100,31 @@ export function buildLibraryListing({ folders, currentFolderId }) {
   return { subfolders, breadcrumb, allFolders: active }
 }
 
+// Secciones de solo-lectura del listado (tabs "Documentos" y "Briefs" de la
+// galería). Las categorías son EXACTAMENTE las de summarizeUsage
+// (lib/storageQuota.js) para que los tabs y la barra de almacenamiento nunca
+// discrepen: brief = `uploaded_by IS NULL`; documentos = `project_id NOT NULL`
+// con `uploaded_by NOT NULL`; biblioteca (default) = `project_id IS NULL`.
+// La papelera queda fuera: tiene su propia vista (`view=trash`).
+export function resolveLibrarySection(raw) {
+  return raw === 'documents' || raw === 'briefs' ? raw : null
+}
+
+// Ids de proyecto referenciados por los assets devueltos — el listado no trae
+// nombres de proyecto, así que el backend resuelve un mapa mínimo en vez de
+// obligar al frontend a un fetch por grupo.
+export function collectAssetProjectIds(assets = []) {
+  const ids = []
+  const seen = new Set()
+  for (const asset of assets) {
+    const projectId = asset?.project_id
+    if (!projectId || seen.has(projectId)) continue
+    seen.add(projectId)
+    ids.push(projectId)
+  }
+  return ids
+}
+
 // Middleware: resuelve companyId + rol; adjunta req.libraryAccess
 async function requireLibraryAccess(req, res, next, { write = false } = {}) {
   const companyId = req.params.companyId
@@ -163,9 +188,12 @@ router.patch('/folders/:folderId', rateLimiters.sensitiveAction, writeAccess, as
 })
 
 router.get('/', readAccess, async (req, res) => {
-  const folderId = req.query.folderId || null
+  const section = resolveLibrarySection(req.query.section)
+  // Con `section` las carpetas no aplican: documentos y briefs se agrupan por
+  // proyecto, no por carpeta.
+  const folderId = section ? null : (req.query.folderId || null)
   const projectId = req.query.projectId || null
-  const view = req.query.view === 'trash' ? 'trash' : 'active'
+  const view = section ? 'active' : (req.query.view === 'trash' ? 'trash' : 'active')
   const [foldersRes, assetsQuery] = await Promise.all([
     supabaseAdmin.from('asset_folders')
       .select('id, parent_folder_id, name, position, trashed_at, created_at')
@@ -173,11 +201,15 @@ router.get('/', readAccess, async (req, res) => {
       .order('position').order('name'),
     (() => {
       let q = supabaseAdmin.from('project_assets')
-        .select('id, file_name, storage_bucket, storage_path, mime_type, asset_kind, public_url, file_size, width, height, folder_id, project_id, origin, trashed_at, created_at')
+        .select('id, file_name, storage_bucket, storage_path, mime_type, asset_kind, public_url, file_size, width, height, folder_id, project_id, page_id, section_id, uploaded_by, origin, trashed_at, created_at')
         .eq('company_id', req.libraryAccess.companyId)
         .order('created_at', { ascending: false })
         .limit(500)
-      if (view === 'trash') q = q.not('trashed_at', 'is', null)
+      if (section === 'documents') {
+        q = q.is('trashed_at', null).not('project_id', 'is', null).not('uploaded_by', 'is', null)
+      } else if (section === 'briefs') {
+        q = q.is('trashed_at', null).is('uploaded_by', null)
+      } else if (view === 'trash') q = q.not('trashed_at', 'is', null)
       else {
         q = q.is('trashed_at', null)
         if (projectId) q = q.eq('project_id', projectId)
@@ -189,11 +221,26 @@ router.get('/', readAccess, async (req, res) => {
   if (foldersRes.error) return res.status(500).json({ error: foldersRes.error.message })
   if (assetsQuery.error) return res.status(500).json({ error: assetsQuery.error.message })
   const listing = buildLibraryListing({ folders: foldersRes.data || [], currentFolderId: folderId })
+  const assets = assetsQuery.data || []
   const usage = await fetchCompanyUsage(req.libraryAccess.companyId)
   const { data: company } = await supabaseAdmin.from('companies').select('storage_quota_mb').eq('id', req.libraryAccess.companyId).single()
+
+  let projects = []
+  const projectIds = section ? collectAssetProjectIds(assets) : []
+  if (projectIds.length > 0) {
+    const { data: projectRows } = await supabaseAdmin
+      .from('projects')
+      .select('id, name')
+      .eq('company_id', req.libraryAccess.companyId)
+      .in('id', projectIds)
+    projects = projectRows || []
+  }
+
   res.json({
     ...listing,
-    assets: assetsQuery.data || [],
+    assets,
+    projects,
+    section: section || null,
     usage: { ...usage, quotaMb: company?.storage_quota_mb ?? 100 },
     role: req.libraryAccess.role,
   })
