@@ -12,6 +12,7 @@ import {
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
+import { sanitizeIfSvg } from '../lib/svgSanitizer.js'
 import {
   buildExportFileName,
   getExtensionFromMimeType,
@@ -2007,10 +2008,12 @@ router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file
       size: req.file.size,
     })
     if (!ingest.ok) {
+      const ingestMessages = {
+        size_exceeded: 'El archivo supera el límite de 30 MB',
+        invalid_svg: 'El SVG no es válido o contiene contenido activo no permitido',
+      }
       return res.status(400).json({
-        error: ingest.reason === 'size_exceeded'
-          ? 'El archivo supera el límite de 30 MB'
-          : 'Solo se aceptan JPEG, PNG, WebP o SVG',
+        error: ingestMessages[ingest.reason] || 'Solo se aceptan JPEG, PNG, WebP o SVG',
       })
     }
     const uploadResponse = ingest.upload
@@ -2755,6 +2758,7 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
     let publicUrl = null
     let imagekitFileId = null
     let assetKind
+    let storedDocumentSize = req.file.size
 
     if (BRIEF_IMAGE_MIMES.has(mime) && mime !== 'image/svg+xml') {
       // Imágenes raster → ImageKit (mismo flujo que /assets)
@@ -2772,11 +2776,17 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
       imagekitFileId = uploadResponse.fileId || null
       assetKind = 'image'
     } else {
-      // Documentos (PDF/Office/SVG/CSV/etc) → Supabase Storage privado
+      // Documentos (PDF/Office/SVG/CSV/etc) → Supabase Storage privado.
+      // Los SVG no pasan por uploadWithIngest en esta rama, así que se sanean
+      // acá con el mismo criterio: nunca persistir un SVG con contenido activo.
+      const svgCheck = sanitizeIfSvg({ mimeType: mime, buffer: req.file.buffer })
+      if (!svgCheck.ok) {
+        return res.status(400).json({ error: 'El SVG no es válido o contiene contenido activo no permitido' })
+      }
       const path = `${project.id}/${assetId}-${safeName}`
       const { error: uploadError } = await supabaseAdmin.storage
         .from('brief-documents')
-        .upload(path, req.file.buffer, {
+        .upload(path, svgCheck.buffer, {
           contentType: mime,
           cacheControl: '3600',
           upsert: false,
@@ -2789,6 +2799,7 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
       storageBucket = 'brief-documents'
       storagePath = path
       assetKind = mime === 'image/svg+xml' ? 'svg' : 'file'
+      storedDocumentSize = svgCheck.buffer?.byteLength ?? req.file.size
     }
 
     const { data: asset, error: assetError } = await supabaseAdmin
@@ -2807,7 +2818,7 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
         mime_type: mime,
         asset_kind: assetKind,
         public_url: publicUrl,
-        file_size: req.file.size,
+        file_size: storedDocumentSize,
         render_inline: false,
       })
       .select('id, file_name, mime_type, asset_kind, file_size, public_url, storage_bucket, storage_path, created_at')

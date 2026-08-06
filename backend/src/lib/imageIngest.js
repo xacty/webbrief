@@ -7,6 +7,7 @@
 // Tope 2560px = "big image threshold" de WordPress; c-at_max evita el upscale
 // de imágenes más chicas (mismo patrón que la URL de display del editor).
 import { uploadToImageKit } from './imagekit.js'
+import { sanitizeIfSvg } from './svgSanitizer.js'
 
 export const MAX_INGEST_WIDTH = 2560
 export const PHOTO_WEBP_QUALITY = 80
@@ -52,9 +53,14 @@ export async function uploadWithIngest({
   const decision = decideUploadConversion({ mimeType, size: size ?? buffer?.byteLength ?? 0 })
   if (!decision.ok) return { ok: false, reason: decision.reason }
 
+  // Los SVG son passthrough de formato pero NUNCA de contenido: se sanean
+  // server-side (o se rechazan) antes de tocar el almacenamiento.
+  const svgCheck = sanitizeIfSvg({ mimeType, buffer })
+  if (!svgCheck.ok) return { ok: false, reason: svgCheck.reason }
+
   const finalName = adjustFileNameForAction(fileName, decision.action)
   const upload = await uploadFn({
-    buffer,
+    buffer: svgCheck.buffer,
     fileName: finalName,
     folder,
     tags,
