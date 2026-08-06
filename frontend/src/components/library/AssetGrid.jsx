@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, Check, Download, Folder, Images, Info, Move, Pencil, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Download, ExternalLink, FileText, Folder, Images, Info, Move, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import { Button, KebabMenu } from '../ui'
 import EmptyState from '../onboarding/EmptyState'
 import { formatBytes } from '../../lib/uploadQueue'
-import { assetImageUrl, formatDateEs, formatDimensions, mimeLabel } from '../../lib/libraryAssetUtils'
+import { assetImageUrl, formatDateEs, formatDimensions, isImageAsset, mimeLabel } from '../../lib/libraryAssetUtils'
 import {
   ASSET_DRAG_TYPE, FOLDER_DRAG_TYPE, FOLDER_ICON_MARKUP, IMAGE_ICON_MARKUP,
   createItemDragGhost, dragHasAnyType, isInternalDragLeave,
@@ -122,6 +122,17 @@ export default function AssetGrid({
   onExportAsset,
   onTrashAsset,
   onInfoAsset,
+  // Tabs Documentos/Briefs (solo-lectura): "Ir al documento" y "Descargar"
+  // sustituyen a renombrar/mover/papelera. Los items del kebab se arman a
+  // partir de los callbacks REALMENTE pasados — ver assetKebabItems.
+  onGoToDocument,
+  onDownloadAsset,
+  // Permite el kebab (con sus pocos items de solo-lectura) aunque el rol no
+  // tenga escritura, sin cambiar el comportamiento del tab Biblioteca.
+  readOnlyActions = false,
+  // Documentos/Briefs no tienen carpetas destino: arrastrar ahí no puede
+  // terminar en nada útil y sí podría soltar sobre el crumb raíz.
+  allowDrag = true,
   onRenameFolder,
   onMoveFolder,
   onTrashFolder,
@@ -311,20 +322,32 @@ export default function AssetGrid({
     setDraggingAssetIds(EMPTY_SELECTION)
   }
 
+  // Sólo se listan las acciones cuyo callback fue realmente pasado: así los
+  // tabs de solo-lectura no muestran items muertos y el tab Biblioteca
+  // (que pasa todos) queda idéntico a antes.
   function assetKebabItems(asset) {
-    return [
-      { label: 'Información', icon: <Info size={14} />, onClick: () => onInfoAsset?.(asset) },
-      { label: 'Renombrar', icon: <Pencil size={14} />, onClick: () => onRenameAsset?.(asset) },
-      { label: 'Mover a carpeta', icon: <Move size={14} />, onClick: () => onMoveAsset?.(asset) },
-      { label: 'Exportar', icon: <Download size={14} />, onClick: () => onExportAsset?.(asset) },
-      {
+    const items = []
+    if (onInfoAsset) items.push({ label: 'Información', icon: <Info size={14} />, onClick: () => onInfoAsset(asset) })
+    if (onGoToDocument) items.push({ label: 'Ir al documento', icon: <ExternalLink size={14} />, onClick: () => onGoToDocument(asset) })
+    if (onRenameAsset) items.push({ label: 'Renombrar', icon: <Pencil size={14} />, onClick: () => onRenameAsset(asset) })
+    if (onMoveAsset) items.push({ label: 'Mover a carpeta', icon: <Move size={14} />, onClick: () => onMoveAsset(asset) })
+    // Exportar pasa por transformaciones de ImageKit (sólo imágenes); los
+    // no-imagen (PDF/Office de briefs) se bajan directo desde su public_url.
+    if (onExportAsset && isImageAsset(asset)) items.push({ label: 'Exportar', icon: <Download size={14} />, onClick: () => onExportAsset(asset) })
+    if (onDownloadAsset && !isImageAsset(asset)) items.push({ label: 'Descargar', icon: <Download size={14} />, onClick: () => onDownloadAsset(asset) })
+    if (onTrashAsset) {
+      items.push({
         label: 'Enviar a papelera',
         icon: <Trash2 size={14} />,
         destructive: true,
-        onClick: () => onTrashAsset?.(asset),
-      },
-    ]
+        onClick: () => onTrashAsset(asset),
+      })
+    }
+    return items
   }
+
+  const showAssetKebab = !isTrash && (canWrite || readOnlyActions)
+  const canDragAssets = canWrite && !isTrash && allowDrag
 
   const showFolderRowsOrChips = !isTrash && folders.length > 0
   const hasListContent = showFolderRowsOrChips || assets.length > 0
@@ -478,7 +501,8 @@ export default function AssetGrid({
             })}
 
             {assets.map((asset, index) => {
-              const thumb = assetImageUrl(asset, 64)
+              const isImage = isImageAsset(asset)
+              const thumb = isImage ? assetImageUrl(asset, 64) : null
               const isSelected = selectedIds.has(asset.id)
               return (
                 <tr
@@ -491,12 +515,12 @@ export default function AssetGrid({
                   )}
                   aria-selected={isSelected}
                   tabIndex={canWrite ? 0 : undefined}
-                  draggable={canWrite && !isTrash}
+                  draggable={canDragAssets}
                   onClick={canWrite ? (event) => handleAssetClick(event, asset.id) : undefined}
-                  onDoubleClick={canWrite ? () => onOpenLightbox?.(index) : undefined}
+                  onDoubleClick={canWrite && isImage ? () => onOpenLightbox?.(index) : undefined}
                   onKeyDown={canWrite ? (event) => handleAssetKeyDown(event, asset.id, index) : undefined}
-                  onDragStart={canWrite && !isTrash ? (event) => handleAssetDragStart(event, asset) : undefined}
-                  onDragEnd={canWrite && !isTrash ? handleAssetDragEnd : undefined}
+                  onDragStart={canDragAssets ? (event) => handleAssetDragStart(event, asset) : undefined}
+                  onDragEnd={canDragAssets ? handleAssetDragEnd : undefined}
                   onContextMenu={canWrite ? (event) => onAssetContextMenu?.(event, asset, index) : undefined}
                 >
                   <td className={styles.listNameCell}>
@@ -507,7 +531,7 @@ export default function AssetGrid({
                       <img src={thumb} alt="" loading="lazy" className={styles.listThumb} />
                     ) : (
                       <span className={styles.listThumbFallback} aria-hidden="true">
-                        <Images size={14} />
+                        {isImage ? <Images size={14} /> : <FileText size={14} />}
                       </span>
                     )}
                     <span className={styles.listNameText}>{asset.file_name}</span>
@@ -517,7 +541,7 @@ export default function AssetGrid({
                   <td className={styles.listCell}>{mimeLabel(asset.mime_type)}</td>
                   <td className={styles.listCell}>{formatDateEs(asset.created_at)}</td>
                   <td className={styles.listActionsCell} onClick={(event) => event.stopPropagation()}>
-                    {canWrite && !isTrash && (
+                    {showAssetKebab && (
                       <KebabMenu
                         label={`Más acciones de ${asset.file_name}`}
                         placement="bottom-end"
@@ -536,7 +560,8 @@ export default function AssetGrid({
       {effectiveLayout === 'grid' && assets.length > 0 && (
         <div className={styles.grid}>
           {assets.map((asset, index) => {
-            const thumb = assetImageUrl(asset, 300)
+            const isImage = isImageAsset(asset)
+            const thumb = isImage ? assetImageUrl(asset, 300) : null
             const isSelected = selectedIds.has(asset.id)
             return (
               <div
@@ -544,7 +569,7 @@ export default function AssetGrid({
                 role={canWrite ? 'button' : undefined}
                 tabIndex={canWrite ? 0 : undefined}
                 aria-pressed={canWrite ? (isSelected ? 'true' : 'false') : undefined}
-                draggable={canWrite && !isTrash}
+                draggable={canDragAssets}
                 className={cx(
                   styles.assetCard,
                   canWrite && styles.assetCardSelectable,
@@ -553,10 +578,10 @@ export default function AssetGrid({
                   draggingAssetIds.has(asset.id) && styles.dragSourceDimmed
                 )}
                 onClick={canWrite ? (event) => handleAssetClick(event, asset.id) : undefined}
-                onDoubleClick={canWrite ? () => onOpenLightbox?.(index) : undefined}
+                onDoubleClick={canWrite && isImage ? () => onOpenLightbox?.(index) : undefined}
                 onKeyDown={canWrite ? (event) => handleAssetKeyDown(event, asset.id, index) : undefined}
-                onDragStart={canWrite && !isTrash ? (event) => handleAssetDragStart(event, asset) : undefined}
-                onDragEnd={canWrite && !isTrash ? handleAssetDragEnd : undefined}
+                onDragStart={canDragAssets ? (event) => handleAssetDragStart(event, asset) : undefined}
+                onDragEnd={canDragAssets ? handleAssetDragEnd : undefined}
                 onContextMenu={canWrite ? (event) => onAssetContextMenu?.(event, asset, index) : undefined}
               >
                 {isSelected && (
@@ -570,14 +595,14 @@ export default function AssetGrid({
                     <img src={thumb} alt="" loading="lazy" className={styles.thumb} />
                   ) : (
                     <span className={styles.thumbFallback} aria-hidden="true">
-                      <Images size={22} />
+                      {isImage ? <Images size={22} /> : <FileText size={22} />}
                     </span>
                   )}
                 </div>
 
                 <div className={styles.cardFooter}>
                   <span className={styles.cardName}>{asset.file_name}</span>
-                  {canWrite && !isTrash && (
+                  {showAssetKebab && (
                     <div className={styles.kebabSlot} onClick={(event) => event.stopPropagation()}>
                       <KebabMenu
                         label={`Más acciones de ${asset.file_name}`}

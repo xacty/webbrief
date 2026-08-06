@@ -5,11 +5,17 @@ import { supabase } from './supabase'
 
 const base = (companyId) => `/api/companies/${companyId}/library`
 
-export function fetchLibrary(companyId, { folderId, projectId, view } = {}) {
+export function fetchLibrary(companyId, { folderId, projectId, view, section } = {}) {
   const params = new URLSearchParams()
-  if (folderId) params.set('folderId', folderId)
-  if (projectId) params.set('projectId', projectId)
-  if (view) params.set('view', view)
+  // `section` (documents|briefs) es excluyente con carpeta/papelera — el
+  // backend ya ignora folderId/view cuando viene, pero no tiene sentido
+  // mandarlos.
+  if (section) params.set('section', section)
+  else {
+    if (folderId) params.set('folderId', folderId)
+    if (projectId) params.set('projectId', projectId)
+    if (view) params.set('view', view)
+  }
   const qs = params.toString()
   return apiFetch(`${base(companyId)}${qs ? `?${qs}` : ''}`)
 }

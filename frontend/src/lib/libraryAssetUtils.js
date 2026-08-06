@@ -36,6 +36,14 @@ export function assetTypeCategory(asset) {
   return 'other'
 }
 
+// Los tabs Documentos/Briefs pueden traer NO-imágenes (PDF, Office subidos
+// desde el brief público). No tienen miniatura ni lightbox: se muestran con
+// icono de archivo y se descargan directo desde su public_url.
+export function isImageAsset(asset) {
+  const mime = asset?.mime_type || ''
+  return mime.startsWith('image/')
+}
+
 export function formatDimensions(width, height) {
   return width && height ? `${width} × ${height} px` : '—'
 }

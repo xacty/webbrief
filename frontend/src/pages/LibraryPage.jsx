@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ChevronRight, Download, Eye, FolderOpen, FolderPlus, FolderUp, Info, Move, Pencil, RefreshCw, RotateCcw, Trash2,
-  Upload, X, XCircle,
+  ChevronRight, Download, ExternalLink, Eye, FolderOpen, FolderPlus, FolderUp, Info, Move, Pencil, RefreshCw,
+  RotateCcw, Trash2, Upload, X, XCircle,
 } from 'lucide-react'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { Button } from '../components/ui'
 import AssetGrid from '../components/library/AssetGrid'
+import ProjectAssetGroups from '../components/library/ProjectAssetGroups'
 import Lightbox from '../components/library/Lightbox'
 import StorageUsageBar from '../components/library/StorageUsageBar'
 import NewFolderModal from '../components/library/NewFolderModal'
@@ -23,7 +24,7 @@ import AssetInfoModal from '../components/library/AssetInfoModal'
 import ActionToast from '../components/organizer/ActionToast'
 import { fetchLibrary, moveAssets, trashAssets, restoreAssets, renameAsset, updateFolder, trashFolder } from '../lib/libraryApi'
 import { createUploadQueue, enqueueFiles, formatBytes, partitionEntries, readPickedDirectoryFiles } from '../lib/uploadQueue'
-import { filterAssetsByType, sortAssets } from '../lib/libraryAssetUtils'
+import { filterAssetsByType, isImageAsset, sortAssets } from '../lib/libraryAssetUtils'
 import styles from './LibraryPage.module.css'
 
 function cx(...parts) {
@@ -58,6 +59,44 @@ const SORT_SELECT_KEYS = new Set(['name_asc', 'name_desc', 'date_asc', 'date_des
 const BACKGROUND_MENU_IGNORE_SELECTOR =
   'button, a, input, textarea, select, tr, thead, [role="button"], [role="menu"], [role="toolbar"], [role="dialog"]'
 
+// Tabs de la galería ("Ola B"). `library` es el comportamiento histórico
+// (carpetas + subida + papelera); `documents` y `briefs` son vistas de
+// solo-lectura + export agrupadas por proyecto. El tab vive en el query
+// param `tab=` para poder linkearlo desde la barra de almacenamiento.
+const TABS = [
+  { key: 'library', label: 'Biblioteca', section: null },
+  { key: 'documents', label: 'Documentos', section: 'documents' },
+  { key: 'briefs', label: 'Briefs', section: 'briefs' },
+]
+
+function resolveTab(raw) {
+  return TABS.find((tab) => tab.key === raw) || TABS[0]
+}
+
+// Agrupa por proyecto conservando el orden en que aparece cada grupo dentro
+// de la lista ya filtrada/ordenada — así el orden elegido en la toolbar
+// también manda sobre el orden de los grupos.
+function groupAssetsByProject(assets = [], projects = []) {
+  const nameById = new Map((projects || []).map((project) => [project.id, project.name]))
+  const groups = []
+  const byKey = new Map()
+  for (const asset of assets) {
+    const key = asset.project_id || '__none__'
+    if (!byKey.has(key)) {
+      const group = {
+        key,
+        projectId: asset.project_id || null,
+        name: nameById.get(asset.project_id) || 'Sin proyecto',
+        assets: [],
+      }
+      byKey.set(key, group)
+      groups.push(group)
+    }
+    byKey.get(key).assets.push(asset)
+  }
+  return groups
+}
+
 /**
  * Biblioteca de imágenes por empresa. Orquestador: breadcrumb de carpetas
  * (query param `folderId`), filtro de proyecto (`projectId`), vista papelera
@@ -75,10 +114,15 @@ export default function LibraryPage() {
   const { currentCompany } = useWorkspace()
   const companyId = currentCompany?.id
 
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const folderId = searchParams.get('folderId')
-  const projectId = searchParams.get('projectId')
-  const view = searchParams.get('view')
+  const activeTab = resolveTab(searchParams.get('tab'))
+  const section = activeTab.section
+  const isSection = Boolean(section)
+  // Carpeta/proyecto/papelera sólo existen en el tab Biblioteca.
+  const folderId = isSection ? null : searchParams.get('folderId')
+  const projectId = isSection ? null : searchParams.get('projectId')
+  const view = isSection ? null : searchParams.get('view')
   const isTrash = view === 'trash'
 
   const [data, setData] = useState(null)
@@ -152,13 +196,13 @@ export default function LibraryPage() {
     if (!companyId) return
     setLoadState('loading')
     try {
-      const result = await fetchLibrary(companyId, { folderId, projectId, view })
+      const result = await fetchLibrary(companyId, { folderId, projectId, view, section })
       setData(result)
       setLoadState('ready')
     } catch {
       setLoadState('error')
     }
-  }, [companyId, folderId, projectId, view])
+  }, [companyId, folderId, projectId, view, section])
 
   useEffect(() => {
     reload()
@@ -184,7 +228,7 @@ export default function LibraryPage() {
   useEffect(() => {
     setSelectedIds(new Set())
     setContextMenu(null)
-  }, [folderId, projectId, view])
+  }, [folderId, projectId, view, section])
 
   // Búsqueda debounced 200ms — mismo patrón que ProjectsPage.jsx.
   useEffect(() => {
@@ -273,6 +317,30 @@ export default function LibraryPage() {
 
   function toggleTrashView() {
     setSearchParams(isTrash ? {} : { view: 'trash' })
+  }
+
+  // Cambiar de tab resetea el resto de los params: carpeta/proyecto/papelera
+  // no significan nada en Documentos/Briefs, y volver a Biblioteca arranca
+  // en la raíz.
+  function goToTab(key) {
+    setSearchParams(key === 'library' ? {} : { tab: key })
+  }
+
+  // Deep-link al editor (ver plan 2026-08-06-editor-deeplinks). Si el asset
+  // no guarda page_id/section_id (imágenes viejas, adjuntos de brief), el
+  // link abre el proyecto y ya — la acción nunca se oculta.
+  function goToDocument(asset) {
+    if (!asset?.project_id) return
+    const params = new URLSearchParams()
+    if (asset.page_id) params.set('p', asset.page_id)
+    if (asset.page_id && asset.section_id) params.set('s', asset.section_id)
+    const qs = params.toString()
+    navigate(`/project/${asset.project_id}/editor${qs ? `?${qs}` : ''}`)
+  }
+
+  function downloadAsset(asset) {
+    if (!asset?.public_url) return
+    window.open(asset.public_url, '_blank', 'noopener')
   }
 
   function clearProjectFilter() {
@@ -453,7 +521,9 @@ export default function LibraryPage() {
   }
 
   function handleRootDragOver(event) {
-    if (!canWrite) return
+    // En Documentos/Briefs el crumb raíz no es destino de nada: esos assets
+    // viven en documentos, no en carpetas de la biblioteca.
+    if (!canWrite || isSection) return
     const types = event.dataTransfer.types || []
     if (!types.includes('application/x-webrief-assets') && !types.includes('application/x-webrief-folder')) return
     event.preventDefault()
@@ -470,7 +540,7 @@ export default function LibraryPage() {
   function handleRootDrop(event) {
     event.preventDefault()
     setRootDragOver(false)
-    if (!canWrite) return
+    if (!canWrite || isSection) return
     const assetsPayload = event.dataTransfer.getData('application/x-webrief-assets')
     if (assetsPayload) {
       let ids = []
@@ -692,7 +762,9 @@ export default function LibraryPage() {
     setContextMenu({
       x: event.clientX,
       y: event.clientY,
-      kind: isTrash ? (bulk ? 'trash-selection' : 'trash-asset') : (bulk ? 'selection' : 'asset'),
+      kind: isSection
+        ? (bulk ? 'section-selection' : 'section-asset')
+        : isTrash ? (bulk ? 'trash-selection' : 'trash-asset') : (bulk ? 'selection' : 'asset'),
       asset,
       index,
       ids,
@@ -716,7 +788,11 @@ export default function LibraryPage() {
   function openPageContextMenu(event) {
     if (event.target.closest(BACKGROUND_MENU_IGNORE_SELECTOR)) return
     event.preventDefault()
-    setContextMenu({ x: event.clientX, y: event.clientY, kind: isTrash ? 'page-trash' : 'page' })
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      kind: isSection ? 'section-page' : isTrash ? 'page-trash' : 'page',
+    })
   }
 
   function closeContextMenu() {
@@ -769,6 +845,36 @@ export default function LibraryPage() {
           { type: 'item', icon: Trash2, label: 'Enviar a papelera', destructive: true, onSelect: () => handleTrashFolder(folder) },
         ]
       }
+      // Documentos/Briefs: solo-lectura + export. "Ir al documento" sólo en
+      // Documentos (los adjuntos de brief no viven dentro de una página).
+      case 'section-asset': {
+        const { asset, index, ids } = menu
+        const items = []
+        if (isImageAsset(asset)) {
+          items.push({ type: 'item', icon: Eye, label: 'Vista previa', onSelect: () => setLightboxIndex(index) })
+        }
+        items.push({ type: 'item', icon: Info, label: 'Información', onSelect: () => setInfoAsset(asset) })
+        if (section === 'documents') {
+          items.push({ type: 'item', icon: ExternalLink, label: 'Ir al documento', onSelect: () => goToDocument(asset) })
+        }
+        items.push({ type: 'separator' })
+        if (isImageAsset(asset)) {
+          items.push({ type: 'item', icon: Download, label: 'Exportar', onSelect: () => openExportModal(ids) })
+        } else {
+          items.push({ type: 'item', icon: Download, label: 'Descargar', onSelect: () => downloadAsset(asset) })
+        }
+        return items
+      }
+      case 'section-selection': {
+        const { ids } = menu
+        return [
+          { type: 'header', label: `${ids.length} seleccionadas` },
+          { type: 'separator' },
+          { type: 'item', icon: Download, label: 'Exportar', onSelect: () => openExportModal(ids) },
+          { type: 'separator' },
+          { type: 'item', icon: XCircle, label: 'Deseleccionar todo', onSelect: () => clearSelection() },
+        ]
+      }
       case 'trash-asset': {
         const { ids } = menu
         return [{ type: 'item', icon: RotateCcw, label: 'Restaurar', onSelect: () => handleRestoreAssets(ids) }]
@@ -795,6 +901,8 @@ export default function LibraryPage() {
         items.push({ type: 'item', icon: RefreshCw, label: 'Actualizar', onSelect: () => reload() })
         return items
       }
+      case 'section-page':
+        return [{ type: 'item', icon: RefreshCw, label: 'Actualizar', onSelect: () => reload() }]
       case 'page-trash': {
         const items = [{ type: 'item', icon: RefreshCw, label: 'Actualizar', onSelect: () => reload() }]
         if (canWrite && assetCount > 0) {
@@ -815,16 +923,20 @@ export default function LibraryPage() {
   // Creating a folder or uploading doesn't map to anything meaningful while
   // looking at the trash (flat list, no folder scoping there) — hide the
   // toolbar rather than let it silently act on a stale folderId.
-  const showToolbarActions = canWrite && !isTrash
-  const breadcrumbChain = !isTrash ? data?.breadcrumb || [] : []
+  const showToolbarActions = canWrite && !isTrash && !isSection
+  const breadcrumbChain = !isTrash && !isSection ? data?.breadcrumb || [] : []
   const currentFolder = breadcrumbChain.length ? breadcrumbChain[breadcrumbChain.length - 1] : null
-  const pageTitle = isTrash ? 'Papelera' : currentFolder?.name || 'Biblioteca'
+  const pageTitle = isSection ? activeTab.label : isTrash ? 'Papelera' : currentFolder?.name || 'Biblioteca'
   const rawAssets = data?.assets || []
   const assetCount = rawAssets.length
   const folderCount = data?.subfolders?.length ?? 0
-  const metaText = isTrash
-    ? `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} en papelera`
-    : `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} · ${folderCount} carpeta${folderCount === 1 ? '' : 's'}`
+  const sectionUnit = section === 'briefs' ? 'archivo' : 'imagen'
+  const sectionUnitPlural = section === 'briefs' ? 'archivos' : 'imágenes'
+  const metaText = isSection
+    ? `${assetCount} ${assetCount === 1 ? sectionUnit : sectionUnitPlural}`
+    : isTrash
+      ? `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} en papelera`
+      : `${assetCount} ${assetCount === 1 ? 'imagen' : 'imágenes'} · ${folderCount} carpeta${folderCount === 1 ? '' : 's'}`
   const selectionCount = selectedIds.size
 
   // Búsqueda + orden + filtro de tipo client-side (puntos 2 y 3) — la
@@ -836,8 +948,14 @@ export default function LibraryPage() {
   const searchedAssets = search
     ? rawAssets.filter((asset) => (asset.file_name || '').toLowerCase().includes(search))
     : rawAssets
-  const typeFilteredAssets = isTrash ? searchedAssets : filterAssetsByType(searchedAssets, typeFilter)
-  const visibleAssets = sortAssets(typeFilteredAssets, sortField, sortDir)
+  const typeFilteredAssets = (isTrash || isSection) ? searchedAssets : filterAssetsByType(searchedAssets, typeFilter)
+  const sortedAssets = sortAssets(typeFilteredAssets, sortField, sortDir)
+  // En los tabs de sección el render va agrupado por proyecto; `visibleAssets`
+  // queda como la lista APLANADA en ese mismo orden para que el Lightbox y
+  // los índices del context menu sigan siendo posicionales.
+  const projectGroups = isSection ? groupAssetsByProject(sortedAssets, data?.projects) : []
+  const visibleAssets = isSection ? projectGroups.flatMap((group) => group.assets) : sortedAssets
+  const projectNameById = new Map((data?.projects || []).map((project) => [project.id, project.name]))
   const sortSelectValue = SORT_SELECT_KEYS.has(`${sortField}_${sortDir}`) ? `${sortField}_${sortDir}` : ''
   const contextMenuItems = buildContextMenuItems(contextMenu)
 
@@ -864,6 +982,12 @@ export default function LibraryPage() {
                     <span className={styles.breadcrumbCurrent} aria-current="page">Papelera</span>
                   </span>
                 )}
+                {isSection && (
+                  <span className={styles.breadcrumbGroup}>
+                    <ChevronRight size={14} className={styles.breadcrumbSep} aria-hidden="true" />
+                    <span className={styles.breadcrumbCurrent} aria-current="page">{activeTab.label}</span>
+                  </span>
+                )}
                 {!isTrash && breadcrumbChain.map((folder, index) => {
                   const isCurrent = index === breadcrumbChain.length - 1
                   return (
@@ -885,7 +1009,7 @@ export default function LibraryPage() {
 
               {data && <p className={styles.headerMeta}>{metaText}</p>}
 
-              {projectId && !isTrash && (
+              {projectId && !isTrash && !isSection && (
                 <span className={styles.filterChip}>
                   Filtrando por proyecto
                   <button
@@ -969,8 +1093,25 @@ export default function LibraryPage() {
             </div>
           )}
 
+          {/* Tab bar — patrón DESIGN-SYSTEM §3 (subrayado activo, sin fondo). */}
+          <div className={styles.tabBar} role="tablist" aria-label="Secciones de la galería">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={activeTab.key === tab.key}
+                className={cx(styles.tab, activeTab.key === tab.key && styles.tabActive)}
+                onClick={() => goToTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           <LibraryToolbar
             isTrash={isTrash}
+            readOnlySection={isSection}
             canWrite={canWrite}
             selectionCount={selectionCount}
             bulkBusy={bulkBusy}
@@ -991,48 +1132,76 @@ export default function LibraryPage() {
             emptyTrashDisabled={assetCount === 0}
           />
 
-          <AssetGrid
-            folders={data?.subfolders || []}
-            assets={visibleAssets}
-            totalAssetCount={assetCount}
-            loading={loadState === 'loading'}
-            error={loadState === 'error'}
-            onRetry={reload}
-            onOpenFolder={goToFolder}
-            canWrite={canWrite}
-            view={view}
-            layout={layout}
-            sortField={sortField}
-            sortDir={sortDir}
-            onSortFieldClick={handleSortFieldClick}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelected}
-            onOpenLightbox={setLightboxIndex}
-            onRenameAsset={openRenameAsset}
-            onMoveAsset={(asset) => openMoveAssetsModal([asset.id])}
-            onExportAsset={(asset) => openExportModal([asset.id])}
-            onTrashAsset={(asset) => handleTrashAssets([asset.id])}
-            onInfoAsset={setInfoAsset}
-            onRenameFolder={openRenameFolder}
-            onMoveFolder={openMoveFolderModal}
-            onTrashFolder={handleTrashFolder}
-            onDropAssets={handleDropAssets}
-            onDropFolder={handleDropFolder}
-            onAssetContextMenu={openAssetContextMenu}
-            onFolderContextMenu={openFolderContextMenu}
-          />
+          {isSection ? (
+            <ProjectAssetGroups
+              groups={projectGroups}
+              section={section}
+              loading={loadState === 'loading'}
+              error={loadState === 'error'}
+              onRetry={reload}
+              canWrite={canWrite}
+              layout={layout}
+              sortField={sortField}
+              sortDir={sortDir}
+              onSortFieldClick={handleSortFieldClick}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelected}
+              onOpenLightbox={setLightboxIndex}
+              onInfoAsset={setInfoAsset}
+              onExportAsset={(asset) => openExportModal([asset.id])}
+              onExportGroup={(ids) => openExportModal(ids)}
+              onDownloadAsset={downloadAsset}
+              onGoToDocument={section === 'documents' ? goToDocument : null}
+              onAssetContextMenu={openAssetContextMenu}
+            />
+          ) : (
+            <AssetGrid
+              folders={data?.subfolders || []}
+              assets={visibleAssets}
+              totalAssetCount={assetCount}
+              loading={loadState === 'loading'}
+              error={loadState === 'error'}
+              onRetry={reload}
+              onOpenFolder={goToFolder}
+              canWrite={canWrite}
+              view={view}
+              layout={layout}
+              sortField={sortField}
+              sortDir={sortDir}
+              onSortFieldClick={handleSortFieldClick}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelected}
+              onOpenLightbox={setLightboxIndex}
+              onRenameAsset={openRenameAsset}
+              onMoveAsset={(asset) => openMoveAssetsModal([asset.id])}
+              onExportAsset={(asset) => openExportModal([asset.id])}
+              onTrashAsset={(asset) => handleTrashAssets([asset.id])}
+              onInfoAsset={setInfoAsset}
+              onRenameFolder={openRenameFolder}
+              onMoveFolder={openMoveFolderModal}
+              onTrashFolder={handleTrashFolder}
+              onDropAssets={handleDropAssets}
+              onDropFolder={handleDropFolder}
+              onAssetContextMenu={openAssetContextMenu}
+              onFolderContextMenu={openFolderContextMenu}
+            />
+          )}
 
           <footer className={styles.footer}>
             <StorageUsageBar
               usage={data?.usage}
-              onGoLibrary={isTrash ? toggleTrashView : goToRoot}
+              onGoLibrary={() => goToTab('library')}
+              onGoDocuments={() => goToTab('documents')}
+              onGoBriefs={() => goToTab('briefs')}
               onGoTrash={isTrash ? undefined : toggleTrashView}
               onEmptyTrash={() => setEmptyTrashOpen(true)}
             />
-            <button type="button" className={styles.trashToggle} onClick={toggleTrashView}>
-              <Trash2 size={14} aria-hidden="true" />
-              {isTrash ? 'Volver a la biblioteca' : 'Papelera'}
-            </button>
+            {!isSection && (
+              <button type="button" className={styles.trashToggle} onClick={toggleTrashView}>
+                <Trash2 size={14} aria-hidden="true" />
+                {isTrash ? 'Volver a la biblioteca' : 'Papelera'}
+              </button>
+            )}
           </footer>
         </div>
       </UploadDropzone>
@@ -1094,6 +1263,7 @@ export default function LibraryPage() {
         onClose={() => setInfoAsset(null)}
         asset={infoAsset}
         folders={data?.allFolders || []}
+        projectName={infoAsset?.project_id ? projectNameById.get(infoAsset.project_id) || '' : ''}
       />
 
       {/* Instancia PROPIA (no la de UploadDropzone, que sólo abre por

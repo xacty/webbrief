@@ -20,7 +20,7 @@ function mb(bytes) {
  * (summarizeUsage + quotaMb). El semáforo de alerta vive en el TEXTO
  * (ámbar ≥80%, rojo al 100%) para no competir con los colores de categoría.
  */
-export default function StorageUsageBar({ usage, onGoLibrary, onGoTrash, onEmptyTrash }) {
+export default function StorageUsageBar({ usage, onGoLibrary, onGoDocuments, onGoBriefs, onGoTrash, onEmptyTrash }) {
   if (!usage) return null
 
   const quotaMb = usage.quotaMb || 100
@@ -48,6 +48,7 @@ export default function StorageUsageBar({ usage, onGoLibrary, onGoTrash, onEmpty
       className: styles.segDocument,
       dotClassName: styles.dotDocument,
       hint: 'Imágenes insertadas en páginas de proyectos',
+      onClick: onGoDocuments,
     },
     {
       key: 'brief',
@@ -57,6 +58,7 @@ export default function StorageUsageBar({ usage, onGoLibrary, onGoTrash, onEmpty
       className: styles.segBrief,
       dotClassName: styles.dotBrief,
       hint: 'Archivos adjuntados en respuestas de briefs',
+      onClick: onGoBriefs,
     },
     {
       key: 'trashed',

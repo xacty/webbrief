@@ -19,7 +19,7 @@ import styles from './AssetInfoModal.module.css'
  * muestra un texto genérico en vez de agregar un fetch sólo para esto
  * (instrucción explícita del punto 5).
  */
-export default function AssetInfoModal({ open, onClose, asset, folders = [] }) {
+export default function AssetInfoModal({ open, onClose, asset, folders = [], projectName = '' }) {
   if (!open || !asset) return null
 
   const thumb = assetImageUrl(asset, 300)
@@ -34,6 +34,9 @@ export default function AssetInfoModal({ open, onClose, asset, folders = [] }) {
     { label: 'Dimensiones', value: formatDimensions(asset.width, asset.height) },
     { label: 'Subida', value: formatDateEs(asset.created_at) },
     { label: 'Subida por', value: asset.uploaded_by ? 'Equipo' : 'Respuesta de brief' },
+    // El nombre del proyecto sólo está disponible en los tabs Documentos/
+    // Briefs (el listado devuelve `projects` sólo ahí, ver library.js).
+    ...(projectName ? [{ label: 'Proyecto', value: projectName }] : []),
     { label: 'Ubicación', value: locationLabel },
   ]
 

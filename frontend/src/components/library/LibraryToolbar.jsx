@@ -54,6 +54,9 @@ const TYPE_OPTIONS = [
  */
 export default function LibraryToolbar({
   isTrash = false,
+  // Tabs Documentos/Briefs: la barra se reduce a búsqueda + orden + toggle
+  // de vista, y la única acción de selección es Exportar.
+  readOnlySection = false,
   canWrite = false,
   selectionCount = 0,
   bulkBusy = false,
@@ -101,7 +104,7 @@ export default function LibraryToolbar({
         options={SORT_OPTIONS}
         className={styles.sortSelect}
       />
-      {!isTrash && (
+      {!isTrash && !readOnlySection && (
         <Select
           size="sm"
           fullWidth={false}
@@ -118,7 +121,24 @@ export default function LibraryToolbar({
   const rightContent = (
     <>
       {hasSelection && (
-        isTrash ? (
+        readOnlySection ? (
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={<Download size={14} />}
+              onClick={onExport}
+              disabled={bulkBusy}
+              aria-label={`Exportar ${selectionCount} ${selectionCount === 1 ? 'imagen' : 'imágenes'} seleccionada${selectionCount === 1 ? '' : 's'}`}
+            >
+              Exportar
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={bulkBusy} aria-label="Cancelar selección">
+              Cancelar
+            </Button>
+          </>
+        ) : isTrash ? (
           <>
             <Button
               type="button"
