@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense, Fragment as RFragment } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 const BriefProjectEditor = lazy(() => import('./BriefProjectEditor'))
 import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
@@ -890,6 +890,18 @@ function flashSectionInScrollEl(scrollEl, anchorEl, nextAnchorEl) {
     ? nextAnchorEl.getBoundingClientRect().top - containerRect.top
     : top + Math.max(anchorEl.getBoundingClientRect().height, 200)
   createFlashOverlay(container, top, bottom - top)
+}
+
+// ---------------------------------------------------------------------------
+// Helper: resolveDeepLinkPage — página inicial a partir del query param `?p=`
+// Un id ausente o que no pertenece al proyecto cae en la primera página, en
+// silencio (decisión del plan de deep-links: nunca romper la carga por un
+// enlace viejo).
+// ---------------------------------------------------------------------------
+function resolveDeepLinkPage(pages, requestedPageId) {
+  if (!pages || pages.length === 0) return null
+  if (!requestedPageId) return pages[0]
+  return pages.find((page) => page.id === requestedPageId) || pages[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -2608,6 +2620,13 @@ function mapSectionsInDOM(pmEl) {
 export default function ProjectEditor() {
   const navigate = useNavigate()
   const { id: projectId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Deep-link inicial (`?p=<pageId>&s=<sectionId>`) capturado UNA sola vez al
+  // montar: la URL se reescribe al cambiar de página y el destino inicial no
+  // debe moverse con ella. Si se navega a otro proyecto sin desmontar, los ids
+  // viejos simplemente no matchean y caen en el fallback silencioso.
+  const deepLinkRef = useRef({ pageId: searchParams.get('p'), sectionId: searchParams.get('s') })
+  const deepLinkSectionDoneRef = useRef(false)
   const { currentUser } = useAuth()
   const initialPersistedEditorViewRef = useRef(readPersistedProjectEditorView(projectId))
   const rootRef = useRef(null)
@@ -2929,7 +2948,8 @@ export default function ProjectEditor() {
 
         const loadedProjectType = inferProjectType(data.project, data.pages)
         const nextPages = data.pages.map((page) => mapPersistedPage(page, loadedProjectType))
-        const firstPage = nextPages[0]
+        // `?p=` decide la página inicial; id inválido/ausente → primera página.
+        const firstPage = resolveDeepLinkPage(nextPages, deepLinkRef.current.pageId)
         const initialSections = firstPage?.sections || []
 
         setProjectMeta({ ...data.project, projectType: loadedProjectType })
@@ -2971,6 +2991,48 @@ export default function ProjectEditor() {
       active = false
     }
   }, [projectId])
+
+  // ── Deep-link `?s=` — scroll + flash a la sección una sola vez ──
+  // Reutiliza el flujo programático existente (navigateToSection → scrollRequest
+  // + flashRequest). El divider puede no estar en el DOM hasta que TipTap
+  // hidrata la página activa, así que se reintenta unos ticks; si la sección no
+  // aparece, silencio.
+  useEffect(() => {
+    if (loadingProject || deepLinkSectionDoneRef.current) return undefined
+    const sectionId = deepLinkRef.current.sectionId
+    if (!sectionId) {
+      deepLinkSectionDoneRef.current = true
+      return undefined
+    }
+    if (!activePageId) return undefined
+
+    let attempts = 0
+    let timer = null
+    // Comparación por atributo en vez de interpolar el id en un selector: el
+    // valor viene de la URL y no está sanitizado.
+    const dividerExists = () => Array
+      .from(document.querySelectorAll('.ProseMirror [data-section-id]'))
+      .some((el) => el.getAttribute('data-section-id') === sectionId)
+
+    const tick = () => {
+      if (deepLinkSectionDoneRef.current) return
+      if (dividerExists()) {
+        deepLinkSectionDoneRef.current = true
+        navigateToSection(sectionId)
+        return
+      }
+      attempts += 1
+      if (attempts >= 12) {
+        deepLinkSectionDoneRef.current = true
+        return
+      }
+      timer = window.setTimeout(tick, 120)
+    }
+
+    timer = window.setTimeout(tick, 60)
+    return () => { if (timer) window.clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingProject, activePageId])
 
   useEffect(() => {
     if (!activePage) return
