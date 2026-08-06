@@ -3034,6 +3034,21 @@ export default function ProjectEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingProject, activePageId])
 
+  // ── Sincroniza `?p=` con la página activa ──
+  // `replace` para no ensuciar el historial. `s` se borra SOLO cuando la página
+  // realmente cambia: un sectionId de otra página es peor que ninguno. En la
+  // carga inicial (`?s=` sin `?p=` previo) se preserva para que un refresh
+  // repita el scroll.
+  useEffect(() => {
+    if (loadingProject || !activePageId) return
+    const currentPageParam = searchParams.get('p')
+    if (currentPageParam === activePageId) return
+    const next = new URLSearchParams(searchParams)
+    next.set('p', activePageId)
+    if (currentPageParam) next.delete('s')
+    setSearchParams(next, { replace: true })
+  }, [activePageId, loadingProject, searchParams, setSearchParams])
+
   useEffect(() => {
     if (!activePage) return
     if (editorMode === 'brief' && editorRef.current) return
@@ -4072,6 +4087,33 @@ export default function ProjectEditor() {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isDirty])
+
+  // ── Copiar deep-links (`?p=` / `?p=&s=`) al portapapeles ──
+  const buildEditorDeepLink = useCallback((pageId, sectionId = null) => {
+    const params = new URLSearchParams()
+    if (pageId) params.set('p', pageId)
+    if (sectionId) params.set('s', sectionId)
+    const query = params.toString()
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${origin}/project/${projectId}/editor${query ? `?${query}` : ''}`
+  }, [projectId])
+
+  const copyDeepLink = useCallback(async (url, successText) => {
+    try {
+      await navigator.clipboard?.writeText?.(url)
+      showToast({ kind: 'info', text: successText, autoHideMs: 2500 })
+    } catch {
+      showToast({ kind: 'warning', text: 'No se pudo copiar el enlace' })
+    }
+  }, [showToast])
+
+  const handleCopyPageLink = useCallback((pageId) => {
+    copyDeepLink(buildEditorDeepLink(pageId), 'Enlace a la página copiado')
+  }, [buildEditorDeepLink, copyDeepLink])
+
+  const handleCopySectionLink = useCallback((sectionId) => {
+    copyDeepLink(buildEditorDeepLink(activePageId, sectionId), 'Enlace a la sección copiado')
+  }, [activePageId, buildEditorDeepLink, copyDeepLink])
 
   // ── Navega a otra página: guarda contenido actual y carga la nueva ──
   function handlePageClick(pageId) {
@@ -5232,6 +5274,7 @@ export default function ProjectEditor() {
         onPageClick={handlePageClick}
         onPeerClick={jumpToPeer}
         onAddPage={addPage}
+        onCopyPageLink={handleCopyPageLink}
         onRenamePage={renamePage}
         onRenameProject={renameProject}
         onRequestDeletePage={(pageId) => setDeletePageConfirm(pageId)}
@@ -5287,6 +5330,7 @@ export default function ProjectEditor() {
             onOpenAddSectionModal={() => openSectionModal(null)}
             onRename={renameSection}
             onDelete={deleteSection}
+            onCopySectionLink={handleCopySectionLink}
             onMoveSection={moveSection}
             canManageSections={canEditProjectStructure}
             activeHeading={activeHeading}
@@ -5308,6 +5352,7 @@ export default function ProjectEditor() {
             onOpenAddSectionModal={openFaqModal}
             onRename={renameSection}
             onDelete={deleteSection}
+            onCopySectionLink={handleCopySectionLink}
             onMoveSection={moveSection}
             canManageSections={canEditProjectStructure}
             activeHeading={activeHeading}
@@ -5719,6 +5764,7 @@ function Navbar({
   onPageClick,
   onPeerClick,
   onAddPage,
+  onCopyPageLink,
   onRenamePage,
   onRenameProject,
   onRequestDeletePage,
@@ -5821,6 +5867,7 @@ function Navbar({
               onClick={() => onPageClick(page.id)}
               onRename={(name) => onRenamePage(page.id, name)}
               onRequestDelete={() => onRequestDeletePage(page.id)}
+              onCopyLink={onCopyPageLink ? () => onCopyPageLink(page.id) : null}
               menuOpen={openMenuId === `page-${page.id}`}
               onOpenMenu={() => onSetOpenMenuId(`page-${page.id}`)}
               onCloseMenu={() => onSetOpenMenuId(null)}
@@ -6048,7 +6095,7 @@ function FloatingEditorBar({
 }
 
 // Pill individual de página con menú contextual (renombrar / eliminar)
-function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, onRename, onRequestDelete, menuOpen, onOpenMenu, onCloseMenu }) {
+function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, onRename, onRequestDelete, onCopyLink, menuOpen, onOpenMenu, onCloseMenu }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(page.name)
 
@@ -6073,9 +6120,12 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
     else setDraft(page.name)
   }
 
+  // El kebab también existe sin permisos de estructura: "Copiar enlace" es la
+  // acción mínima que cualquiera con acceso al proyecto puede usar.
+  const hasMenu = canManagePages || Boolean(onCopyLink)
   const wrapperClassName = `${navStyles.navPillWrapper} ${isActive ? navStyles.navPillWrapperActive : ''}`
-  const pillClassName = `${isActive ? navStyles.navPillActive : navStyles.navPill} ${!canManagePages ? navStyles.navPillNoMenu : ''}`
-  const inputClassName = `${navStyles.navPillInput} ${!canManagePages ? navStyles.navPillInputNoMenu : ''} ${isActive ? navStyles.navPillInputActive : navStyles.navPillInputInactive}`
+  const pillClassName = `${isActive ? navStyles.navPillActive : navStyles.navPill} ${!hasMenu ? navStyles.navPillNoMenu : ''}`
+  const inputClassName = `${navStyles.navPillInput} ${!hasMenu ? navStyles.navPillInputNoMenu : ''} ${isActive ? navStyles.navPillInputActive : navStyles.navPillInputInactive}`
   const menuButtonClassName = `${navStyles.navPillMenuBtn} ${isActive ? navStyles.navPillMenuBtnActive : navStyles.navPillMenuBtnInactive}`
 
   return (
@@ -6100,7 +6150,7 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
           <span className={navStyles.navPillLabel}>{page.name}</span>
         </button>
       )}
-      {canManagePages && (
+      {hasMenu && (
         <button
           ref={menuTriggerRef}
           className={menuButtonClassName}
@@ -6110,20 +6160,30 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
           <MoreVertical size={14} />
         </button>
       )}
-      {canManagePages && menuOpen && menuPos && typeof document !== 'undefined' && createPortal(
+      {hasMenu && menuOpen && menuPos && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
           className={navStyles.navPillMenu}
           style={menuPos}
           onMouseLeave={onCloseMenu}
         >
-          <div
-            className={navStyles.navPillMenuItem}
-            onClick={(e) => { e.stopPropagation(); close(); setEditing(true) }}
-          >
-            Renombrar
-          </div>
-          {canDelete && (
+          {onCopyLink && (
+            <div
+              className={navStyles.navPillMenuItem}
+              onClick={(e) => { e.stopPropagation(); close(); onCopyLink() }}
+            >
+              Copiar enlace
+            </div>
+          )}
+          {canManagePages && (
+            <div
+              className={navStyles.navPillMenuItem}
+              onClick={(e) => { e.stopPropagation(); close(); setEditing(true) }}
+            >
+              Renombrar
+            </div>
+          )}
+          {canManagePages && canDelete && (
             <div
               className={navStyles.navPillMenuItemDanger}
               onClick={(e) => { e.stopPropagation(); close(); onRequestDelete() }}
@@ -6285,7 +6345,7 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
   )
 }
 
-function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv, peers = [], conflicts = [] }) {
+function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onCopySectionLink, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv, peers = [], conflicts = [] }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -6346,6 +6406,7 @@ function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId,
               onClick={() => onSectionClick(section.id)}
               onRename={(name) => onRename(section.id, name)}
               onDelete={() => onDelete(section.id)}
+              onCopyLink={onCopySectionLink ? () => onCopySectionLink(section.id) : null}
               headings={section.headings || []}
               sectionId={section.id}
               activeHeading={activeHeading}
@@ -6405,7 +6466,7 @@ function H1Divider({ text, onClick }) {
   )
 }
 
-function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick, peers = [], conflicts = [] }) {
+function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onCopySectionLink, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick, peers = [], conflicts = [] }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -6455,6 +6516,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
             onClick={() => onSectionClick(section.id)}
             onRename={(name) => onRename(section.id, name)}
             onDelete={() => onDelete(section.id)}
+            onCopyLink={onCopySectionLink ? () => onCopySectionLink(section.id) : null}
             headings={section.headings || []}
             sectionId={section.id}
             activeHeading={activeHeading}
@@ -6483,7 +6545,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
 }
 
 // Ítem de sección: nav-button (Tag + nombre + menú) + lista de headings
-function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle, presencePeers = [], hasConflict = false }) {
+function SectionItem({ section, isActive, onClick, onRename, onDelete, onCopyLink, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle, presencePeers = [], hasConflict = false }) {
 
   // ── Scroll al heading correspondiente en el editor al hacer click ──
   function handleHeadingClick(e, index) {
@@ -6502,6 +6564,8 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
     if (draft.trim()) onRename(draft.trim())
     else setDraft(section.name)
   }
+
+  const hasSectionMenu = canManageSection || Boolean(onCopyLink)
 
   return (
     <div
@@ -6576,8 +6640,10 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
           )}
         </div>
 
+        {/* El menú también existe para quien solo lee: "Copiar enlace" es la
+            acción mínima que no requiere permisos de estructura. */}
         <div className={panelStyles.menuWrap}>
-          {canManageSection && (
+          {hasSectionMenu && (
             <button
               className={panelStyles.menuBtn}
               onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
@@ -6586,14 +6652,23 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               <MoreVertical size={24} />
             </button>
           )}
-          {canManageSection && menuOpen && (
+          {hasSectionMenu && menuOpen && (
             <div className={panelStyles.menu} onMouseLeave={onCloseMenu}>
-              <div className={panelStyles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}>
-                Renombrar
-              </div>
-              <div className={cx(panelStyles.menuItem, panelStyles.menuItemDanger)} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onDelete() }}>
-                Eliminar
-              </div>
+              {onCopyLink && (
+                <div className={panelStyles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onCopyLink() }}>
+                  Copiar enlace a la sección
+                </div>
+              )}
+              {canManageSection && (
+                <div className={panelStyles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}>
+                  Renombrar
+                </div>
+              )}
+              {canManageSection && (
+                <div className={cx(panelStyles.menuItem, panelStyles.menuItemDanger)} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onDelete() }}>
+                  Eliminar
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -10893,8 +10968,9 @@ function htmlToPlainText(html) {
   return (tmp.textContent || tmp.innerText || '').trim()
 }
 
-function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, onRevoke }) {
+function ShareLinkPanel({ shareUrl = '', activePageId = '', canManageProjectMeta = true, onCreate, onRevoke }) {
   const [copied, setCopied] = useState(false)
+  const [copiedPage, setCopiedPage] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function handleCopy() {
@@ -10903,6 +10979,21 @@ function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, 
       await navigator.clipboard?.writeText?.(shareUrl)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // noop
+    }
+  }
+
+  // El token del share no cambia de formato: el deep-link se appendea como
+  // query param a la URL ya creada.
+  async function handleCopyCurrentPage() {
+    if (!shareUrl || !activePageId) return
+    try {
+      const url = new URL(shareUrl)
+      url.searchParams.set('p', activePageId)
+      await navigator.clipboard?.writeText?.(url.toString())
+      setCopiedPage(true)
+      window.setTimeout(() => setCopiedPage(false), 2000)
     } catch {
       // noop
     }
@@ -10943,6 +11034,16 @@ function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, 
               {copied ? <span className={styles.shareLinkCopiedBadge}>✓</span> : <Copy size={14} />}
             </button>
           </div>
+          {activePageId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              onClick={handleCopyCurrentPage}
+            >
+              {copiedPage ? 'Enlace copiado' : 'Copiar apuntando a la página actual'}
+            </Button>
+          )}
           <Button
             variant="primary"
             size="sm"
@@ -11442,6 +11543,7 @@ function UpdatesPanel({
         )}
         <ShareLinkPanel
           shareUrl={shareUrl}
+          activePageId={activePageId}
           canManageProjectMeta={canManageProjectMeta}
           onCreate={onCreateShareLink}
           onRevoke={onRevokeShareLink}
