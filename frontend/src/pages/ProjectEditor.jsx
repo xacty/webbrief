@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo, lazy, Suspense, Fragment as RFragment } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 const BriefProjectEditor = lazy(() => import('./BriefProjectEditor'))
 import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
@@ -42,15 +42,20 @@ import {
 import { subscribeProjectComments } from '../lib/commentsRealtime'
 import { createEditorChannel } from '../lib/editorPresence'
 import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
+import { stripPendingUploadImagesFromHtml, stripPendingUploadImagesFromJson, countPendingUploadImages } from '../lib/pendingUploads'
+import { diffProposalSections, summarizeProposalDiff } from '../lib/proposalDiff'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
-import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
+import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, Images, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
 import { markTaskDone } from '../lib/tutorialState'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
+import { companyToSlug } from '../lib/companySlug'
 import { Modal, Button, Select, HelpPopover } from '../components/ui'
+import LibraryPickerModal from '../components/library/LibraryPickerModal'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
@@ -887,6 +892,18 @@ function flashSectionInScrollEl(scrollEl, anchorEl, nextAnchorEl) {
     ? nextAnchorEl.getBoundingClientRect().top - containerRect.top
     : top + Math.max(anchorEl.getBoundingClientRect().height, 200)
   createFlashOverlay(container, top, bottom - top)
+}
+
+// ---------------------------------------------------------------------------
+// Helper: resolveDeepLinkPage — página inicial a partir del query param `?p=`
+// Un id ausente o que no pertenece al proyecto cae en la primera página, en
+// silencio (decisión del plan de deep-links: nunca romper la carga por un
+// enlace viejo).
+// ---------------------------------------------------------------------------
+function resolveDeepLinkPage(pages, requestedPageId) {
+  if (!pages || pages.length === 0) return null
+  if (!requestedPageId) return pages[0]
+  return pages.find((page) => page.id === requestedPageId) || pages[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -2605,6 +2622,13 @@ function mapSectionsInDOM(pmEl) {
 export default function ProjectEditor() {
   const navigate = useNavigate()
   const { id: projectId } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Deep-link inicial (`?p=<pageId>&s=<sectionId>`) capturado UNA sola vez al
+  // montar: la URL se reescribe al cambiar de página y el destino inicial no
+  // debe moverse con ella. Si se navega a otro proyecto sin desmontar, los ids
+  // viejos simplemente no matchean y caen en el fallback silencioso.
+  const deepLinkRef = useRef({ pageId: searchParams.get('p'), sectionId: searchParams.get('s') })
+  const deepLinkSectionDoneRef = useRef(false)
   const { currentUser } = useAuth()
   const initialPersistedEditorViewRef = useRef(readPersistedProjectEditorView(projectId))
   const rootRef = useRef(null)
@@ -2634,6 +2658,11 @@ export default function ProjectEditor() {
   const [editorToast, setEditorToast] = useState(null)
   const [editorMode, setEditorMode] = useState(() => initialPersistedEditorViewRef.current?.editorMode || 'brief')
   const [handoffAudience, setHandoffAudience] = useState(() => initialPersistedEditorViewRef.current?.handoffAudience || 'designer')
+  // Comparador de propuesta de diseño: false = se ve lo publicado (el editor
+  // normal), true = se ve la propuesta pendiente en solo lectura. Es un eje
+  // aparte del modo Brief/Handoff/Preview (qué versión, no qué vista), y NO se
+  // persiste en la vista guardada: siempre se entra por lo publicado.
+  const [proposalViewOpen, setProposalViewOpen] = useState(false)
   const [activity, setActivity] = useState([])
   const [notifications, setNotifications] = useState([])
   const [deliverables, setDeliverables] = useState([])
@@ -2709,6 +2738,10 @@ export default function ProjectEditor() {
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
   const toastTimerRef = useRef(null)
+  // Cuántos placeholders de subida (`blob:`) descartó el último snapshot. Se
+  // avisa solo en guardado manual: en autosave el nodo sigue en el editor y
+  // entra bien en el siguiente ciclo, cuando la subida ya resolvió su URL.
+  const pendingUploadsRef = useRef(0)
 
   const activePage = pages.find((p) => p.id === activePageId)
   const projectType = inferProjectType(projectMeta, pages)
@@ -2758,6 +2791,43 @@ export default function ProjectEditor() {
   const availableEditorModes = useMemo(() => (
     canUseHandoff ? ['brief', 'handoff', 'preview'] : ['brief', 'preview']
   ), [canUseHandoff])
+
+  // ── Revisión de propuesta de diseño ────────────────────────────────────
+  // Un `designer` no escribe la página: cada guardado suyo queda como
+  // propuesta pendiente (project_page_change_proposals) y el backend solo
+  // superpone ese contenido para el propio designer. El revisor veía
+  // "Aprobar / Pedir cambios" sin poder ver QUÉ aprobaba — de ahí este
+  // comparador. El backend YA manda `pendingProposal` completo a los
+  // revisores, así que todo esto es cliente: no hace falta endpoint nuevo.
+  const pendingProposal = activePage?.pendingProposal || null
+  const proposalDiff = useMemo(() => (
+    pendingProposal
+      ? diffProposalSections(activePage?.fullContent || '', pendingProposal.contentHtml || '')
+      : null
+  ), [pendingProposal, activePage?.fullContent])
+  const proposerName = useMemo(() => {
+    const proposerId = pendingProposal?.proposerUserId
+    if (!proposerId) return ''
+    const profile = commentMembers.find((member) => member.id === proposerId)
+      || (Array.isArray(commentProfiles) ? commentProfiles.find((item) => item.id === proposerId) : null)
+    return profile?.fullName || profile?.email || ''
+  }, [pendingProposal, commentMembers, commentProfiles])
+  const canSeeProposalReview = Boolean(canReviewDesignerProposals && pendingProposal)
+  const proposalReviewActive = canSeeProposalReview && proposalViewOpen
+
+  // Cambiar de página vuelve siempre a lo publicado: la aprobación es por
+  // página, y el panel de secciones sigue derivando del doc montado (que en
+  // vista propuesta no existe), así que arrastrar la vista entre páginas
+  // dejaría la columna izquierda describiendo otra cosa.
+  useEffect(() => {
+    setProposalViewOpen(false)
+  }, [activePageId])
+
+  // La propuesta desapareció (aprobada, rechazada, o el rol dejó de poder
+  // revisarla) → no hay nada que comparar.
+  useEffect(() => {
+    if (!canSeeProposalReview) setProposalViewOpen(false)
+  }, [canSeeProposalReview])
   const [contentRuleNotice, setContentRuleNotice] = useState('')
   const activePageForRead = useMemo(() => {
     if (!activePage) return null
@@ -2926,7 +2996,8 @@ export default function ProjectEditor() {
 
         const loadedProjectType = inferProjectType(data.project, data.pages)
         const nextPages = data.pages.map((page) => mapPersistedPage(page, loadedProjectType))
-        const firstPage = nextPages[0]
+        // `?p=` decide la página inicial; id inválido/ausente → primera página.
+        const firstPage = resolveDeepLinkPage(nextPages, deepLinkRef.current.pageId)
         const initialSections = firstPage?.sections || []
 
         setProjectMeta({ ...data.project, projectType: loadedProjectType })
@@ -2968,6 +3039,63 @@ export default function ProjectEditor() {
       active = false
     }
   }, [projectId])
+
+  // ── Deep-link `?s=` — scroll + flash a la sección una sola vez ──
+  // Reutiliza el flujo programático existente (navigateToSection → scrollRequest
+  // + flashRequest). El divider puede no estar en el DOM hasta que TipTap
+  // hidrata la página activa, así que se reintenta unos ticks; si la sección no
+  // aparece, silencio.
+  useEffect(() => {
+    if (loadingProject || deepLinkSectionDoneRef.current) return undefined
+    const sectionId = deepLinkRef.current.sectionId
+    if (!sectionId) {
+      deepLinkSectionDoneRef.current = true
+      return undefined
+    }
+    if (!activePageId) return undefined
+
+    let attempts = 0
+    let timer = null
+    // Comparación por atributo en vez de interpolar el id en un selector: el
+    // valor viene de la URL y no está sanitizado.
+    const dividerExists = () => Array
+      .from(document.querySelectorAll('.ProseMirror [data-section-id]'))
+      .some((el) => el.getAttribute('data-section-id') === sectionId)
+
+    const tick = () => {
+      if (deepLinkSectionDoneRef.current) return
+      if (dividerExists()) {
+        deepLinkSectionDoneRef.current = true
+        navigateToSection(sectionId)
+        return
+      }
+      attempts += 1
+      if (attempts >= 12) {
+        deepLinkSectionDoneRef.current = true
+        return
+      }
+      timer = window.setTimeout(tick, 120)
+    }
+
+    timer = window.setTimeout(tick, 60)
+    return () => { if (timer) window.clearTimeout(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingProject, activePageId])
+
+  // ── Sincroniza `?p=` con la página activa ──
+  // `replace` para no ensuciar el historial. `s` se borra SOLO cuando la página
+  // realmente cambia: un sectionId de otra página es peor que ninguno. En la
+  // carga inicial (`?s=` sin `?p=` previo) se preserva para que un refresh
+  // repita el scroll.
+  useEffect(() => {
+    if (loadingProject || !activePageId) return
+    const currentPageParam = searchParams.get('p')
+    if (currentPageParam === activePageId) return
+    const next = new URLSearchParams(searchParams)
+    next.set('p', activePageId)
+    if (currentPageParam) next.delete('s')
+    setSearchParams(next, { replace: true })
+  }, [activePageId, loadingProject, searchParams, setSearchParams])
 
   useEffect(() => {
     if (!activePage) return
@@ -3230,8 +3358,19 @@ export default function ProjectEditor() {
   const snapshotActivePage = useCallback(() => {
     if (!editorRef.current || !activePageId) return null
 
-    const html = editorRef.current.getHTML()
-    const json = editorRef.current.getJSON()
+    // Último filtro antes de persistir: un <img src="blob:…"> es el placeholder
+    // de una subida todavía en vuelo (o fallada). El object URL muere con la
+    // pestaña, así que guardarlo deja una imagen rota para siempre — pasó en
+    // Prod. Se limpia acá, el único chokepoint por el que pasan autosave y
+    // guardado manual; el nodo sigue vivo en el editor, así que si la subida
+    // termina bien `replaceImageSrc` lo completa y el próximo save lo persiste
+    // ya con su URL pública. Ver frontend/src/lib/pendingUploads.js.
+    const rawHtml = editorRef.current.getHTML()
+    const rawJson = editorRef.current.getJSON()
+    const pendingUploads = countPendingUploadImages(rawHtml)
+    const html = pendingUploads ? stripPendingUploadImagesFromHtml(rawHtml) : rawHtml
+    const json = pendingUploads ? stripPendingUploadImagesFromJson(rawJson) : rawJson
+    if (pendingUploads) pendingUploadsRef.current = pendingUploads
     const sections = parseSectionsFromHtml(html)
     const seoMetadata = getPageSeoMetadata({ seoMetadata: activeSeoMetadataRef.current })
     const contentRules = getPageContentRules({ contentRules: activeContentRulesRef.current })
@@ -3244,6 +3383,17 @@ export default function ProjectEditor() {
 
     return { html, json, sections, seoMetadata, contentRules }
   }, [activePageId])
+
+  // Abre el comparador de propuesta. Vive acá y no junto al resto del estado
+  // de propuesta porque necesita snapshotActivePage (declarado justo arriba):
+  // si el revisor tenía cambios sin guardar, el snapshot los deja en `pages` y
+  // vuelven al editor al cerrar el comparador — mismo contrato que el cambio
+  // de modo Brief→Preview, que también desmonta EditorPanel.
+  const openProposalView = useCallback(() => {
+    if (!canSeeProposalReview) return
+    snapshotActivePage()
+    setProposalViewOpen(true)
+  }, [canSeeProposalReview, snapshotActivePage])
 
   const loadPageIntoEditor = useCallback((page, shouldScroll = true) => {
     if (!editorRef.current || !page) return
@@ -3379,6 +3529,20 @@ export default function ProjectEditor() {
           ? (source === 'autosave' ? 'Propuesta autoguardada' : 'Propuesta guardada')
           : (source === 'autosave' ? 'Autoguardado' : 'Guardado')
       )
+      // Hubo imágenes todavía subiendo cuando se serializó: no se guardaron
+      // (su src era un `blob:` local, inservible fuera de esta pestaña). En
+      // autosave no se avisa — el nodo sigue en el editor y entra solo en el
+      // ciclo siguiente. En manual sí, porque el usuario cree que guardó todo.
+      const droppedUploads = pendingUploadsRef.current
+      pendingUploadsRef.current = 0
+      if (droppedUploads > 0 && source !== 'autosave') {
+        showToast({
+          kind: 'warning',
+          text: droppedUploads === 1
+            ? 'Una imagen todavía se estaba subiendo y no se guardó. Espera a que termine y guarda de nuevo.'
+            : `${droppedUploads} imágenes todavía se estaban subiendo y no se guardaron. Espera a que terminen y guarda de nuevo.`,
+        })
+      }
       // F3 (colaboración): lo que acaba de persistir el servidor pasa a ser la
       // nueva 'base' para el próximo merge de 3 vías + toca el timbre para que
       // otras sesiones abiertas en este proyecto sepan que hay contenido nuevo.
@@ -3821,6 +3985,19 @@ export default function ProjectEditor() {
       // del próximo merge de 3 vías queda stale (pre-propuesta) y puede generar
       // conflictos falsos con una tercera sesión que edite después.
       serverPagesRef.current = new Map(nextPages.map((page) => [page.id, { contentHtml: page.fullContent, version: page.version }]))
+      // Aprobar reemplaza el content_html de la página, pero el editor montado
+      // sigue con el doc viejo: setPages actualiza el state, no el doc de
+      // TipTap (loadPageIntoEditor solo corría al cambiar de página). Sin esto
+      // el revisor aprueba y el canvas no cambia hasta recargar — justo la
+      // sensación de "aprobé y no pasó nada". Cuando el comparador está
+      // abierto no hace falta: EditorPanel está desmontado y al volver se
+      // monta con el `initialContent` ya fresco.
+      if (!proposalViewOpen) {
+        const refreshedActivePage = nextPages.find((page) => page.id === activePage.id)
+        if (refreshedActivePage && editorRef.current && !editorRef.current.isDestroyed) {
+          loadPageIntoEditor(refreshedActivePage, false)
+        }
+      }
       setSaveMessage(status === 'accepted' ? 'Propuesta aprobada' : 'Propuesta rechazada')
       setIsDirty(false)
     } catch (error) {
@@ -4007,6 +4184,33 @@ export default function ProjectEditor() {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isDirty])
+
+  // ── Copiar deep-links (`?p=` / `?p=&s=`) al portapapeles ──
+  const buildEditorDeepLink = useCallback((pageId, sectionId = null) => {
+    const params = new URLSearchParams()
+    if (pageId) params.set('p', pageId)
+    if (sectionId) params.set('s', sectionId)
+    const query = params.toString()
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${origin}/project/${projectId}/editor${query ? `?${query}` : ''}`
+  }, [projectId])
+
+  const copyDeepLink = useCallback(async (url, successText) => {
+    try {
+      await navigator.clipboard?.writeText?.(url)
+      showToast({ kind: 'info', text: successText, autoHideMs: 2500 })
+    } catch {
+      showToast({ kind: 'warning', text: 'No se pudo copiar el enlace' })
+    }
+  }, [showToast])
+
+  const handleCopyPageLink = useCallback((pageId) => {
+    copyDeepLink(buildEditorDeepLink(pageId), 'Enlace a la página copiado')
+  }, [buildEditorDeepLink, copyDeepLink])
+
+  const handleCopySectionLink = useCallback((sectionId) => {
+    copyDeepLink(buildEditorDeepLink(activePageId, sectionId), 'Enlace a la sección copiado')
+  }, [activePageId, buildEditorDeepLink, copyDeepLink])
 
   // ── Navega a otra página: guarda contenido actual y carga la nueva ──
   function handlePageClick(pageId) {
@@ -5167,6 +5371,7 @@ export default function ProjectEditor() {
         onPageClick={handlePageClick}
         onPeerClick={jumpToPeer}
         onAddPage={addPage}
+        onCopyPageLink={handleCopyPageLink}
         onRenamePage={renamePage}
         onRenameProject={renameProject}
         onRequestDeletePage={(pageId) => setDeletePageConfirm(pageId)}
@@ -5222,6 +5427,7 @@ export default function ProjectEditor() {
             onOpenAddSectionModal={() => openSectionModal(null)}
             onRename={renameSection}
             onDelete={deleteSection}
+            onCopySectionLink={handleCopySectionLink}
             onMoveSection={moveSection}
             canManageSections={canEditProjectStructure}
             activeHeading={activeHeading}
@@ -5243,6 +5449,7 @@ export default function ProjectEditor() {
             onOpenAddSectionModal={openFaqModal}
             onRename={renameSection}
             onDelete={deleteSection}
+            onCopySectionLink={handleCopySectionLink}
             onMoveSection={moveSection}
             canManageSections={canEditProjectStructure}
             activeHeading={activeHeading}
@@ -5263,10 +5470,26 @@ export default function ProjectEditor() {
           />
         )}
 
-        {/* Área central: editor / handoff / preview */}
-        {editorMode === 'brief' && (
+        {/* Área central: comparador de propuesta / editor / handoff / preview.
+            El comparador es un eje aparte del modo (qué versión se ve, no qué
+            vista), así que reemplaza a los tres mientras está abierto. */}
+        {proposalReviewActive && (
+          <ProposalReviewPanel
+            pageName={activePage?.name || 'Página'}
+            proposal={pendingProposal}
+            diff={proposalDiff}
+            proposerName={proposerName}
+            scrollRequest={scrollRequest}
+            onShowPublished={() => setProposalViewOpen(false)}
+            onApprove={() => handleDesignerProposalDecision('accepted')}
+            onReject={() => handleDesignerProposalDecision('rejected')}
+          />
+        )}
+
+        {!proposalReviewActive && editorMode === 'brief' && (
           <EditorPanel
             projectId={projectId}
+            companyId={projectMeta?.companyId || ''}
             projectType={projectType}
             activePageId={activePageId}
             initialContent={activePage?.fullContent || initialContentRef.current}
@@ -5321,7 +5544,7 @@ export default function ProjectEditor() {
           />
         )}
 
-        {editorMode === 'handoff' && (
+        {!proposalReviewActive && editorMode === 'handoff' && (
           <HandoffPanel
             projectId={projectId}
             page={activePageForRead}
@@ -5334,7 +5557,7 @@ export default function ProjectEditor() {
           />
         )}
 
-        {editorMode === 'preview' && (
+        {!proposalReviewActive && editorMode === 'preview' && (
           <PreviewPanel
             page={activePageForRead}
             projectType={projectType}
@@ -5373,6 +5596,9 @@ export default function ProjectEditor() {
           onUpdateDeliverableStatus={updateDeliverableStatus}
           onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
           onRejectDesignerProposal={() => handleDesignerProposalDecision('rejected')}
+          proposalDiff={proposalDiff}
+          proposalViewOpen={proposalViewOpen}
+          onOpenProposalView={openProposalView}
           onActivityClick={navigateToActivity}
           onMarkActivityRead={markActivityRead}
           onNavigateToSection={navigateToSection}
@@ -5653,6 +5879,7 @@ function Navbar({
   onPageClick,
   onPeerClick,
   onAddPage,
+  onCopyPageLink,
   onRenamePage,
   onRenameProject,
   onRequestDeletePage,
@@ -5755,6 +5982,7 @@ function Navbar({
               onClick={() => onPageClick(page.id)}
               onRename={(name) => onRenamePage(page.id, name)}
               onRequestDelete={() => onRequestDeletePage(page.id)}
+              onCopyLink={onCopyPageLink ? () => onCopyPageLink(page.id) : null}
               menuOpen={openMenuId === `page-${page.id}`}
               onOpenMenu={() => onSetOpenMenuId(`page-${page.id}`)}
               onCloseMenu={() => onSetOpenMenuId(null)}
@@ -5982,7 +6210,7 @@ function FloatingEditorBar({
 }
 
 // Pill individual de página con menú contextual (renombrar / eliminar)
-function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, onRename, onRequestDelete, menuOpen, onOpenMenu, onCloseMenu }) {
+function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, onRename, onRequestDelete, onCopyLink, menuOpen, onOpenMenu, onCloseMenu }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(page.name)
 
@@ -6007,9 +6235,12 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
     else setDraft(page.name)
   }
 
+  // El kebab también existe sin permisos de estructura: "Copiar enlace" es la
+  // acción mínima que cualquiera con acceso al proyecto puede usar.
+  const hasMenu = canManagePages || Boolean(onCopyLink)
   const wrapperClassName = `${navStyles.navPillWrapper} ${isActive ? navStyles.navPillWrapperActive : ''}`
-  const pillClassName = `${isActive ? navStyles.navPillActive : navStyles.navPill} ${!canManagePages ? navStyles.navPillNoMenu : ''}`
-  const inputClassName = `${navStyles.navPillInput} ${!canManagePages ? navStyles.navPillInputNoMenu : ''} ${isActive ? navStyles.navPillInputActive : navStyles.navPillInputInactive}`
+  const pillClassName = `${isActive ? navStyles.navPillActive : navStyles.navPill} ${!hasMenu ? navStyles.navPillNoMenu : ''}`
+  const inputClassName = `${navStyles.navPillInput} ${!hasMenu ? navStyles.navPillInputNoMenu : ''} ${isActive ? navStyles.navPillInputActive : navStyles.navPillInputInactive}`
   const menuButtonClassName = `${navStyles.navPillMenuBtn} ${isActive ? navStyles.navPillMenuBtnActive : navStyles.navPillMenuBtnInactive}`
 
   return (
@@ -6034,7 +6265,7 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
           <span className={navStyles.navPillLabel}>{page.name}</span>
         </button>
       )}
-      {canManagePages && (
+      {hasMenu && (
         <button
           ref={menuTriggerRef}
           className={menuButtonClassName}
@@ -6044,20 +6275,30 @@ function PagePill({ page, isActive, canDelete, canManagePages = true, onClick, o
           <MoreVertical size={14} />
         </button>
       )}
-      {canManagePages && menuOpen && menuPos && typeof document !== 'undefined' && createPortal(
+      {hasMenu && menuOpen && menuPos && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
           className={navStyles.navPillMenu}
           style={menuPos}
           onMouseLeave={onCloseMenu}
         >
-          <div
-            className={navStyles.navPillMenuItem}
-            onClick={(e) => { e.stopPropagation(); close(); setEditing(true) }}
-          >
-            Renombrar
-          </div>
-          {canDelete && (
+          {onCopyLink && (
+            <div
+              className={navStyles.navPillMenuItem}
+              onClick={(e) => { e.stopPropagation(); close(); onCopyLink() }}
+            >
+              Copiar enlace
+            </div>
+          )}
+          {canManagePages && (
+            <div
+              className={navStyles.navPillMenuItem}
+              onClick={(e) => { e.stopPropagation(); close(); setEditing(true) }}
+            >
+              Renombrar
+            </div>
+          )}
+          {canManagePages && canDelete && (
             <div
               className={navStyles.navPillMenuItemDanger}
               onClick={(e) => { e.stopPropagation(); close(); onRequestDelete() }}
@@ -6219,7 +6460,7 @@ function DocumentOutlinePanel({ items = [], activeHeading, onHeadingClick, seoEx
   )
 }
 
-function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv, peers = [], conflicts = [] }) {
+function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onCopySectionLink, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, onExportCsv, peers = [], conflicts = [] }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -6280,6 +6521,7 @@ function FaqPanel({ sections = [], topLevelH1s = [], onH1Click, activeSectionId,
               onClick={() => onSectionClick(section.id)}
               onRename={(name) => onRename(section.id, name)}
               onDelete={() => onDelete(section.id)}
+              onCopyLink={onCopySectionLink ? () => onCopySectionLink(section.id) : null}
               headings={section.headings || []}
               sectionId={section.id}
               activeHeading={activeHeading}
@@ -6339,7 +6581,7 @@ function H1Divider({ text, onClick }) {
   )
 }
 
-function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick, peers = [], conflicts = [] }) {
+function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId, onSectionClick, onOpenAddSectionModal, onRename, onDelete, onCopySectionLink, onMoveSection, canManageSections = true, activeHeading, onHeadingClick, openMenuId, onSetOpenMenuId, seoExpanded = false, onSeoClick, peers = [], conflicts = [] }) {
   const [dragIndex, setDragIndex] = useState(null)
   const [dropTargetIndex, setDropTargetIndex] = useState(null)
 
@@ -6389,6 +6631,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
             onClick={() => onSectionClick(section.id)}
             onRename={(name) => onRename(section.id, name)}
             onDelete={() => onDelete(section.id)}
+            onCopyLink={onCopySectionLink ? () => onCopySectionLink(section.id) : null}
             headings={section.headings || []}
             sectionId={section.id}
             activeHeading={activeHeading}
@@ -6417,7 +6660,7 @@ function SectionsPanel({ sections, topLevelH1s = [], onH1Click, activeSectionId,
 }
 
 // Ítem de sección: nav-button (Tag + nombre + menú) + lista de headings
-function SectionItem({ section, isActive, onClick, onRename, onDelete, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle, presencePeers = [], hasConflict = false }) {
+function SectionItem({ section, isActive, onClick, onRename, onDelete, onCopyLink, headings = [], sectionId, activeHeading, onHeadingClick: onHeadingClickProp, index, isDragging, showDropBefore, showDropAfter, canDrag, canManageSection = true, onDragStart, onDragEnd, onDragOver, menuOpen, onOpenMenu, onCloseMenu, subtitle, presencePeers = [], hasConflict = false }) {
 
   // ── Scroll al heading correspondiente en el editor al hacer click ──
   function handleHeadingClick(e, index) {
@@ -6436,6 +6679,8 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
     if (draft.trim()) onRename(draft.trim())
     else setDraft(section.name)
   }
+
+  const hasSectionMenu = canManageSection || Boolean(onCopyLink)
 
   return (
     <div
@@ -6510,8 +6755,10 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
           )}
         </div>
 
+        {/* El menú también existe para quien solo lee: "Copiar enlace" es la
+            acción mínima que no requiere permisos de estructura. */}
         <div className={panelStyles.menuWrap}>
-          {canManageSection && (
+          {hasSectionMenu && (
             <button
               className={panelStyles.menuBtn}
               onClick={(e) => { e.stopPropagation(); menuOpen ? onCloseMenu() : onOpenMenu() }}
@@ -6520,14 +6767,23 @@ function SectionItem({ section, isActive, onClick, onRename, onDelete, headings 
               <MoreVertical size={24} />
             </button>
           )}
-          {canManageSection && menuOpen && (
+          {hasSectionMenu && menuOpen && (
             <div className={panelStyles.menu} onMouseLeave={onCloseMenu}>
-              <div className={panelStyles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}>
-                Renombrar
-              </div>
-              <div className={cx(panelStyles.menuItem, panelStyles.menuItemDanger)} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onDelete() }}>
-                Eliminar
-              </div>
+              {onCopyLink && (
+                <div className={panelStyles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onCopyLink() }}>
+                  Copiar enlace a la sección
+                </div>
+              )}
+              {canManageSection && (
+                <div className={panelStyles.menuItem} onClick={(e) => { e.stopPropagation(); onCloseMenu(); setEditing(true) }}>
+                  Renombrar
+                </div>
+              )}
+              {canManageSection && (
+                <div className={cx(panelStyles.menuItem, panelStyles.menuItemDanger)} onClick={(e) => { e.stopPropagation(); onCloseMenu(); onDelete() }}>
+                  Eliminar
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -7036,10 +7292,12 @@ function parseTooltipTitle(title) {
 const TOOLBAR_GROUP_ORDER = ['history', 'block', 'text', 'color', 'align', 'insert']
 
 
-function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment = false }) {
+function Toolbar({ editor, projectId, companyId, onUndo, onRedo, onAddComment, canComment = false }) {
   const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
   const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
+  const { accessibleCompanies } = useWorkspace()
 
   // ── Overflow handling (Google Docs-style "more" menu) ────────────────
   // The toolbar holds 6 groups separated by dividers. When the container
@@ -7230,6 +7488,50 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
       URL.revokeObjectURL(tempUrl)
       e.target.value = ''
     }
+  }
+
+  // Insertar una imagen ya subida a la biblioteca — a diferencia de
+  // handleImageUpload no hay round-trip al backend (el asset ya existe), así
+  // que insertamos directo en vez del baile temp-placeholder + replaceImageSrc.
+  // Attrs replican el shape que deja handleImageUpload tras el 201
+  // (assetId/fileName/storagePath/originalWidth/originalHeight).
+  // src usa ?tr=w-1600 sobre el public_url cuando el asset vive en ImageKit
+  // (mismo criterio de transform on-the-fly que AssetGrid.assetThumbUrl,
+  // pero a tamaño de inserción en vez de thumbnail) — los assets en
+  // Supabase Storage (SVG passthrough) se insertan con su public_url tal cual.
+  //
+  // insertContent({ type: 'image', attrs }) — mismo patrón que handleCtaInsert
+  // (más abajo) usa para insertar un nodo ctaButton con atributos custom.
+  // Nota de verificación en vivo (para quien audite esto con el inspector):
+  // el <img> que se ve en pantalla mientras se edita (EditableImageView, la
+  // NodeView de React) sólo pinta src/alt en el DOM real — NO refleja
+  // data-asset-id/data-file-name/etc. como atributos del elemento, así que
+  // inspeccionar el DOM en vivo hace parecer que esos attrs "se perdieron".
+  // No es así: confirmado contra el payload real de PUT
+  // /api/projects/:id/pages que tanto `contentJson` (attrs del nodo) como
+  // `contentHtml` (vía renderHTML de EditableImageNode.addAttributes)
+  // incluyen assetId/fileName/storagePath/originalWidth/originalHeight
+  // completos — es el layer de edición en vivo el que es minimal, no el
+  // dato persistido.
+  function handleInsertFromLibrary(asset) {
+    if (!editor || !asset?.public_url) return
+    const isImageKit = asset.storage_bucket === 'imagekit'
+    const src = isImageKit
+      ? `${asset.public_url}${asset.public_url.includes('?') ? '&' : '?'}tr=w-1600`
+      : asset.public_url
+
+    editor.chain().focus().insertContent({
+      type: 'image',
+      attrs: {
+        src,
+        alt: asset.file_name || '',
+        assetId: asset.id || null,
+        fileName: asset.file_name || null,
+        storagePath: asset.storage_path || null,
+        originalWidth: asset.width || null,
+        originalHeight: asset.height || null,
+      },
+    }).run()
   }
 
   function handleLink() {
@@ -7653,19 +7955,58 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
             onClick={() => editor?.chain().focus().setHorizontalRule().run()}
             title="Insertar separador"
           ><Minus size={16} /></ToolBtn>
-          <label
-            className={cx(toolbarStyles.toolLabel, disabled && toolbarStyles.toolLabelDisabled)}
-            data-wb-tooltip="Insertar imagen"
-          >
-            <ImageIcon size={16} />
-            <input
-              type="file"
-              accept="image/*"
-              className={toolbarStyles.hiddenFileInput}
-              onChange={handleImageUpload}
+          <div className={toolbarStyles.menu} data-toolbar-menu="">
+            <ToolBtn
+              active={openToolbarMenu === 'image'}
               disabled={disabled}
-            />
-          </label>
+              onClick={() => setOpenToolbarMenu((value) => value === 'image' ? null : 'image')}
+              title="Insertar imagen"
+            >
+              <ImageIcon size={16} />
+              <ChevronDown size={12} />
+            </ToolBtn>
+            {openToolbarMenu === 'image' && (
+              <div className={toolbarStyles.dropdown}>
+                {/* <label> en vez de un botón + ref: el mismo grupo 'insert'
+                    se re-renderiza una SEGUNDA vez dentro del popover de
+                    overflow (ver el loop `groups.filter(...)` más abajo en
+                    el return de Toolbar) cuando el toolbar no tiene lugar —
+                    dos instancias del grupo montadas a la vez. Un ref
+                    compartido (useRef) apuntaría a una sola de las dos
+                    instancias del input y dejaría a la otra sin abrir el
+                    selector de archivos. La label evita el problema:
+                    activa SIEMPRE el input que tiene adentro, sin importar
+                    cuántas copias del grupo existan en el DOM. */}
+                <label
+                  className={toolbarStyles.dropdownItem}
+                  data-wb-tooltip="Subir un archivo nuevo"
+                  onClick={() => setOpenToolbarMenu(null)}
+                >
+                  <ImageIcon size={16} />
+                  <span>Subir archivo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className={toolbarStyles.hiddenFileInput}
+                    onChange={handleImageUpload}
+                    disabled={disabled}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={toolbarStyles.dropdownItem}
+                  onClick={() => {
+                    setOpenToolbarMenu(null)
+                    setLibraryPickerOpen(true)
+                  }}
+                  data-wb-tooltip="Elegir una imagen ya subida"
+                >
+                  <Images size={16} />
+                  <span>Desde biblioteca</span>
+                </button>
+              </div>
+            )}
+          </div>
         </>
       ),
     },
@@ -7674,71 +8015,93 @@ function Toolbar({ editor, projectId, onUndo, onRedo, onAddComment, canComment =
   const overflowedSet = new Set(overflowedGroupIds)
   const hasOverflow = overflowedGroupIds.length > 0
 
-  return (
-    <div
-      ref={toolbarRef}
-      className={toolbarStyles.toolbar}
-      data-tour="editor-toolbar"
-      onPointerDownCapture={(event) => {
-        if (!openToolbarMenu) return
-        if (event.target.closest?.('[data-toolbar-menu]')) return
-        setOpenToolbarMenu(null)
-      }}
-    >
-      {/* All groups rendered inline. Overflowed ones get .toolbarGroupHidden
-          (display:none) — they stay in the DOM so their refs remain valid
-          for re-measurement on resize. Dividers only render BETWEEN
-          adjacent visible groups so the toolbar reads cleanly. */}
-      {groups.map((group, idx) => {
-        const isHidden = overflowedSet.has(group.id)
-        const prevGroup = idx > 0 ? groups[idx - 1] : null
-        const showDividerBefore = idx > 0 && !isHidden && prevGroup && !overflowedSet.has(prevGroup.id)
-        return (
-          <RFragment key={group.id}>
-            {showDividerBefore && <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />}
-            <div
-              ref={(el) => { groupRefs.current[group.id] = el }}
-              className={cx(toolbarStyles.toolbarGroup, isHidden && toolbarStyles.toolbarGroupHidden)}
-              data-toolbar-group={group.id}
-            >
-              {group.node}
-            </div>
-          </RFragment>
-        )
-      })}
+  // Link inverso del picker ("Ver imágenes del proyecto") — resuelve la
+  // empresa del proyecto actual dentro de las accesibles al usuario para
+  // armar /c/{slug}/library?projectId={id}. accessibleCompanies viene de
+  // WorkspaceContext (ya cubre todas las empresas para admin/qa, ver
+  // GET /api/companies) — si por algún motivo no resuelve (carga en curso,
+  // o el usuario no tiene esa empresa entre las suyas) el link simplemente
+  // no se muestra, sin romper el picker.
+  const projectCompany = accessibleCompanies.find((company) => company.id === companyId)
+  const projectCompanySlug = projectCompany ? companyToSlug(projectCompany) : ''
+  const projectLibraryHref = projectCompanySlug && projectId
+    ? `/c/${projectCompanySlug}/library?projectId=${projectId}`
+    : null
 
-      {hasOverflow && (
-        <>
-          <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
-          <div className={toolbarStyles.toolbarMoreWrap} data-toolbar-menu="" ref={moreBtnRef}>
-            <ToolBtn
-              active={moreMenuOpen}
-              disabled={disabled}
-              onClick={() => setMoreMenuOpen((value) => !value)}
-              title="Más herramientas"
-            >
-              <MoreVertical size={16} />
-            </ToolBtn>
-            {moreMenuOpen && (
-              <div className={toolbarStyles.moreMenuPopover}>
-                {/* Re-render the overflowed groups inside the popover.
-                    Same JSX as the toolbar copy → clicks fire the same
-                    editor actions; dropdowns inside groups open relative
-                    to their .menu container as they normally do. */}
-                {groups
-                  .filter((g) => overflowedSet.has(g.id))
-                  .map((group, idx) => (
-                    <RFragment key={group.id}>
-                      {idx > 0 && <div className={toolbarStyles.moreMenuDivider} />}
-                      <div className={toolbarStyles.moreMenuGroup}>{group.node}</div>
-                    </RFragment>
-                  ))}
+  return (
+    <>
+      <div
+        ref={toolbarRef}
+        className={toolbarStyles.toolbar}
+        data-tour="editor-toolbar"
+        onPointerDownCapture={(event) => {
+          if (!openToolbarMenu) return
+          if (event.target.closest?.('[data-toolbar-menu]')) return
+          setOpenToolbarMenu(null)
+        }}
+      >
+        {/* All groups rendered inline. Overflowed ones get .toolbarGroupHidden
+            (display:none) — they stay in the DOM so their refs remain valid
+            for re-measurement on resize. Dividers only render BETWEEN
+            adjacent visible groups so the toolbar reads cleanly. */}
+        {groups.map((group, idx) => {
+          const isHidden = overflowedSet.has(group.id)
+          const prevGroup = idx > 0 ? groups[idx - 1] : null
+          const showDividerBefore = idx > 0 && !isHidden && prevGroup && !overflowedSet.has(prevGroup.id)
+          return (
+            <RFragment key={group.id}>
+              {showDividerBefore && <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />}
+              <div
+                ref={(el) => { groupRefs.current[group.id] = el }}
+                className={cx(toolbarStyles.toolbarGroup, isHidden && toolbarStyles.toolbarGroupHidden)}
+                data-toolbar-group={group.id}
+              >
+                {group.node}
               </div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
+            </RFragment>
+          )
+        })}
+
+        {hasOverflow && (
+          <>
+            <div className={toolbarStyles.toolbarDivider} aria-hidden="true" />
+            <div className={toolbarStyles.toolbarMoreWrap} data-toolbar-menu="" ref={moreBtnRef}>
+              <ToolBtn
+                active={moreMenuOpen}
+                disabled={disabled}
+                onClick={() => setMoreMenuOpen((value) => !value)}
+                title="Más herramientas"
+              >
+                <MoreVertical size={16} />
+              </ToolBtn>
+              {moreMenuOpen && (
+                <div className={toolbarStyles.moreMenuPopover}>
+                  {/* Re-render the overflowed groups inside the popover.
+                      Same JSX as the toolbar copy → clicks fire the same
+                      editor actions; dropdowns inside groups open relative
+                      to their .menu container as they normally do. */}
+                  {groups
+                    .filter((g) => overflowedSet.has(g.id))
+                    .map((group, idx) => (
+                      <RFragment key={group.id}>
+                        {idx > 0 && <div className={toolbarStyles.moreMenuDivider} />}
+                        <div className={toolbarStyles.moreMenuGroup}>{group.node}</div>
+                      </RFragment>
+                    ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      <LibraryPickerModal
+        open={libraryPickerOpen}
+        onClose={() => setLibraryPickerOpen(false)}
+        companyId={companyId}
+        onInsert={handleInsertFromLibrary}
+        projectLibraryHref={projectLibraryHref}
+      />
+    </>
   )
 }
 
@@ -8097,6 +8460,7 @@ function TableInlineButtons({ editor, wrapperRef }) {
 // ---------------------------------------------------------------------------
 function EditorPanel({
   projectId,
+  companyId = '',
   projectType = 'page',
   activePageId = null,
   initialContent,
@@ -8873,7 +9237,7 @@ function EditorPanel({
 
   return (
     <div className={styles.centerPanel}>
-      <Toolbar editor={editor} projectId={projectId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
+      <Toolbar editor={editor} projectId={projectId} companyId={companyId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
       <TableContextBar editor={editor} />
       <div
         ref={scrollAreaRef}
@@ -10501,6 +10865,143 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
   )
 }
 
+// ---------------------------------------------------------------------------
+// ProposalReviewPanel — comparador Publicado ↔ Propuesta (solo lectura)
+// ---------------------------------------------------------------------------
+// Ocupa la columna central en lugar del editor mientras el revisor mira la
+// propuesta. Es deliberadamente NO editable: lo que se ve es el contenido que
+// aprobar/rechazar, no un borrador propio — editar acá escribiría sobre la
+// página publicada y no sobre la propuesta, que es justo la confusión que este
+// panel viene a resolver.
+//
+// Reusa las clases de PreviewPanel (previewPanel/previewToolbar/previewScroll/
+// previewPage) para que lea como la misma superficie de producto, y el atributo
+// data-preview-page para heredar los estilos de tabla/hr/CTA del HTML crudo.
+// Lo propio son los chips por sección que vienen del diff.
+const PROPOSAL_STATUS_META = {
+  added: { label: 'Nueva', chipClass: 'proposalChipAdded' },
+  changed: { label: 'Modificada', chipClass: 'proposalChipChanged' },
+  removed: { label: 'Eliminada', chipClass: 'proposalChipRemoved' },
+}
+
+function ProposalReviewPanel({
+  pageName = 'Página',
+  proposal,
+  diff,
+  proposerName = '',
+  scrollRequest,
+  onShowPublished,
+  onApprove,
+  onReject,
+}) {
+  const scrollRef = useRef(null)
+  const contentRef = useRef(null)
+
+  // Click en el panel de secciones (o deep-link ?s=) mientras el comparador
+  // está abierto: acá no hay canvas ni dividers, así que el ancla es el
+  // wrapper de cada sección. Sin animación de flash — el chip ya marca qué
+  // cambió, y un flash amarillo encima competiría con esa señal.
+  useEffect(() => {
+    if (!scrollRequest || scrollRequest.type !== 'section') return
+    const scroller = scrollRef.current
+    const content = contentRef.current
+    if (!scroller || !content) return
+    const target = content.querySelector(`[data-proposal-section="${scrollRequest.sectionId}"]`)
+    if (!target) return
+    const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 70
+    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }, [scrollRequest])
+
+  const sections = diff?.sections || []
+  const removedSections = diff?.removedSections || []
+  const summary = summarizeProposalDiff(diff?.counts)
+  const updatedAt = formatPanelDate(proposal?.updatedAt)
+  const metaLine = [
+    proposerName && `Por ${proposerName}`,
+    updatedAt && `Actualizada ${updatedAt}`,
+    summary ? `${summary}` : 'Sin cambios respecto a lo publicado',
+  ].filter(Boolean).join(' · ')
+
+  function renderSection(section) {
+    const meta = PROPOSAL_STATUS_META[section.status] || null
+    return (
+      <div
+        key={`${section.status}-${section.sectionId}`}
+        data-proposal-section={section.sectionId}
+        className={cx(
+          styles.proposalSection,
+          section.status === 'removed' && styles.proposalSectionRemoved,
+        )}
+      >
+        {meta && (
+          <div className={styles.proposalSectionHeader}>
+            <span className={cx(styles.proposalChip, styles[meta.chipClass])}>{meta.label}</span>
+            <span className={styles.proposalSectionName}>{section.sectionName}</span>
+            {section.renamedFrom && (
+              <span className={styles.proposalSectionRename}>antes: {section.renamedFrom}</span>
+            )}
+          </div>
+        )}
+        {/* Mismo sink de HTML crudo que Preview/Handoff — ver nota de
+            sanitización en CONTEXT.min.md (target=editor.collab). */}
+        <div dangerouslySetInnerHTML={{ __html: section.innerHtml }} />
+      </div>
+    )
+  }
+
+  return (
+    <div className={styles.previewPanel}>
+      <div className={styles.previewToolbar}>
+        <div className={styles.proposalReviewHeaderMain}>
+          <p className={styles.handoffEyebrow}>Propuesta de diseño · solo lectura</p>
+          <h2 className={styles.handoffTitle}>{pageName}</h2>
+          <p className={styles.proposalReviewMeta}>{metaLine}</p>
+        </div>
+        <div className={styles.proposalReviewHeaderActions}>
+          <div
+            className={styles.segmentedControl}
+            style={{ '--seg-count': 2, '--seg-index': 1 }}
+            role="tablist"
+            aria-label="Versión que se está viendo"
+          >
+            <div className={styles.segmentedIndicator} aria-hidden="true" />
+            <button
+              type="button"
+              role="tab"
+              aria-selected={false}
+              className={styles.segmentedOption}
+              onClick={onShowPublished}
+            >
+              Publicado
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected
+              className={cx(styles.segmentedOption, styles.segmentedOptionActive)}
+            >
+              Propuesta
+            </button>
+          </div>
+          <div className={styles.proposalReviewDecisions}>
+            <Button variant="primary" size="sm" onClick={onApprove}>Aprobar</Button>
+            <Button variant="secondary" size="sm" onClick={onReject}>Pedir cambios</Button>
+          </div>
+        </div>
+      </div>
+      <div ref={scrollRef} className={styles.previewScroll}>
+        <article ref={contentRef} data-preview-page="" className={styles.previewPage}>
+          {sections.map(renderSection)}
+          {removedSections.map(renderSection)}
+          {!sections.length && !removedSections.length && (
+            <p className={styles.proposalReviewEmpty}>La propuesta no tiene contenido.</p>
+          )}
+        </article>
+      </div>
+    </div>
+  )
+}
+
 function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest, onScrollHeadingChange }) {
   const scrollRef = useRef(null)
   const contentRef = useRef(null)
@@ -10719,8 +11220,9 @@ function htmlToPlainText(html) {
   return (tmp.textContent || tmp.innerText || '').trim()
 }
 
-function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, onRevoke }) {
+function ShareLinkPanel({ shareUrl = '', activePageId = '', canManageProjectMeta = true, onCreate, onRevoke }) {
   const [copied, setCopied] = useState(false)
+  const [copiedPage, setCopiedPage] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function handleCopy() {
@@ -10729,6 +11231,21 @@ function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, 
       await navigator.clipboard?.writeText?.(shareUrl)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // noop
+    }
+  }
+
+  // El token del share no cambia de formato: el deep-link se appendea como
+  // query param a la URL ya creada.
+  async function handleCopyCurrentPage() {
+    if (!shareUrl || !activePageId) return
+    try {
+      const url = new URL(shareUrl)
+      url.searchParams.set('p', activePageId)
+      await navigator.clipboard?.writeText?.(url.toString())
+      setCopiedPage(true)
+      window.setTimeout(() => setCopiedPage(false), 2000)
     } catch {
       // noop
     }
@@ -10769,6 +11286,16 @@ function ShareLinkPanel({ shareUrl = '', canManageProjectMeta = true, onCreate, 
               {copied ? <span className={styles.shareLinkCopiedBadge}>✓</span> : <Copy size={14} />}
             </button>
           </div>
+          {activePageId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              onClick={handleCopyCurrentPage}
+            >
+              {copiedPage ? 'Enlace copiado' : 'Copiar apuntando a la página actual'}
+            </Button>
+          )}
           <Button
             variant="primary"
             size="sm"
@@ -11030,6 +11557,9 @@ function UpdatesPanel({
   onUpdateDeliverableStatus,
   onApproveDesignerProposal,
   onRejectDesignerProposal,
+  proposalDiff = null,
+  proposalViewOpen = false,
+  onOpenProposalView,
   onActivityClick,
   onMarkActivityRead,
   onNavigateToSection,
@@ -11114,6 +11644,9 @@ function UpdatesPanel({
   ), [activity, activePageId, sectionOrder])
   const hasActivity = groupedSectionActivity.length > 0 || generalActivity.length > 0
   const pendingProposal = activePage?.pendingProposal || null
+  // "2 nuevas · 1 modificada" — el revisor sabe cuánto hay antes de abrir el
+  // comparador. Vacío cuando la propuesta no difiere de lo publicado.
+  const proposalDiffSummary = summarizeProposalDiff(proposalDiff?.counts)
 
   useEffect(() => {
     if (!selectedActivityId) return
@@ -11187,7 +11720,9 @@ function UpdatesPanel({
             </div>
             <p className={panelStyles.proposalText}>
               {canReviewDesignerProposals
-                ? 'Hay cambios de diseño listos para aprobar o pedir ajustes.'
+                ? (proposalDiffSummary
+                    ? `Cambios en esta página: ${proposalDiffSummary}.`
+                    : 'Hay cambios de diseño listos para aprobar o pedir ajustes.')
                 : 'Tus cambios no afectan el contenido publicado hasta que editor o manager los aprueben.'}
             </p>
             {pendingProposal.reviewerNote && (
@@ -11195,6 +11730,17 @@ function UpdatesPanel({
             )}
             {canReviewDesignerProposals ? (
               <div className={panelStyles.proposalActions}>
+                {/* Primero VER, después decidir: aprobar sin haber abierto el
+                    comparador es exactamente el agujero que esto cierra. */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Eye size={14} />}
+                  onClick={onOpenProposalView}
+                  disabled={proposalViewOpen}
+                >
+                  {proposalViewOpen ? 'Viendo propuesta' : 'Ver propuesta'}
+                </Button>
                 <Button variant="primary" size="sm" onClick={onApproveDesignerProposal}>
                   Aprobar
                 </Button>
@@ -11268,6 +11814,7 @@ function UpdatesPanel({
         )}
         <ShareLinkPanel
           shareUrl={shareUrl}
+          activePageId={activePageId}
           canManageProjectMeta={canManageProjectMeta}
           onCreate={onCreateShareLink}
           onRevoke={onRevokeShareLink}

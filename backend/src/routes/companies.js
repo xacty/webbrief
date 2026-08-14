@@ -313,6 +313,10 @@ router.get('/:id', async (req, res) => {
           firstPageContentByProjectId.get(project.id),
         ),
         lastActivity: project.updated_at,
+        // Ola 2 / O2.b: folder_id de la carpeta de proyectos (nullable = raíz).
+        // Aditivo — el SELECT de arriba ya trae '*' así que la columna nueva
+        // de la migración 20260805_project_folders ya viaja en `project`.
+        folderId: project.folder_id || null,
       })),
       members: (memberships || []).map((membership) => {
         const profile = profileMap.get(membership.user_id)

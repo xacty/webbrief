@@ -5,7 +5,7 @@
   justify-content: center;
   text-align: center;
   gap: var(--wb-space-3);
-  padding: var(--wb-space-10) var(--wb-space-6);
+  padding: var(--wb-space-12) var(--wb-space-6);
   min-height: 280px;
 }
 

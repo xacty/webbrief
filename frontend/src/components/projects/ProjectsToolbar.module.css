@@ -1,0 +1,80 @@
+/* El shell (.bar/.barSelected/.left/.right) vive en
+   organizer/MorphingToolbar.module.css. Lo que queda acá es contenido
+   específico de ProjectsPage que se monta DENTRO de esos slots — mismo
+   patrón que library/LibraryToolbar.module.css. */
+
+.selectionInfo {
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text);
+  white-space: nowrap;
+}
+
+/* F1.2-B punto 2: el Input base mide 40px (ver ui/Input.module.css) pero
+   los Select contiguos usan size="sm" (32px, ver ui/Select.module.css
+   .triggerSm) — igualamos hacia el más CHICO en vez de agrandar los
+   Select. `input` es selector de TAG (no de módulo), así que pega
+   directo sobre el <input> real que Input.jsx renderiza sin tener que
+   tocar ese componente compartido. No tocamos padding-left: lo define
+   Input.module.css .hasIcon_left según el ancho del ícono — sólo achicamos
+   alto/tipografía para calzar con los Select sm.
+   Ancho: 280px (no los ~260px sugeridos) porque "Buscar por nombre o
+   cliente" a text-sm con el padding-left del ícono deja ~210px útiles —
+   28 caracteres a ~8px/char rozaban el corte a 260px. */
+.searchField {
+  width: 280px;
+}
+
+.searchField input {
+  height: 32px;
+  font-size: var(--wb-text-sm);
+}
+
+.sortSelect {
+  min-width: 150px;
+}
+
+.typeSelect {
+  min-width: 150px;
+}
+
+/* ── Toggle Grid/Lista ───────────────────────────────────────────────── */
+
+.layoutToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 2px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-3);
+  background: var(--wb-surface-muted);
+}
+
+.layoutButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: var(--wb-text-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.layoutButton:hover {
+  color: var(--wb-text);
+}
+
+.layoutButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.layoutButtonActive {
+  background: var(--wb-surface);
+  color: var(--wb-color-primary-600);
+  box-shadow: var(--wb-shadow-xs);
+}

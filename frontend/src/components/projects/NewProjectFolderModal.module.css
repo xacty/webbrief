@@ -1,0 +1,21 @@
+/* Mirrors library/NewFolderModal.module.css — ver DESIGN-SYSTEM.md
+   §"Modal anatomy". */
+
+.subtitle {
+  margin: calc(var(--wb-space-2) * -1) 0 var(--wb-space-4);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-600);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-3);
+  padding-top: var(--wb-space-1);
+}

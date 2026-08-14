@@ -1,0 +1,212 @@
+/* LibraryPickerModal — ver DESIGN-SYSTEM.md §"Modal anatomy". Grid
+   compacto de carpetas/assets para elegir una imagen a insertar en el
+   editor. Reusa el lenguaje visual de AssetGrid.module.css
+   (thumbWrap/cardName/folderIcon) a escala más chica, y el patrón
+   --depth-less de breadcrumb de LibraryPage.module.css. */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-3);
+  margin-bottom: var(--wb-space-3);
+}
+
+.toolbar > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.viewProjectLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  flex-shrink: 0;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  color: var(--wb-color-primary-700);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.viewProjectLink:hover {
+  background: var(--wb-surface-muted);
+}
+
+/* ── Breadcrumb (mirrors LibraryPage.module.css, compact) ─────────────── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--wb-space-1);
+  margin-bottom: var(--wb-space-3);
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text-muted);
+}
+
+.breadcrumbGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+}
+
+.breadcrumbLink {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--wb-color-primary-600);
+  cursor: pointer;
+  font-weight: var(--wb-weight-medium);
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbSep {
+  color: var(--wb-text-muted);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* ── Grid ───────────────────────────────────────────────────────────── */
+
+.gridWrap {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: var(--wb-space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--wb-space-3);
+}
+
+.folderCard,
+.assetCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wb-space-2);
+  min-width: 0;
+  padding: var(--wb-space-2);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  font: inherit;
+  color: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.folderCard:hover,
+.folderCard:focus-visible,
+.assetCard:hover,
+.assetCard:focus-visible {
+  border-color: var(--wb-color-primary-300);
+  outline: none;
+}
+
+.assetCardSelected {
+  border-color: var(--wb-color-primary-500);
+  box-shadow: 0 0 0 3px var(--wb-color-primary-100);
+}
+
+.folderIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-600);
+}
+
+.thumbWrap {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--wb-radius-xs);
+  background: var(--wb-surface-muted);
+}
+
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumbFallback {
+  display: inline-flex;
+  color: var(--wb-text-muted);
+}
+
+.cardName {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text);
+}
+
+.skeletonCard {
+  aspect-ratio: 1 / 1;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface-muted);
+  animation: libraryPickerPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes libraryPickerPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-8) var(--wb-space-6);
+  text-align: center;
+}
+
+.errorText {
+  margin: 0;
+  /* Semantic (dark-mode-aware) token — same choice as AssetGrid.module.css
+     .errorText for this exact "grid failed to load" moment. */
+  color: var(--wb-danger);
+  font-size: var(--wb-text-sm);
+}
+
+.emptyState {
+  margin: 0;
+  padding: var(--wb-space-8) var(--wb-space-6);
+  text-align: center;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+}
+
+/* ── Acciones ───────────────────────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-3);
+  padding-top: var(--wb-space-4);
+  border-top: 1px solid var(--wb-border);
+}

@@ -7,12 +7,18 @@ import {
   buildImageKitTransformations,
   buildImageKitUrl,
   deleteFromImageKit,
-  parseImageKitPathFromUrl,
   sanitizeFileName,
   slugifyFileBaseName,
   uploadToImageKit,
 } from '../lib/imagekit.js'
 import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
+import {
+  buildExportFileName,
+  getExtensionFromMimeType,
+  normalizeExportOptions,
+  resolveProjectAssetForExport,
+} from '../lib/assetExport.js'
+import { checkCompanyStorageQuota } from '../lib/storageQuota.js'
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
@@ -471,104 +477,9 @@ function coerceUuid(value) {
     : crypto.randomUUID()
 }
 
-function getExtensionFromMimeType(mimeType, fileName = '') {
-  const normalizedName = String(fileName || '').toLowerCase()
-  if (mimeType === 'image/jpeg' || normalizedName.endsWith('.jpg') || normalizedName.endsWith('.jpeg')) return 'jpg'
-  if (mimeType === 'image/png' || normalizedName.endsWith('.png')) return 'png'
-  if (mimeType === 'image/webp' || normalizedName.endsWith('.webp')) return 'webp'
-  if (mimeType === 'image/svg+xml' || normalizedName.endsWith('.svg')) return 'svg'
-  return 'bin'
-}
-
 function canExportProjectAsset(currentUser, companyId) {
   if (currentUser.platformRole === 'admin') return true
   return ['admin', 'manager', 'editor', 'designer', 'developer'].includes(getCompanyRole(currentUser, companyId))
-}
-
-function normalizeExportPreset(preset = '') {
-  const normalizedPreset = String(preset || 'original').trim().toLowerCase()
-
-  switch (normalizedPreset) {
-    case 'web':
-    case 'webp':
-      return { width: 1600, height: 1600, fit: 'at_max', format: 'webp', quality: 85 }
-    case 'jpg':
-    case 'jpeg':
-      return { width: 2400, height: 2400, fit: 'at_max', format: 'jpg', quality: 90 }
-    case 'png':
-      return { width: 2400, height: 2400, fit: 'at_max', format: 'png' }
-    case 'original':
-    default:
-      return {}
-  }
-}
-
-const EXPORT_CROP_MODES = new Set(['extract', 'pad_extract', 'pad_resize'])
-const EXPORT_FOCUS_VALUES = new Set([
-  'center', 'top', 'left', 'bottom', 'right',
-  'top_left', 'top_right', 'bottom_left', 'bottom_right',
-  'auto', 'face',
-])
-
-function normalizeExportOptions(query = {}) {
-  const presetOptions = normalizeExportPreset(query.preset)
-  const width = Number(query.width)
-  const height = Number(query.height)
-  const quality = Number(query.quality)
-  const fit = query.fit ? String(query.fit).trim() : presetOptions.fit
-  const format = query.format ? String(query.format).trim().toLowerCase() : presetOptions.format
-  const cropMode = query.cropMode ? String(query.cropMode).trim().toLowerCase() : ''
-  const focus = query.focus ? String(query.focus).trim().toLowerCase() : ''
-  const x = Number(query.x)
-  const y = Number(query.y)
-
-  return {
-    width: Number.isFinite(width) && width > 0 ? width : presetOptions.width || null,
-    height: Number.isFinite(height) && height > 0 ? height : presetOptions.height || null,
-    quality: Number.isFinite(quality) && quality > 0 ? quality : presetOptions.quality || null,
-    fit: fit || null,
-    format: format || null,
-    cropMode: EXPORT_CROP_MODES.has(cropMode) ? cropMode : null,
-    x: Number.isFinite(x) && x >= 0 ? Math.round(x) : null,
-    y: Number.isFinite(y) && y >= 0 ? Math.round(y) : null,
-    focus: EXPORT_FOCUS_VALUES.has(focus) ? focus : null,
-  }
-}
-
-function buildExportFileName(fileName, requestedFormat = null, fallbackMimeType = '', requestedBaseName = '') {
-  const safeName = sanitizeFileName(fileName || 'image')
-  const baseName = requestedBaseName
-    ? slugifyFileBaseName(requestedBaseName)
-    : (safeName.replace(/\.[^.]+$/u, '') || 'image')
-  const extension = requestedFormat || getExtensionFromMimeType(fallbackMimeType, safeName)
-  return `${baseName}.${extension}`
-}
-
-async function resolveProjectAssetForExport(projectId, { assetId = null, src = '' } = {}) {
-  if (assetId) {
-    const { data, error } = await supabaseAdmin
-      .from('project_assets')
-      .select('id, project_id, file_name, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, width, height, render_inline')
-      .eq('project_id', projectId)
-      .eq('id', assetId)
-      .maybeSingle()
-
-    if (error) throw error
-    return data
-  }
-
-  const parsedPath = parseImageKitPathFromUrl(src)
-  if (!parsedPath) return null
-
-  const { data, error } = await supabaseAdmin
-    .from('project_assets')
-    .select('id, project_id, file_name, storage_path, imagekit_file_id, mime_type, asset_kind, public_url, width, height, render_inline')
-    .eq('project_id', projectId)
-    .eq('storage_path', parsedPath)
-    .maybeSingle()
-
-  if (error) throw error
-  return data
 }
 
 async function resolveProjectAssetsForBulkExport(projectId, items = []) {
@@ -2077,6 +1988,11 @@ router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file
       return res.status(400).json({ error: 'Los SVG no pueden superar 8 MB' })
     }
 
+    const quota = await checkCompanyStorageQuota(project.company_id, req.file?.size || 0)
+    if (!quota.allowed) {
+      return res.status(413).json({ error: quota.message, code: quota.code })
+    }
+
     const assetId = crypto.randomUUID()
     const extension = getExtensionFromMimeType(originalMime, originalName)
     const imageKitFolder = buildImageKitPath('companies', project.company_id, 'projects', project.id)
@@ -2419,6 +2335,11 @@ router.post('/:id/assets/convert', rateLimiters.authenticatedUpload, async (req,
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
     if (!canWriteProjectContent(req.currentUser, project.company_id)) {
       return res.status(403).json({ error: 'Tu rol no puede guardar imagenes en este proyecto' })
+    }
+
+    const quota = await checkCompanyStorageQuota(project.company_id, 0)
+    if (!quota.allowed) {
+      return res.status(413).json({ error: quota.message, code: quota.code })
     }
 
     const source = await resolveProjectAssetForExport(project.id, {
@@ -3194,6 +3115,101 @@ router.post('/bulk/move-company', rateLimiters.sensitiveAction, async (req, res)
     return res.status(status).json({ moved, failed })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo mover los proyectos' })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Bulk move-to-folder — POST /api/projects/bulk/move-to-folder
+// body: { ids: string[], folderId: string|null }
+// Same pattern as /bulk/archive: per-id permission check
+// (canManageProjectLifecycle), partial 207. folderId must belong to the SAME
+// company as each project (validated per-row, since `ids` can span
+// companies for a platform admin); null means "move to root" (no folder).
+// Cache invalidation is a frontend concern — nothing to do here.
+// ---------------------------------------------------------------------------
+router.post('/bulk/move-to-folder', rateLimiters.sensitiveAction, async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : []
+    const folderId = req.body?.folderId ? String(req.body.folderId) : null
+    if (ids.length === 0) return res.status(400).json({ error: 'Falta lista de proyectos' })
+    if (ids.length > 100) return res.status(400).json({ error: 'Máximo 100 proyectos por operación' })
+
+    // Cachea la validación de "la carpeta destino pertenece a esta empresa"
+    // por companyId, para no repetir el mismo SELECT en el caso común de
+    // que todos los proyectos movidos sean de la misma empresa.
+    const folderValidByCompany = new Map()
+    async function folderBelongsToCompany(companyId) {
+      if (!folderId) return true
+      if (folderValidByCompany.has(companyId)) return folderValidByCompany.get(companyId)
+      const { data } = await supabaseAdmin
+        .from('project_folders')
+        .select('id')
+        .eq('id', folderId)
+        .eq('company_id', companyId)
+        .maybeSingle()
+      const ok = Boolean(data)
+      folderValidByCompany.set(companyId, ok)
+      return ok
+    }
+
+    let moved = 0
+    const failed = []
+
+    for (const projectId of ids) {
+      try {
+        const project = await getProjectById(projectId, req.currentUser)
+        if (!project) {
+          failed.push({ id: projectId, reason: 'Proyecto no encontrado' })
+          continue
+        }
+        if (!canManageProjectLifecycle(req.currentUser, project.company_id)) {
+          failed.push({ id: projectId, reason: 'Sin permisos' })
+          continue
+        }
+        if (!(await folderBelongsToCompany(project.company_id))) {
+          failed.push({ id: projectId, reason: 'Carpeta destino no encontrada' })
+          continue
+        }
+
+        const { error } = await supabaseAdmin
+          .from('projects')
+          .update({ folder_id: folderId })
+          .eq('id', project.id)
+
+        if (error) {
+          failed.push({ id: projectId, reason: error.message || 'Error al mover' })
+          continue
+        }
+
+        await logProjectActivity({
+          projectId: project.id,
+          currentUser: req.currentUser,
+          eventType: 'project_moved_to_folder',
+          subjectType: 'project',
+          subjectId: project.id,
+          title: folderId ? 'Proyecto movido a carpeta' : 'Proyecto movido a la raíz',
+          metadata: { bulk: true, folderId },
+        })
+
+        await logSecurityEvent(req, {
+          action: 'project_moved_to_folder',
+          resourceType: 'project',
+          resourceId: project.id,
+          companyId: project.company_id,
+          projectId: project.id,
+          metadata: { bulk: true, folderId },
+        })
+
+        moved += 1
+      } catch (perItemError) {
+        failed.push({ id: projectId, reason: perItemError?.message || 'Error inesperado' })
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : (moved === 0 ? 400 : 207)
+    return res.status(status).json({ moved, failed })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'No se pudieron mover los proyectos' })
   }
 })
 

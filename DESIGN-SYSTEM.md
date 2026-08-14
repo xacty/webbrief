@@ -411,6 +411,38 @@ take a consistent `size`/`variant` API where applicable. The `Select`
 component is a branded listbox (replaces native `<select>` for any user-
 facing dropdown).
 
+### Biblioteca de imágenes (`frontend/src/components/library/`)
+
+| Component | When to use |
+|---|---|
+| `AssetGrid` | Grid de carpetas + assets con selección (solo assets), kebab por card, estados skeleton/vacío/error/papelera. |
+| `StorageUsageBar` | Barra de cuota por empresa (ok / warn ≥80% / full) con breakdown de papelera. |
+| `UploadDropzone` | Overlay drag & drop que envuelve el contenido; detecta carpetas (webkitGetAsEntry). |
+| `UploadQueuePanel` | Panel flotante bottom-right de subidas (progreso, conversión, ahorro, reintento, filas de excluidos). |
+| `FolderUploadConfirmModal` | Confirmación de carpeta arrastrada: árbol, totales, excluidos. |
+| `NewFolderModal` / `MoveToFolderModal` | CRUD y mover con árbol indentado (usa `allFolders` del listado). |
+| `LibraryExportModal` | Export ZIP con transformación + toggle "papelera tras exportar" (limpieza client-side post-descarga). |
+| `LibraryPickerModal` | "Desde biblioteca" en el editor: búsqueda debounced + navegación + insertar. |
+| `ProjectAssetGroups` | Tabs Documentos/Briefs: encabezado por proyecto (nombre + conteo + "Descargar todas") sobre un `AssetGrid` con acciones reducidas. Los índices de lightbox/context-menu son posicionales sobre la lista aplanada de todos los grupos. |
+
+Patrón compartido: avisos vía banner inline de página (estilo `feedbackNotice`
+de ProjectsPage) — no existe sistema global de toasts fuera del editor; no
+inventar uno nuevo. Excepción deliberada: `organizer/ActionToast` (abajo) es
+el toast de acción-con-deshacer para mover/papelera — no lo generalices a
+notificaciones.
+
+### Organización compartida (`frontend/src/components/organizer/`)
+
+| Pieza | Cuándo usarla |
+|---|---|
+| `ActionToast` | Toast inferior flotante con "Deshacer" (15s) para acciones reversibles (mover, papelera). Uno a la vez. |
+| `ItemContextMenu` | Right-click con items PLANOS `{type:'item'|'header'|'separator', ...}` — cero conocimiento de dominio; el caller arma los items. |
+| `MorphingToolbar` | Shell sticky de altura fija con slots left/right que mutan entre idle y selección — cero reflow del contenido. |
+| `dnd.js` | Mime types namespaced (`x-webrief-assets/-folder/-projects`), createDragGhost, guards de dragover/leave. |
+| `sorting.js` | Comparadores genéricos (strings locale es, números, fechas) + sortWithDirection. |
+
+Consumidores: `components/library/` (biblioteca de imágenes) y `components/projects/` (organización de proyectos — ProjectGrid, ProjectsToolbar y modales de carpetas). Cambios aquí afectan AMBAS superficies.
+
 ---
 
 ## 6. Anti-patterns — do NOT

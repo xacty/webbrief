@@ -1,0 +1,415 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+/* ── Folder chips ────────────────────────────────────────────────────
+   Folders are no longer grid cards — a compact horizontal chip row above
+   the asset grid (feedback de producto, iteración post-Task 13). */
+
+.folderSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+}
+
+.folderSectionTitle {
+  margin: 0;
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.folderChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wb-space-2);
+}
+
+.folderChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  max-width: 240px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.folderChip:hover {
+  border-color: var(--wb-color-primary-300);
+}
+
+.folderChip:focus-visible {
+  outline: none;
+  border-color: var(--wb-color-primary-300);
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+/* Reforzado F1.2-B punto 1c: el border+bg ya existían (el problema
+   reportado era sutileza, no ausencia — ver AI_GLOBAL.md/reporte) — se
+   suma transform:scale para un "pop" claro estilo Google Drive. Seguro
+   para reflow: transform es puramente compositing, no cambia el box model
+   (ver DESIGN-SYSTEM.md §"Stable layouts"). */
+.folderChipDragOver {
+  border-color: var(--wb-color-primary-500);
+  background: var(--wb-color-primary-50);
+  transform: scale(1.04);
+}
+
+/* Origen del drag (punto 1b) — atenúa el/los item(s) que se están
+   arrastrando. Vive acá (no en dnd.module.css) porque se aplica junto a
+   clases ya scoped a este módulo (folderChip/folderRow/assetCard/
+   assetRow); ProjectGrid.module.css repite la misma regla verbatim. */
+.dragSourceDimmed {
+  opacity: 0.5;
+}
+
+.folderChipIcon {
+  flex-shrink: 0;
+  color: var(--wb-color-primary-600);
+}
+
+.folderChipName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wb-text-sm);
+}
+
+.folderChipCount {
+  flex-shrink: 0;
+  font-size: var(--wb-text-xs);
+  color: var(--wb-text-muted);
+}
+
+.folderChipKebab {
+  flex-shrink: 0;
+  display: inline-flex;
+  margin-left: var(--wb-space-1);
+}
+
+/* ── Asset grid ──────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--wb-space-4);
+}
+
+/* Card estilo Google Drive: fondo tenue (nunca blanco puro), padding
+   compacto, radius de card 8px con la imagen interna en un radius menor
+   (4px) — jerarquía anidada explícita pedida por el product owner. */
+.assetCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-2);
+  min-width: 0;
+  padding: var(--wb-space-2);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-color-neutral-50);
+}
+
+.assetCardSelectable {
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.assetCardSelectable:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.assetCardSelected {
+  background: var(--wb-color-primary-50);
+  border-color: var(--wb-color-primary-300);
+}
+
+/* Check badge — esquina superior derecha de la foto, sólo cuando está
+   seleccionada. Círculo decorativo no-clickable: cae dentro de la
+   excepción de --wb-radius-full para "status pill / notification
+   indicator" del Border-radius rule en DESIGN-SYSTEM.md (no es un botón). */
+.selectedBadge {
+  position: absolute;
+  top: var(--wb-space-2);
+  right: var(--wb-space-2);
+  z-index: var(--wb-z-base);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--wb-radius-full);
+  background: var(--wb-color-primary-600);
+  color: #ffffff; /* keep literal — icon on solid brand-color badge, no token (same exception as Button primary text) */
+  box-shadow: var(--wb-shadow-sm);
+}
+
+/* Kebab vive en la fila inferior (junto al nombre), no flotando sobre la
+   miniatura. Siempre visible (iteración UX F1, punto 1 — antes era
+   reveal-on-hover/focus; el patrón resultó poco descubrible en touch y en
+   escaneo rápido). El slot sigue reservando su ancho para que la fila no
+   salte de tamaño. */
+.kebabSlot {
+  flex-shrink: 0;
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  min-width: 0;
+}
+
+.cardName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text);
+}
+
+/* Trash view — dimmed, desaturated. Restore/permanent-delete actions land
+   in Task 13; this is display-only. */
+.assetCardTrashed {
+  opacity: 0.55;
+  filter: grayscale(40%);
+}
+
+/* Thumb apaisado (4:3), NO cuadrado — radius menor que la card que lo
+   contiene (jerarquía anidada, ver comentario en .assetCard). */
+.thumbWrap {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--wb-radius-xs);
+  background: var(--wb-surface-muted);
+}
+
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumbFallback {
+  display: inline-flex;
+  color: var(--wb-text-muted);
+}
+
+.skeletonCard {
+  aspect-ratio: 4 / 3;
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface-muted);
+  animation: libraryCardPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes libraryCardPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-12) var(--wb-space-6);
+  border: 1px dashed var(--wb-border);
+  border-radius: var(--wb-radius-3);
+  background: var(--wb-surface);
+  text-align: center;
+}
+
+.errorText {
+  margin: 0;
+  color: var(--wb-danger);
+  font-size: var(--wb-text-sm);
+}
+
+/* Drag ghost vive en organizer/dnd.module.css (createItemDragGhost en
+   dnd.js, F1.2-B punto 1a) — compartido con ProjectGrid.module.css. */
+
+/* Visually-hidden utility — same pattern as Button.module.css .srOnly.
+   Each CSS module keeps its own copy (co-located styles convention, see
+   DESIGN-SYSTEM.md); used for the "Acciones" list-header label. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Vista lista (punto 6, iteración UX F1) ─────────────────────────────
+   Tabla real (no CSS grid de filas) para que los headers sorteables usen
+   semántica nativa <th scope="col" aria-sort>. Filas comparten el MISMO
+   modelo de interacción que las cards de grilla (click selecciona, dblclick
+   abre Lightbox, right-click abre el ItemContextMenu, drag mueve) — los
+   handlers viven una sola vez en AssetGrid.jsx y se reusan en ambos layouts,
+   ver el comentario de cabecera del componente. */
+
+.listTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--wb-text-sm);
+}
+
+.listTable thead th {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.sortHeaderBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: var(--wb-weight-medium);
+  color: var(--wb-text-muted);
+  cursor: pointer;
+}
+
+.sortHeaderBtn:hover {
+  color: var(--wb-text);
+}
+
+.sortArrow {
+  color: var(--wb-color-primary-600);
+}
+
+.listTable tbody tr {
+  cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.listTable tbody td {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border-bottom: 1px solid var(--wb-border);
+  color: var(--wb-text);
+  white-space: nowrap;
+}
+
+.listNameCell {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  min-width: 0;
+}
+
+.listNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listCell {
+  color: var(--wb-text-muted);
+}
+
+.listActionsHeader,
+.listActionsCell {
+  width: 40px;
+  text-align: right;
+}
+
+/* Carpetas — siempre "on top" de la tabla, mismo tratamiento visual que
+   .folderChip (icono primary, fondo levemente distinto al de un asset). */
+.folderRow {
+  background: var(--wb-surface);
+}
+
+.folderRow:hover {
+  background: var(--wb-surface-muted);
+}
+
+/* Reforzado F1.2-B punto 1c (2px en vez de 1px) — mismo diagnóstico que
+   .folderChipDragOver: no estaba roto, pero un ring de 1px se perdía en el
+   escaneo rápido. Sin transform acá a propósito: aplicar scale a un <tr>
+   dentro de una tabla es propenso a recortes/artefactos entre browsers, así
+   que la fila se refuerza sólo por color/grosor del ring. */
+.folderRowDragOver {
+  background: var(--wb-color-primary-50);
+  box-shadow: inset 0 0 0 2px var(--wb-color-primary-500);
+}
+
+.assetRow:hover {
+  background: var(--wb-surface-muted);
+}
+
+.assetRowSelected {
+  background: var(--wb-color-primary-50);
+  box-shadow: inset 3px 0 0 var(--wb-color-primary-500);
+}
+
+.assetRowSelected:hover {
+  background: var(--wb-color-primary-100);
+}
+
+/* No cursor override here — trashed rows stay selectable (click toggles
+   selection for bulk-restore, same as .assetCardTrashed in grid mode).
+   Only the visual treatment dims. */
+.assetRowTrashed {
+  opacity: 0.55;
+  filter: grayscale(40%);
+}
+
+/* Ancho reservado SIEMPRE (seleccionado o no) para que el thumb/nombre no
+   salten de posición al togglear selección — ver DESIGN-SYSTEM.md
+   §"Stable layouts — no jumpy reflows". */
+.listCheckSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.listCheckIcon {
+  color: var(--wb-color-primary-600);
+}
+
+.listThumb {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wb-radius-xs);
+  object-fit: cover;
+  background: var(--wb-surface-muted);
+}
+
+.listThumbFallback {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--wb-radius-xs);
+  background: var(--wb-surface-muted);
+  color: var(--wb-text-muted);
+}

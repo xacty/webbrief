@@ -38,6 +38,7 @@ const WorkspaceLayout = lazy(() => import('./components/layout/WorkspaceLayout')
 const ProjectsPage = lazy(() => import('./pages/workspace/ProjectsPage'))
 const TeamPage = lazy(() => import('./pages/workspace/TeamPage'))
 const ActivityPage = lazy(() => import('./pages/workspace/ActivityPage'))
+const LibraryPage = lazy(() => import('./pages/LibraryPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 const OAuthConsentPage = lazy(() => import('./pages/OAuthConsentPage'))
 
@@ -137,6 +138,7 @@ function AppRoutes() {
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="team" element={<TeamPage />} />
             <Route path="activity" element={<ActivityPage />} />
+            <Route path="library" element={<LibraryPage />} />
           </Route>
           <Route path="companies" element={<CompaniesPage />} />
           <Route path="companies/:companyId" element={<CompanyRedirect />} />

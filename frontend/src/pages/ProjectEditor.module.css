@@ -2022,6 +2022,119 @@
   padding: var(--wb-space-5) var(--wb-space-4) var(--wb-space-12);
 }
 
+/* El nodo imagen solo emite `max-width:100%` inline cuando tiene un width
+   explícito (ver EditableImageNode.addAttributes.width.renderHTML): una imagen
+   nunca redimensionada llega sin estilo y desbordaba la hoja a lo ancho
+   (scrollbar horizontal en toda la columna). El canvas no lo sufre porque
+   tiene su propia regla bajo :global(.ProseMirror). Aplica a Preview y al
+   comparador de propuesta, que pintan el HTML crudo. */
+.previewPage img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Comparador de propuesta de diseño ──────────────────────────────────
+   Reusa .previewPanel/.previewToolbar/.previewScroll/.previewPage — acá
+   viven solo el header con el toggle Publicado/Propuesta y los chips por
+   sección que salen del diff (frontend/src/lib/proposalDiff.js). */
+
+.proposalReviewHeaderMain {
+  /* Flex child con texto largo (nombre de página + meta) — sin esto la
+     columna crece a su ancho natural y empuja las acciones. Ver
+     DESIGN-SYSTEM.md §"min-width: 0 on flex children". */
+  min-width: 0;
+}
+
+.proposalReviewMeta {
+  margin: var(--wb-space-1) 0 0;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+  line-height: var(--wb-leading-snug);
+}
+
+.proposalReviewHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--wb-space-3);
+  flex-wrap: wrap;
+}
+
+.proposalReviewDecisions {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+}
+
+.proposalSection + .proposalSection {
+  margin-top: var(--wb-space-5);
+}
+
+/* Título de sección + chip son UN grupo (proximidad): poco aire entre ellos
+   y el respiro grande queda entre secciones. */
+.proposalSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  flex-wrap: wrap;
+  margin: 0 0 var(--wb-space-2);
+}
+
+.proposalSectionName {
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+}
+
+.proposalSectionRename {
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+  font-style: italic;
+}
+
+/* Label de estado, no clickable → --wb-radius-full es el radio correcto
+   (DESIGN-SYSTEM.md §Border-radius rule). */
+.proposalChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--wb-space-2);
+  border-radius: var(--wb-radius-full);
+  font-size: 11px;
+  font-weight: var(--wb-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.proposalChipAdded {
+  background: var(--wb-color-success-50);
+  color: var(--wb-color-success-700);
+}
+
+.proposalChipChanged {
+  background: var(--wb-color-warning-50);
+  color: var(--wb-color-warning-700);
+}
+
+/* danger-600 y no -700: -700 se invierte a un rojo claro en dark
+   (tokens.css [data-theme="dark"]) y perdería contraste sobre el tinte -50,
+   que sí conserva su valor claro. -600 (#dc2626) es estable en ambos temas. */
+.proposalChipRemoved {
+  background: var(--wb-color-danger-50);
+  color: var(--wb-color-danger-600);
+}
+
+/* La sección eliminada se muestra atenuada: está para dar contexto de qué se
+   pierde al aprobar, no para leerse como contenido vigente. */
+.proposalSectionRemoved {
+  opacity: 0.55;
+}
+
+.proposalReviewEmpty {
+  margin: 0;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+}
+
 
 :global(.ProseMirror) {
   outline: none;

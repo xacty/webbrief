@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
 import { Button, Input, Card } from '../components/ui'
@@ -34,9 +34,46 @@ function readStoredViewer(token) {
 // dejar al visitante clavado en "Cargando contenido...".
 const ACCESS_DECISION_TIMEOUT_MS = 8000
 
+// Deep-links (`?p=<pageId>&s=<sectionId>`) — el share renderiza todas las
+// páginas apiladas, así que "activar" una página es hacer scroll a su bloque.
+// Los divisores de sección están ocultos por CSS (`.content [data-section-divider]`),
+// y un elemento display:none no tiene rect: el ancla real es el primer hermano
+// visible después del divisor.
+const SHARE_SCROLL_SPY_OFFSET = 120
+const SHARE_FLASH_MS = 1200
+
+function findSharePageBlock(pageId) {
+  if (!pageId) return null
+  return Array
+    .from(document.querySelectorAll('[data-share-page-id]'))
+    .find((el) => el.getAttribute('data-share-page-id') === pageId) || null
+}
+
+function findShareSectionAnchor(sectionId) {
+  if (!sectionId) return null
+  const divider = Array
+    .from(document.querySelectorAll('[data-share-page-id] [data-section-id]'))
+    .find((el) => el.getAttribute('data-section-id') === sectionId)
+  if (!divider) return null
+  let node = divider.nextElementSibling
+  while (node) {
+    if (node.getBoundingClientRect().height > 0) return node
+    node = node.nextElementSibling
+  }
+  return divider.parentElement || null
+}
+
 export default function SharePage() {
   const { token } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Capturado una sola vez al montar: la URL se reescribe con el scroll y el
+  // destino inicial no debe moverse con ella.
+  const deepLinkRef = useRef({ pageId: searchParams.get('p'), sectionId: searchParams.get('s') })
+  const deepLinkDoneRef = useRef(false)
+  const [visiblePageId, setVisiblePageId] = useState('')
+  const [scrollSpyReady, setScrollSpyReady] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const { isAuthenticated, realCurrentUser, rolePreview, loading: authLoading } = useAuth()
   const [project, setProject] = useState(null)
   const [pages, setPages] = useState([])
@@ -155,6 +192,99 @@ export default function SharePage() {
 
   const effectiveViewer = authViewer || viewer
   const isAutoIdentified = Boolean(authViewer)
+  const hasSharedContent = Boolean(effectiveViewer) && pages.length > 0
+
+  // ── Deep-link: scroll + flash una sola vez, cuando el contenido ya está en el DOM ──
+  useEffect(() => {
+    if (!hasSharedContent || deepLinkDoneRef.current) return undefined
+    const { pageId, sectionId } = deepLinkRef.current
+    if (!pageId && !sectionId) {
+      deepLinkDoneRef.current = true
+      setScrollSpyReady(true)
+      return undefined
+    }
+
+    let attempts = 0
+    let timer = null
+    const tick = () => {
+      if (deepLinkDoneRef.current) return
+      const target = findShareSectionAnchor(sectionId) || findSharePageBlock(pageId)
+      if (target) {
+        deepLinkDoneRef.current = true
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        // Clase global (styles/base.css) — ver comentario allí sobre el
+        // renombrado de animation-name en CSS modules.
+        target.classList.add('wb-section-flash')
+        window.setTimeout(() => target.classList.remove('wb-section-flash'), SHARE_FLASH_MS)
+        // El spy arranca recién cuando el scroll suave terminó, para no
+        // reescribir `?p` con las páginas por las que pasa en el camino.
+        window.setTimeout(() => setScrollSpyReady(true), 900)
+        return
+      }
+      attempts += 1
+      if (attempts >= 12) {
+        // Página o sección inexistente: silencio, se queda donde está.
+        deepLinkDoneRef.current = true
+        setScrollSpyReady(true)
+        return
+      }
+      timer = window.setTimeout(tick, 120)
+    }
+
+    timer = window.setTimeout(tick, 60)
+    return () => { if (timer) window.clearTimeout(timer) }
+  }, [hasSharedContent])
+
+  // ── Página visible: alimenta "Copiar enlace" y la sincronización de `?p` ──
+  useEffect(() => {
+    if (!hasSharedContent) return undefined
+    let raf = null
+    const sync = () => {
+      raf = null
+      const blocks = Array.from(document.querySelectorAll('[data-share-page-id]'))
+      if (blocks.length === 0) return
+      let currentId = blocks[0].getAttribute('data-share-page-id')
+      blocks.forEach((el) => {
+        if (el.getBoundingClientRect().top <= SHARE_SCROLL_SPY_OFFSET) {
+          currentId = el.getAttribute('data-share-page-id')
+        }
+      })
+      setVisiblePageId((prev) => (prev === currentId ? prev : currentId))
+    }
+    const onScroll = () => { if (!raf) raf = window.requestAnimationFrame(sync) }
+
+    sync()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (raf) window.cancelAnimationFrame(raf)
+    }
+  }, [hasSharedContent])
+
+  // `replace` para no ensuciar el historial; `s` se limpia solo cuando la
+  // página cambia respecto de la que traía la URL.
+  useEffect(() => {
+    if (!scrollSpyReady || !visiblePageId) return
+    const currentPageParam = searchParams.get('p')
+    if (currentPageParam === visiblePageId) return
+    const next = new URLSearchParams(searchParams)
+    next.set('p', visiblePageId)
+    if (currentPageParam) next.delete('s')
+    setSearchParams(next, { replace: true })
+  }, [scrollSpyReady, visiblePageId, searchParams, setSearchParams])
+
+  const handleCopyShareLink = useCallback(async () => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('s')
+    if (visiblePageId) url.searchParams.set('p', visiblePageId)
+    try {
+      await navigator.clipboard?.writeText?.(url.toString())
+      setCopiedLink(true)
+      window.setTimeout(() => setCopiedLink(false), 2000)
+    } catch {
+      // noop
+    }
+  }, [visiblePageId])
 
   function handleIdentify(event) {
     event.preventDefault()
@@ -243,6 +373,16 @@ export default function SharePage() {
           <p className={styles.subtitle}>{project?.clientName}</p>
         </div>
         <div className={styles.printHide}>
+          {hasSharedContent && (
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={handleCopyShareLink}
+              aria-label="Copiar enlace a esta posición"
+            >
+              {copiedLink ? 'Enlace copiado' : 'Copiar enlace'}
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="md"
@@ -338,7 +478,7 @@ export default function SharePage() {
 
           <main className={styles.document}>
             {pages.map((page) => (
-              <section key={page.id} className={styles.pageBlock}>
+              <section key={page.id} className={styles.pageBlock} data-share-page-id={page.id}>
                 <h2>{page.name}</h2>
                 <div
                   className={styles.content}

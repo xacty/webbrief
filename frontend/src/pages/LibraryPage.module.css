@@ -1,0 +1,289 @@
+/* LibraryPage — follows the "Modern SaaS shell" page header pattern used by
+   every admin-shell page (see DESIGN-SYSTEM.md §"Page header pattern").
+   Lives under WorkspaceLayout alongside ProjectsPage/TeamPage/ActivityPage,
+   so header/body width match workspace.module.css exactly. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-6);
+}
+
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-3);
+  min-height: 180px;
+  margin: calc(var(--wb-space-8) * -1) calc(var(--wb-space-6) * -1) 0;
+  padding: var(--wb-space-5) var(--wb-space-6);
+  background: var(--wb-surface);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.pageHeaderInner {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--wb-space-3);
+}
+
+.pageBody {
+  width: var(--wb-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-6);
+}
+
+/* ── Tabs de la galería (Biblioteca | Documentos | Briefs) ───────────────
+   Patrón de tabs del repo — ver DESIGN-SYSTEM.md §3: el estado activo es un
+   subrayado, NO un fondo. El gap del `.pageBody` ya separa la barra del
+   contenido, así que acá sólo se pega el borde inferior compartido. */
+
+.tabBar {
+  display: flex;
+  gap: var(--wb-space-4);
+  border-bottom: 1px solid var(--wb-border);
+  margin-bottom: calc(var(--wb-space-4) * -1);
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--wb-space-2) var(--wb-space-1);
+  margin-bottom: -1px;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--wb-text);
+}
+
+.tab.tabActive {
+  color: var(--wb-color-primary-700);
+  border-bottom-color: var(--wb-color-primary-600);
+}
+
+/* ── Breadcrumb ──────────────────────────────────────────────────────── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--wb-space-1);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-text-muted);
+}
+
+.breadcrumbGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-1);
+}
+
+.breadcrumbLink {
+  background: transparent;
+  border: 0;
+  border-radius: var(--wb-radius-xs);
+  padding: 0;
+  font: inherit;
+  color: var(--wb-color-primary-600);
+  cursor: pointer;
+  font-weight: var(--wb-weight-medium);
+  transition: background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+/* Drop target — dragging an asset/folder chip onto "Biblioteca" moves it
+   to the library root (folderId: null). box-shadow (not border/padding)
+   so the highlight never changes the button's box size — a padding/border
+   toggle here would shift the rest of the breadcrumb + title row on every
+   dragover (see DESIGN-SYSTEM.md §"Stable layouts — no jumpy reflows").
+   F1.2-B punto 1c: bg+box-shadow ya existían — se suma transform:scale
+   (compositing puro, no reflowea) para reforzar el highlight, mismo
+   tratamiento que .folderChipDragOver en AssetGrid.module.css. */
+.breadcrumbLinkDragOver {
+  background: var(--wb-color-primary-50);
+  box-shadow: 0 0 0 2px var(--wb-color-primary-500);
+  text-decoration: none;
+  transform: scale(1.04);
+}
+
+.breadcrumbSep {
+  color: var(--wb-text-muted);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.breadcrumbCurrent {
+  color: var(--wb-text);
+  font-weight: var(--wb-weight-medium);
+}
+
+/* ── Title row ───────────────────────────────────────────────────────── */
+
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--wb-space-5);
+  flex-wrap: wrap;
+}
+
+.headerMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-1);
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--wb-text-3xl);
+  font-weight: var(--wb-weight-bold);
+  line-height: var(--wb-leading-tight);
+  letter-spacing: -0.02em;
+  color: var(--wb-text);
+}
+
+.headerMeta {
+  margin: 0;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-sm);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Project filter chip ─────────────────────────────────────────────
+   Contains a clickable (the × button) so it takes --wb-radius-3, not
+   --wb-radius-full — see DESIGN-SYSTEM.md Border-radius rule: full is
+   reserved for non-interactive status pills. */
+
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  align-self: flex-start;
+  margin-top: var(--wb-space-1);
+  padding: var(--wb-space-1) var(--wb-space-1) var(--wb-space-1) var(--wb-space-3);
+  border-radius: var(--wb-radius-3);
+  background: var(--wb-color-primary-50);
+  color: var(--wb-color-primary-700);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-medium);
+}
+
+.filterChipClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.filterChipClose:hover {
+  background: var(--wb-color-primary-100);
+}
+
+/* ── Inline notice banner (Task 13) ─────────────────────────────────────
+   Success auto-hides (LibraryPage.jsx timer); warning persists with a
+   manual close — same rule as EditorToast (CONTEXT.min.md
+   target=editor.navbar: "warning persiste con acción, info auto-oculta"). */
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-3);
+  padding: var(--wb-space-3) var(--wb-space-4);
+  border-radius: var(--wb-radius-3);
+  background: var(--wb-color-success-50);
+  border: 1px solid var(--wb-color-success-200);
+  color: var(--wb-color-success-700);
+  font-size: var(--wb-text-sm);
+}
+
+.noticeWarning {
+  background: var(--wb-color-warning-50);
+  border-color: var(--wb-color-warning-200);
+  color: var(--wb-color-warning-800);
+}
+
+.noticeClose {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.noticeClose:hover {
+  background: var(--wb-color-warning-100);
+}
+
+/* Bulk selection toolbar — retirado en la iteración UX F1 (punto 3): la
+   selección múltiple ahora vive dentro de la barra persistente que muta,
+   ver frontend/src/components/library/LibraryToolbar.module.css. */
+
+/* ── Footer (usage bar + trash toggle) ──────────────────────────────── */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-4);
+  padding-top: var(--wb-space-4);
+  border-top: 1px solid var(--wb-border);
+}
+
+.trashToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  flex-shrink: 0;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface);
+  color: var(--wb-text-muted);
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  font-weight: var(--wb-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.trashToggle:hover {
+  color: var(--wb-text);
+  background: var(--wb-surface-muted);
+}

@@ -1,0 +1,140 @@
+/* Lightbox — fullscreen scrim, deliberately darker than Modal's overlay
+   (rgba(15,23,42,.36)) since there's no card to separate from the
+   backdrop here; the image itself is the only "surface". Literal because
+   css var() does not expand inside rgba() — same exception as
+   Modal.module.css .overlay. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wb-z-modal);
+  background: rgba(15, 23, 42, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--wb-space-12);
+  animation: wbLightboxFadeIn 150ms ease;
+}
+
+@keyframes wbLightboxFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.image {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-xl);
+}
+
+/* Controls sit directly on the dark scrim regardless of app theme, so
+   their color is a literal (white) rather than a token — same documented
+   exception as Modal overlay / Button white-on-dark text. */
+.closeButton,
+.navButton {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--wb-radius-2);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.closeButton:hover,
+.navButton:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.closeButton:focus-visible,
+.navButton:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.closeButton {
+  top: var(--wb-space-6);
+  right: var(--wb-space-6);
+  width: 40px;
+  height: 40px;
+}
+
+.navButton {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+}
+
+.navPrev {
+  left: var(--wb-space-6);
+}
+
+.navNext {
+  right: var(--wb-space-6);
+}
+
+.caption {
+  position: absolute;
+  left: 50%;
+  bottom: var(--wb-space-6);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: var(--wb-space-2);
+  max-width: calc(100% - var(--wb-space-24));
+  padding: var(--wb-space-2) var(--wb-space-4);
+  border-radius: var(--wb-radius-3);
+  background: rgba(15, 23, 42, 0.55);
+  color: #ffffff;
+  font-size: var(--wb-text-sm);
+}
+
+.captionName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--wb-weight-medium);
+}
+
+.captionWeight {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--wb-text-xs);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .navButton {
+    width: 40px;
+    height: 40px;
+  }
+
+  .navPrev {
+    left: var(--wb-space-2);
+  }
+
+  .navNext {
+    right: var(--wb-space-2);
+  }
+
+  .closeButton {
+    top: var(--wb-space-3);
+    right: var(--wb-space-3);
+  }
+
+  .caption {
+    bottom: var(--wb-space-3);
+    max-width: calc(100% - var(--wb-space-6));
+  }
+}

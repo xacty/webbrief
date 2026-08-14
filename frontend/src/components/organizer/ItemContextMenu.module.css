@@ -1,0 +1,94 @@
+/* Right-click customizado genérico — ver el comentario de cabecera de
+   ItemContextMenu.jsx. Mismas dimensiones/espaciado que KebabMenu.module.css
+   (radius-2, shadow-md, popover z-index) para que ambos menús contextuales
+   se sientan como el mismo sistema. */
+
+.menu {
+  position: fixed;
+  z-index: var(--wb-z-popover);
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-width: 260px;
+  padding: var(--wb-space-1);
+  background: var(--wb-surface);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  box-shadow: var(--wb-shadow-md);
+  user-select: none;
+}
+
+/* Header no-clickable — entrada `{ type: 'header' }` (p. ej. "N
+   seleccionadas"). */
+.header {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  font-size: var(--wb-text-xs);
+  font-weight: var(--wb-weight-semibold);
+  color: var(--wb-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  width: 100%;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border: 0;
+  border-radius: var(--wb-radius-xs);
+  background: transparent;
+  color: var(--wb-text);
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-sm);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.item:not(:disabled):hover,
+.item:focus-visible {
+  outline: none;
+  background: var(--wb-color-neutral-100);
+}
+
+.itemDisabled {
+  color: var(--wb-color-neutral-400);
+  cursor: not-allowed;
+}
+
+.itemDestructive {
+  color: var(--wb-color-danger-600);
+}
+
+.itemDestructive:not(:disabled):hover {
+  background: var(--wb-color-danger-50);
+  color: var(--wb-color-danger-700);
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--wb-color-neutral-500);
+}
+
+.itemDestructive .icon {
+  color: inherit;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.separator {
+  height: 1px;
+  margin: var(--wb-space-1) 0;
+  background: var(--wb-border);
+}

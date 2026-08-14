@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun, Plug, Folder, Activity } from 'lucide-react'
+import { Settings, Building2, Users, Shield, Archive, Trash2, Moon, Sun, Plug, Folder, Activity, Images } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import { canManageUsersNav, canUseSecurityNav, canUseTrashNav, isAdmin, canCreateCompany as canCreateCompanyCapability } from '../../lib/roleCapabilities'
 import {
@@ -157,6 +157,16 @@ export default function AppShell() {
                 >
                   <Activity className={styles.navIcon} aria-hidden="true" />
                   Actividad
+                </NavLink>
+                <NavLink
+                  to={`/c/${currentCompanySlug}/library`}
+                  data-tour="sidebar-library"
+                  className={({ isActive }) => (
+                    isActive ? `${styles.navItem} ${styles.navItemActive}` : styles.navItem
+                  )}
+                >
+                  <Images className={styles.navIcon} aria-hidden="true" />
+                  Biblioteca
                 </NavLink>
               </>
             )}

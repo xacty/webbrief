@@ -1,0 +1,24 @@
+/* Mirrors UserEditModal.module.css subtitle/form/actions — see
+   DESIGN-SYSTEM.md §"Modal anatomy". */
+
+.subtitle {
+  margin: calc(var(--wb-space-2) * -1) 0 var(--wb-space-4);
+  font-size: var(--wb-text-sm);
+  line-height: var(--wb-leading-snug);
+  color: var(--wb-color-neutral-600);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wb-space-4);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-3);
+  margin-top: var(--wb-space-1);
+  padding-top: var(--wb-space-4);
+  border-top: 1px solid var(--wb-border);
+}

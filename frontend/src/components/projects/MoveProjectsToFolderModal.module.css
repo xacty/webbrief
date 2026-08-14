@@ -1,0 +1,93 @@
+/* Mirrors library/MoveToFolderModal.module.css — ver DESIGN-SYSTEM.md
+   §"Modal anatomy". Árbol: mismo patrón --depth + calc() que el resto de
+   los árboles de carpeta de la app. */
+
+.subtitle {
+  margin: calc(var(--wb-space-2) * -1) 0 var(--wb-space-4);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-neutral-600);
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--wb-space-2);
+  margin: 0 0 var(--wb-space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--wb-radius-2);
+  background: var(--wb-surface-muted);
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--wb-space-2);
+  padding-left: calc(var(--wb-space-2) + var(--depth, 0) * var(--wb-space-5));
+  border: 1px solid transparent;
+  border-radius: var(--wb-radius-xs);
+  background: transparent;
+  color: var(--wb-text);
+  font-family: var(--wb-font-sans);
+  font-size: var(--wb-text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.treeRow:hover:not(:disabled) {
+  background: var(--wb-surface);
+}
+
+.treeRow:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wb-color-primary-200);
+}
+
+.treeRowSelected {
+  background: var(--wb-color-primary-50);
+  border-color: var(--wb-color-primary-200);
+  color: var(--wb-color-primary-900);
+  font-weight: var(--wb-weight-medium);
+}
+
+.treeRowSelected:hover {
+  background: var(--wb-color-primary-50);
+}
+
+.treeRowDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.treeIcon {
+  flex-shrink: 0;
+  color: var(--wb-color-primary-600);
+}
+
+.treeName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error {
+  margin: 0 0 var(--wb-space-4);
+  font-size: var(--wb-text-sm);
+  color: var(--wb-color-danger-600);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wb-space-3);
+  padding-top: var(--wb-space-4);
+  border-top: 1px solid var(--wb-border);
+}
