@@ -643,9 +643,19 @@
   color: var(--wb-color-neutral-500);
 }
 
+/* "Ver propuesta" ocupa su propia fila y las dos decisiones van debajo, en
+   columnas iguales. Tres botones en una sola fila no entran en el ancho del
+   panel derecho (se cortaba "Pedir cambios"), y son dos acciones distintas:
+   primero mirar, después decidir. Grid en vez de flex-wrap para que el ancho
+   no dependa del largo del texto del botón. */
 .proposalActions {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--wb-space-2);
+}
+
+.proposalActions > *:first-child {
+  grid-column: 1 / -1;
 }
 
 .deliverableButton,
