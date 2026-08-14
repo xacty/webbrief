@@ -316,7 +316,10 @@ router.post('/assets', rateLimiters.authenticatedUpload, writeAccess, libraryUpl
       size: file.size,
     })
     if (!ingest.ok) {
-      return res.status(400).json({ error: 'Archivo inválido', code: ingest.reason })
+      const message = ingest.reason === 'invalid_svg'
+        ? 'El SVG no es válido o contiene contenido activo no permitido'
+        : 'Archivo inválido'
+      return res.status(400).json({ error: message, code: ingest.reason })
     }
     const upload = ingest.upload
 

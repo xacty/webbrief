@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../lib/supabase.js'
 import { hashToken, logProjectActivity } from '../lib/projectAccess.js'
 import { buildImageKitPath, deleteFromImageKit } from '../lib/imagekit.js'
 import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
+import { sanitizeIfSvg } from '../lib/svgSanitizer.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { publicAntiScrapingHeaders, rateLimiters } from '../middleware/security.js'
 import {
@@ -528,10 +529,16 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
       storedFileName = adjustFileNameForAction(originalName, ingest.action)
       storedMime = ingest.mimeType
     } else {
+      // Los SVG no pasan por uploadWithIngest en esta rama, así que se sanean
+      // acá con el mismo criterio: nunca persistir un SVG con contenido activo.
+      const svgCheck = sanitizeIfSvg({ mimeType: mime, buffer: req.file.buffer })
+      if (!svgCheck.ok) {
+        return res.status(400).json({ error: 'El SVG no es válido o contiene contenido activo no permitido' })
+      }
       const path = `${project.id}/${assetId}-${safeName}`
       const { error: uploadError } = await supabaseAdmin.storage
         .from('brief-documents')
-        .upload(path, req.file.buffer, {
+        .upload(path, svgCheck.buffer, {
           contentType: mime,
           cacheControl: '3600',
           upsert: false,
@@ -544,6 +551,7 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
       storageBucket = 'brief-documents'
       storagePath = path
       assetKind = mime === 'image/svg+xml' ? 'svg' : 'file'
+      storedSize = svgCheck.buffer?.byteLength ?? req.file.size
     }
 
     const { data: asset, error: assetError } = await supabaseAdmin

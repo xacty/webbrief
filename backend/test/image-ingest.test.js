@@ -89,6 +89,57 @@ test('uploadWithIngest: passthrough no manda pre-transformación', async () => {
   assert.equal(result.converted, false)
 })
 
+test('uploadWithIngest: sanea los SVG antes de subirlos', async () => {
+  const calls = []
+  const fakeUpload = async (args) => { calls.push(args); return { fileId: 'f3' } }
+  const dirty = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><rect width="10" height="10"/></svg>'
+  const result = await uploadWithIngest({
+    buffer: Buffer.from(dirty, 'utf8'),
+    fileName: 'logo.svg',
+    folder: '/f',
+    tags: [],
+    mimeType: 'image/svg+xml',
+    size: dirty.length,
+    uploadFn: fakeUpload,
+  })
+  assert.equal(result.ok, true)
+  const uploaded = calls[0].buffer.toString('utf8')
+  assert.ok(!uploaded.includes('<script'))
+  assert.ok(!uploaded.includes('alert(1)'))
+  assert.ok(uploaded.includes('<rect'))
+})
+
+test('uploadWithIngest: rechaza SVG inválido sin llamar al uploader', async () => {
+  let called = false
+  const result = await uploadWithIngest({
+    buffer: Buffer.from('esto no es un svg', 'utf8'),
+    fileName: 'malo.svg',
+    folder: '/f',
+    tags: [],
+    mimeType: 'image/svg+xml',
+    size: 17,
+    uploadFn: async () => { called = true },
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.reason, 'invalid_svg')
+  assert.equal(called, false)
+})
+
+test('uploadWithIngest: los buffers no-SVG pasan intactos al uploader', async () => {
+  const calls = []
+  const gif = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61])
+  await uploadWithIngest({
+    buffer: gif,
+    fileName: 'anim.gif',
+    folder: '/f',
+    tags: [],
+    mimeType: 'image/gif',
+    size: gif.byteLength,
+    uploadFn: async (args) => { calls.push(args); return { fileId: 'f4' } },
+  })
+  assert.equal(calls[0].buffer, gif)
+})
+
 test('uploadWithIngest: rechazo no llama al uploader', async () => {
   let called = false
   const result = await uploadWithIngest({
