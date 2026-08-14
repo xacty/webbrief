@@ -41,9 +41,11 @@ import {
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
 import { createEditorChannel } from '../lib/editorPresence'
-import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
+import { mergeSections, buildHtmlFromSections, normalizeHtml, splitSections } from '../lib/sectionMerge'
+import { buildSectionOrderIndex, orderSectionActivityGroups } from '../lib/activityOrdering'
 import { stripPendingUploadImagesFromHtml, stripPendingUploadImagesFromJson, countPendingUploadImages } from '../lib/pendingUploads'
 import { diffProposalSections, summarizeProposalDiff } from '../lib/proposalDiff'
+import { diffProposalBlocks } from '../lib/proposalBlockDiff'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, Images, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
@@ -2663,6 +2665,10 @@ export default function ProjectEditor() {
   // aparte del modo Brief/Handoff/Preview (qué versión, no qué vista), y NO se
   // persiste en la vista guardada: siempre se entra por lo publicado.
   const [proposalViewOpen, setProposalViewOpen] = useState(false)
+  // Loading state de la decisión de Aprobar — deshabilita el botón en ambos
+  // lugares (proposalBox y header del comparador) y evita doble-click
+  // mientras el POST /decision está en vuelo.
+  const [isDecidingProposal, setIsDecidingProposal] = useState(false)
   const [activity, setActivity] = useState([])
   const [notifications, setNotifications] = useState([])
   const [deliverables, setDeliverables] = useState([])
@@ -3963,46 +3969,63 @@ export default function ProjectEditor() {
 
   async function handleDesignerProposalDecision(status) {
     if (!canReviewDesignerProposals || !activePage?.pendingProposal?.id) return
+    if (isDecidingProposal) return // guard: evita doble-click mientras la decisión está en vuelo
+
+    // proposalDiff refleja la propuesta ANTES de decidirla — capturarlo acá
+    // porque una vez que setPages reemplace la página, pendingProposal pasa a
+    // null y proposalDiff se vacía en el próximo render.
+    const diffSummary = summarizeProposalDiff(proposalDiff?.counts)
 
     setPanelError('')
+    setIsDecidingProposal(true)
     setSaveMessage(status === 'accepted' ? 'Aprobando propuesta...' : 'Rechazando propuesta...')
 
     try {
-      await apiFetch(`/api/projects/${projectId}/pages/${activePage.id}/proposals/${activePage.pendingProposal.id}/decision`, {
+      const data = await apiFetch(`/api/projects/${projectId}/pages/${activePage.id}/proposals/${activePage.pendingProposal.id}/decision`, {
         method: 'POST',
         body: JSON.stringify({ status }),
       })
 
-      await loadSidePanelData()
-
-      const data = await apiFetch(`/api/projects/${projectId}`)
-      const loadedProjectType = inferProjectType(data.project, data.pages)
-      const nextPages = data.pages.map((page) => mapPersistedPage(page, loadedProjectType))
-      setProjectMeta({ ...data.project, projectType: loadedProjectType })
-      setPages(nextPages)
-      // F3 (colaboración): este re-GET es un fill point de serverPagesRef igual
-      // que la carga inicial y el post-save — si no se refresca acá, la 'base'
-      // del próximo merge de 3 vías queda stale (pre-propuesta) y puede generar
-      // conflictos falsos con una tercera sesión que edite después.
-      serverPagesRef.current = new Map(nextPages.map((page) => [page.id, { contentHtml: page.fullContent, version: page.version }]))
-      // Aprobar reemplaza el content_html de la página, pero el editor montado
-      // sigue con el doc viejo: setPages actualiza el state, no el doc de
-      // TipTap (loadPageIntoEditor solo corría al cambiar de página). Sin esto
-      // el revisor aprueba y el canvas no cambia hasta recargar — justo la
-      // sensación de "aprobé y no pasó nada". Cuando el comparador está
-      // abierto no hace falta: EditorPanel está desmontado y al volver se
-      // monta con el `initialContent` ya fresco.
-      if (!proposalViewOpen) {
-        const refreshedActivePage = nextPages.find((page) => page.id === activePage.id)
-        if (refreshedActivePage && editorRef.current && !editorRef.current.isDestroyed) {
-          loadPageIntoEditor(refreshedActivePage, false)
+      // El endpoint ya devuelve la página actualizada (ver POST .../decision
+      // en backend/src/routes/projects.js) — evita el GET completo del
+      // proyecto que antes agregaba un segundo round-trip bloqueante acá.
+      // loadSidePanelData() abajo queda fire-and-forget: solo trae
+      // actividad/notificaciones/entregables, nada que bloquee el canvas.
+      if (data.page) {
+        const mappedPage = mapPersistedPage(data.page, projectType)
+        setPages((prev) => prev.map((page) => (page.id === mappedPage.id ? mappedPage : page)))
+        // F3 (colaboración): este es un fill point de serverPagesRef igual que
+        // la carga inicial y el post-save — si no se refresca acá, la 'base'
+        // del próximo merge de 3 vías queda stale (pre-propuesta) y puede
+        // generar conflictos falsos con una tercera sesión que edite después.
+        serverPagesRef.current.set(mappedPage.id, { contentHtml: mappedPage.fullContent, version: mappedPage.version })
+        // Aprobar reemplaza el content_html de la página, pero el editor montado
+        // sigue con el doc viejo: setPages actualiza el state, no el doc de
+        // TipTap (loadPageIntoEditor solo corría al cambiar de página). Sin esto
+        // el revisor aprueba y el canvas no cambia hasta recargar — justo la
+        // sensación de "aprobé y no pasó nada". Cuando el comparador está
+        // abierto no hace falta: EditorPanel está desmontado y al volver se
+        // monta con el `initialContent` ya fresco.
+        if (!proposalViewOpen && editorRef.current && !editorRef.current.isDestroyed) {
+          loadPageIntoEditor(mappedPage, false)
         }
       }
-      setSaveMessage(status === 'accepted' ? 'Propuesta aprobada' : 'Propuesta rechazada')
+
+      loadSidePanelData()
+
+      const summaryText = status === 'accepted'
+        ? (diffSummary ? `Propuesta aprobada: ${diffSummary}` : 'Propuesta aprobada')
+        : 'Propuesta rechazada'
+      setSaveMessage(summaryText)
       setIsDirty(false)
+      showToast({ kind: 'info', text: summaryText })
     } catch (error) {
-      setSaveMessage(error.message || 'No se pudo revisar la propuesta')
-      setPanelError(error.message || 'No se pudo revisar la propuesta')
+      const message = error.message || 'No se pudo revisar la propuesta'
+      setSaveMessage(message)
+      setPanelError(message)
+      showToast({ kind: 'warning', text: message })
+    } finally {
+      setIsDecidingProposal(false)
     }
   }
 
@@ -5482,7 +5505,7 @@ export default function ProjectEditor() {
             scrollRequest={scrollRequest}
             onShowPublished={() => setProposalViewOpen(false)}
             onApprove={() => handleDesignerProposalDecision('accepted')}
-            onReject={() => handleDesignerProposalDecision('rejected')}
+            isDeciding={isDecidingProposal}
           />
         )}
 
@@ -5595,7 +5618,7 @@ export default function ProjectEditor() {
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
           onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
-          onRejectDesignerProposal={() => handleDesignerProposalDecision('rejected')}
+          isDecidingProposal={isDecidingProposal}
           proposalDiff={proposalDiff}
           proposalViewOpen={proposalViewOpen}
           onOpenProposalView={openProposalView}
@@ -10892,7 +10915,7 @@ function ProposalReviewPanel({
   scrollRequest,
   onShowPublished,
   onApprove,
-  onReject,
+  isDeciding = false,
 }) {
   const scrollRef = useRef(null)
   const contentRef = useRef(null)
@@ -10922,8 +10945,23 @@ function ProposalReviewPanel({
     summary ? `${summary}` : 'Sin cambios respecto a lo publicado',
   ].filter(Boolean).join(' · ')
 
+  // Diff a nivel bloque solo para secciones 'changed': published/proposal
+  // ambos existen (publishedInnerHtml viene de proposalDiff.js). Memoizado
+  // por `sections` para no recalcular el LCS en cada render del panel (p.ej.
+  // al togglear isDeciding).
+  const changedSectionBlocks = useMemo(() => {
+    const map = new Map()
+    sections.forEach((section) => {
+      if (section.status === 'changed' && section.publishedInnerHtml != null) {
+        map.set(section.sectionId, diffProposalBlocks(section.publishedInnerHtml, section.innerHtml))
+      }
+    })
+    return map
+  }, [sections])
+
   function renderSection(section) {
     const meta = PROPOSAL_STATUS_META[section.status] || null
+    const blockDiff = changedSectionBlocks.get(section.sectionId) || null
     return (
       <div
         key={`${section.status}-${section.sectionId}`}
@@ -10944,7 +10982,27 @@ function ProposalReviewPanel({
         )}
         {/* Mismo sink de HTML crudo que Preview/Handoff — ver nota de
             sanitización en CONTEXT.min.md (target=editor.collab). */}
-        <div dangerouslySetInnerHTML={{ __html: section.innerHtml }} />
+        {blockDiff ? (
+          blockDiff.blocks.map((block, index) => (
+            <div
+              key={`${section.sectionId}-block-${index}`}
+              className={cx(
+                styles.proposalBlock,
+                block.type === 'added' && styles.proposalBlockAdded,
+                block.type === 'removed' && styles.proposalBlockRemoved,
+              )}
+              dangerouslySetInnerHTML={{ __html: block.html }}
+            />
+          ))
+        ) : (
+          <div
+            className={cx(
+              section.status === 'added' && styles.proposalContentAdded,
+              section.status === 'removed' && styles.proposalContentRemoved,
+            )}
+            dangerouslySetInnerHTML={{ __html: section.innerHtml }}
+          />
+        )}
       </div>
     )
   }
@@ -10956,6 +11014,9 @@ function ProposalReviewPanel({
           <p className={styles.handoffEyebrow}>Propuesta de diseño · solo lectura</p>
           <h2 className={styles.handoffTitle}>{pageName}</h2>
           <p className={styles.proposalReviewMeta}>{metaLine}</p>
+          {diff?.hasChanges && (
+            <p className={styles.proposalReviewLegend}>verde = agregado · rojo = eliminado</p>
+          )}
         </div>
         <div className={styles.proposalReviewHeaderActions}>
           <div
@@ -10984,8 +11045,9 @@ function ProposalReviewPanel({
             </button>
           </div>
           <div className={styles.proposalReviewDecisions}>
-            <Button variant="primary" size="sm" onClick={onApprove}>Aprobar</Button>
-            <Button variant="secondary" size="sm" onClick={onReject}>Pedir cambios</Button>
+            <Button variant="primary" size="sm" onClick={onApprove} disabled={isDeciding}>
+              {isDeciding ? 'Aprobando…' : 'Aprobar'}
+            </Button>
           </div>
         </div>
       </div>
@@ -11556,7 +11618,7 @@ function UpdatesPanel({
   onCreateDeliverable,
   onUpdateDeliverableStatus,
   onApproveDesignerProposal,
-  onRejectDesignerProposal,
+  isDecidingProposal = false,
   proposalDiff = null,
   proposalViewOpen = false,
   onOpenProposalView,
@@ -11585,63 +11647,52 @@ function UpdatesPanel({
   const [deliverableSubmitting, setDeliverableSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState('actividad') // 'actividad' | 'comentarios' | 'historial'
   const [diffEntry, setDiffEntry] = useState(null)
-  const sectionOrder = useMemo(() => (
-    new Map(sections.map((section, index) => [section.id, index]))
-  ), [sections])
+  // Orden SIEMPRE por posición de sección en el documento — nunca por fecha
+  // ni por lectura (ver frontend/src/lib/activityOrdering.js). Secciones que
+  // solo existen en una propuesta de diseño pendiente (designer aún no
+  // aprobado) se agrupan igual que las demás, después de las del doc
+  // publicado, en el orden de la propuesta.
+  const pendingProposalHtml = activePage?.pendingProposal?.contentHtml || ''
+  const sectionOrderIndex = useMemo(() => (
+    buildSectionOrderIndex(sections, pendingProposalHtml)
+  ), [sections, pendingProposalHtml])
   const sectionActivity = useMemo(() => (
-    activity
-      .filter((item) => (
-        (item.eventType === 'section_edited' || item.eventType === 'asset_uploaded' || item.eventType === 'seo_changed')
-        && item.metadata?.sectionId
-        && item.metadata?.pageId === activePageId
-        && (
-          item.metadata.sectionId === '__document__'
-          || item.metadata.sectionId === '__seo__'
-          || sectionOrder.has(item.metadata.sectionId)
-        )
-      ))
-      .sort((a, b) => {
-        // '__seo__' first, '__document__' second, real sections by docIndex
-        const ordinal = (sectionId) => {
-          if (sectionId === '__seo__') return -1
-          if (sectionId === '__document__') return 0
-          return sectionOrder.get(sectionId) ?? 9999
-        }
-        const aIndex = ordinal(a.metadata.sectionId)
-        const bIndex = ordinal(b.metadata.sectionId)
-        if (aIndex !== bIndex) return aIndex - bIndex
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      })
-  ), [activity, activePageId, sectionOrder])
+    activity.filter((item) => (
+      (item.eventType === 'section_edited' || item.eventType === 'asset_uploaded' || item.eventType === 'seo_changed')
+      && item.metadata?.sectionId
+      && item.metadata?.pageId === activePageId
+    ))
+  ), [activity, activePageId])
   const groupedSectionActivity = useMemo(() => {
-    const groups = new Map()
-    sectionActivity.forEach((item) => {
-      const sectionId = item.metadata.sectionId
-      if (!groups.has(sectionId)) {
-        const section = sections.find((s) => s.id === sectionId)
-        // Special virtual section IDs use the metadata-stored sectionName
-        const sectionName = sectionId === '__document__'
-          ? (item.metadata.sectionName || 'Documento')
-          : sectionId === '__seo__'
-          ? (item.metadata.sectionName || 'SEO metadata')
-          : (section?.name || item.metadata.sectionName || 'Sección')
-        groups.set(sectionId, { sectionId, sectionName, items: [] })
-      }
-      groups.get(sectionId).items.push(item)
+    const proposalSections = pendingProposalHtml ? splitSections(pendingProposalHtml) : []
+    return orderSectionActivityGroups(sectionActivity, sectionOrderIndex).map(({ sectionId, items }) => {
+      const section = sections.find((s) => s.id === sectionId)
+      const proposalSection = !section ? proposalSections.find((s) => s.sectionId === sectionId) : null
+      // Special virtual section IDs use the metadata-stored sectionName
+      const sectionName = sectionId === '__document__'
+        ? (items[0]?.metadata?.sectionName || 'Documento')
+        : sectionId === '__seo__'
+        ? (items[0]?.metadata?.sectionName || 'SEO metadata')
+        : (section?.name || proposalSection?.sectionName || items[0]?.metadata?.sectionName || 'Sección')
+      return { sectionId, sectionName, items }
     })
-    return Array.from(groups.values())
-  }, [sectionActivity, sections])
+  }, [sectionActivity, sectionOrderIndex, sections, pendingProposalHtml])
   // Only document-content events stay in the activity panel.
   // Everything else lives in the notifications dropdown (navbar bell).
-  // asset_uploaded items with a known sectionId are folded into sectionActivity;
-  // only orphaned uploads (no sectionId or no pageId match) fall here.
+  // asset_uploaded items with a sectionId on the active page are folded into
+  // sectionActivity (grouped by section); only truly orphaned uploads (no
+  // sectionId, or belonging to another page) fall here. Explicit createdAt
+  // DESC sort keeps this list stable across renders — never touched by
+  // read state, so a click can never reorder it.
   const generalActivity = useMemo(() => (
-    activity.filter((item) => (
-      item.eventType === 'asset_uploaded'
-      && !(item.metadata?.sectionId && item.metadata?.pageId === activePageId
-        && (item.metadata.sectionId === '__document__' || sectionOrder.has(item.metadata.sectionId)))
-    ))
-  ), [activity, activePageId, sectionOrder])
+    activity
+      .filter((item) => (
+        item.eventType === 'asset_uploaded'
+        && !(item.metadata?.sectionId && item.metadata?.pageId === activePageId)
+      ))
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  ), [activity, activePageId])
   const hasActivity = groupedSectionActivity.length > 0 || generalActivity.length > 0
   const pendingProposal = activePage?.pendingProposal || null
   // "2 nuevas · 1 modificada" — el revisor sabe cuánto hay antes de abrir el
@@ -11722,7 +11773,7 @@ function UpdatesPanel({
               {canReviewDesignerProposals
                 ? (proposalDiffSummary
                     ? `Cambios en esta página: ${proposalDiffSummary}.`
-                    : 'Hay cambios de diseño listos para aprobar o pedir ajustes.')
+                    : 'Revisa la propuesta y apruébala para publicarla. Si necesitas ajustes, deja comentarios al diseñador.')
                 : 'Tus cambios no afectan el contenido publicado hasta que editor o manager los aprueben.'}
             </p>
             {pendingProposal.reviewerNote && (
@@ -11741,11 +11792,8 @@ function UpdatesPanel({
                 >
                   {proposalViewOpen ? 'Viendo propuesta' : 'Ver propuesta'}
                 </Button>
-                <Button variant="primary" size="sm" onClick={onApproveDesignerProposal}>
-                  Aprobar
-                </Button>
-                <Button variant="secondary" size="sm" onClick={onRejectDesignerProposal}>
-                  Pedir cambios
+                <Button variant="primary" size="sm" onClick={onApproveDesignerProposal} disabled={isDecidingProposal}>
+                  {isDecidingProposal ? 'Aprobando…' : 'Aprobar'}
                 </Button>
               </div>
             ) : isDesigner ? (

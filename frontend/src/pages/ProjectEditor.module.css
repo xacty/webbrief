@@ -2052,6 +2052,12 @@
   line-height: var(--wb-leading-snug);
 }
 
+.proposalReviewLegend {
+  margin: var(--wb-space-1) 0 0;
+  color: var(--wb-text-muted);
+  font-size: var(--wb-text-xs);
+}
+
 .proposalReviewHeaderActions {
   display: flex;
   align-items: center;
@@ -2133,6 +2139,119 @@
   margin: 0;
   color: var(--wb-text-muted);
   font-size: var(--wb-text-sm);
+}
+
+/* ── Diff a nivel bloque dentro de una sección "Modificada" ──────────────
+   frontend/src/lib/proposalBlockDiff.js parte cada sección `changed` en
+   bloques top-level (párrafo, heading, tabla, imagen, etc.) y anota qué le
+   pasó a cada uno. .proposalBlock es el wrapper por bloque: `display:
+   flow-root` contiene el margin-collapse del párrafo/heading de adentro y
+   los resets de primer/último hijo evitan que ese margin se sume al padding
+   de added/removed — sin esto el fondo/borde quedaba con un salto extra
+   arriba y abajo del texto. El espaciado entre bloques lo pone SOLO
+   `.proposalBlock + .proposalBlock`, no el margin propio del contenido. */
+.proposalBlock {
+  display: flow-root;
+}
+
+.proposalBlock > :first-child {
+  margin-top: 0;
+}
+
+.proposalBlock > :last-child {
+  margin-bottom: 0;
+}
+
+.proposalBlock + .proposalBlock {
+  margin-top: var(--wb-space-3);
+}
+
+/* color fijo (success-900), no --wb-text: --wb-color-success-* NO tiene
+   overrides en dark mode (a diferencia de neutral/primary/danger-100/700),
+   así que success-50 se queda clara en dark mode también — heredar el
+   --wb-text ambiente (que sí invierte a casi blanco) volvía el texto
+   ilegible sobre el tinte claro. success-900 es oscuro y estable en ambos
+   temas, mismo criterio que success-700 en .proposalChipAdded. */
+.proposalBlockAdded,
+.proposalContentAdded {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  background: var(--wb-color-success-50);
+  border-left: 3px solid var(--wb-color-success-700);
+  border-radius: var(--wb-radius-xs);
+  color: var(--wb-color-success-900);
+}
+
+/* Mismo problema y mismo fix que el bloque added: danger-50 tampoco invierte
+   en dark mode (solo -100/-700 lo hacen), así que el texto necesita un color
+   fijo — danger-900 en vez de heredar --wb-text. */
+.proposalBlockRemoved {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  background: var(--wb-color-danger-50);
+  border-left: 3px solid var(--wb-color-danger-600);
+  border-radius: var(--wb-radius-xs);
+  color: var(--wb-color-danger-900);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* La sección 'removed' completa (no bloque a bloque) ya hereda
+   opacity: 0.55 de .proposalSectionRemoved en el div padre — no se repite
+   acá para no componer dos opacities y dejarlo casi invisible. Mismo
+   criterio danger-600 (no -700, que se invierte en dark mode) que
+   .proposalChipRemoved y .proposalBlockRemoved. */
+.proposalContentRemoved {
+  padding: var(--wb-space-2) var(--wb-space-3);
+  background: var(--wb-color-danger-50);
+  border-left: 3px solid var(--wb-color-danger-600);
+  border-radius: var(--wb-radius-xs);
+  color: var(--wb-color-danger-900);
+  text-decoration: line-through;
+}
+
+/* Excepción dentro de un bloque/contenido added|removed: <th> ya trae su
+   propio fondo tematizado (--wb-surface-muted, SÍ invierte) vía la regla
+   `.previewPage th` de más arriba — heredar el success-900/danger-900 fijo
+   de acá encima de un fondo que en dark mode se vuelve casi negro rompería
+   el contraste al revés. Se restaura --wb-text (el par correcto para ese
+   fondo, invierten juntos) solo para el encabezado; <td> sigue con el color
+   fijo porque SÍ se sienta directo sobre el tinte -50 (estable). */
+.proposalBlockAdded th,
+.proposalContentAdded th,
+.proposalBlockRemoved th,
+.proposalContentRemoved th {
+  color: var(--wb-text);
+}
+
+/* <ins>/<del> del word-diff dentro de un bloque `modified`
+   (proposalBlockDiff.js los serializa con estas clases fijas sobre texto
+   plano escapado). :global porque este HTML se inyecta crudo vía
+   dangerouslySetInnerHTML — CSS modules renombraría la clase si no,
+   mismo motivo que .wb-section-flash en styles/base.css. Sin subrayado
+   default de <ins>: el fondo ya comunica "agregado" y un underline extra
+   compite con el line-through de <del>. Color fijo success-900 por el mismo
+   motivo que .proposalBlockAdded: success-100 no invierte en dark mode, así
+   que el --wb-text ambiente (casi blanco en dark) quedaría invisible encima.
+   <del> no necesita el mismo fix: danger-100 SÍ invierte (a un rojo oscuro
+   en dark mode), así que el --wb-text ambiente ya empareja bien en los dos
+   temas. */
+.previewPage :global(.__wb-diff-ins) {
+  background: var(--wb-color-success-100);
+  color: var(--wb-color-success-900);
+  text-decoration: none;
+  border-radius: 2px;
+  /* Aire entre fragmentos: sin esto un <del> pegado a un <ins> se lee como
+     una sola palabra ("galeria,Galeria", "2"+"3" → "23"). Padding y no
+     margin para que el fondo del tinte cubra el respiro. */
+  padding: 0 3px;
+  margin: 0 1px;
+}
+
+.previewPage :global(.__wb-diff-del) {
+  background: var(--wb-color-danger-100);
+  text-decoration: line-through;
+  border-radius: 2px;
+  padding: 0 3px;
+  margin: 0 1px;
 }
 
 

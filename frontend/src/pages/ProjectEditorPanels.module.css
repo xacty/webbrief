@@ -643,19 +643,23 @@
   color: var(--wb-color-neutral-500);
 }
 
-/* "Ver propuesta" ocupa su propia fila y las dos decisiones van debajo, en
-   columnas iguales. Tres botones en una sola fila no entran en el ancho del
-   panel derecho (se cortaba "Pedir cambios"), y son dos acciones distintas:
-   primero mirar, después decidir. Grid en vez de flex-wrap para que el ancho
-   no dependa del largo del texto del botón. */
+/* Fila única y estable: "Ver propuesta" + "Aprobar" (sin "Pedir cambios" —
+   el feedback al diseñador se da por comentarios). Cada botón puede
+   encogerse dentro de su columna en vez de forzar su ancho de contenido
+   (min-width: 0 + flex-basis 0), así el ancho lo decide el contenedor y la
+   fila nunca desborda la card. Ver DESIGN-SYSTEM.md §"min-width: 0 on flex
+   children". */
+/* Columna, no fila: el panel derecho es angosto (~150-220px de card útil) y
+   dos botones con estos labels lado a lado truncan el texto. Apilados a ancho
+   completo siempre se leen enteros, sin importar el viewport. */
 .proposalActions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: var(--wb-space-2);
 }
 
-.proposalActions > *:first-child {
-  grid-column: 1 / -1;
+.proposalActions > * {
+  width: 100%;
 }
 
 .deliverableButton,

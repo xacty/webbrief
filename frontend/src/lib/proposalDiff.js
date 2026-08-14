@@ -40,7 +40,7 @@ function baseFields(section) {
  * @param {string} publishedHtml content_html vigente de la página
  * @param {string} proposalHtml  content_html de la propuesta pendiente
  * @returns {{
- *   sections: Array<{sectionId, sectionName, innerHtml, status: 'added'|'changed'|'unchanged', renamedFrom: string|null}>,
+ *   sections: Array<{sectionId, sectionName, innerHtml, status: 'added'|'changed'|'unchanged', renamedFrom: string|null, publishedInnerHtml: string|null}>,
  *   removedSections: Array<{sectionId, sectionName, innerHtml, status: 'removed'}>,
  *   counts: {added: number, changed: number, removed: number, unchanged: number},
  *   totalChanges: number,
@@ -60,7 +60,7 @@ export function diffProposalSections(publishedHtml, proposalHtml) {
   const sections = proposal.map((section) => {
     const previous = publishedById.get(section.sectionId)
     if (!previous) {
-      return { ...baseFields(section), status: 'added', renamedFrom: null }
+      return { ...baseFields(section), status: 'added', renamedFrom: null, publishedInnerHtml: null }
     }
     const contentChanged = normalizeHtml(previous.innerHtml) !== normalizeHtml(section.innerHtml)
     // El nombre de sección vive en el divider (fuera del innerHtml), así que un
@@ -71,6 +71,10 @@ export function diffProposalSections(publishedHtml, proposalHtml) {
       ...baseFields(section),
       status: contentChanged || renamed ? 'changed' : 'unchanged',
       renamedFrom: renamed ? previous.sectionName : null,
+      // Contenido publicado de la misma sección: lo necesita el comparador de
+      // bloques (proposalBlockDiff.js) para secciones 'changed' — así puede
+      // pintar QUÉ cambió adentro, no solo que algo cambió.
+      publishedInnerHtml: previous.innerHtml,
     }
   })
 

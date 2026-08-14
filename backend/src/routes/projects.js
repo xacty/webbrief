@@ -1524,6 +1524,28 @@ router.post('/:id/pages/:pageId/proposals/:proposalId/decision', async (req, res
 
     const timestamp = new Date().toISOString()
 
+    // Columnas seleccionadas de vuelta tras el UPDATE, en el mismo shape que
+    // GET /:id devuelve por página — así el frontend puede rehidratar el
+    // estado local con la respuesta de este endpoint sin un GET completo
+    // adicional (ver frontend handleDesignerProposalDecision).
+    const updatedPageColumns = [
+      'id',
+      'name',
+      'position',
+      'content_html',
+      projectPageContentJsonColumnAvailable ? 'content_json' : null,
+      projectPageSeoMetadataColumnAvailable ? 'seo_metadata' : null,
+      projectPageContentRulesColumnAvailable ? 'content_rules' : null,
+      projectPageVersionColumnAvailable ? 'version' : null,
+      projectPageReviewColumnsAvailable ? 'review_status' : null,
+      projectPageReviewColumnsAvailable ? 'review_baseline_version_id' : null,
+      projectPageReviewColumnsAvailable ? 'review_baseline_at' : null,
+      projectPageReviewColumnsAvailable ? 'review_requested_by' : null,
+      'updated_at',
+    ].filter(Boolean).join(', ')
+
+    let updatedPage = null
+
     if (status === 'accepted') {
       const pageUpdates = {
         content_html: proposal.content_html || '<p></p>',
@@ -1543,19 +1565,25 @@ router.post('/:id/pages/:pageId/proposals/:proposalId/decision', async (req, res
         pageUpdates.review_status = 'approved'
       }
 
-      const { error: pageUpdateError } = await supabaseAdmin
+      const { data: updatedPageRow, error: pageUpdateError } = await supabaseAdmin
         .from('project_pages')
         .update(pageUpdates)
         .eq('id', req.params.pageId)
         .eq('project_id', project.id)
+        .select(updatedPageColumns)
+        .maybeSingle()
 
       if (pageUpdateError) return res.status(500).json({ error: pageUpdateError.message })
+      updatedPage = updatedPageRow
     } else if (projectPageReviewColumnsAvailable) {
-      await supabaseAdmin
+      const { data: updatedPageRow } = await supabaseAdmin
         .from('project_pages')
         .update({ review_status: 'changes_requested', updated_at: timestamp })
         .eq('id', req.params.pageId)
         .eq('project_id', project.id)
+        .select(updatedPageColumns)
+        .maybeSingle()
+      updatedPage = updatedPageRow
     }
 
     const { data: decidedProposal, error: proposalUpdateError } = await supabaseAdmin
@@ -1616,6 +1644,27 @@ router.post('/:id/pages/:pageId/proposals/:proposalId/decision', async (req, res
         createdAt: decidedProposal.created_at,
         updatedAt: decidedProposal.updated_at,
       },
+      page: updatedPage
+        ? {
+            id: updatedPage.id,
+            name: updatedPage.name,
+            position: updatedPage.position,
+            contentHtml: updatedPage.content_html,
+            contentJson: updatedPage.content_json || null,
+            seoMetadata: updatedPage.seo_metadata || {},
+            contentRules: updatedPage.content_rules || {},
+            version: updatedPage.version || 1,
+            reviewStatus: updatedPage.review_status || 'draft',
+            reviewBaselineVersionId: updatedPage.review_baseline_version_id || null,
+            reviewBaselineAt: updatedPage.review_baseline_at || null,
+            reviewRequestedBy: updatedPage.review_requested_by || null,
+            // La propuesta que acabamos de decidir ya no está pending — el
+            // próximo GET tampoco la traería en pendingProposal
+            // (loadPendingPageProposals filtra status='pending').
+            pendingProposal: null,
+            updatedAt: updatedPage.updated_at,
+          }
+        : null,
     })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'No se pudo revisar la propuesta' })
