@@ -441,7 +441,7 @@ router.post('/assets/bulk/trash', rateLimiters.sensitiveAction, writeAccess, asy
 
     const { data: assets, error: assetsError } = await supabaseAdmin
       .from('project_assets')
-      .select('id, file_name')
+      .select('id, file_name, storage_path, public_url')
       .in('id', ids)
       .eq('company_id', req.libraryAccess.companyId)
       .is('trashed_at', null)
