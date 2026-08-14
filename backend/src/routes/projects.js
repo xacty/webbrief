@@ -2077,6 +2077,7 @@ router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file
       .from('project_assets')
       .insert({
         id: assetId,
+        company_id: project.company_id,
         project_id: project.id,
         deliverable_id: req.body.deliverableId || null,
         page_id: req.body.pageId || null,
@@ -2456,6 +2457,7 @@ router.post('/:id/assets/convert', rateLimiters.authenticatedUpload, async (req,
       .from('project_assets')
       .insert({
         id: newAssetId,
+        company_id: project.company_id,
         project_id: project.id,
         page_id: source.page_id || null,
         section_id: source.section_id || null,
@@ -2855,6 +2857,7 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
       .from('project_assets')
       .insert({
         id: assetId,
+        company_id: project.company_id,
         project_id: project.id,
         deliverable_id: null,
         page_id: req.body.pageId || null,

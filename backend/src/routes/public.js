@@ -558,6 +558,7 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
       .from('project_assets')
       .insert({
         id: assetId,
+        company_id: project.company_id,
         project_id: project.id,
         deliverable_id: null,
         page_id: null,
