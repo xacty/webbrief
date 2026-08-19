@@ -13,6 +13,7 @@ import {
 } from '../lib/imagekit.js'
 import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
 import { sanitizeIfSvg } from '../lib/svgSanitizer.js'
+import { sanitizeContentHtml } from '../lib/htmlSanitizer.js'
 import {
   buildExportFileName,
   getExtensionFromMimeType,
@@ -24,6 +25,7 @@ import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { seedProjectPagesForType, seedProjectPagesFromTemplate } from '../data/projectTemplates.js'
+import { sendServerError } from '../lib/errorResponses.js'
 import {
   canAccessCompany,
   canCreateProject,
@@ -355,7 +357,9 @@ async function upsertDesignerProposals({ project, pages, currentUser, canEditPro
       project_id: project.id,
       page_id: page.id,
       proposer_user_id: currentUser.id,
-      content_html: page.contentHtml || '<p></p>',
+      // Saneo en el punto de escritura: la propuesta la escribe un designer y se
+      // renderiza en la sesion del admin/manager que la revisa (ProposalReviewPanel).
+      content_html: sanitizeContentHtml(page.contentHtml) || '<p></p>',
       content_json: page.contentJson || null,
       seo_metadata: page.seoMetadata && typeof page.seoMetadata === 'object' ? page.seoMetadata : {},
       updated_at: timestamp,
@@ -559,7 +563,7 @@ router.get('/', async (req, res) => {
       return query
     })
     if (error) {
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     const needsCompanyFallback = (projects || []).some((project) => !project.company?.name && !project.companies?.name)
@@ -570,7 +574,7 @@ router.get('/', async (req, res) => {
 
     return res.json({ projects: normalizeProjectList(projects || [], companyMap) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar los proyectos' })
+    return sendServerError(req, res, error, 'No se pudieron cargar los proyectos')
   }
 })
 
@@ -722,7 +726,7 @@ router.post('/', async (req, res) => {
 
     return res.status(201).json({ project })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo crear el proyecto')
   }
 })
 
@@ -731,7 +735,7 @@ router.get('/:id/access', async (req, res) => {
     const project = await getProjectById(req.params.id, req.currentUser)
     return res.json({ hasAccess: Boolean(project) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo verificar el acceso al proyecto' })
+    return sendServerError(req, res, error, 'No se pudo verificar el acceso al proyecto')
   }
 })
 
@@ -767,7 +771,7 @@ router.get('/:id', async (req, res) => {
     })
 
     if (error) {
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     const persistedPages = pages || []
@@ -832,7 +836,7 @@ router.get('/:id', async (req, res) => {
       })),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo cargar el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo cargar el proyecto')
   }
 })
 
@@ -896,7 +900,7 @@ router.patch('/:id', async (req, res) => {
       .select('*')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     return res.json({
       project: {
@@ -913,7 +917,7 @@ router.patch('/:id', async (req, res) => {
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo actualizar el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo actualizar el proyecto')
   }
 })
 
@@ -1077,7 +1081,10 @@ router.put('/:id/pages', async (req, res) => {
         project_id: project.id,
         name: page.name?.trim() || `Pagina ${index + 1}`,
         position: index,
-        content_html: page.contentHtml || '<p></p>',
+        // Saneo en el punto de escritura (auditoria 2026-08, A1): cubre de una vez
+        // todos los consumidores (share publico, editor, MCP), porque el endpoint
+        // acepta contentHtml del body sin re-validarlo contra el schema de TipTap.
+        content_html: sanitizeContentHtml(page.contentHtml) || '<p></p>',
         updated_at: timestamp,
       }
 
@@ -1359,7 +1366,7 @@ router.put('/:id/pages', async (req, res) => {
       savedAt: timestamp,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo guardar el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo guardar el proyecto')
   }
 })
 
@@ -1433,7 +1440,7 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
       .select('id, name, position, content_html, content_json, content_rules, version, review_status, review_baseline_version_id, review_baseline_at, review_requested_by, updated_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: project.id,
@@ -1481,7 +1488,7 @@ router.post('/:id/pages/:pageId/review', async (req, res) => {
       pageVersion,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar la página a revisión' })
+    return sendServerError(req, res, error, 'No se pudo enviar la página a revisión')
   }
 })
 
@@ -1668,7 +1675,7 @@ router.post('/:id/pages/:pageId/proposals/:proposalId/decision', async (req, res
         : null,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo revisar la propuesta' })
+    return sendServerError(req, res, error, 'No se pudo revisar la propuesta')
   }
 })
 
@@ -1700,12 +1707,12 @@ router.get('/:id/activity', async (req, res) => {
         return res.json({ activity: [], activityAvailable: false })
       }
 
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     return res.json({ activity: (data || []).map(serializeActivity), activityAvailable: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo cargar la actividad' })
+    return sendServerError(req, res, error, 'No se pudo cargar la actividad')
   }
 })
 
@@ -1754,10 +1761,10 @@ router.patch('/:id/activity/:activityId/read', async (req, res) => {
       .select('id, project_id, actor_label, event_type, subject_type, subject_id, title, description, metadata, created_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     return res.json({ activity: serializeActivity(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo marcar la actividad' })
+    return sendServerError(req, res, error, 'No se pudo marcar la actividad')
   }
 })
 
@@ -1775,7 +1782,7 @@ router.get('/:id/deliverables', async (req, res) => {
       .is('trashed_at', null)
       .order('updated_at', { ascending: false })
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     return res.json({
       deliverables: (data || []).map((item) => ({
         id: item.id,
@@ -1791,7 +1798,7 @@ router.get('/:id/deliverables', async (req, res) => {
       })),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar los entregables' })
+    return sendServerError(req, res, error, 'No se pudieron cargar los entregables')
   }
 })
 
@@ -1826,7 +1833,7 @@ router.post('/:id/deliverables', async (req, res) => {
       .select('id, project_id, title, service_type, status, assignee_id, linked_page_id, linked_section_id, created_at, updated_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: project.id,
@@ -1853,7 +1860,7 @@ router.post('/:id/deliverables', async (req, res) => {
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear el entregable' })
+    return sendServerError(req, res, error, 'No se pudo crear el entregable')
   }
 })
 
@@ -1891,7 +1898,7 @@ router.patch('/:id/deliverables/:deliverableId', async (req, res) => {
       .select('id, project_id, title, service_type, status, assignee_id, linked_page_id, linked_section_id, created_at, updated_at')
       .maybeSingle()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     if (!data) return res.status(404).json({ error: 'Entregable no encontrado' })
 
     await logProjectActivity({
@@ -1920,7 +1927,7 @@ router.patch('/:id/deliverables/:deliverableId', async (req, res) => {
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo actualizar el entregable' })
+    return sendServerError(req, res, error, 'No se pudo actualizar el entregable')
   }
 })
 
@@ -1936,7 +1943,7 @@ router.delete('/:id/share-links', rateLimiters.shareLink, async (req, res) => {
       .update({ revoked_at: new Date().toISOString() })
       .eq('project_id', project.id)
       .is('revoked_at', null)
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     await logSecurityEvent(req, {
       action: 'project_share_links_revoked',
       resourceType: 'project',
@@ -1946,7 +1953,7 @@ router.delete('/:id/share-links', rateLimiters.shareLink, async (req, res) => {
     })
     return res.json({ revoked: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo revocar el link' })
+    return sendServerError(req, res, error, 'No se pudo revocar el link')
   }
 })
 
@@ -1975,7 +1982,7 @@ router.post('/:id/share-links', rateLimiters.shareLink, async (req, res) => {
       .select('id, project_id, label, expires_at, revoked_at, created_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: project.id,
@@ -2009,7 +2016,7 @@ router.post('/:id/share-links', rateLimiters.shareLink, async (req, res) => {
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear el link privado' })
+    return sendServerError(req, res, error, 'No se pudo crear el link privado')
   }
 })
 
@@ -2140,7 +2147,7 @@ router.post('/:id/assets', rateLimiters.authenticatedUpload, upload.single('file
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo subir el archivo' })
+    return sendServerError(req, res, error, 'No se pudo subir el archivo')
   }
 })
 
@@ -2196,7 +2203,7 @@ router.get('/:id/assets/export', async (req, res) => {
     res.setHeader('Cache-Control', 'private, max-age=3600')
     return res.status(200).send(buffer)
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo exportar la imagen' })
+    return sendServerError(req, res, error, 'No se pudo exportar la imagen')
   }
 })
 
@@ -2249,7 +2256,7 @@ router.post('/:id/assets/export-bulk', async (req, res) => {
     const archive = archiver('zip', { zlib: { level: 9 } })
     archive.on('error', (error) => {
       if (!res.headersSent) {
-        res.status(500).json({ error: error.message || 'No se pudo crear el zip' })
+        sendServerError(req, res, error, 'No se pudo crear el zip')
         return
       }
       res.destroy(error)
@@ -2278,7 +2285,7 @@ router.post('/:id/assets/export-bulk', async (req, res) => {
 
     await archive.finalize()
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo exportar el lote de imagenes' })
+    return sendServerError(req, res, error, 'No se pudo exportar el lote de imagenes')
   }
 })
 
@@ -2298,7 +2305,7 @@ router.get('/:id/assets', async (req, res) => {
       .eq('project_id', project.id)
       .order('created_at', { ascending: false })
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     return res.json({
       assets: (assets || []).map((asset) => ({
@@ -2317,7 +2324,7 @@ router.get('/:id/assets', async (req, res) => {
       })),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar los assets' })
+    return sendServerError(req, res, error, 'No se pudieron cargar los assets')
   }
 })
 
@@ -2375,7 +2382,7 @@ router.post('/:id/assets/export-links', async (req, res) => {
       links,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron generar los links de exportacion' })
+    return sendServerError(req, res, error, 'No se pudieron generar los links de exportacion')
   }
 })
 
@@ -2525,7 +2532,7 @@ router.post('/:id/assets/convert', rateLimiters.authenticatedUpload, async (req,
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo convertir la imagen' })
+    return sendServerError(req, res, error, 'No se pudo convertir la imagen')
   }
 })
 
@@ -2615,7 +2622,7 @@ router.post('/:id/duplicate', async (req, res) => {
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo duplicar el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo duplicar el proyecto')
   }
 })
 
@@ -2648,7 +2655,7 @@ router.post('/:id/brief/share', rateLimiters.shareLink, async (req, res) => {
       .update({ brief_share_token: token })
       .eq('id', project.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logSecurityEvent(req, {
       action: 'brief_share_link_created',
@@ -2660,7 +2667,7 @@ router.post('/:id/brief/share', rateLimiters.shareLink, async (req, res) => {
 
     return res.json({ token })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo generar el link' })
+    return sendServerError(req, res, error, 'No se pudo generar el link')
   }
 })
 
@@ -2677,7 +2684,7 @@ router.delete('/:id/brief/share', rateLimiters.shareLink, async (req, res) => {
       .update({ brief_share_token: null })
       .eq('id', project.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     await logSecurityEvent(req, {
       action: 'brief_share_link_revoked',
       resourceType: 'project',
@@ -2687,7 +2694,7 @@ router.delete('/:id/brief/share', rateLimiters.shareLink, async (req, res) => {
     })
     return res.json({ ok: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo revocar el link' })
+    return sendServerError(req, res, error, 'No se pudo revocar el link')
   }
 })
 
@@ -2705,11 +2712,11 @@ router.get('/:id/brief/responses', async (req, res) => {
       .eq('project_id', project.id)
       .order('submitted_at', { ascending: false })
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     return res.json({ responses: data || [] })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar las respuestas' })
+    return sendServerError(req, res, error, 'No se pudieron cargar las respuestas')
   }
 })
 
@@ -2728,7 +2735,7 @@ router.get('/:id/brief/budget', async (req, res) => {
       .eq('project_id', project.id)
       .is('trashed_at', null)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     const usedBytes = (assets || []).reduce((sum, a) => sum + (a.file_size || 0), 0)
     return res.json({
@@ -2737,7 +2744,7 @@ router.get('/:id/brief/budget', async (req, res) => {
       maxFileMb: project.brief_max_file_mb || 10,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo calcular el presupuesto' })
+    return sendServerError(req, res, error, 'No se pudo calcular el presupuesto')
   }
 })
 
@@ -2756,10 +2763,10 @@ router.patch('/:id/brief/settings', async (req, res) => {
       .from('projects')
       .update({ brief_max_file_mb: requested })
       .eq('id', project.id)
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     return res.json({ maxFileMb: requested })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo guardar' })
+    return sendServerError(req, res, error, 'No se pudo guardar')
   }
 })
 
@@ -2767,6 +2774,11 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
   try {
     const project = await getProjectById(req.params.id, req.currentUser)
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' })
+    // Mismo criterio que POST /:id/assets: acceder al proyecto no alcanza para
+    // subir archivos (consume el presupuesto del proyecto). QA queda como solo-lectura.
+    if (!canWriteProjectContent(req.currentUser, project.company_id)) {
+      return res.status(403).json({ error: 'Tu rol no puede subir archivos a este proyecto' })
+    }
     if (!req.file) return res.status(400).json({ error: 'file es requerido' })
 
     const mime = req.file.mimetype || ''
@@ -2901,7 +2913,7 @@ router.post('/:id/brief/documents', rateLimiters.authenticatedUpload, briefDocsU
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo subir el archivo' })
+    return sendServerError(req, res, error, 'No se pudo subir el archivo')
   }
 })
 
@@ -2972,7 +2984,7 @@ router.post('/bulk/archive', rateLimiters.sensitiveAction, async (req, res) => {
     const status = failed.length === 0 ? 200 : (archived === 0 ? 400 : 207)
     return res.status(status).json({ archived, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo archivar los proyectos' })
+    return sendServerError(req, res, error, 'No se pudo archivar los proyectos')
   }
 })
 
@@ -2990,7 +3002,7 @@ router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
       .update({ archived_at: timestamp, archived_by: req.currentUser.id })
       .eq('id', project.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: project.id,
@@ -3011,7 +3023,7 @@ router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
 
     return res.json({ archivedAt: timestamp })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo archivar el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo archivar el proyecto')
   }
 })
 
@@ -3089,7 +3101,7 @@ router.post('/bulk/trash', rateLimiters.sensitiveAction, async (req, res) => {
     const status = failed.length === 0 ? 200 : (trashed === 0 ? 400 : 207)
     return res.status(status).json({ trashed, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar a papelera' })
+    return sendServerError(req, res, error, 'No se pudo enviar a papelera')
   }
 })
 
@@ -3177,7 +3189,7 @@ router.post('/bulk/move-company', rateLimiters.sensitiveAction, async (req, res)
     const status = failed.length === 0 ? 200 : (moved === 0 ? 400 : 207)
     return res.status(status).json({ moved, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo mover los proyectos' })
+    return sendServerError(req, res, error, 'No se pudo mover los proyectos')
   }
 })
 
@@ -3272,7 +3284,7 @@ router.post('/bulk/move-to-folder', rateLimiters.sensitiveAction, async (req, re
     const status = failed.length === 0 ? 200 : (moved === 0 ? 400 : 207)
     return res.status(status).json({ moved, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron mover los proyectos' })
+    return sendServerError(req, res, error, 'No se pudieron mover los proyectos')
   }
 })
 
@@ -3307,7 +3319,7 @@ router.post('/:id/trash', rateLimiters.sensitiveAction, async (req, res) => {
       })
       .eq('id', project.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await scheduleLifecycleNotifications(project.id, project.project_type, trashedAt.toISOString())
 
@@ -3332,7 +3344,7 @@ router.post('/:id/trash', rateLimiters.sensitiveAction, async (req, res) => {
 
     return res.json({ trashedAt: trashedAt.toISOString(), deleteAfter: deleteAfter.toISOString() })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar el proyecto a papelera' })
+    return sendServerError(req, res, error, 'No se pudo enviar el proyecto a papelera')
   }
 })
 
@@ -3359,7 +3371,7 @@ router.post('/:id/lifecycle/extend', rateLimiters.sensitiveAction, async (req, r
       })
       .eq('id', project.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await scheduleLifecycleNotifications(project.id, project.project_type, trashedAt.toISOString())
 
@@ -3378,7 +3390,7 @@ router.post('/:id/lifecycle/extend', rateLimiters.sensitiveAction, async (req, r
       retentionDays,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo extender la retención' })
+    return sendServerError(req, res, error, 'No se pudo extender la retención')
   }
 })
 
@@ -3404,7 +3416,7 @@ router.post('/:id/restore', rateLimiters.sensitiveAction, async (req, res) => {
       })
       .eq('id', project.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     // Limpiar notificaciones pendientes — el proyecto ya no está en papelera
     await supabaseAdmin
@@ -3427,7 +3439,7 @@ router.post('/:id/restore', rateLimiters.sensitiveAction, async (req, res) => {
 
     return res.json({ restored: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo restaurar el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo restaurar el proyecto')
   }
 })
 
@@ -3491,7 +3503,7 @@ router.delete('/:id/permanent', rateLimiters.sensitiveAction, async (req, res) =
       .delete()
       .eq('id', project.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     await logSecurityEvent(req, {
       action: 'project_permanently_deleted',
       resourceType: 'project',
@@ -3502,7 +3514,7 @@ router.delete('/:id/permanent', rateLimiters.sensitiveAction, async (req, res) =
     })
     return res.json({ deleted: true, assetsDeleted: purgeResult.deletedCount })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo borrar permanentemente el proyecto' })
+    return sendServerError(req, res, error, 'No se pudo borrar permanentemente el proyecto')
   }
 })
 

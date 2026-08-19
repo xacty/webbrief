@@ -17,6 +17,7 @@ import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
+import { sendServerError } from '../lib/errorResponses.js'
 import {
   wouldCreateFolderCycle,
   validateFolderName,
@@ -98,7 +99,7 @@ router.post('/', rateLimiters.sensitiveAction, writeAccess, async (req, res) => 
     })
     .select('*')
     .single()
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
   res.status(201).json({ folder: data })
 })
 
@@ -124,7 +125,7 @@ router.patch('/:folderId', rateLimiters.sensitiveAction, writeAccess, async (req
     .from('project_folders').update(updates)
     .eq('id', req.params.folderId).eq('company_id', req.folderAccess.companyId)
     .select('*').maybeSingle()
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
   if (!data) return res.status(404).json({ error: 'Carpeta no encontrada' })
   res.json({ folder: data })
 })
@@ -166,7 +167,7 @@ router.delete('/:folderId', rateLimiters.sensitiveAction, writeAccess, async (re
         .update({ parent_folder_id: plan.newParentId })
         .in('id', plan.reparentedFolderIds)
         .eq('company_id', req.folderAccess.companyId)
-      if (error) return res.status(500).json({ error: error.message })
+      if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     if (plan.reparentedProjectIds.length > 0) {
@@ -175,7 +176,7 @@ router.delete('/:folderId', rateLimiters.sensitiveAction, writeAccess, async (re
         .update({ folder_id: plan.newParentId })
         .in('id', plan.reparentedProjectIds)
         .eq('company_id', req.folderAccess.companyId)
-      if (error) return res.status(500).json({ error: error.message })
+      if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     const { error: deleteError } = await supabaseAdmin
@@ -203,7 +204,7 @@ router.delete('/:folderId', rateLimiters.sensitiveAction, writeAccess, async (re
       reparentedFolders: plan.reparentedFolderIds.length,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo eliminar la carpeta' })
+    return sendServerError(req, res, error, 'No se pudo eliminar la carpeta')
   }
 })
 

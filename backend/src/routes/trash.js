@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { requireAuth } from '../middleware/auth.js'
+import { sendServerError } from '../lib/errorResponses.js'
 
 const router = Router()
 
@@ -124,7 +125,7 @@ router.get('/', async (req, res) => {
       projects: (projects || []).map(serializeProject),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo cargar la papelera' })
+    return sendServerError(req, res, error, 'No se pudo cargar la papelera')
   }
 })
 

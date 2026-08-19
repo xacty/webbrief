@@ -13,6 +13,7 @@ import {
   logProjectActivity,
 } from '../lib/projectAccess.js'
 import { sendCommentEmail } from '../lib/commentEmails.js'
+import { sendServerError } from '../lib/errorResponses.js'
 
 const router = Router()
 
@@ -141,7 +142,7 @@ router.get('/:id/comments', async (req, res) => {
       if (isMissingTableError(error, 'project_comments')) {
         return res.json({ comments: [], profiles: [], commentsAvailable: false })
       }
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     const rows = data || []
@@ -187,7 +188,7 @@ router.get('/:id/comments', async (req, res) => {
       commentsAvailable: true,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar los comentarios' })
+    return sendServerError(req, res, error, 'No se pudieron cargar los comentarios')
   }
 })
 
@@ -225,7 +226,7 @@ router.post('/:id/comments', rateLimiters.sensitiveAction, async (req, res) => {
       .select(COMMENT_COLUMNS)
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: project.id,
@@ -264,7 +265,7 @@ router.post('/:id/comments', rateLimiters.sensitiveAction, async (req, res) => {
 
     return res.status(201).json({ comment: serializeComment(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear el comentario' })
+    return sendServerError(req, res, error, 'No se pudo crear el comentario')
   }
 })
 
@@ -314,7 +315,7 @@ router.post('/:id/comments/:commentId/replies', rateLimiters.sensitiveAction, as
       .select(COMMENT_COLUMNS)
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     const recipients = await collectThreadRecipients({
       projectId: project.id,
@@ -366,7 +367,7 @@ router.post('/:id/comments/:commentId/replies', rateLimiters.sensitiveAction, as
 
     return res.status(201).json({ comment: serializeComment(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear la réplica' })
+    return sendServerError(req, res, error, 'No se pudo crear la réplica')
   }
 })
 
@@ -417,7 +418,7 @@ router.patch('/:id/comments/:commentId', rateLimiters.sensitiveAction, async (re
       .select(COMMENT_COLUMNS)
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     const newMentions = validMentions.filter((id) => !(existing.mentions || []).includes(id) && id !== req.currentUser.id)
     if (newMentions.length > 0) {
@@ -436,7 +437,7 @@ router.patch('/:id/comments/:commentId', rateLimiters.sensitiveAction, async (re
 
     return res.json({ comment: serializeComment(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo editar el comentario' })
+    return sendServerError(req, res, error, 'No se pudo editar el comentario')
   }
 })
 
@@ -492,11 +493,11 @@ router.delete('/:id/comments/:commentId', rateLimiters.sensitiveAction, async (r
       .select(COMMENT_COLUMNS)
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     return res.json({ comment: serializeComment(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo eliminar el comentario' })
+    return sendServerError(req, res, error, 'No se pudo eliminar el comentario')
   }
 })
 
@@ -533,7 +534,7 @@ router.post('/:id/comments/:commentId/resolve', rateLimiters.sensitiveAction, as
       .select(COMMENT_COLUMNS)
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: project.id,
@@ -551,7 +552,7 @@ router.post('/:id/comments/:commentId/resolve', rateLimiters.sensitiveAction, as
 
     return res.json({ comment: serializeComment(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo resolver el comentario' })
+    return sendServerError(req, res, error, 'No se pudo resolver el comentario')
   }
 })
 
@@ -588,7 +589,7 @@ router.post('/:id/comments/:commentId/reopen', rateLimiters.sensitiveAction, asy
       .select(COMMENT_COLUMNS)
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: project.id,
@@ -603,7 +604,7 @@ router.post('/:id/comments/:commentId/reopen', rateLimiters.sensitiveAction, asy
 
     return res.json({ comment: serializeComment(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo reabrir el comentario' })
+    return sendServerError(req, res, error, 'No se pudo reabrir el comentario')
   }
 })
 

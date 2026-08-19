@@ -21,6 +21,7 @@ import {
 } from '../lib/imagekit.js'
 import { findReferencedAssetIds } from '../lib/assetReferences.js'
 import { resolveCompanyAssetForExport, normalizeExportOptions, buildExportFileName } from '../lib/assetExport.js'
+import { sendServerError } from '../lib/errorResponses.js'
 
 const router = Router({ mergeParams: true })
 router.use(requireAuth)
@@ -157,7 +158,7 @@ router.post('/folders', rateLimiters.sensitiveAction, writeAccess, async (req, r
     })
     .select('*')
     .single()
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
   res.status(201).json({ folder: data })
 })
 
@@ -183,7 +184,7 @@ router.patch('/folders/:folderId', rateLimiters.sensitiveAction, writeAccess, as
     .from('asset_folders').update(updates)
     .eq('id', req.params.folderId).eq('company_id', req.libraryAccess.companyId)
     .select('*').single()
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
   res.json({ folder: data })
 })
 
@@ -218,8 +219,8 @@ router.get('/', readAccess, async (req, res) => {
       return q
     })(),
   ])
-  if (foldersRes.error) return res.status(500).json({ error: foldersRes.error.message })
-  if (assetsQuery.error) return res.status(500).json({ error: assetsQuery.error.message })
+  if (foldersRes.error) return sendServerError(req, res, foldersRes.error, 'No se pudo cargar la biblioteca')
+  if (assetsQuery.error) return sendServerError(req, res, assetsQuery.error, 'No se pudo cargar la biblioteca')
   const listing = buildLibraryListing({ folders: foldersRes.data || [], currentFolderId: folderId })
   const assets = assetsQuery.data || []
   const usage = await fetchCompanyUsage(req.libraryAccess.companyId)
@@ -262,7 +263,7 @@ router.get('/search', readAccess, async (req, res) => {
     .is('trashed_at', null)
     .ilike('file_name', `%${q.replace(/[%_]/g, '\\$&')}%`)
     .limit(60)
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
   res.json({ assets: data || [] })
 })
 
@@ -357,7 +358,7 @@ router.post('/assets', rateLimiters.authenticatedUpload, writeAccess, libraryUpl
       .insert(assetRow)
       .select('*')
       .single()
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     res.status(201).json({
       asset,
@@ -404,7 +405,7 @@ router.post('/assets/bulk/move', rateLimiters.sensitiveAction, writeAccess, asyn
       .eq('company_id', req.libraryAccess.companyId)
       .is('trashed_at', null)
       .select('id')
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     const movedIds = new Set((updated || []).map((row) => row.id))
     const failed = ids
@@ -423,7 +424,7 @@ router.post('/assets/bulk/move', rateLimiters.sensitiveAction, writeAccess, asyn
     const status = failed.length === 0 ? 200 : (movedIds.size === 0 ? 400 : 207)
     return res.status(status).json({ moved: movedIds.size, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron mover los archivos' })
+    return sendServerError(req, res, error, 'No se pudieron mover los archivos')
   }
 })
 
@@ -494,7 +495,7 @@ router.post('/assets/bulk/trash', rateLimiters.sensitiveAction, writeAccess, asy
 
     return res.json({ trashed: trashedCount, trashedIds, kept: keptWithFileName })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar a la papelera' })
+    return sendServerError(req, res, error, 'No se pudo enviar a la papelera')
   }
 })
 
@@ -538,7 +539,7 @@ router.post('/assets/bulk/restore', rateLimiters.sensitiveAction, writeAccess, a
         .in('id', keepFolder)
         .eq('company_id', req.libraryAccess.companyId)
         .select('id')
-      if (error) return res.status(500).json({ error: error.message })
+      if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
       restoredCount += (data || []).length
     }
     if (clearFolder.length > 0) {
@@ -548,7 +549,7 @@ router.post('/assets/bulk/restore', rateLimiters.sensitiveAction, writeAccess, a
         .in('id', clearFolder)
         .eq('company_id', req.libraryAccess.companyId)
         .select('id')
-      if (error) return res.status(500).json({ error: error.message })
+      if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
       restoredCount += (data || []).length
     }
 
@@ -569,7 +570,7 @@ router.post('/assets/bulk/restore', rateLimiters.sensitiveAction, writeAccess, a
     const status = failed.length === 0 ? 200 : (restoredCount === 0 ? 400 : 207)
     return res.status(status).json({ restored: restoredCount, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron restaurar los archivos' })
+    return sendServerError(req, res, error, 'No se pudieron restaurar los archivos')
   }
 })
 
@@ -607,7 +608,7 @@ router.post('/assets/export', readAccess, async (req, res) => {
     const archive = archiver('zip', { zlib: { level: 9 } })
     archive.on('error', (error) => {
       if (!res.headersSent) {
-        res.status(500).json({ error: error.message || 'No se pudo crear el zip' })
+        sendServerError(req, res, error, 'No se pudo crear el zip')
         return
       }
       res.destroy(error)
@@ -638,7 +639,7 @@ router.post('/assets/export', readAccess, async (req, res) => {
     await archive.finalize()
   } catch (error) {
     if (!res.headersSent) {
-      return res.status(500).json({ error: error.message || 'No se pudo exportar el lote de imágenes' })
+      return sendServerError(req, res, error, 'No se pudo exportar el lote de imágenes')
     }
     return res.destroy(error)
   }
@@ -707,7 +708,7 @@ router.post('/folders/:folderId/trash', rateLimiters.sensitiveAction, writeAcces
       assetsTrashed: (trashedAssets || []).length,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar la carpeta a la papelera' })
+    return sendServerError(req, res, error, 'No se pudo enviar la carpeta a la papelera')
   }
 })
 
@@ -777,7 +778,7 @@ router.post('/folders/:folderId/restore', rateLimiters.sensitiveAction, writeAcc
       assetsRestored: (restoredAssets || []).length,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo restaurar la carpeta' })
+    return sendServerError(req, res, error, 'No se pudo restaurar la carpeta')
   }
 })
 
@@ -859,7 +860,7 @@ router.post('/trash/empty', rateLimiters.sensitiveAction, writeAccess, async (re
 
     return res.json({ purged, freedBytes, foldersDeleted: (deletedFolders || []).length })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo vaciar la papelera' })
+    return sendServerError(req, res, error, 'No se pudo vaciar la papelera')
   }
 })
 
@@ -879,12 +880,12 @@ router.patch('/assets/:assetId', rateLimiters.sensitiveAction, writeAccess, asyn
       .eq('company_id', req.libraryAccess.companyId)
       .select('*')
       .maybeSingle()
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     if (!data) return res.status(404).json({ error: 'Archivo no encontrado' })
 
     return res.json({ asset: data })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo renombrar el archivo' })
+    return sendServerError(req, res, error, 'No se pudo renombrar el archivo')
   }
 })
 

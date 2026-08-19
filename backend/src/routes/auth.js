@@ -9,6 +9,7 @@ import { normalizePlatformRole, COMPANY_ROLE_SET } from '../../../shared/userRol
 import { toInviteSecurityAction, buildInviteResultMessage } from '../../../shared/inviteActions.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { validateResetRequestRow } from '../lib/sendAccess.js'
+import { sendServerError } from '../lib/errorResponses.js'
 
 const router = Router()
 
@@ -116,7 +117,7 @@ router.post('/validate-reset-token', requireAuth, rateLimiters.sensitiveAction, 
     const result = validateResetRequestRow({ row, now: new Date() })
     return res.status(200).json(result)
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo validar el token' })
+    return sendServerError(req, res, error, 'No se pudo validar el token')
   }
 })
 
@@ -144,7 +145,7 @@ router.post('/track-invite-accepted', requireAuth, rateLimiters.trackEvent, asyn
 
     return res.status(200).json({ tracked: true, action })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo registrar el evento' })
+    return sendServerError(req, res, error, 'No se pudo registrar el evento')
   }
 })
 
@@ -180,7 +181,7 @@ router.post('/mark-reset-used', requireAuth, rateLimiters.sensitiveAction, async
 
     return res.status(200).json({ marked: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo marcar el token usado' })
+    return sendServerError(req, res, error, 'No se pudo marcar el token usado')
   }
 })
 

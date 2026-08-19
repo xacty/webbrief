@@ -15,6 +15,30 @@
 
 import dns from 'node:dns/promises';
 import net from 'node:net';
+// Se importa TAMBIEN fetch de undici (no el global de Node) a proposito: el
+// `dispatcher` tiene que venir del mismo paquete que el fetch que lo consume.
+// Mezclar el Agent de la dependencia con el fetch global (que usa el undici
+// embebido en Node, de otra version) falla con "invalid onRequestStart method".
+import { Agent, fetch as undiciFetch } from 'undici';
+
+// Implementacion de fetch usada por el modulo. Es una variable y no una
+// referencia directa para que los tests puedan sustituirla: antes stubbeaban
+// `globalThis.fetch`, que ya no aplica porque produccion usa el fetch de undici
+// (necesario para que el `dispatcher` con IP fijada sea compatible).
+let fetchImpl = undiciFetch;
+
+/**
+ * Costura de test: sustituye la implementacion de fetch.
+ * @param {Function | null} fn  null restaura la original
+ * @returns {() => void} funcion para restaurar la anterior
+ */
+export function __setFetchImplForTests(fn) {
+  const previous = fetchImpl;
+  fetchImpl = fn || undiciFetch;
+  return () => {
+    fetchImpl = previous;
+  };
+}
 
 const TIMEOUT_MS = 10_000;
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -69,27 +93,81 @@ export function isPrivateAddress(address) {
  * @returns {Promise<string | null>}  null = safe, otherwise reason
  */
 export async function checkHostnameSafe(hostname) {
-  const host = hostname.toLowerCase();
-  if (host === 'localhost') return 'host is localhost';
+  const { error } = await resolveSafeAddresses(hostname);
+  return error ?? null;
+}
+
+/**
+ * Resolve a hostname and validate every returned address, returning the
+ * validated addresses so the caller can PIN them for the actual connection.
+ *
+ * Why this returns the addresses instead of just a verdict (auditoria 2026-08,
+ * hallazgo M5): validating the hostname and then calling fetch() on that same
+ * hostname leaves a check-then-connect (TOCTOU) gap — undici performs its own
+ * DNS resolution at connect time, so an attacker controlling authoritative DNS
+ * can answer with a public IP for the check and a private one (169.254.169.254,
+ * 127.0.0.1) milliseconds later for the connection. That is DNS rebinding.
+ * Pinning the already-validated address closes the window.
+ *
+ * @param {string} hostname
+ * @returns {Promise<{ error?: string, addresses?: Array<{address: string, family: number}> }>}
+ */
+export async function resolveSafeAddresses(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (host === 'localhost') return { error: 'host is localhost' };
 
   // Literal IPs short-circuit DNS.
   if (net.isIP(host) !== 0) {
-    return isPrivateAddress(host) ? 'host resolves to a private/local IP' : null;
+    if (isPrivateAddress(host)) return { error: 'host resolves to a private/local IP' };
+    return { addresses: [{ address: host, family: net.isIP(host) }] };
   }
 
   let records = [];
   try {
     records = await dns.lookup(host, { all: true, verbatim: true });
   } catch (err) {
-    return `dns lookup failed: ${err.code ?? err.message ?? 'unknown'}`;
+    return { error: `dns lookup failed: ${err.code ?? err.message ?? 'unknown'}` };
   }
 
   for (const rec of records) {
     if (isPrivateAddress(rec.address)) {
-      return `host resolves to a private/local IP (${rec.address})`;
+      return { error: `host resolves to a private/local IP (${rec.address})` };
     }
   }
-  return null;
+  if (records.length === 0) return { error: 'dns lookup returned no records' };
+
+  return { addresses: records.map((r) => ({ address: r.address, family: r.family })) };
+}
+
+/**
+ * Build an undici Agent whose DNS resolution is pinned to already-validated
+ * addresses. Re-checks each address at connect time as defense in depth, so a
+ * bug upstream cannot turn into an outbound connection to a private range.
+ *
+ * @param {Array<{address: string, family: number}>} addresses
+ * @returns {Agent}
+ */
+function createPinnedAgent(addresses) {
+  const safe = addresses.filter((a) => !isPrivateAddress(a.address));
+
+  return new Agent({
+    connect: {
+      lookup(_hostname, options, callback) {
+        if (safe.length === 0) {
+          callback(new Error('no safe address available for host'), null, null);
+          return;
+        }
+        // Node calls `lookup` with { all } depending on the caller; honour both
+        // shapes or the connection fails with an opaque error.
+        if (options?.all) {
+          callback(null, safe.map((a) => ({ address: a.address, family: a.family })));
+          return;
+        }
+        const first = safe[0];
+        callback(null, first.address, first.family);
+      },
+    },
+  });
 }
 
 /**
@@ -128,19 +206,23 @@ export async function fetchReferenceUrl(rawUrl) {
     };
   }
 
-  const safetyError = await checkHostnameSafe(parsed.hostname);
+  const { error: safetyError, addresses } = await resolveSafeAddresses(parsed.hostname);
   if (safetyError) {
     return { url: rawUrl, ok: false, error: safetyError, reason: 'private_host' };
   }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  // Fija las IPs ya validadas para la conexion real: sin esto undici resolveria
+  // DNS de nuevo y quedaria abierta la ventana de rebinding (ver M5).
+  const dispatcher = createPinnedAgent(addresses);
 
   try {
-    const res = await fetch(parsed.toString(), {
+    const res = await fetchImpl(parsed.toString(), {
       method: 'GET',
       redirect: 'error', // any 3xx aborts → SSRF defense
       signal: controller.signal,
+      dispatcher,
       headers: {
         'User-Agent': USER_AGENT,
         Accept: 'text/html,text/plain,application/json,*/*;q=0.5',
@@ -235,6 +317,12 @@ export async function fetchReferenceUrl(rawUrl) {
     };
   } finally {
     clearTimeout(timer);
+    // Un Agent por request: cerrarlo evita acumular sockets abiertos.
+    try {
+      await dispatcher.close();
+    } catch {
+      /* ignore */
+    }
   }
 }
 

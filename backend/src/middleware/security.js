@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { logApplicationError } from '../lib/applicationErrors.js'
+import { getClientIp } from '../lib/clientIp.js'
 import { consumePersistentRateLimit } from '../lib/rateLimitStore.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { getActiveSecurityBlock } from '../lib/securityBlocks.js'
@@ -41,7 +42,7 @@ export function requestContext(req, res, next) {
     ? req.headers['x-request-id'].trim().slice(0, 120)
     : ''
   req.requestId = incomingRequestId || randomUUID()
-  req.clientIp = getClientIp(req)
+  req.clientIp = getClientIp(req) || 'unknown-ip'
   res.setHeader('X-Request-Id', req.requestId)
   return next()
 }
@@ -70,7 +71,7 @@ export function requestTimeout(timeoutMs = 30_000) {
 export async function enforceIpSecurityBlock(req, res, next) {
   if (!req.path?.startsWith('/api') || req.path === '/api/health') return next()
 
-  const block = await getActiveSecurityBlock(req, { ipAddress: req.clientIp || getClientIp(req) })
+  const block = await getActiveSecurityBlock(req, { ipAddress: req.clientIp || getClientIp(req) || 'unknown-ip' })
   if (!block) return next()
 
   writeSecurityLog('warn', 'security_ip_blocked_request', {
@@ -83,14 +84,6 @@ export async function enforceIpSecurityBlock(req, res, next) {
     error: 'Acceso bloqueado por seguridad',
     blockId: block.id,
   })
-}
-
-function getClientIp(req) {
-  const forwardedFor = req.headers['x-forwarded-for']
-  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-    return forwardedFor.split(',')[0].trim()
-  }
-  return req.ip || req.socket?.remoteAddress || 'unknown-ip'
 }
 
 function normalizeKeyPart(value) {
@@ -227,7 +220,7 @@ export function createRateLimit({
     const now = Date.now()
     cleanupBuckets(now)
 
-    const rawParts = [name, getClientIp(req), ...keyParts(req)]
+    const rawParts = [name, req.clientIp || getClientIp(req) || 'unknown-ip', ...keyParts(req)]
     const key = rawParts.map(normalizeKeyPart).join(':')
 
     let result = null

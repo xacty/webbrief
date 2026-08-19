@@ -4,12 +4,14 @@ import { inviteUserToCompany, normalizeEmail } from '../lib/users.js'
 import {
   canAccessCompany,
   canManageCompanyLifecycle,
+  canWriteProjectContent,
   getAccessibleCompanyIds,
 } from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
 import { rateLimiters } from '../middleware/security.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { toInviteSecurityAction } from '../../../shared/inviteActions.js'
+import { sendServerError } from '../lib/errorResponses.js'
 
 const router = Router()
 let archiveColumnsAvailable = true
@@ -188,7 +190,7 @@ router.get('/', async (req, res) => {
       return query
     })
     if (error) {
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     const companyIds = (companies || []).map((company) => company.id)
@@ -198,7 +200,7 @@ router.get('/', async (req, res) => {
       companies: (companies || []).map((company) => serializeCompany(company, membershipMap, statsMap)),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar las empresas' })
+    return sendServerError(req, res, error, 'No se pudieron cargar las empresas')
   }
 })
 
@@ -330,7 +332,7 @@ router.get('/:id', async (req, res) => {
       }),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo cargar la empresa' })
+    return sendServerError(req, res, error, 'No se pudo cargar la empresa')
   }
 })
 
@@ -405,7 +407,7 @@ router.post('/', async (req, res) => {
       .single()
 
     if (error) {
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     // Note: local variable is named `manager` for API-response backward compat
@@ -456,7 +458,7 @@ router.post('/', async (req, res) => {
       manager,
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear la empresa' })
+    return sendServerError(req, res, error, 'No se pudo crear la empresa')
   }
 })
 
@@ -534,7 +536,7 @@ router.post('/bulk/archive', rateLimiters.sensitiveAction, async (req, res) => {
     const status = failed.length === 0 ? 200 : (archived === 0 ? 400 : 207)
     return res.status(status).json({ archived, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo archivar las empresas' })
+    return sendServerError(req, res, error, 'No se pudo archivar las empresas')
   }
 })
 
@@ -565,7 +567,7 @@ router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
       .update({ archived_at: archivedAt, archived_by: req.currentUser.id })
       .eq('id', company.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     await logSecurityEvent(req, {
       action: 'company_archived',
       resourceType: 'company',
@@ -575,7 +577,7 @@ router.post('/:id/archive', rateLimiters.sensitiveAction, async (req, res) => {
     })
     return res.json({ archivedAt })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo archivar la empresa' })
+    return sendServerError(req, res, error, 'No se pudo archivar la empresa')
   }
 })
 
@@ -660,7 +662,7 @@ router.post('/bulk/trash', rateLimiters.sensitiveAction, async (req, res) => {
     const status = failed.length === 0 ? 200 : (trashed === 0 ? 400 : 207)
     return res.status(status).json({ trashed, failed })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar a papelera' })
+    return sendServerError(req, res, error, 'No se pudo enviar a papelera')
   }
 })
 
@@ -696,7 +698,7 @@ router.post('/:id/trash', rateLimiters.sensitiveAction, async (req, res) => {
       })
       .eq('id', company.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     await logSecurityEvent(req, {
       action: 'company_trashed',
       resourceType: 'company',
@@ -706,7 +708,7 @@ router.post('/:id/trash', rateLimiters.sensitiveAction, async (req, res) => {
     })
     return res.json({ trashedAt: trashedAt.toISOString(), deleteAfter: deleteAfter.toISOString() })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar la empresa a papelera' })
+    return sendServerError(req, res, error, 'No se pudo enviar la empresa a papelera')
   }
 })
 
@@ -739,7 +741,7 @@ router.post('/:id/restore', rateLimiters.sensitiveAction, async (req, res) => {
       })
       .eq('id', req.params.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     await logSecurityEvent(req, {
       action: 'company_restored',
       resourceType: 'company',
@@ -752,7 +754,7 @@ router.post('/:id/restore', rateLimiters.sensitiveAction, async (req, res) => {
     })
     return res.json({ restored: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo restaurar la empresa' })
+    return sendServerError(req, res, error, 'No se pudo restaurar la empresa')
   }
 })
 
@@ -782,7 +784,7 @@ router.delete('/:id/permanent', rateLimiters.sensitiveAction, async (req, res) =
       .delete()
       .eq('id', company.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     await logSecurityEvent(req, {
       action: 'company_permanently_deleted',
       resourceType: 'company',
@@ -791,7 +793,7 @@ router.delete('/:id/permanent', rateLimiters.sensitiveAction, async (req, res) =
     })
     return res.json({ deleted: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo borrar la empresa' })
+    return sendServerError(req, res, error, 'No se pudo borrar la empresa')
   }
 })
 
@@ -810,10 +812,10 @@ router.get('/:id/templates', async (req, res) => {
       .eq('company_id', req.params.id)
       .order('created_at', { ascending: false })
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     return res.json({ templates: data || [] })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar las plantillas' })
+    return sendServerError(req, res, error, 'No se pudieron cargar las plantillas')
   }
 })
 
@@ -823,8 +825,11 @@ router.post('/:id/templates', async (req, res) => {
   if (!Array.isArray(structureJson)) return res.status(400).json({ error: 'structureJson debe ser un array' })
 
   try {
-    if (!canAccessCompany(req.currentUser, req.params.id)) {
-      return res.status(403).json({ error: 'Sin acceso a esta empresa' })
+    // Guardar plantilla es un flujo del editor (panel "Guardar plantilla"), asi que
+    // alcanza con rol de escritura — pero NO con la mera membresia, que dejaba
+    // crear plantillas a roles de solo lectura.
+    if (!canWriteProjectContent(req.currentUser, req.params.id)) {
+      return res.status(403).json({ error: 'Tu rol no puede crear plantillas en esta empresa' })
     }
 
     const { data, error } = await supabaseAdmin
@@ -839,17 +844,19 @@ router.post('/:id/templates', async (req, res) => {
       .select('id, name, project_type, structure_json, created_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     return res.status(201).json({ template: data })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo guardar la plantilla' })
+    return sendServerError(req, res, error, 'No se pudo guardar la plantilla')
   }
 })
 
 router.delete('/:id/templates/:templateId', async (req, res) => {
   try {
-    if (!canAccessCompany(req.currentUser, req.params.id)) {
-      return res.status(403).json({ error: 'Sin acceso a esta empresa' })
+    // Borrar es destructivo y afecta configuracion compartida de la empresa:
+    // mismo criterio que el resto de acciones de ciclo de vida (admin/manager).
+    if (!canManageCompanyLifecycle(req.currentUser, req.params.id)) {
+      return res.status(403).json({ error: 'Tu rol no puede eliminar plantillas de esta empresa' })
     }
 
     const { error } = await supabaseAdmin
@@ -858,10 +865,10 @@ router.delete('/:id/templates/:templateId', async (req, res) => {
       .eq('id', req.params.templateId)
       .eq('company_id', req.params.id)
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     return res.json({ ok: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo eliminar la plantilla' })
+    return sendServerError(req, res, error, 'No se pudo eliminar la plantilla')
   }
 })
 
@@ -912,7 +919,7 @@ router.get('/:id/activity', async (req, res) => {
 
     return res.json({ activity: activity ?? [] })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo cargar la actividad' })
+    return sendServerError(req, res, error, 'No se pudo cargar la actividad')
   }
 })
 
