@@ -5,7 +5,7 @@ Método: 5 auditorías paralelas (XSS cliente, authz/IDOR backend, tokens/SSRF, 
 
 ## Estado de remediación (actualizado 2026-08-17)
 
-Todo el trabajo vive en la rama `fix/security-tanda-1`, sin deployar. Versión: v2.15.3.
+**DEPLOYADO A PRODUCCIÓN el 2026-08-18** (merge `942b0e8`, v2.15.3). Verificado en vivo: sitio y API en 200, bundle servido coincide con el build del deploy, y el token por query string rechazado con 401 en `webrief.app`.
 
 | ID | Hallazgo | Estado |
 |---|---|---|
