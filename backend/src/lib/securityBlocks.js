@@ -1,4 +1,7 @@
+import net from 'node:net'
 import { getRequestLogContext, writeSecurityLog } from './securityLogger.js'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 let securityBlocksAvailable = true
 let securityBlocksRetryAt = 0
@@ -24,6 +27,18 @@ function isMissingTableError(error, tableName) {
 
 function normalizeIp(value) {
   return String(value || '').trim()
+}
+
+// Solo se interpola en el filtro `.or(...)` lo que pasa estas validaciones.
+// Sin esto, un valor arbitrario puede romper la sintaxis del filtro de PostgREST,
+// hacer fallar la query y — combinado con el manejo de error de mas abajo —
+// convertir "no se pudo comprobar" en "no esta bloqueado" (auditoria 2026-08, M6).
+function isSafeUuid(value) {
+  return typeof value === 'string' && UUID_RE.test(value)
+}
+
+function isSafeIp(value) {
+  return net.isIP(normalizeIp(value)) !== 0
 }
 
 function isExpired(block) {
@@ -96,12 +111,17 @@ export async function getActiveSecurityBlock(req, { userId = null, ipAddress = n
     .order('blocked_at', { ascending: false })
     .limit(1)
 
-  if (userId && ipAddress) {
-    query = query.or(`user_id.eq.${userId},ip_address.eq.${normalizeIp(ipAddress)}`)
-  } else if (userId) {
-    query = query.eq('user_id', userId)
-  } else if (ipAddress) {
-    query = query.eq('ip_address', normalizeIp(ipAddress))
+  // Solo los valores validados llegan al filtro; los invalidos se descartan en
+  // vez de interpolarse (un `unknown-ip` o un id malformado romperia el `.or`).
+  const safeUserId = isSafeUuid(userId) ? userId : null
+  const safeIp = isSafeIp(ipAddress) ? normalizeIp(ipAddress) : null
+
+  if (safeUserId && safeIp) {
+    query = query.or(`user_id.eq.${safeUserId},ip_address.eq.${safeIp}`)
+  } else if (safeUserId) {
+    query = query.eq('user_id', safeUserId)
+  } else if (safeIp) {
+    query = query.eq('ip_address', safeIp)
   } else {
     return null
   }
@@ -119,7 +139,16 @@ export async function getActiveSecurityBlock(req, { userId = null, ipAddress = n
       ...getRequestLogContext(req),
       error: error.message,
     })
-    setCachedBlock(key, null)
+    // NO se cachea el resultado en caso de error inesperado: cachear null aqui
+    // convertia un fallo transitorio en "no esta bloqueado" durante toda la
+    // ventana de cache (15s), y el proximo request repetia el veredicto sin
+    // volver a consultar. Sin cachear, se reintenta en el request siguiente.
+    //
+    // Se sigue devolviendo null (fail-open) a proposito: fallar cerrado aqui
+    // bloquearia TODA la app ante un hipo de la base. Eso es aceptable ahora
+    // porque el vector real —inducir el error a proposito mediante un filtro
+    // malformado— quedo cerrado con la validacion de arriba; lo que queda son
+    // fallos genuinos de infraestructura, donde tumbar el servicio es peor.
     return null
   }
 

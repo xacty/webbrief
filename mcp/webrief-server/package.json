@@ -15,7 +15,7 @@
     "test:invariants": "node ../../shared/documentInvariants.test.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@tiptap/core": "^3.20.4",
     "@tiptap/extension-color": "^3.20.4",
     "@tiptap/extension-heading": "^3.20.4",
@@ -32,6 +32,7 @@
     "@tiptap/html": "^3.20.4",
     "@tiptap/pm": "^3.20.4",
     "@tiptap/starter-kit": "^3.20.4",
+    "undici": "^8.10.0",
     "zod": "^3.23.0"
   },
   "engines": {

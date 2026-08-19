@@ -52,12 +52,21 @@ export async function requireAuth(req, res, next) {
   }
 
   const authHeader = req.headers.authorization
-  const queryToken = typeof req.query?.access_token === 'string' ? req.query.access_token : ''
+  // El token en QUERY STRING ya no se acepta (auditoria 2026-08, hallazgo M3):
+  // quedaba escrito en el historial del navegador y en los logs de acceso de
+  // Nginx, que conservan la query string por 30+ dias, de modo que quien leyera
+  // esos registros obtenia una sesion usable. El unico consumidor que tenia era
+  // `apiDownloadToFile` del frontend, reemplazado por `apiDownloadBlob`, que
+  // manda el bearer por cabecera.
+  //
+  // El token por BODY si se conserva: lo necesita `apiSubmitDownload`, que
+  // dispara descargas via POST de un form oculto (los campos del cuerpo no se
+  // loguean). No confundir uno con otro al tocar esto.
   const bodyToken = typeof req.body?.access_token === 'string' ? req.body.access_token : ''
   const bearerToken = authHeader && authHeader.startsWith('Bearer ')
     ? authHeader.slice('Bearer '.length)
     : ''
-  const token = bearerToken || queryToken || bodyToken
+  const token = bearerToken || bodyToken
 
   if (!token) {
     writeSecurityLog('warn', 'auth_token_missing', getRequestLogContext(req))

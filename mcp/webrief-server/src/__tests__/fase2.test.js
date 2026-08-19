@@ -95,7 +95,7 @@ await test('rejects non-URL strings', () => {
 // lib/urlFetcher.js — isPrivateAddress (pure)
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { isPrivateAddress, fetchReferenceUrl } from '../lib/urlFetcher.js';
+import { isPrivateAddress, fetchReferenceUrl, __setFetchImplForTests } from '../lib/urlFetcher.js';
 
 console.log('\nlib/urlFetcher.js — isPrivateAddress');
 
@@ -171,8 +171,7 @@ await test('rejects literal RFC 1918 IPs', async () => {
 
 // Mocked fetch path for happy case
 await test('returns body and bytesRead for a normal response', async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
+  const restoreFetch = __setFetchImplForTests(async () => ({
     ok: true,
     status: 200,
     headers: new Map([
@@ -192,7 +191,7 @@ await test('returns body and bytesRead for a normal response', async () => {
         };
       },
     },
-  });
+  }));
   try {
     // Use a public-looking IP so isPrivateAddress short-circuits dns lookup.
     const r = await fetchReferenceUrl('http://1.1.1.1/');
@@ -202,15 +201,14 @@ await test('returns body and bytesRead for a normal response', async () => {
     assert.equal(r.bytesRead, 5);
     assert.equal(r.truncated, false);
   } finally {
-    globalThis.fetch = originalFetch;
+    restoreFetch();
   }
 });
 
 await test('truncates response above MAX_BYTES', async () => {
-  const originalFetch = globalThis.fetch;
   // 3MB payload, capped at 2MB
   const bigChunk = new Uint8Array(3 * 1024 * 1024).fill(65); // 'A'
-  globalThis.fetch = async () => ({
+  const restoreFetch = __setFetchImplForTests(async () => ({
     ok: true,
     status: 200,
     headers: new Map([['content-type', 'text/plain']]),
@@ -227,7 +225,7 @@ await test('truncates response above MAX_BYTES', async () => {
         };
       },
     },
-  });
+  }));
   try {
     const r = await fetchReferenceUrl('http://1.1.1.1/');
     assert.equal(r.ok, true);
@@ -235,13 +233,12 @@ await test('truncates response above MAX_BYTES', async () => {
     assert.equal(r.bytesRead, 2 * 1024 * 1024);
     assert.equal(r.body.length, 2 * 1024 * 1024);
   } finally {
-    globalThis.fetch = originalFetch;
+    restoreFetch();
   }
 });
 
 await test('rejects when content-length exceeds MAX_BYTES', async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
+  const restoreFetch = __setFetchImplForTests(async () => ({
     ok: true,
     status: 200,
     headers: new Map([
@@ -249,13 +246,13 @@ await test('rejects when content-length exceeds MAX_BYTES', async () => {
       ['content-length', String(5 * 1024 * 1024)],
     ]),
     body: { getReader: () => ({ async read() { return { done: true }; }, async cancel() {} }) },
-  });
+  }));
   try {
     const r = await fetchReferenceUrl('http://1.1.1.1/');
     assert.equal(r.ok, false);
     assert.equal(r.reason, 'response_too_large');
   } finally {
-    globalThis.fetch = originalFetch;
+    restoreFetch();
   }
 });
 
@@ -342,6 +339,8 @@ async function withMockedFetch(routes, fn) {
   try {
     await fn(calls);
   } finally {
+    // webbriefClient si usa el fetch global (habla con el backend, no sale a
+    // internet), asi que este helper sigue stubbeando globalThis.fetch.
     globalThis.fetch = originalFetch;
   }
 }

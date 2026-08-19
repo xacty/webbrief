@@ -41,6 +41,7 @@ import {
   normalizePlatformRole as normalizeSharedPlatformRole,
 } from '../../../shared/userRoles.js'
 import { toInviteSecurityAction, buildInviteResultMessage } from '../../../shared/inviteActions.js'
+import { sendHttpError } from '../lib/errorResponses.js'
 
 const router = Router()
 const upload = multer({
@@ -427,7 +428,7 @@ router.get('/', async (req, res) => {
   try {
     return res.json(await loadUsersPayload(req.currentUser))
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudieron cargar los usuarios' })
+    return sendHttpError(req, res, error, 'No se pudieron cargar los usuarios')
   }
 })
 
@@ -515,7 +516,7 @@ router.post('/', rateLimiters.inviteUser, async (req, res) => {
       invitedUser,
     })
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo crear la invitacion' })
+    return sendHttpError(req, res, error, 'No se pudo crear la invitacion')
   }
 })
 
@@ -608,7 +609,7 @@ router.patch('/:id', rateLimiters.sensitiveAction, async (req, res) => {
 
     return res.json({ updated: true })
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo actualizar el usuario' })
+    return sendHttpError(req, res, error, 'No se pudo actualizar el usuario')
   }
 })
 
@@ -678,7 +679,7 @@ router.post('/:id/avatar', rateLimiters.authenticatedUpload, upload.single('avat
       filePath: imagePath,
     })
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo actualizar la imagen del usuario' })
+    return sendHttpError(req, res, error, 'No se pudo actualizar la imagen del usuario')
   }
 })
 
@@ -724,7 +725,7 @@ router.get('/:id/avatar/export', async (req, res) => {
     res.setHeader('Cache-Control', 'private, max-age=3600')
     return res.status(200).send(buffer)
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo exportar el avatar' })
+    return sendHttpError(req, res, error, 'No se pudo exportar el avatar')
   }
 })
 
@@ -771,7 +772,7 @@ router.patch('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async 
     })
     return res.json({ updated: true })
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo actualizar el acceso' })
+    return sendHttpError(req, res, error, 'No se pudo actualizar el acceso')
   }
 })
 
@@ -806,7 +807,7 @@ router.delete('/:id/memberships/:companyId', rateLimiters.sensitiveAction, async
     })
     return res.json({ removed: true })
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo quitar el acceso' })
+    return sendHttpError(req, res, error, 'No se pudo quitar el acceso')
   }
 })
 
@@ -896,7 +897,7 @@ router.post('/:id/removal-requests', rateLimiters.sensitiveAction, async (req, r
 
     return res.status(201).json({ requested: true })
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo crear la solicitud' })
+    return sendHttpError(req, res, error, 'No se pudo crear la solicitud')
   }
 })
 
@@ -951,7 +952,7 @@ router.delete('/:id', rateLimiters.sensitiveAction, async (req, res) => {
 
     return res.json({ deleted: true })
   } catch (error) {
-    return res.status(error.status || 500).json({ error: error.message || 'No se pudo borrar el usuario' })
+    return sendHttpError(req, res, error, 'No se pudo borrar el usuario')
   }
 })
 

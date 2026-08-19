@@ -85,21 +85,62 @@ export async function apiDownload(path, options = {}) {
   }
 }
 
-export async function apiDownloadToFile(path, options = {}) {
+/**
+ * Descarga un archivo autenticado SIN poner el token en la URL.
+ *
+ * Reemplaza a `apiDownloadToFile` (auditoria 2026-08, hallazgo M3), que armaba
+ * `...?access_token=<JWT>` y disparaba una navegacion. Ese patron dejaba la
+ * sesion viva escrita en el historial del navegador, en los logs de acceso de
+ * Nginx (que guardan el query string) y en los logs del backend — cualquiera con
+ * acceso a esos registros recuperaba una sesion usable (CWE-598).
+ *
+ * Aca el token viaja en la cabecera Authorization, como en cualquier otro
+ * request, y el archivo se materializa como blob local.
+ */
+export async function apiDownloadBlob(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) {
     throw new ApiError('Sesion no disponible para descargar', 401, null)
   }
 
-  const url = new URL(path, window.location.origin)
-  url.searchParams.set('access_token', session.access_token)
+  const response = await fetch(path, {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  })
+
+  if (!response.ok) {
+    let payload = null
+    try {
+      payload = await response.json()
+    } catch {
+      /* respuesta sin cuerpo JSON */
+    }
+    throw new ApiError(payload?.error || 'No se pudo descargar el archivo', response.status, payload)
+  }
+
+  // El nombre del servidor gana sobre el sugerido cuando viene en la respuesta.
+  const disposition = response.headers.get('content-disposition') || ''
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+  let fileName = options.suggestedFileName || 'descarga'
+  if (match?.[1]) {
+    try {
+      fileName = decodeURIComponent(match[1])
+    } catch {
+      fileName = match[1]
+    }
+  }
+
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
   const link = document.createElement('a')
-  link.href = url.toString()
-  if (options.suggestedFileName) link.download = options.suggestedFileName
+  link.href = objectUrl
+  link.download = fileName
   link.rel = 'noopener'
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
+  // Se revoca con un tick de gracia: algunos navegadores necesitan que la URL
+  // siga viva un instante despues del click para completar la descarga.
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000)
 }
 
 export async function apiSubmitDownload(path, fields = {}) {

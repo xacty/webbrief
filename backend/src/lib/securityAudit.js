@@ -1,17 +1,10 @@
 import { supabaseAdmin } from './supabase.js'
+import { getClientIp } from './clientIp.js'
 import { isMissingTableError } from './projectAccess.js'
 import { getRequestLogContext, writeSecurityLog } from './securityLogger.js'
 
 let securityEventsTableAvailable = true
 let securityEventsRetryAt = 0
-
-function getClientIp(req) {
-  const forwardedFor = req.headers['x-forwarded-for']
-  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-    return forwardedFor.split(',')[0].trim()
-  }
-  return req.ip || req.socket?.remoteAddress || null
-}
 
 function sanitizeMetadata(metadata = {}) {
   const clone = { ...metadata }

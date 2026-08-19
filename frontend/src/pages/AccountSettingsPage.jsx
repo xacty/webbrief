@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bell, Camera, Download, KeyRound, RotateCcw, Save } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-import { apiDownloadToFile, apiFetch } from '../lib/api'
+import { apiDownloadBlob, apiFetch } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { resetTutorial } from '../lib/tutorialState'
 import {
@@ -32,7 +32,7 @@ function userInitials(user) {
 
 async function downloadAvatarExport(userId, preset) {
   const path = `/api/users/${userId}/avatar/export?preset=${encodeURIComponent(preset)}`
-  await apiDownloadToFile(path, { suggestedFileName: 'avatar' })
+  await apiDownloadBlob(path, { suggestedFileName: 'avatar' })
 }
 
 export default function AccountSettingsPage() {

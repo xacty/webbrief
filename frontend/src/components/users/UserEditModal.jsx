@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Camera, Download } from 'lucide-react'
 import { Button, Input, Select, Modal, Badge } from '../ui'
-import { apiDownloadToFile, apiFetch } from '../../lib/api'
+import { apiDownloadBlob, apiFetch } from '../../lib/api'
 import { isAdmin } from '../../lib/roleCapabilities'
 import { canSetPassword } from '../../lib/passwordPermissions'
 import PasswordSection from './PasswordSection'
@@ -30,12 +30,12 @@ function userInitials(user) {
   return (email[0] || '?').toUpperCase()
 }
 
-// Avatar download helper — uses apiDownloadToFile so the bearer token rides
-// the request (the backend `/api/users/:id/avatar/export` endpoint is auth-gated).
+// Avatar download helper — apiDownloadBlob manda el bearer en la cabecera
+// Authorization (nunca en la URL) y materializa la respuesta como blob.
 // `preset` maps to the backend query param; values: 'original' | 'web' | 'jpg' | 'png'.
 async function downloadAvatarExport(userId, preset) {
   const path = `/api/users/${userId}/avatar/export?preset=${encodeURIComponent(preset)}`
-  await apiDownloadToFile(path, { suggestedFileName: 'avatar' })
+  await apiDownloadBlob(path, { suggestedFileName: 'avatar' })
 }
 
 /**

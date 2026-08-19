@@ -6,6 +6,8 @@ import { hashToken, logProjectActivity } from '../lib/projectAccess.js'
 import { buildImageKitPath, deleteFromImageKit } from '../lib/imagekit.js'
 import { uploadWithIngest, adjustFileNameForAction } from '../lib/imageIngest.js'
 import { sanitizeIfSvg } from '../lib/svgSanitizer.js'
+import { sendServerError } from '../lib/errorResponses.js'
+import { sanitizeContentHtml } from '../lib/htmlSanitizer.js'
 import { logSecurityEvent } from '../lib/securityAudit.js'
 import { publicAntiScrapingHeaders, rateLimiters } from '../middleware/security.js'
 import {
@@ -90,7 +92,11 @@ function serializePublicPage(page) {
     id: page.id,
     name: page.name,
     position: page.position,
-    contentHtml: stripCommentMarks(page.content_html),
+    // Saneo TAMBIEN en lectura (auditoria 2026-08, A1): esta es la superficie mas
+    // expuesta (visitante anonimo del link de share) y cubre el contenido legacy
+    // que se guardo antes de que existiera el saneo en escritura, sin backfill.
+    // Va ultimo a proposito: lo que sea que devuelva stripCommentMarks se sanea.
+    contentHtml: sanitizeContentHtml(stripCommentMarks(page.content_html)),
     contentJson: page.content_json,
     seoMetadata: page.seo_metadata || {},
     version: page.version || 1,
@@ -175,7 +181,7 @@ router.get('/share/:token', rateLimiters.publicRead, async (req, res) => {
       pages: (pages || []).map(serializePublicPage),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo abrir el link privado' })
+    return sendServerError(req, res, error, 'No se pudo abrir el link privado')
   }
 })
 
@@ -209,7 +215,7 @@ router.post('/share/:token/comments', rateLimiters.publicMutation, async (req, r
       .select('id, project_id, page_id, section_id, author_name, author_email, body, status, created_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: shareLink.project_id,
@@ -248,7 +254,7 @@ router.post('/share/:token/comments', rateLimiters.publicMutation, async (req, r
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear el comentario' })
+    return sendServerError(req, res, error, 'No se pudo crear el comentario')
   }
 })
 
@@ -282,7 +288,7 @@ router.post('/share/:token/approvals', rateLimiters.publicMutation, async (req, 
       .select('id, project_id, page_id, section_id, reviewer_name, reviewer_email, status, comment, created_at')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     await logProjectActivity({
       projectId: shareLink.project_id,
@@ -321,7 +327,7 @@ router.post('/share/:token/approvals', rateLimiters.publicMutation, async (req, 
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo registrar la aprobación' })
+    return sendServerError(req, res, error, 'No se pudo registrar la aprobación')
   }
 })
 
@@ -365,7 +371,7 @@ router.get('/brief/:token', rateLimiters.publicRead, async (req, res) => {
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo cargar el brief' })
+    return sendServerError(req, res, error, 'No se pudo cargar el brief')
   }
 })
 
@@ -431,7 +437,7 @@ router.post('/brief/:token/submit', rateLimiters.publicMutation, async (req, res
 
     return res.status(201).json({ ok: true, submittedAt: response.submitted_at })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo enviar el brief' })
+    return sendServerError(req, res, error, 'No se pudo enviar el brief')
   }
 })
 
@@ -599,7 +605,7 @@ router.post('/brief/:token/documents', rateLimiters.publicUpload, briefDocsUploa
       },
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo subir el archivo' })
+    return sendServerError(req, res, error, 'No se pudo subir el archivo')
   }
 })
 

@@ -7,6 +7,7 @@ import { logSecurityEvent } from '../lib/securityAudit.js'
 import { clearSecurityBlockCache } from '../lib/securityBlocks.js'
 import { getRequestLogContext, writeSecurityLog } from '../lib/securityLogger.js'
 import { aggregateRateLimitBlocks, isRateLimitBlockActive } from './securityBlocksHelpers.js'
+import { sendServerError } from '../lib/errorResponses.js'
 
 const router = Router()
 
@@ -339,7 +340,7 @@ router.get('/overview', async (req, res) => {
       ...getRequestLogContext(req),
       error: error.message,
     })
-    return res.status(500).json({ error: error.message || 'No se pudo cargar seguridad' })
+    return sendServerError(req, res, error, 'No se pudo cargar seguridad')
   }
 })
 
@@ -373,7 +374,7 @@ router.get('/events', async (req, res) => {
       warnings: [authAudit.warning].filter(Boolean),
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar eventos' })
+    return sendServerError(req, res, error, 'No se pudieron cargar eventos')
   }
 })
 
@@ -388,7 +389,7 @@ router.get('/users', async (req, res) => {
     const users = summarizeUserRows([...webriefEvents, ...authAudit.events], blockResult.blocks)
     return res.json({ users, warnings: [authAudit.warning, blockResult.warning].filter(Boolean) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar usuarios de seguridad' })
+    return sendServerError(req, res, error, 'No se pudieron cargar usuarios de seguridad')
   }
 })
 
@@ -403,7 +404,7 @@ router.get('/ips', async (req, res) => {
     const ips = summarizeIpRows([...webriefEvents, ...authAudit.events], blockResult.blocks)
     return res.json({ ips, warnings: [authAudit.warning, blockResult.warning].filter(Boolean) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar IPs' })
+    return sendServerError(req, res, error, 'No se pudieron cargar IPs')
   }
 })
 
@@ -435,7 +436,7 @@ router.post('/blocks', async (req, res) => {
       .select('id, block_type, user_id, ip_address, reason, blocked_by, blocked_at, expires_at, revoked_at, revoked_by')
       .single()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
 
     clearSecurityBlockCache()
     await logSecurityEvent(req, {
@@ -453,7 +454,7 @@ router.post('/blocks', async (req, res) => {
 
     return res.status(201).json({ block: serializeBlock(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo crear el bloqueo' })
+    return sendServerError(req, res, error, 'No se pudo crear el bloqueo')
   }
 })
 
@@ -470,7 +471,7 @@ router.delete('/blocks/:id', async (req, res) => {
       .select('id, block_type, user_id, ip_address, reason, blocked_by, blocked_at, expires_at, revoked_at, revoked_by')
       .maybeSingle()
 
-    if (error) return res.status(500).json({ error: error.message })
+    if (error) return sendServerError(req, res, error, 'No se pudo completar la operación')
     if (!data) return res.status(404).json({ error: 'Bloqueo no encontrado' })
 
     clearSecurityBlockCache()
@@ -484,7 +485,7 @@ router.delete('/blocks/:id', async (req, res) => {
 
     return res.json({ revoked: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo revocar el bloqueo' })
+    return sendServerError(req, res, error, 'No se pudo revocar el bloqueo')
   }
 })
 
@@ -548,7 +549,7 @@ router.get('/blocks', async (req, res) => {
       ...getRequestLogContext(req),
       error: error.message,
     })
-    return res.status(500).json({ error: error.message || 'No se pudo cargar bloqueos' })
+    return sendServerError(req, res, error, 'No se pudo cargar bloqueos')
   }
 })
 
@@ -585,7 +586,7 @@ router.post('/rate-limits/clear', async (req, res) => {
       ...getRequestLogContext(req),
       error: error.message,
     })
-    return res.status(500).json({ error: error.message || 'No se pudo limpiar el bloqueo' })
+    return sendServerError(req, res, error, 'No se pudo limpiar el bloqueo')
   }
 })
 
@@ -642,7 +643,7 @@ router.get('/errors', async (req, res) => {
       warnings: [],
     })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar errores técnicos' })
+    return sendServerError(req, res, error, 'No se pudieron cargar errores técnicos')
   }
 })
 
@@ -663,7 +664,7 @@ router.get('/errors/:id', async (req, res) => {
     if (!data) return res.status(404).json({ error: 'Error no encontrado' })
     return res.json({ error: data })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo cargar el error' })
+    return sendServerError(req, res, error, 'No se pudo cargar el error')
   }
 })
 

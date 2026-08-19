@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { apiFetch } from '../lib/api'
+import { sanitizeContentHtml } from '../lib/sanitizeHtml'
 import { Button, Input, Card } from '../components/ui'
 import styles from './SharePage.module.css'
 
@@ -482,7 +483,7 @@ export default function SharePage() {
                 <h2>{page.name}</h2>
                 <div
                   className={styles.content}
-                  dangerouslySetInnerHTML={{ __html: page.contentHtml }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page.contentHtml) }}
                 />
               </section>
             ))}

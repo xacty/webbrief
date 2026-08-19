@@ -52,7 +52,7 @@ import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, 
 import { diffWords } from 'diff'
 import { useAuth } from '../auth/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { apiDownloadToFile, apiFetch, apiSubmitDownload } from '../lib/api'
+import { apiDownloadBlob, apiFetch, apiSubmitDownload } from '../lib/api'
 import { markTaskDone } from '../lib/tutorialState'
 import { getProjectEditorCapabilities } from '../lib/roleCapabilities'
 import { companyToSlug } from '../lib/companySlug'
@@ -60,6 +60,8 @@ import { Modal, Button, Select, HelpPopover } from '../components/ui'
 import LibraryPickerModal from '../components/library/LibraryPickerModal'
 import navStyles from './ProjectEditorNav.module.css'
 import toolbarStyles from './ProjectEditorToolbar.module.css'
+import { sanitizeContentHtml } from '../lib/sanitizeHtml'
+import { isSafeUrl, safeUrlOrEmpty } from '../lib/safeUrl'
 import seoRulesStyles from './ProjectEditorSeoRules.module.css'
 import panelStyles from './ProjectEditorPanels.module.css'
 import styles from './ProjectEditor.module.css'
@@ -199,9 +201,16 @@ function CtaButtonView({ node, updateAttributes }) {
     if (nextText === null) return
     const nextUrl = window.prompt('URL del CTA:', url)
     if (nextUrl === null) return
+    const trimmedUrl = nextUrl.trim()
+    // Avisamos en vez de descartar en silencio: el backend igual la sanearía al
+    // guardar, y el usuario se quedaría sin CTA sin entender por que.
+    if (trimmedUrl && !isSafeUrl(trimmedUrl)) {
+      window.alert('URL no permitida. Usa http://, https:// o mailto:')
+      return
+    }
     updateAttributes({
       ctaText: nextText.trim() || text,
-      ctaUrl: nextUrl.trim(),
+      ctaUrl: trimmedUrl,
     })
   }
 
@@ -210,12 +219,12 @@ function CtaButtonView({ node, updateAttributes }) {
       contentEditable={false}
       data-cta-button=""
       data-cta-text={text}
-      data-cta-url={url}
+      data-cta-url={safeUrlOrEmpty(url)}
     >
       <div className={styles.ctaNode}>
         <a
           className={styles.ctaNodeButton}
-          href={url || '#'}
+          href={safeUrlOrEmpty(url) || '#'}
           onClick={(event) => event.preventDefault()}
         >
           {text}
@@ -244,8 +253,12 @@ const CtaButtonNode = Node.create({
       },
       ctaUrl: {
         default: '',
-        parseHTML: (element) => element.getAttribute('data-cta-url') || element.querySelector('a')?.getAttribute('href') || '',
-        renderHTML: (attributes) => ({ 'data-cta-url': attributes.ctaUrl }),
+        // Validar en AMBOS lados del roundtrip: si solo se valida la entrada, el
+        // contenido ya guardado con javascript: revive al re-hidratar el documento.
+        parseHTML: (element) => safeUrlOrEmpty(
+          element.getAttribute('data-cta-url') || element.querySelector('a')?.getAttribute('href') || ''
+        ),
+        renderHTML: (attributes) => ({ 'data-cta-url': safeUrlOrEmpty(attributes.ctaUrl) }),
       },
     }
   },
@@ -256,7 +269,7 @@ const CtaButtonNode = Node.create({
 
   renderHTML({ HTMLAttributes }) {
     const text = HTMLAttributes['data-cta-text'] || 'Ver más'
-    const url = HTMLAttributes['data-cta-url'] || '#'
+    const url = safeUrlOrEmpty(HTMLAttributes['data-cta-url']) || '#'
     return [
       'div',
       mergeAttributes({ 'data-cta-button': '' }, HTMLAttributes),
@@ -400,7 +413,7 @@ function EditableImageView({ node, editor, extension, getPos, updateAttributes, 
     if (!projectId) return
 
     try {
-      await apiDownloadToFile(buildProjectImageExportPath({
+      await apiDownloadBlob(buildProjectImageExportPath({
         projectId,
         assetId: node.attrs.assetId || '',
         src: node.attrs.src || '',
@@ -7570,11 +7583,16 @@ function Toolbar({ editor, projectId, companyId, onUndo, onRedo, onAddComment, c
     if (text === null) return
     const url = window.prompt('URL del CTA:', 'https://')
     if (url === null) return
+    const trimmedUrl = url.trim()
+    if (trimmedUrl && !isSafeUrl(trimmedUrl)) {
+      window.alert('URL no permitida. Usa http://, https:// o mailto:')
+      return
+    }
     editor.chain().focus().insertContent({
       type: 'ctaButton',
       attrs: {
         ctaText: text.trim() || 'Ver más',
-        ctaUrl: url.trim(),
+        ctaUrl: trimmedUrl,
       },
     }).run()
   }
@@ -10533,7 +10551,7 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
         return
       }
 
-      await apiDownloadToFile(buildAdvancedProjectImageExportPath({
+      await apiDownloadBlob(buildAdvancedProjectImageExportPath({
         projectId,
         assetId: exportModal.imageEntry?.image?.assetId || exportModal.image.assetId || '',
         src: exportModal.imageEntry?.image?.src || exportModal.image.src || '',
@@ -10716,7 +10734,7 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
                             setSelectedImageKeys(nextKeys)
                             setImageContextMenu({ x: event.clientX, y: event.clientY, keys: nextKeys })
                           }}
-                          dangerouslySetInnerHTML={{ __html: block.renderedHtml || block.html }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(block.renderedHtml || block.html) }}
                         />
                       )}
                     </div>
@@ -10991,7 +11009,7 @@ function ProposalReviewPanel({
                 block.type === 'added' && styles.proposalBlockAdded,
                 block.type === 'removed' && styles.proposalBlockRemoved,
               )}
-              dangerouslySetInnerHTML={{ __html: block.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(block.html) }}
             />
           ))
         ) : (
@@ -11000,7 +11018,7 @@ function ProposalReviewPanel({
               section.status === 'added' && styles.proposalContentAdded,
               section.status === 'removed' && styles.proposalContentRemoved,
             )}
-            dangerouslySetInnerHTML={{ __html: section.innerHtml }}
+            dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(section.innerHtml) }}
           />
         )}
       </div>
@@ -11247,7 +11265,7 @@ function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest,
           ref={contentRef}
           data-preview-page=""
           className={styles.previewPage}
-          dangerouslySetInnerHTML={{ __html: page?.fullContent || buildDocumentHTML(page?.sections || []) }}
+          dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(page?.fullContent || buildDocumentHTML(page?.sections || [])) }}
         />
       </div>
     </div>

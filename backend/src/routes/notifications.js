@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { isMissingTableError } from '../lib/projectAccess.js'
 import { requireAuth } from '../middleware/auth.js'
+import { sendServerError } from '../lib/errorResponses.js'
 
 const router = Router()
 let notificationsTableAvailable = true
@@ -45,12 +46,12 @@ router.get('/', async (req, res) => {
         return res.json({ notifications: [], notificationsAvailable: false })
       }
 
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     return res.json({ notifications: (data || []).map(serializeNotification), notificationsAvailable: true })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudieron cargar las notificaciones' })
+    return sendServerError(req, res, error, 'No se pudieron cargar las notificaciones')
   }
 })
 
@@ -74,13 +75,13 @@ router.patch('/:id/read', async (req, res) => {
         return res.status(404).json({ error: 'Notificación no encontrada' })
       }
 
-      return res.status(500).json({ error: error.message })
+      return sendServerError(req, res, error, 'No se pudo completar la operación')
     }
 
     if (!data) return res.status(404).json({ error: 'Notificación no encontrada' })
     return res.json({ notification: serializeNotification(data) })
   } catch (error) {
-    return res.status(500).json({ error: error.message || 'No se pudo marcar la notificación' })
+    return sendServerError(req, res, error, 'No se pudo marcar la notificación')
   }
 })
 
