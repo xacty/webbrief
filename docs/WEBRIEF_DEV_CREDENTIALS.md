@@ -33,4 +33,4 @@ Si la contraseña se pierde o rota:
 
 - No pegar la contraseña en chats persistidos, memoria, ni en otros archivos del repo.
 - No sincronizar `.claude/secrets/` a Dropbox/iCloud/servicios remotos sin cifrado.
-- Auto-pause del free-tier: un workflow de GitHub Actions ([`keepalive-supabase-dev.yml`](../.github/workflows/keepalive-supabase-dev.yml)) pinguea Dev cada 5 días para evitar la pausa por inactividad. Si de todos modos aparece pausada (dashboard manual, cron caído, o project ref rotado), el login fallará con "Failed to fetch" hasta restaurar el proyecto desde el dashboard de Supabase.
+- Auto-pause del free-tier: un workflow de GitHub Actions ([`keepalive-supabase-dev.yml`](../.github/workflows/keepalive-supabase-dev.yml)) pinguea Dev 4 veces al día (3 consultas por run) para evitar la pausa por baja actividad. Si de todos modos aparece pausada (dashboard manual, cron caído, o project ref rotado), el login fallará con "Failed to fetch" hasta restaurar el proyecto desde el dashboard de Supabase.

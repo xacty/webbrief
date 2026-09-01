@@ -48,7 +48,7 @@
 - La contraseña vive en `.claude/secrets/dev-credentials.env` como `CLAUDE_BOT_EMAIL` y `CLAUDE_BOT_PASSWORD`. El directorio `.claude/secrets/` está en `.gitignore` — no lo commitees ni pegues su contenido en respuestas, PRs, o memoria persistente.
 - Al leer el archivo, respeta el formato con comillas simples (`KEY='value'`) para evitar shell-expansion de caracteres como `$`.
 - Ver `docs/WEBRIEF_DEV_CREDENTIALS.md` para detalle de la cuenta, reglas de manejo y procedimiento de reset.
-- Un workflow de GitHub Actions ([`.github/workflows/keepalive-supabase-dev.yml`](.github/workflows/keepalive-supabase-dev.yml)) pinguea Dev cada 5 días para evitar el auto-pause del free-tier. Si aun así aparece pausada (dashboard manual, cron caído, project ref rotado), pide restaurarla antes de intentar el login.
+- Un workflow de GitHub Actions ([`.github/workflows/keepalive-supabase-dev.yml`](.github/workflows/keepalive-supabase-dev.yml)) pinguea Dev 4 veces al día (3 consultas por run) para evitar el auto-pause del free-tier. La cadencia anterior de 1 ping cada 5 días NO alcanzaba: Supabase mide volumen de actividad en la ventana de 7 días, no tiempo desde la última request, y el proyecto se pausó igual el 2026-08-31. Si aun así aparece pausada (dashboard manual, cron caído, project ref rotado), pide restaurarla antes de intentar el login.
 - No uses la cuenta personal del owner para pruebas.
 
 ## Time Estimates Rule
