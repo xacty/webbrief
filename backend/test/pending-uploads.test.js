@@ -5,6 +5,14 @@ import {
   stripPendingUploadImagesFromHtml,
   stripPendingUploadImagesFromJson,
   countPendingUploadImages,
+  hasPendingUpload,
+  replacePendingUploadInHtml,
+  replacePendingUploadInJson,
+  removePendingUploadFromHtml,
+  removePendingUploadFromJson,
+  stripPendingUploadsFromPages,
+  imageAttrsFromAsset,
+  keepLocalPlaceholderContent,
 } from '../../frontend/src/lib/pendingUploads.js'
 
 // Caso real que motivó el módulo: una propuesta en Prod quedó con
@@ -101,4 +109,225 @@ test('countPendingUploadImages: cuenta solo placeholders', () => {
   assert.equal(countPendingUploadImages(`<img src="${REAL}">`), 0)
   assert.equal(countPendingUploadImages(''), 0)
   assert.equal(countPendingUploadImages(null), 0)
+})
+
+// -------- 5. hasPendingUpload --------
+
+test('hasPendingUpload: encuentra el placeholder exacto en HTML', () => {
+  const html = `<p>hola</p><img src="${BLOB}" alt="a.png">`
+  assert.equal(hasPendingUpload(html, BLOB), true)
+})
+
+test('hasPendingUpload: no confunde un tempUrl distinto ni uno que solo aparece en el alt', () => {
+  const html = `<img src="${REAL}" alt="captura de ${BLOB}">`
+  assert.equal(hasPendingUpload(html, BLOB), false)
+  assert.equal(hasPendingUpload(html, REAL), true)
+})
+
+test('hasPendingUpload: recorre JSON de TipTap en profundidad', () => {
+  const json = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'hola' }] },
+      { type: 'image', attrs: { src: BLOB } },
+    ],
+  }
+  assert.equal(hasPendingUpload(json, BLOB), true)
+  assert.equal(hasPendingUpload(json, REAL), false)
+})
+
+test('hasPendingUpload: entradas vacías/nulas no rompen', () => {
+  assert.equal(hasPendingUpload('', BLOB), false)
+  assert.equal(hasPendingUpload(null, BLOB), false)
+  assert.equal(hasPendingUpload(undefined, BLOB), false)
+  assert.equal(hasPendingUpload('<img src="x">', ''), false)
+  assert.equal(hasPendingUpload('<img src="x">', null), false)
+})
+
+// -------- 6. imageAttrsFromAsset --------
+
+test('imageAttrsFromAsset: mapea el shape del asset recién subido', () => {
+  const asset = {
+    id: 'asset-1',
+    publicUrl: REAL,
+    fileName: 'IMG_2542.webp',
+    path: 'companies/c1/projects/p1/asset-IMG_2542.webp',
+    width: 1200,
+    height: 800,
+  }
+  assert.deepEqual(imageAttrsFromAsset(asset, 'fallback.png'), {
+    src: REAL,
+    assetId: 'asset-1',
+    fileName: 'IMG_2542.webp',
+    storagePath: 'companies/c1/projects/p1/asset-IMG_2542.webp',
+    originalWidth: 1200,
+    originalHeight: 800,
+  })
+})
+
+test('imageAttrsFromAsset: null-safe — asset incompleto no tira, usa el fallback de nombre', () => {
+  assert.deepEqual(imageAttrsFromAsset(null, 'archivo.png'), {
+    src: '',
+    assetId: null,
+    fileName: 'archivo.png',
+    storagePath: null,
+    originalWidth: null,
+    originalHeight: null,
+  })
+  assert.deepEqual(imageAttrsFromAsset({}, ''), {
+    src: '',
+    assetId: null,
+    fileName: '',
+    storagePath: null,
+    originalWidth: null,
+    originalHeight: null,
+  })
+})
+
+// -------- 7. replacePendingUploadInHtml --------
+
+test('replacePendingUploadInHtml: reemplaza src y agrega los data-* del asset', () => {
+  const html = `<p>hola</p><img src="${BLOB}" alt="IMG_2542.webp"><p>chau</p>`
+  const attrs = imageAttrsFromAsset({
+    id: 'asset-1',
+    publicUrl: REAL,
+    fileName: 'IMG_2542.webp',
+    path: 'p/asset.webp',
+    width: 100,
+    height: 50,
+  })
+  const result = replacePendingUploadInHtml(html, BLOB, attrs)
+  assert.equal(
+    result,
+    `<p>hola</p><img src="${REAL}" alt="IMG_2542.webp" data-asset-id="asset-1" data-file-name="IMG_2542.webp" data-storage-path="p/asset.webp" data-original-width="100" data-original-height="50"><p>chau</p>`
+  )
+})
+
+test('replacePendingUploadInHtml: no toca otras imágenes ni placeholders con otro tempUrl', () => {
+  const otherBlob = `${BLOB}-other`
+  const html = `<img src="${otherBlob}"><img src="${REAL}">`
+  assert.equal(replacePendingUploadInHtml(html, BLOB, { src: REAL }), html)
+})
+
+test('replacePendingUploadInHtml: identidad cuando el tempUrl no está o falta', () => {
+  const html = `<p>hola</p>`
+  assert.equal(replacePendingUploadInHtml(html, BLOB, { src: REAL }), html)
+  assert.equal(replacePendingUploadInHtml('', BLOB, { src: REAL }), '')
+  assert.equal(replacePendingUploadInHtml(html, '', { src: REAL }), html)
+})
+
+// -------- 8. replacePendingUploadInJson --------
+
+test('replacePendingUploadInJson: mergea attrs + src en el nodo image, sin mutar el original', () => {
+  const json = {
+    type: 'doc',
+    content: [{ type: 'image', attrs: { src: BLOB, alt: 'IMG_2542.webp' } }],
+  }
+  const attrs = imageAttrsFromAsset({ id: 'asset-1', publicUrl: REAL, path: 'p/a.webp' })
+  const result = replacePendingUploadInJson(json, BLOB, attrs)
+  assert.equal(result.content[0].attrs.src, REAL)
+  assert.equal(result.content[0].attrs.assetId, 'asset-1')
+  assert.equal(result.content[0].attrs.alt, 'IMG_2542.webp')
+  assert.equal(json.content[0].attrs.src, BLOB) // no mutó el original
+})
+
+test('replacePendingUploadInJson: identidad referencial cuando el tempUrl no está', () => {
+  const json = { type: 'doc', content: [{ type: 'image', attrs: { src: REAL } }] }
+  assert.equal(replacePendingUploadInJson(json, BLOB, { src: REAL }), json)
+})
+
+// -------- 9. removePendingUploadFromHtml / removePendingUploadFromJson --------
+
+test('removePendingUploadFromHtml: quita solo el placeholder del tempUrl indicado', () => {
+  const html = `<img src="${BLOB}"><img src="${BLOB}2"><img src="${REAL}">`
+  assert.equal(removePendingUploadFromHtml(html, BLOB), `<img src="${BLOB}2"><img src="${REAL}">`)
+})
+
+test('removePendingUploadFromHtml: identidad cuando no está', () => {
+  const html = `<img src="${REAL}">`
+  assert.equal(removePendingUploadFromHtml(html, BLOB), html)
+  assert.equal(removePendingUploadFromHtml('', BLOB), '')
+})
+
+test('removePendingUploadFromJson: descarta solo el nodo con ese tempUrl, sin mutar el original', () => {
+  const json = {
+    type: 'doc',
+    content: [
+      { type: 'image', attrs: { src: BLOB } },
+      { type: 'image', attrs: { src: REAL } },
+    ],
+  }
+  const result = removePendingUploadFromJson(json, BLOB)
+  assert.equal(result.content.length, 1)
+  assert.equal(result.content[0].attrs.src, REAL)
+  assert.equal(json.content.length, 2)
+})
+
+test('removePendingUploadFromJson: nodo que queda vacío pierde la clave content', () => {
+  const json = { type: 'doc', content: [{ type: 'image', attrs: { src: BLOB } }] }
+  const result = removePendingUploadFromJson(json, BLOB)
+  assert.equal('content' in result, false)
+})
+
+// -------- 10. stripPendingUploadsFromPages --------
+
+test('stripPendingUploadsFromPages: filtra TODAS las páginas del payload, no solo una', () => {
+  const payload = [
+    {
+      id: 'p1',
+      contentHtml: `<p>a</p><img src="${BLOB}">`,
+      contentJson: { type: 'doc', content: [{ type: 'image', attrs: { src: BLOB } }] },
+    },
+    { id: 'p2', contentHtml: '<p>b</p>', contentJson: { type: 'doc', content: [] } },
+    { id: 'p3', contentHtml: `<p>c</p><img src="${BLOB}2"><img src="${BLOB}3">`, contentJson: null },
+  ]
+  const { pages, dropped } = stripPendingUploadsFromPages(payload)
+  assert.equal(dropped, 3)
+  assert.equal(pages[0].contentHtml, '<p>a</p>')
+  assert.equal(pages[0].contentJson.content, undefined)
+  assert.equal(pages[1].contentHtml, '<p>b</p>')
+  assert.equal(pages[2].contentHtml, '<p>c</p>')
+})
+
+test('stripPendingUploadsFromPages: sin placeholders en ninguna página, dropped=0 y no toca las páginas', () => {
+  const payload = [{ id: 'p1', contentHtml: '<p>a</p>', contentJson: null }]
+  const { pages, dropped } = stripPendingUploadsFromPages(payload)
+  assert.equal(dropped, 0)
+  assert.equal(pages[0], payload[0])
+})
+
+// -------- 11. keepLocalPlaceholderContent --------
+
+test('keepLocalPlaceholderContent: conserva el local con placeholder, toma el resto del persisted', () => {
+  const localPages = [
+    { id: 'p1', fullContent: `<p>a</p><img src="${BLOB}">`, contentJson: { local: true }, sections: ['local-section'] },
+    { id: 'p2', fullContent: '<p>b</p>', contentJson: { local: true }, sections: [] },
+  ]
+  const persistedPages = [
+    { id: 'p1', fullContent: '<p>a</p>', contentJson: { server: true }, sections: [], version: 5, name: 'Uno' },
+    { id: 'p2', fullContent: '<p>b editado en otra sesión</p>', contentJson: { server: true }, sections: [], version: 3, name: 'Dos' },
+  ]
+  const result = keepLocalPlaceholderContent(localPages, persistedPages)
+
+  assert.equal(result[0].fullContent, `<p>a</p><img src="${BLOB}">`)
+  assert.deepEqual(result[0].contentJson, { local: true })
+  assert.deepEqual(result[0].sections, ['local-section'])
+  assert.equal(result[0].version, 5)
+
+  assert.equal(result[1].fullContent, '<p>b editado en otra sesión</p>')
+})
+
+test('keepLocalPlaceholderContent: página persisted sin equivalente local pasa igual', () => {
+  const result = keepLocalPlaceholderContent([], [{ id: 'p1', fullContent: '<p>a</p>' }])
+  assert.equal(result[0].fullContent, '<p>a</p>')
+})
+
+// -------- 12. Propiedad anti-falso-positivo (la usan buildSectionActivityEvents/buildDocumentActivityEvents en ProjectEditor.jsx) --------
+
+test('propiedad: dos HTML que solo difieren en un placeholder blob: quedan idénticos tras filtrar', () => {
+  // Sin esto, comparar un `previousPages` con el marcador contra un `payload`
+  // ya filtrado vería un image_removed falso en saveProjectPages.
+  const withPlaceholder = `<p>hola</p><img src="${BLOB}">`
+  const withoutPlaceholder = `<p>hola</p>`
+  assert.equal(stripPendingUploadImagesFromHtml(withPlaceholder), stripPendingUploadImagesFromHtml(withoutPlaceholder))
 })
