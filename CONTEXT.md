@@ -974,6 +974,13 @@ Documentado en `docs/WEBRIEF_MCP_HANDOFF.md` (reescrito en esta sesión post-v1)
 6. `deploy.sh` self-update fix (deuda técnica del bug arriba).
 7. Cuando justifique: HTTP transport con OAuth (multi-scope, scopes refinados).
 
+## Completed (2026-09-11) — Quitar aprobación de propuestas + subidas de imagen robustas
+
+Diseño completo en `docs/superpowers/specs/2026-09-11-remove-approval-robust-uploads-design.md`.
+
+- **Aprobación eliminada para todos los roles** (incluido Diseño): motivado por un incidente en Prod donde aprobar 5 propuestas viejas pisó 7 secciones editadas el mismo día. `project_page_change_proposals` se conserva como historial (no se borra) pero ya no se escribe: todos los roles con permiso de escritura publican directo. La red de seguridad sigue siendo el historial por sección ("Ver detalle" → "Restaurar esta versión").
+- **Subidas de imagen robustas**: motivado por un bug donde 11 imágenes subidas a Coapa/Del Valle quedaron en `project_assets` pero nunca en el HTML guardado. Nueva invariante: un placeholder `<img src="blob:…">` vive SOLO en memoria (editor + `pages`); `snapshotActivePage` ya no lo filtra (sobrevive a sync y a cambios de página/modo) y el único filtro real es `saveProjectPages` sobre TODAS las páginas del payload, vía `stripPendingUploadsFromPages` (`frontend/src/lib/pendingUploads.js`). Registro `inFlightUploadsRef` en `ProjectEditor.jsx` rastrea subidas en curso; al resolver, se reinserta en el editor montado o en el estado de la página que corresponda, o avisa por toast si no encuentra dónde; `beforeunload` bloquea con subidas pendientes; `EditableImageView` muestra "Subiendo…" mientras el src siga siendo `blob:`.
+
 ## Pending
 
 - richer deliverables UI beyond compact editor panel
