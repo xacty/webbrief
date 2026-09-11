@@ -267,24 +267,53 @@ export function imageAttrsFromAsset(asset, fallbackFileName = '') {
   }
 }
 
-// Tras un guardado exitoso, persistedPages ya NO tiene los placeholders
-// blob: (saveProjectPages los filtró antes del PUT). Si localPages todavía
-// tiene alguno para esa página (subida que seguía en vuelo cuando arrancó
-// este guardado), conservamos el contenido local — perder el nodo del
-// editor sería el mismo bug de siempre, solo que ahora vía setPages en vez
-// de vía el PUT.
-export function keepLocalPlaceholderContent(localPages, persistedPages) {
-  const localById = new Map((localPages || []).map((page) => [page.id, page]))
+// Tras un guardado (PUT) o un sync (GET), reconcilia lo que volvió del
+// servidor con el estado actual — pagesRef.current en ProjectEditor.jsx, NO
+// el `pages` cerrado en el closure de saveProjectPages/syncRemoteChanges al
+// arrancar la request. Reemplaza a keepLocalPlaceholderContent, que solo
+// protegía una página cuyo contenido local TODAVÍA tuviera un placeholder
+// blob:. Eso deja un agujero: si la subida resuelve a su URL final DURANTE
+// el PUT (caso 2 de onImageUploadDone — el editor montado ya no tiene el
+// placeholder, así que el swap fue directo al estado de otra página), el
+// contenido local deja de tener blob: pero tampoco es el que se envió
+// (que salió sin esa imagen, porque stripPendingUploadsFromPages la sacó
+// del payload antes de armar la request) — keepLocalPlaceholderContent lo
+// daba por "sin cambios" y lo pisaba con la versión del servidor, perdiendo
+// la imagen recién subida en silencio.
+//
+// currentPages: estado local en el momento de reconciliar.
+// persistedPages: lo que devolvió el servidor (ya mapeado).
+// sentPages: el payload que efectivamente viajó, items
+// { id, contentHtml, contentJson, ... } (ver stripPendingUploadsFromPages).
+//
+// Por cada página persisted: si hay una página actual con ese id y su
+// `fullContent` ya no coincide con el `contentHtml` que se envió — placeholder
+// todavía pendiente, subida recién resuelta, o el usuario tipeando mientras
+// la request estaba en vuelo — se conserva fullContent/contentJson/sections
+// locales encima de la persisted (version y el resto de los campos los gana
+// el servidor) y se anota el id en keptIds, para que el caller NO limpie
+// isDirty del todo y el próximo autosave la persista. Si no hay diferencia,
+// o no hay página local con ese id, la persisted pasa intacta.
+export function reconcilePersistedPages(currentPages, persistedPages, sentPages) {
+  const currentById = new Map((currentPages || []).map((page) => [page.id, page]))
+  const sentById = new Map((sentPages || []).map((page) => [page.id, page]))
+  const keptIds = []
 
-  return (persistedPages || []).map((persistedPage) => {
-    const localPage = localById.get(persistedPage.id)
-    if (!localPage || !countPendingUploadImages(localPage.fullContent)) return persistedPage
+  const pages = (persistedPages || []).map((persistedPage) => {
+    const currentPage = currentById.get(persistedPage.id)
+    if (!currentPage) return persistedPage
 
+    const sentPage = sentById.get(persistedPage.id)
+    if (currentPage.fullContent === sentPage?.contentHtml) return persistedPage
+
+    keptIds.push(persistedPage.id)
     return {
       ...persistedPage,
-      fullContent: localPage.fullContent,
-      contentJson: localPage.contentJson,
-      sections: localPage.sections,
+      fullContent: currentPage.fullContent,
+      contentJson: currentPage.contentJson,
+      sections: currentPage.sections,
     }
   })
+
+  return { pages, keptIds }
 }

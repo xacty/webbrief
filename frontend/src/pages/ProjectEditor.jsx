@@ -47,7 +47,7 @@ import {
   stripPendingUploadImagesFromHtml,
   isPendingUploadSrc,
   stripPendingUploadsFromPages,
-  keepLocalPlaceholderContent,
+  reconcilePersistedPages,
   hasPendingUpload,
   replacePendingUploadInHtml,
   replacePendingUploadInJson,
@@ -3671,13 +3671,21 @@ export default function ProjectEditor() {
           contentRules: getPageContentRules({ contentRules: activeContentRulesRef.current }),
         }
       })
-      // Si alguna página del estado local todavía tiene un placeholder blob:
-      // (subida en curso que no llegó a este guardado), lo conservamos —
-      // persistedPages ya no lo tiene porque el PUT lo filtró. Forma
-      // funcional: entre armar el payload y esta respuesta puede haber
-      // avanzado `pages` (p.ej. otra subida resolvió mientras esta esperaba).
-      setPages((currentPages) => keepLocalPlaceholderContent(currentPages, persistedPages))
-      setIsDirty(false)
+      // Reconciliamos contra pagesRef.current (espejo vivo), no contra el
+      // `pages` cerrado en el closure de este save: entre armar el payload y
+      // esta respuesta puede haber avanzado el estado real — un caso-2 de
+      // onImageUploadDone (ver más abajo) pudo resolver un placeholder
+      // DURANTE este PUT y pisar el blob: por la URL final directo en el
+      // estado de otra página. persistedPages nunca tuvo esa imagen (salió
+      // del payload vía stripPendingUploadsFromPages), así que si esta
+      // reconciliación comparara contra el `pages` viejo (o solo mirara si
+      // queda un blob:, como hacía keepLocalPlaceholderContent) la
+      // perderíamos en silencio. keptIds.length > 0 dice que alguna página
+      // quedó con contenido más nuevo que lo persisted: no podemos limpiar
+      // isDirty del todo o ese contenido se queda sin guardar para siempre.
+      const { pages: nextPages, keptIds } = reconcilePersistedPages(pagesRef.current, persistedPages, strippedPayload)
+      setPages(nextPages)
+      setIsDirty(keptIds.length > 0)
       setSaveMessage(source === 'autosave' ? 'Autoguardado' : 'Guardado')
       // Hubo imágenes todavía subiendo cuando se serializó: no se guardaron
       // (su src era un `blob:` local, inservible fuera de esta pestaña). En
@@ -3820,7 +3828,15 @@ export default function ProjectEditor() {
       const data = await apiFetch(`/api/projects/${projectId}`)
       const remotePages = data.pages.map((page) => mapPersistedPage(page, projectType))
       const remoteById = new Map(remotePages.map((page) => [page.id, page]))
-      const localById = new Map(pages.map((page) => [page.id, page]))
+      // pagesRef.current en vez del `pages` cerrado en este callback: la
+      // ventana del GET es la misma que la del PUT de saveProjectPages — un
+      // caso-2 de onImageUploadDone puede resolver un placeholder MIENTRAS
+      // este sync está en vuelo. Si el merge usara el `pages` viejo, el
+      // resultado del merge reinstalaría el blob: que ya se reemplazó (y
+      // cuyo object URL ya se revocó); el próximo guardado lo filtra y la
+      // imagen recién subida se pierde para siempre.
+      const localPages = pagesRef.current
+      const localById = new Map(localPages.map((page) => [page.id, page]))
       const usesSections = projectType === 'page' || projectType === 'faq'
 
       // Snapshot único de la página activa (si el editor está montado) — se usa
@@ -3839,7 +3855,7 @@ export default function ProjectEditor() {
       let anyLocalDifference = false
       const nextPages = []
 
-      pages.forEach((localPage) => {
+      localPages.forEach((localPage) => {
         const remotePage = remoteById.get(localPage.id)
         const isActivePage = localPage.id === activePageId
         const localHtml = isActivePage && activeSnapshot
@@ -4004,7 +4020,7 @@ export default function ProjectEditor() {
         setTimeout(() => syncRemoteChangesRef.current?.({ actorName }), 250)
       }
     }
-  }, [activePageId, pages, projectId, projectType, renumberAutoSections, showToast, snapshotActivePage])
+  }, [activePageId, projectId, projectType, renumberAutoSections, showToast, snapshotActivePage])
 
   useEffect(() => {
     syncRemoteChangesRef.current = syncRemoteChanges

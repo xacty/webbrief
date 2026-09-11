@@ -12,7 +12,7 @@ import {
   removePendingUploadFromJson,
   stripPendingUploadsFromPages,
   imageAttrsFromAsset,
-  keepLocalPlaceholderContent,
+  reconcilePersistedPages,
 } from '../../frontend/src/lib/pendingUploads.js'
 
 // Caso real que motivó el módulo: una propuesta en Prod quedó con
@@ -336,30 +336,85 @@ test('stripPendingUploadsFromPages: sin placeholders en ninguna página, dropped
   assert.equal(pages[0], payload[0])
 })
 
-// -------- 11. keepLocalPlaceholderContent --------
+// -------- 11. reconcilePersistedPages --------
+//
+// Reemplaza a keepLocalPlaceholderContent: esa función comparaba el estado
+// local contra un placeholder blob: que TODAVÍA estuviera ahí, así que una
+// subida que resolvía a su URL final justo durante el PUT (o el GET del
+// sync) dejaba de estar protegida — el contenido local ya no tenía blob:,
+// pero tampoco era el que se había enviado/persistido. reconcilePersistedPages
+// compara contra lo que realmente viajó (sentPages), no contra la forma del
+// placeholder, así que cubre ese caso también.
 
-test('keepLocalPlaceholderContent: conserva el local con placeholder, toma el resto del persisted', () => {
-  const localPages = [
+test('reconcilePersistedPages: subida todavía pendiente cuando termina el guardado -> se conserva', () => {
+  // Lo que se envió ya no tenía la imagen (stripPendingUploadsFromPages la
+  // sacó del payload antes del PUT); el estado actual (pagesRef.current)
+  // sigue con el placeholder porque la subida no resolvió a tiempo.
+  const sentPages = [{ id: 'p1', contentHtml: '<p>a</p>', contentJson: { sent: true } }]
+  const currentPages = [
     { id: 'p1', fullContent: `<p>a</p><img src="${BLOB}">`, contentJson: { local: true }, sections: ['local-section'] },
-    { id: 'p2', fullContent: '<p>b</p>', contentJson: { local: true }, sections: [] },
   ]
   const persistedPages = [
     { id: 'p1', fullContent: '<p>a</p>', contentJson: { server: true }, sections: [], version: 5, name: 'Uno' },
-    { id: 'p2', fullContent: '<p>b editado en otra sesión</p>', contentJson: { server: true }, sections: [], version: 3, name: 'Dos' },
   ]
-  const result = keepLocalPlaceholderContent(localPages, persistedPages)
 
-  assert.equal(result[0].fullContent, `<p>a</p><img src="${BLOB}">`)
-  assert.deepEqual(result[0].contentJson, { local: true })
-  assert.deepEqual(result[0].sections, ['local-section'])
-  assert.equal(result[0].version, 5)
+  const { pages, keptIds } = reconcilePersistedPages(currentPages, persistedPages, sentPages)
 
-  assert.equal(result[1].fullContent, '<p>b editado en otra sesión</p>')
+  assert.deepEqual(keptIds, ['p1'])
+  assert.equal(pages[0].fullContent, `<p>a</p><img src="${BLOB}">`)
+  assert.deepEqual(pages[0].contentJson, { local: true })
+  assert.deepEqual(pages[0].sections, ['local-section'])
+  // El resto de los campos (incluida la version) los gana el servidor.
+  assert.equal(pages[0].version, 5)
+  assert.equal(pages[0].name, 'Uno')
 })
 
-test('keepLocalPlaceholderContent: página persisted sin equivalente local pasa igual', () => {
-  const result = keepLocalPlaceholderContent([], [{ id: 'p1', fullContent: '<p>a</p>' }])
-  assert.equal(result[0].fullContent, '<p>a</p>')
+test('reconcilePersistedPages: la subida resolvió a su URL final MIENTRAS el guardado estaba en vuelo -> se conserva', () => {
+  // Caso-2 de onImageUploadDone (ProjectEditor.jsx): entre armar el payload
+  // (ya sin el placeholder, porque stripPendingUploadsFromPages lo sacó) y
+  // la respuesta del PUT, la subida terminó y reemplazó el placeholder por
+  // la URL final directo en el estado de la página. Lo persisted nunca tuvo
+  // esa imagen (no viajó en el payload) — si ganara, la imagen recién
+  // subida desaparecería en silencio pese a haber terminado bien.
+  const sentPages = [{ id: 'p1', contentHtml: '<p>a</p>', contentJson: { sent: true } }]
+  const currentPages = [
+    { id: 'p1', fullContent: `<p>a</p><img src="${REAL}">`, contentJson: { local: true }, sections: ['local-section'] },
+  ]
+  const persistedPages = [
+    { id: 'p1', fullContent: '<p>a</p>', contentJson: { server: true }, sections: [], version: 5 },
+  ]
+
+  const { pages, keptIds } = reconcilePersistedPages(currentPages, persistedPages, sentPages)
+
+  assert.deepEqual(keptIds, ['p1'])
+  assert.equal(pages[0].fullContent, `<p>a</p><img src="${REAL}">`)
+  assert.deepEqual(pages[0].contentJson, { local: true })
+  assert.equal(pages[0].version, 5)
+})
+
+test('reconcilePersistedPages: página sin cambios durante el guardado -> gana la persisted, incluida la version nueva', () => {
+  const sentPages = [{ id: 'p1', contentHtml: '<p>a</p>', contentJson: { sent: true } }]
+  const currentPages = [
+    { id: 'p1', fullContent: '<p>a</p>', contentJson: { local: true }, sections: ['local-section'] },
+  ]
+  const persistedPages = [
+    { id: 'p1', fullContent: '<p>a</p>', contentJson: { server: true }, sections: [], version: 7 },
+  ]
+
+  const { pages, keptIds } = reconcilePersistedPages(currentPages, persistedPages, sentPages)
+
+  assert.deepEqual(keptIds, [])
+  // Misma referencia: la persisted pasa intacta, no una copia.
+  assert.equal(pages[0], persistedPages[0])
+  assert.equal(pages[0].version, 7)
+})
+
+test('reconcilePersistedPages: página persisted sin equivalente en currentPages pasa igual', () => {
+  const persistedPages = [{ id: 'p1', fullContent: '<p>a</p>', version: 2 }]
+  const { pages, keptIds } = reconcilePersistedPages([], persistedPages, [])
+
+  assert.deepEqual(keptIds, [])
+  assert.equal(pages[0], persistedPages[0])
 })
 
 // -------- 12. Propiedad anti-falso-positivo (la usan buildSectionActivityEvents/buildDocumentActivityEvents en ProjectEditor.jsx) --------
