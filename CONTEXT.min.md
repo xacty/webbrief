@@ -401,8 +401,8 @@
 - content rules UI is a compact floating card; editors/managers/admin can edit limits, content writers can see status/limits
 - role preview exists for admin testing; auth applies a local role preview without mutating the real profile
 - role capability matrix is shared in frontend/backend helpers; manager/editor/content_writer/designer/developer actions are gated by capability rather than ad hoc checks
-- designer proposal flow exists via `project_page_change_proposals`; reviewers can accept/reject pending designer content proposals
-- hidden the generic editor review footer controls/status (`Draft`, `En revisión`, `Enviar a revisión`); keep only the designer proposal approval flow and public share approvals
+- designer proposal flow (`project_page_change_proposals`) removed in v2.16.0; every role with write permission publishes directly, no accept/reject step
+- editor review footer controls/status (`Draft`, `En revisión`, `Enviar a revisión`) stay hidden; only public share approvals remain
 - right activity panel now has reliable internal scroll; document content rules are bottom-docked outside the activity list with translucent styling; editor/side panels use slimmer dark scrollbars
 - backend image pipeline now uses ImageKit instead of `sharp`; uploads for project assets and avatars use backend SDK + env vars `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`
 - Supabase now stores ImageKit metadata for assets and avatars (`imagekit_file_id`, original URL, file name/path fields)
