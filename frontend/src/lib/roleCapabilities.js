@@ -112,8 +112,6 @@ export function getProjectEditorCapabilities(currentUser, companyId) {
   const canWriteContent = admin || COMPANY_ROLE_ORDER.includes(companyRole)
   const canUseHandoff = admin || ['admin', 'manager', 'designer', 'developer'].includes(companyRole)
   const canSendToReview = admin || ['admin', 'manager', 'developer'].includes(companyRole)
-  const canReviewDesignerProposals = admin || ['admin', 'manager', 'editor'].includes(companyRole)
-  const isDesignerRole = !admin && companyRole === 'designer'
 
   return {
     companyRole,
@@ -122,8 +120,6 @@ export function getProjectEditorCapabilities(currentUser, companyId) {
     canWriteContent,
     canUseHandoff,
     canSendToReview,
-    canReviewDesignerProposals,
-    isDesigner: isDesignerRole,
     canEditContentRules: canManageProjectMeta,
   }
 }
