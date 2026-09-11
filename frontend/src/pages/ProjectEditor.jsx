@@ -41,11 +41,9 @@ import {
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
 import { createEditorChannel } from '../lib/editorPresence'
-import { mergeSections, buildHtmlFromSections, normalizeHtml, splitSections } from '../lib/sectionMerge'
+import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
 import { buildSectionOrderIndex, orderSectionActivityGroups } from '../lib/activityOrdering'
 import { stripPendingUploadImagesFromHtml, stripPendingUploadImagesFromJson, countPendingUploadImages } from '../lib/pendingUploads'
-import { diffProposalSections, summarizeProposalDiff } from '../lib/proposalDiff'
-import { diffProposalBlocks } from '../lib/proposalBlockDiff'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, Images, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
@@ -1859,19 +1857,6 @@ function mapPersistedPage(page, projectType = 'page') {
     reviewBaselineVersionId: page.reviewBaselineVersionId || null,
     reviewBaselineAt: page.reviewBaselineAt || null,
     reviewRequestedBy: page.reviewRequestedBy || null,
-    pendingProposal: page.pendingProposal ? {
-      id: page.pendingProposal.id,
-      proposerUserId: page.pendingProposal.proposerUserId,
-      contentHtml: page.pendingProposal.contentHtml || '',
-      contentJson: page.pendingProposal.contentJson || null,
-      seoMetadata: page.pendingProposal.seoMetadata || {},
-      status: page.pendingProposal.status || 'pending',
-      reviewerUserId: page.pendingProposal.reviewerUserId || null,
-      reviewerNote: page.pendingProposal.reviewerNote || '',
-      reviewedAt: page.pendingProposal.reviewedAt || null,
-      createdAt: page.pendingProposal.createdAt || null,
-      updatedAt: page.pendingProposal.updatedAt || null,
-    } : null,
   }
 }
 
@@ -2673,15 +2658,6 @@ export default function ProjectEditor() {
   const [editorToast, setEditorToast] = useState(null)
   const [editorMode, setEditorMode] = useState(() => initialPersistedEditorViewRef.current?.editorMode || 'brief')
   const [handoffAudience, setHandoffAudience] = useState(() => initialPersistedEditorViewRef.current?.handoffAudience || 'designer')
-  // Comparador de propuesta de diseño: false = se ve lo publicado (el editor
-  // normal), true = se ve la propuesta pendiente en solo lectura. Es un eje
-  // aparte del modo Brief/Handoff/Preview (qué versión, no qué vista), y NO se
-  // persiste en la vista guardada: siempre se entra por lo publicado.
-  const [proposalViewOpen, setProposalViewOpen] = useState(false)
-  // Loading state de la decisión de Aprobar — deshabilita el botón en ambos
-  // lugares (proposalBox y header del comparador) y evita doble-click
-  // mientras el POST /decision está en vuelo.
-  const [isDecidingProposal, setIsDecidingProposal] = useState(false)
   const [activity, setActivity] = useState([])
   const [notifications, setNotifications] = useState([])
   const [deliverables, setDeliverables] = useState([])
@@ -2801,8 +2777,6 @@ export default function ProjectEditor() {
     canWriteContent,
     canUseHandoff,
     canSendToReview,
-    canReviewDesignerProposals,
-    isDesigner,
     canEditContentRules,
   } = useMemo(() => (
     getProjectEditorCapabilities(currentUser, projectMeta?.companyId)
@@ -2811,42 +2785,6 @@ export default function ProjectEditor() {
     canUseHandoff ? ['brief', 'handoff', 'preview'] : ['brief', 'preview']
   ), [canUseHandoff])
 
-  // ── Revisión de propuesta de diseño ────────────────────────────────────
-  // Un `designer` no escribe la página: cada guardado suyo queda como
-  // propuesta pendiente (project_page_change_proposals) y el backend solo
-  // superpone ese contenido para el propio designer. El revisor veía
-  // "Aprobar / Pedir cambios" sin poder ver QUÉ aprobaba — de ahí este
-  // comparador. El backend YA manda `pendingProposal` completo a los
-  // revisores, así que todo esto es cliente: no hace falta endpoint nuevo.
-  const pendingProposal = activePage?.pendingProposal || null
-  const proposalDiff = useMemo(() => (
-    pendingProposal
-      ? diffProposalSections(activePage?.fullContent || '', pendingProposal.contentHtml || '')
-      : null
-  ), [pendingProposal, activePage?.fullContent])
-  const proposerName = useMemo(() => {
-    const proposerId = pendingProposal?.proposerUserId
-    if (!proposerId) return ''
-    const profile = commentMembers.find((member) => member.id === proposerId)
-      || (Array.isArray(commentProfiles) ? commentProfiles.find((item) => item.id === proposerId) : null)
-    return profile?.fullName || profile?.email || ''
-  }, [pendingProposal, commentMembers, commentProfiles])
-  const canSeeProposalReview = Boolean(canReviewDesignerProposals && pendingProposal)
-  const proposalReviewActive = canSeeProposalReview && proposalViewOpen
-
-  // Cambiar de página vuelve siempre a lo publicado: la aprobación es por
-  // página, y el panel de secciones sigue derivando del doc montado (que en
-  // vista propuesta no existe), así que arrastrar la vista entre páginas
-  // dejaría la columna izquierda describiendo otra cosa.
-  useEffect(() => {
-    setProposalViewOpen(false)
-  }, [activePageId])
-
-  // La propuesta desapareció (aprobada, rechazada, o el rol dejó de poder
-  // revisarla) → no hay nada que comparar.
-  useEffect(() => {
-    if (!canSeeProposalReview) setProposalViewOpen(false)
-  }, [canSeeProposalReview])
   const [contentRuleNotice, setContentRuleNotice] = useState('')
   const activePageForRead = useMemo(() => {
     if (!activePage) return null
@@ -3403,17 +3341,6 @@ export default function ProjectEditor() {
     return { html, json, sections, seoMetadata, contentRules }
   }, [activePageId])
 
-  // Abre el comparador de propuesta. Vive acá y no junto al resto del estado
-  // de propuesta porque necesita snapshotActivePage (declarado justo arriba):
-  // si el revisor tenía cambios sin guardar, el snapshot los deja en `pages` y
-  // vuelven al editor al cerrar el comparador — mismo contrato que el cambio
-  // de modo Brief→Preview, que también desmonta EditorPanel.
-  const openProposalView = useCallback(() => {
-    if (!canSeeProposalReview) return
-    snapshotActivePage()
-    setProposalViewOpen(true)
-  }, [canSeeProposalReview, snapshotActivePage])
-
   const loadPageIntoEditor = useCallback((page, shouldScroll = true) => {
     if (!editorRef.current || !page) return
 
@@ -3543,11 +3470,7 @@ export default function ProjectEditor() {
       })
       setPages(persistedPages)
       setIsDirty(false)
-      setSaveMessage(
-        data.proposalSaved
-          ? (source === 'autosave' ? 'Propuesta autoguardada' : 'Propuesta guardada')
-          : (source === 'autosave' ? 'Autoguardado' : 'Guardado')
-      )
+      setSaveMessage(source === 'autosave' ? 'Autoguardado' : 'Guardado')
       // Hubo imágenes todavía subiendo cuando se serializó: no se guardaron
       // (su src era un `blob:` local, inservible fuera de esta pestaña). En
       // autosave no se avisa — el nodo sigue en el editor y entra solo en el
@@ -3977,68 +3900,6 @@ export default function ProjectEditor() {
       loadSidePanelData()
     } catch (error) {
       setPanelError(error.message || 'No se pudo actualizar el entregable')
-    }
-  }
-
-  async function handleDesignerProposalDecision(status) {
-    if (!canReviewDesignerProposals || !activePage?.pendingProposal?.id) return
-    if (isDecidingProposal) return // guard: evita doble-click mientras la decisión está en vuelo
-
-    // proposalDiff refleja la propuesta ANTES de decidirla — capturarlo acá
-    // porque una vez que setPages reemplace la página, pendingProposal pasa a
-    // null y proposalDiff se vacía en el próximo render.
-    const diffSummary = summarizeProposalDiff(proposalDiff?.counts)
-
-    setPanelError('')
-    setIsDecidingProposal(true)
-    setSaveMessage(status === 'accepted' ? 'Aprobando propuesta...' : 'Rechazando propuesta...')
-
-    try {
-      const data = await apiFetch(`/api/projects/${projectId}/pages/${activePage.id}/proposals/${activePage.pendingProposal.id}/decision`, {
-        method: 'POST',
-        body: JSON.stringify({ status }),
-      })
-
-      // El endpoint ya devuelve la página actualizada (ver POST .../decision
-      // en backend/src/routes/projects.js) — evita el GET completo del
-      // proyecto que antes agregaba un segundo round-trip bloqueante acá.
-      // loadSidePanelData() abajo queda fire-and-forget: solo trae
-      // actividad/notificaciones/entregables, nada que bloquee el canvas.
-      if (data.page) {
-        const mappedPage = mapPersistedPage(data.page, projectType)
-        setPages((prev) => prev.map((page) => (page.id === mappedPage.id ? mappedPage : page)))
-        // F3 (colaboración): este es un fill point de serverPagesRef igual que
-        // la carga inicial y el post-save — si no se refresca acá, la 'base'
-        // del próximo merge de 3 vías queda stale (pre-propuesta) y puede
-        // generar conflictos falsos con una tercera sesión que edite después.
-        serverPagesRef.current.set(mappedPage.id, { contentHtml: mappedPage.fullContent, version: mappedPage.version })
-        // Aprobar reemplaza el content_html de la página, pero el editor montado
-        // sigue con el doc viejo: setPages actualiza el state, no el doc de
-        // TipTap (loadPageIntoEditor solo corría al cambiar de página). Sin esto
-        // el revisor aprueba y el canvas no cambia hasta recargar — justo la
-        // sensación de "aprobé y no pasó nada". Cuando el comparador está
-        // abierto no hace falta: EditorPanel está desmontado y al volver se
-        // monta con el `initialContent` ya fresco.
-        if (!proposalViewOpen && editorRef.current && !editorRef.current.isDestroyed) {
-          loadPageIntoEditor(mappedPage, false)
-        }
-      }
-
-      loadSidePanelData()
-
-      const summaryText = status === 'accepted'
-        ? (diffSummary ? `Propuesta aprobada: ${diffSummary}` : 'Propuesta aprobada')
-        : 'Propuesta rechazada'
-      setSaveMessage(summaryText)
-      setIsDirty(false)
-      showToast({ kind: 'info', text: summaryText })
-    } catch (error) {
-      const message = error.message || 'No se pudo revisar la propuesta'
-      setSaveMessage(message)
-      setPanelError(message)
-      showToast({ kind: 'warning', text: message })
-    } finally {
-      setIsDecidingProposal(false)
     }
   }
 
@@ -5506,23 +5367,7 @@ export default function ProjectEditor() {
           />
         )}
 
-        {/* Área central: comparador de propuesta / editor / handoff / preview.
-            El comparador es un eje aparte del modo (qué versión se ve, no qué
-            vista), así que reemplaza a los tres mientras está abierto. */}
-        {proposalReviewActive && (
-          <ProposalReviewPanel
-            pageName={activePage?.name || 'Página'}
-            proposal={pendingProposal}
-            diff={proposalDiff}
-            proposerName={proposerName}
-            scrollRequest={scrollRequest}
-            onShowPublished={() => setProposalViewOpen(false)}
-            onApprove={() => handleDesignerProposalDecision('accepted')}
-            isDeciding={isDecidingProposal}
-          />
-        )}
-
-        {!proposalReviewActive && editorMode === 'brief' && (
+        {editorMode === 'brief' && (
           <EditorPanel
             projectId={projectId}
             companyId={projectMeta?.companyId || ''}
@@ -5580,7 +5425,7 @@ export default function ProjectEditor() {
           />
         )}
 
-        {!proposalReviewActive && editorMode === 'handoff' && (
+        {editorMode === 'handoff' && (
           <HandoffPanel
             projectId={projectId}
             page={activePageForRead}
@@ -5593,7 +5438,7 @@ export default function ProjectEditor() {
           />
         )}
 
-        {!proposalReviewActive && editorMode === 'preview' && (
+        {editorMode === 'preview' && (
           <PreviewPanel
             page={activePageForRead}
             projectType={projectType}
@@ -5619,8 +5464,6 @@ export default function ProjectEditor() {
           error={panelError}
           notice={panelNotice}
           canManageProjectMeta={canManageProjectMeta}
-          canReviewDesignerProposals={canReviewDesignerProposals}
-          isDesigner={isDesigner}
           onRefresh={refreshSidePanelData}
           isRefreshing={isRefreshingActivity}
           shareUrl={shareUrl}
@@ -5630,11 +5473,6 @@ export default function ProjectEditor() {
           showToast={showToast}
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
-          onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
-          isDecidingProposal={isDecidingProposal}
-          proposalDiff={proposalDiff}
-          proposalViewOpen={proposalViewOpen}
-          onOpenProposalView={openProposalView}
           onActivityClick={navigateToActivity}
           onMarkActivityRead={markActivityRead}
           onNavigateToSection={navigateToSection}
@@ -10906,182 +10744,6 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
   )
 }
 
-// ---------------------------------------------------------------------------
-// ProposalReviewPanel — comparador Publicado ↔ Propuesta (solo lectura)
-// ---------------------------------------------------------------------------
-// Ocupa la columna central en lugar del editor mientras el revisor mira la
-// propuesta. Es deliberadamente NO editable: lo que se ve es el contenido que
-// aprobar/rechazar, no un borrador propio — editar acá escribiría sobre la
-// página publicada y no sobre la propuesta, que es justo la confusión que este
-// panel viene a resolver.
-//
-// Reusa las clases de PreviewPanel (previewPanel/previewToolbar/previewScroll/
-// previewPage) para que lea como la misma superficie de producto, y el atributo
-// data-preview-page para heredar los estilos de tabla/hr/CTA del HTML crudo.
-// Lo propio son los chips por sección que vienen del diff.
-const PROPOSAL_STATUS_META = {
-  added: { label: 'Nueva', chipClass: 'proposalChipAdded' },
-  changed: { label: 'Modificada', chipClass: 'proposalChipChanged' },
-  removed: { label: 'Eliminada', chipClass: 'proposalChipRemoved' },
-}
-
-function ProposalReviewPanel({
-  pageName = 'Página',
-  proposal,
-  diff,
-  proposerName = '',
-  scrollRequest,
-  onShowPublished,
-  onApprove,
-  isDeciding = false,
-}) {
-  const scrollRef = useRef(null)
-  const contentRef = useRef(null)
-
-  // Click en el panel de secciones (o deep-link ?s=) mientras el comparador
-  // está abierto: acá no hay canvas ni dividers, así que el ancla es el
-  // wrapper de cada sección. Sin animación de flash — el chip ya marca qué
-  // cambió, y un flash amarillo encima competiría con esa señal.
-  useEffect(() => {
-    if (!scrollRequest || scrollRequest.type !== 'section') return
-    const scroller = scrollRef.current
-    const content = contentRef.current
-    if (!scroller || !content) return
-    const target = content.querySelector(`[data-proposal-section="${scrollRequest.sectionId}"]`)
-    if (!target) return
-    const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 70
-    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-  }, [scrollRequest])
-
-  const sections = diff?.sections || []
-  const removedSections = diff?.removedSections || []
-  const summary = summarizeProposalDiff(diff?.counts)
-  const updatedAt = formatPanelDate(proposal?.updatedAt)
-  const metaLine = [
-    proposerName && `Por ${proposerName}`,
-    updatedAt && `Actualizada ${updatedAt}`,
-    summary ? `${summary}` : 'Sin cambios respecto a lo publicado',
-  ].filter(Boolean).join(' · ')
-
-  // Diff a nivel bloque solo para secciones 'changed': published/proposal
-  // ambos existen (publishedInnerHtml viene de proposalDiff.js). Memoizado
-  // por `sections` para no recalcular el LCS en cada render del panel (p.ej.
-  // al togglear isDeciding).
-  const changedSectionBlocks = useMemo(() => {
-    const map = new Map()
-    sections.forEach((section) => {
-      if (section.status === 'changed' && section.publishedInnerHtml != null) {
-        map.set(section.sectionId, diffProposalBlocks(section.publishedInnerHtml, section.innerHtml))
-      }
-    })
-    return map
-  }, [sections])
-
-  function renderSection(section) {
-    const meta = PROPOSAL_STATUS_META[section.status] || null
-    const blockDiff = changedSectionBlocks.get(section.sectionId) || null
-    return (
-      <div
-        key={`${section.status}-${section.sectionId}`}
-        data-proposal-section={section.sectionId}
-        className={cx(
-          styles.proposalSection,
-          section.status === 'removed' && styles.proposalSectionRemoved,
-        )}
-      >
-        {meta && (
-          <div className={styles.proposalSectionHeader}>
-            <span className={cx(styles.proposalChip, styles[meta.chipClass])}>{meta.label}</span>
-            <span className={styles.proposalSectionName}>{section.sectionName}</span>
-            {section.renamedFrom && (
-              <span className={styles.proposalSectionRename}>antes: {section.renamedFrom}</span>
-            )}
-          </div>
-        )}
-        {/* Mismo sink de HTML crudo que Preview/Handoff — ver nota de
-            sanitización en CONTEXT.min.md (target=editor.collab). */}
-        {blockDiff ? (
-          blockDiff.blocks.map((block, index) => (
-            <div
-              key={`${section.sectionId}-block-${index}`}
-              className={cx(
-                styles.proposalBlock,
-                block.type === 'added' && styles.proposalBlockAdded,
-                block.type === 'removed' && styles.proposalBlockRemoved,
-              )}
-              dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(block.html) }}
-            />
-          ))
-        ) : (
-          <div
-            className={cx(
-              section.status === 'added' && styles.proposalContentAdded,
-              section.status === 'removed' && styles.proposalContentRemoved,
-            )}
-            dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(section.innerHtml) }}
-          />
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.previewPanel}>
-      <div className={styles.previewToolbar}>
-        <div className={styles.proposalReviewHeaderMain}>
-          <p className={styles.handoffEyebrow}>Propuesta de diseño · solo lectura</p>
-          <h2 className={styles.handoffTitle}>{pageName}</h2>
-          <p className={styles.proposalReviewMeta}>{metaLine}</p>
-          {diff?.hasChanges && (
-            <p className={styles.proposalReviewLegend}>verde = agregado · rojo = eliminado</p>
-          )}
-        </div>
-        <div className={styles.proposalReviewHeaderActions}>
-          <div
-            className={styles.segmentedControl}
-            style={{ '--seg-count': 2, '--seg-index': 1 }}
-            role="tablist"
-            aria-label="Versión que se está viendo"
-          >
-            <div className={styles.segmentedIndicator} aria-hidden="true" />
-            <button
-              type="button"
-              role="tab"
-              aria-selected={false}
-              className={styles.segmentedOption}
-              onClick={onShowPublished}
-            >
-              Publicado
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected
-              className={cx(styles.segmentedOption, styles.segmentedOptionActive)}
-            >
-              Propuesta
-            </button>
-          </div>
-          <div className={styles.proposalReviewDecisions}>
-            <Button variant="primary" size="sm" onClick={onApprove} disabled={isDeciding}>
-              {isDeciding ? 'Aprobando…' : 'Aprobar'}
-            </Button>
-          </div>
-        </div>
-      </div>
-      <div ref={scrollRef} className={styles.previewScroll}>
-        <article ref={contentRef} data-preview-page="" className={styles.previewPage}>
-          {sections.map(renderSection)}
-          {removedSections.map(renderSection)}
-          {!sections.length && !removedSections.length && (
-            <p className={styles.proposalReviewEmpty}>La propuesta no tiene contenido.</p>
-          )}
-        </article>
-      </div>
-    </div>
-  )
-}
-
 function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest, onScrollHeadingChange }) {
   const scrollRef = useRef(null)
   const contentRef = useRef(null)
@@ -11624,8 +11286,6 @@ function UpdatesPanel({
   error = '',
   notice = '',
   canManageProjectMeta = true,
-  canReviewDesignerProposals = false,
-  isDesigner = false,
   onRefresh,
   isRefreshing = false,
   shareUrl = '',
@@ -11635,11 +11295,6 @@ function UpdatesPanel({
   showToast,
   onCreateDeliverable,
   onUpdateDeliverableStatus,
-  onApproveDesignerProposal,
-  isDecidingProposal = false,
-  proposalDiff = null,
-  proposalViewOpen = false,
-  onOpenProposalView,
   onActivityClick,
   onMarkActivityRead,
   onNavigateToSection,
@@ -11666,14 +11321,10 @@ function UpdatesPanel({
   const [activeTab, setActiveTab] = useState('actividad') // 'actividad' | 'comentarios' | 'historial'
   const [diffEntry, setDiffEntry] = useState(null)
   // Orden SIEMPRE por posición de sección en el documento — nunca por fecha
-  // ni por lectura (ver frontend/src/lib/activityOrdering.js). Secciones que
-  // solo existen en una propuesta de diseño pendiente (designer aún no
-  // aprobado) se agrupan igual que las demás, después de las del doc
-  // publicado, en el orden de la propuesta.
-  const pendingProposalHtml = activePage?.pendingProposal?.contentHtml || ''
+  // ni por lectura (ver frontend/src/lib/activityOrdering.js).
   const sectionOrderIndex = useMemo(() => (
-    buildSectionOrderIndex(sections, pendingProposalHtml)
-  ), [sections, pendingProposalHtml])
+    buildSectionOrderIndex(sections)
+  ), [sections])
   const sectionActivity = useMemo(() => (
     activity.filter((item) => (
       (item.eventType === 'section_edited' || item.eventType === 'asset_uploaded' || item.eventType === 'seo_changed')
@@ -11681,20 +11332,18 @@ function UpdatesPanel({
       && item.metadata?.pageId === activePageId
     ))
   ), [activity, activePageId])
-  const groupedSectionActivity = useMemo(() => {
-    const proposalSections = pendingProposalHtml ? splitSections(pendingProposalHtml) : []
-    return orderSectionActivityGroups(sectionActivity, sectionOrderIndex).map(({ sectionId, items }) => {
+  const groupedSectionActivity = useMemo(() => (
+    orderSectionActivityGroups(sectionActivity, sectionOrderIndex).map(({ sectionId, items }) => {
       const section = sections.find((s) => s.id === sectionId)
-      const proposalSection = !section ? proposalSections.find((s) => s.sectionId === sectionId) : null
       // Special virtual section IDs use the metadata-stored sectionName
       const sectionName = sectionId === '__document__'
         ? (items[0]?.metadata?.sectionName || 'Documento')
         : sectionId === '__seo__'
         ? (items[0]?.metadata?.sectionName || 'SEO metadata')
-        : (section?.name || proposalSection?.sectionName || items[0]?.metadata?.sectionName || 'Sección')
+        : (section?.name || items[0]?.metadata?.sectionName || 'Sección')
       return { sectionId, sectionName, items }
     })
-  }, [sectionActivity, sectionOrderIndex, sections, pendingProposalHtml])
+  ), [sectionActivity, sectionOrderIndex, sections])
   // Only document-content events stay in the activity panel.
   // Everything else lives in the notifications dropdown (navbar bell).
   // asset_uploaded items with a sectionId on the active page are folded into
@@ -11712,10 +11361,6 @@ function UpdatesPanel({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   ), [activity, activePageId])
   const hasActivity = groupedSectionActivity.length > 0 || generalActivity.length > 0
-  const pendingProposal = activePage?.pendingProposal || null
-  // "2 nuevas · 1 modificada" — el revisor sabe cuánto hay antes de abrir el
-  // comparador. Vacío cuando la propuesta no difiere de lo publicado.
-  const proposalDiffSummary = summarizeProposalDiff(proposalDiff?.counts)
 
   useEffect(() => {
     if (!selectedActivityId) return
@@ -11779,46 +11424,6 @@ function UpdatesPanel({
         <>
         {error && <p className={panelStyles.updatesError}>{error}</p>}
         {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
-        {pendingProposal && projectType === 'page' && (
-          <div className={panelStyles.proposalBox}>
-            <div className={panelStyles.proposalHeader}>
-              <span className={panelStyles.pendingTitle}>
-                {canReviewDesignerProposals ? 'Propuesta de diseño' : 'Tu propuesta'}
-              </span>
-              <span className={panelStyles.proposalBadge}>Pendiente</span>
-            </div>
-            <p className={panelStyles.proposalText}>
-              {canReviewDesignerProposals
-                ? (proposalDiffSummary
-                    ? `Cambios en esta página: ${proposalDiffSummary}.`
-                    : 'Revisa la propuesta y apruébala para publicarla. Si necesitas ajustes, deja comentarios al diseñador.')
-                : 'Tus cambios no afectan el contenido publicado hasta que editor o manager los aprueben.'}
-            </p>
-            {pendingProposal.reviewerNote && (
-              <p className={panelStyles.proposalText}>Nota: {pendingProposal.reviewerNote}</p>
-            )}
-            {canReviewDesignerProposals ? (
-              <div className={panelStyles.proposalActions}>
-                {/* Primero VER, después decidir: aprobar sin haber abierto el
-                    comparador es exactamente el agujero que esto cierra. */}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={<Eye size={14} />}
-                  onClick={onOpenProposalView}
-                  disabled={proposalViewOpen}
-                >
-                  {proposalViewOpen ? 'Viendo propuesta' : 'Ver propuesta'}
-                </Button>
-                <Button variant="primary" size="sm" onClick={onApproveDesignerProposal} disabled={isDecidingProposal}>
-                  {isDecidingProposal ? 'Aprobando…' : 'Aprobar'}
-                </Button>
-              </div>
-            ) : isDesigner ? (
-              <p className={panelStyles.deliverablesEmpty}>Puedes seguir editando y guardando sobre esta propuesta.</p>
-            ) : null}
-          </div>
-        )}
         {false && projectType === 'page' && (
         <div className={panelStyles.deliverablesBox}>
           <span className={panelStyles.pendingTitle}>Entregables</span>

@@ -10,7 +10,7 @@ const TOOLTIP_CONTENT = {
   },
   'notifications-bell': {
     title: 'Notificaciones',
-    body: 'Aquí ves cuando algo cambia: proyecto creado, link compartido, propuesta aprobada.',
+    body: 'Aquí ves cuando algo cambia: proyecto creado, link compartido, contenido actualizado.',
   },
   'editor-modes': {
     title: 'Modos del editor',
