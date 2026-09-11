@@ -45,6 +45,7 @@ import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sect
 import { buildSectionOrderIndex, orderSectionActivityGroups } from '../lib/activityOrdering'
 import {
   stripPendingUploadImagesFromHtml,
+  isPendingUploadSrc,
   stripPendingUploadsFromPages,
   keepLocalPlaceholderContent,
   hasPendingUpload,
@@ -300,6 +301,7 @@ function EditableImageView({ node, editor, extension, getPos, updateAttributes, 
   const [measuredWidth, setMeasuredWidth] = useState(0)
 
   const currentWidth = Number(node.attrs.width) || null
+  const isUploading = isPendingUploadSrc(node.attrs.src)
 
   function showSizeNotice(message) {
     setSizeNotice(message)
@@ -475,11 +477,16 @@ function EditableImageView({ node, editor, extension, getPos, updateAttributes, 
       >
         <img
           ref={imageRef}
-          className={styles.imageNodeImage}
+          className={cx(styles.imageNodeImage, isUploading && styles.imageNodeImageUploading)}
           src={node.attrs.src}
           alt={node.attrs.alt || ''}
           draggable={false}
         />
+        {isUploading && (
+          <div className={styles.imageUploadingNotice} role="status">
+            Subiendo…
+          </div>
+        )}
         {sizeNotice && <div className={styles.imageSizeNotice}>{sizeNotice}</div>}
         {selected && (
           <>
