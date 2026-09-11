@@ -43,7 +43,11 @@ import { subscribeProjectComments } from '../lib/commentsRealtime'
 import { createEditorChannel } from '../lib/editorPresence'
 import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
 import { buildSectionOrderIndex, orderSectionActivityGroups } from '../lib/activityOrdering'
-import { stripPendingUploadImagesFromHtml, stripPendingUploadImagesFromJson, countPendingUploadImages } from '../lib/pendingUploads'
+import {
+  stripPendingUploadImagesFromHtml,
+  stripPendingUploadsFromPages,
+  keepLocalPlaceholderContent,
+} from '../lib/pendingUploads'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, Images, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
@@ -2733,10 +2737,6 @@ export default function ProjectEditor() {
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
   const toastTimerRef = useRef(null)
-  // Cuántos placeholders de subida (`blob:`) descartó el último snapshot. Se
-  // avisa solo en guardado manual: en autosave el nodo sigue en el editor y
-  // entra bien en el siguiente ciclo, cuando la subida ya resolvió su URL.
-  const pendingUploadsRef = useRef(0)
 
   const activePage = pages.find((p) => p.id === activePageId)
   const projectType = inferProjectType(projectMeta, pages)
@@ -3315,19 +3315,15 @@ export default function ProjectEditor() {
   const snapshotActivePage = useCallback(() => {
     if (!editorRef.current || !activePageId) return null
 
-    // Último filtro antes de persistir: un <img src="blob:…"> es el placeholder
-    // de una subida todavía en vuelo (o fallada). El object URL muere con la
-    // pestaña, así que guardarlo deja una imagen rota para siempre — pasó en
-    // Prod. Se limpia acá, el único chokepoint por el que pasan autosave y
-    // guardado manual; el nodo sigue vivo en el editor, así que si la subida
-    // termina bien `replaceImageSrc` lo completa y el próximo save lo persiste
-    // ya con su URL pública. Ver frontend/src/lib/pendingUploads.js.
-    const rawHtml = editorRef.current.getHTML()
-    const rawJson = editorRef.current.getJSON()
-    const pendingUploads = countPendingUploadImages(rawHtml)
-    const html = pendingUploads ? stripPendingUploadImagesFromHtml(rawHtml) : rawHtml
-    const json = pendingUploads ? stripPendingUploadImagesFromJson(rawJson) : rawJson
-    if (pendingUploads) pendingUploadsRef.current = pendingUploads
+    // Ya NO filtra los placeholders `blob:` acá (hasta v2.15.x sí lo hacía).
+    // Este es el chokepoint que usan autosave, guardado manual, cambio de
+    // página/modo Y syncRemoteChanges como "local" del merge de 3 vías — si
+    // filtrara acá, un marcador en vuelo se perdía en cualquiera de esos
+    // caminos (bug confirmado en Prod, página "Coapa"). El filtro real vive
+    // en el único punto que de verdad viaja al servidor: saveProjectPages,
+    // vía stripPendingUploadsFromPages. Ver frontend/src/lib/pendingUploads.js.
+    const html = editorRef.current.getHTML()
+    const json = editorRef.current.getJSON()
     const sections = parseSectionsFromHtml(html)
     const seoMetadata = getPageSeoMetadata({ seoMetadata: activeSeoMetadataRef.current })
     const contentRules = getPageContentRules({ contentRules: activeContentRulesRef.current })
@@ -3442,12 +3438,27 @@ export default function ProjectEditor() {
         reviewRequestedBy: page.reviewRequestedBy || null,
       }
     })
+    // Último filtro antes de persistir — ver frontend/src/lib/pendingUploads.js.
+    // snapshotActivePage ya NO filtra (así el marcador sobrevive a
+    // syncRemoteChanges y a los cambios de página/modo); acá se filtran TODAS
+    // las páginas del payload, no solo la activa, porque una página no-activa
+    // puede seguir teniendo el placeholder de una subida que arrancó antes de
+    // navegar a otra.
+    const { pages: strippedPayload, dropped } = stripPendingUploadsFromPages(payload)
+    // El lado "previo" de la comparación también se filtra, para no comparar
+    // manzanas con peras: si no se filtrara, un placeholder en vuelo que
+    // estaba en `pages` (previo) y se cae del payload filtrado (nuevo) se
+    // leería como un image_removed falso.
+    const strippedPreviousPages = pages.map((page) => ({
+      ...page,
+      fullContent: stripPendingUploadImagesFromHtml(page.fullContent || buildDocumentHTML(page.sections || [])),
+    }))
     // FAQ usa el mismo modelo de sectionDivider que page → reusamos el builder
     // por sección (eventos granulares por FAQ). Document es lineal → builder
     // a nivel documento con sectionId virtual __document__.
     const sectionEvents = (projectType === 'page' || projectType === 'faq')
-      ? buildSectionActivityEvents(pages, payload)
-      : buildDocumentActivityEvents(pages, payload)
+      ? buildSectionActivityEvents(strippedPreviousPages, strippedPayload)
+      : buildDocumentActivityEvents(strippedPreviousPages, strippedPayload)
 
     saveInFlightRef.current = true
     setIsSaving(true)
@@ -3456,7 +3467,7 @@ export default function ProjectEditor() {
     try {
       const data = await apiFetch(`/api/projects/${projectId}/pages`, {
         method: 'PUT',
-        body: JSON.stringify({ pages: payload, source, sectionEvents }),
+        body: JSON.stringify({ pages: strippedPayload, source, sectionEvents }),
       })
 
       const persistedPages = data.pages.map((page) => {
@@ -3468,21 +3479,26 @@ export default function ProjectEditor() {
           contentRules: getPageContentRules({ contentRules: activeContentRulesRef.current }),
         }
       })
-      setPages(persistedPages)
+      // Si alguna página del estado local todavía tiene un placeholder blob:
+      // (subida en curso que no llegó a este guardado), lo conservamos —
+      // persistedPages ya no lo tiene porque el PUT lo filtró. Forma
+      // funcional: entre armar el payload y esta respuesta puede haber
+      // avanzado `pages` (p.ej. otra subida resolvió mientras esta esperaba).
+      setPages((currentPages) => keepLocalPlaceholderContent(currentPages, persistedPages))
       setIsDirty(false)
       setSaveMessage(source === 'autosave' ? 'Autoguardado' : 'Guardado')
       // Hubo imágenes todavía subiendo cuando se serializó: no se guardaron
       // (su src era un `blob:` local, inservible fuera de esta pestaña). En
       // autosave no se avisa — el nodo sigue en el editor y entra solo en el
       // ciclo siguiente. En manual sí, porque el usuario cree que guardó todo.
-      const droppedUploads = pendingUploadsRef.current
-      pendingUploadsRef.current = 0
-      if (droppedUploads > 0 && source !== 'autosave') {
+      // `dropped` viene de stripPendingUploadsFromPages, calculado arriba
+      // sobre TODAS las páginas (no solo la activa).
+      if (dropped > 0 && source !== 'autosave') {
         showToast({
           kind: 'warning',
-          text: droppedUploads === 1
+          text: dropped === 1
             ? 'Una imagen todavía se estaba subiendo y no se guardó. Espera a que termine y guarda de nuevo.'
-            : `${droppedUploads} imágenes todavía se estaban subiendo y no se guardaron. Espera a que terminen y guarda de nuevo.`,
+            : `${dropped} imágenes todavía se estaban subiendo y no se guardaron. Espera a que terminen y guarda de nuevo.`,
         })
       }
       // F3 (colaboración): lo que acaba de persistir el servidor pasa a ser la
@@ -3620,6 +3636,10 @@ export default function ProjectEditor() {
       // (efecto secundario propio de snapshotActivePage), pero el único
       // setPages real de esta función es el de más abajo con nextPages ya
       // resuelto, así que ese pisado intermedio queda sobrescrito sin efecto.
+      // Desde que snapshotActivePage dejó de filtrar `blob:`, un placeholder
+      // en vuelo viaja intacto como local del merge (mergeSections no lo
+      // toca: para él es HTML de sección como cualquier otro) y vuelve a
+      // aparecer en nextPages/el editor — no hace falta reinyectarlo a mano.
       const activeSnapshot = activePageId ? snapshotActivePage() : null
 
       let appliedRemoteCount = 0
