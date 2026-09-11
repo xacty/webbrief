@@ -715,6 +715,13 @@ async function replaceImageSrc(editor, previousSrc, nextSrc, nextAttrs = {}) {
     image.src = nextSrc
   })
 
+  // El editor pudo destruirse MIENTRAS esperábamos el preload de arriba (p.ej.
+  // el usuario pasó de "brief" a Preview/Handoff, que desmonta EditorPanel).
+  // El chequeo de "no destruido" que hace el caller es de ANTES del await, así
+  // que acá hay que repetirlo: si no, `editor.state`/`editor.view.dispatch` de
+  // abajo operan sobre una instancia muerta.
+  if (!editor || editor.isDestroyed) return false
+
   const tr = editor.state.tr
   let replaced = false
 
@@ -731,7 +738,16 @@ async function replaceImageSrc(editor, previousSrc, nextSrc, nextAttrs = {}) {
   })
 
   if (!replaced) return false
-  editor.view.dispatch(tr)
+
+  try {
+    editor.view.dispatch(tr)
+  } catch {
+    // Dispatch sobre una view a medio desmontar puede tirar en vez de ser un
+    // no-op silencioso. Lo tratamos igual que "no se reemplazó" para que
+    // onImageUploadDone caiga al fallback de estado de página en vez de dar
+    // por hecho un reemplazo que nunca pasó.
+    return false
+  }
   return true
 }
 
@@ -3495,43 +3511,65 @@ export default function ProjectEditor() {
     const resolvedFileName = fileName || upload?.fileName || asset?.fileName || 'imagen'
     const attrs = imageAttrsFromAsset(asset, resolvedFileName)
 
-    // 1) El editor montado (no destruido) todavía tiene el placeholder — el
-    // caso normal: la subida terminó mientras el usuario seguía ahí, en
-    // cualquier página (setContent al cambiar de página reinserta el mismo
-    // blob: si la página activa lo tenía guardado en `pages`).
-    const replacedInEditor = Boolean(editorRef.current)
-      && !editorRef.current.isDestroyed
-      && (await replaceImageSrc(editorRef.current, tempUrl, attrs.src, attrs))
-
-    if (!replacedInEditor) {
-      // 2) Ninguna instancia montada lo tiene, pero puede seguir vivo en el
-      // estado de otra página (el usuario navegó lejos). pagesRef.current
-      // evita cerrar sobre el `pages` de cuando arrancó esta subida.
-      const targetPage = pagesRef.current.find((page) => hasPendingUpload(page.fullContent, tempUrl))
-      if (targetPage) {
-        setPages((prev) => prev.map((page) => (
-          page.id === targetPage.id
-            ? {
-                ...page,
-                fullContent: replacePendingUploadInHtml(page.fullContent, tempUrl, attrs),
-                contentJson: replacePendingUploadInJson(page.contentJson, tempUrl, attrs),
-              }
-            : page
-        )))
-        setIsDirty(true)
-        showToast({ kind: 'info', text: `La imagen «${resolvedFileName}» quedó en «${targetPage.name}».` })
-      } else {
-        // 3) No está en ningún lado: se borró el nodo, o un conflicto de
-        // sync se resolvió por "Usar la suya" y se llevó puesto el párrafo.
-        showToast({
-          kind: 'info',
-          text: `La imagen «${resolvedFileName}» se subió, pero ya no estaba en el documento. La encuentras en Biblioteca › Documentos.`,
-        })
+    // Todo lo de abajo va en try/finally: replaceImageSrc espera un preload
+    // de imagen antes de tocar el editor, y en esa ventana el usuario puede
+    // salir de "brief" (Preview/Handoff desmontan EditorPanel) y destruir
+    // editorRef.current a mitad de camino. Si eso escapara del callback sin
+    // pasar por el finally, la entrada en inFlightUploadsRef nunca se
+    // borraría — y el guard de beforeunload bloquearía la pestaña para
+    // siempre creyendo que todavía hay una subida en curso.
+    try {
+      // 1) El editor montado (no destruido) todavía tiene el placeholder — el
+      // caso normal: la subida terminó mientras el usuario seguía ahí, en
+      // cualquier página (setContent al cambiar de página reinserta el mismo
+      // blob: si la página activa lo tenía guardado en `pages`).
+      //
+      // El intento va en su propio try/catch: replaceImageSrc ya se defiende
+      // del editor destruido durante el preload, pero cualquier falla
+      // imprevista acá se trata igual que "no se reemplazó" en vez de
+      // escapar — así siempre caemos al fallback de estado de página (2/3)
+      // en lugar de dejar la imagen subida sin destino.
+      let replacedInEditor = false
+      try {
+        replacedInEditor = Boolean(editorRef.current)
+          && !editorRef.current.isDestroyed
+          && (await replaceImageSrc(editorRef.current, tempUrl, attrs.src, attrs))
+      } catch {
+        replacedInEditor = false
       }
-    }
 
-    inFlightUploadsRef.current.delete(tempUrl)
-    URL.revokeObjectURL(tempUrl)
+      if (!replacedInEditor) {
+        // 2) Ninguna instancia montada lo tiene, pero puede seguir vivo en el
+        // estado de otra página (el usuario navegó lejos). pagesRef.current
+        // evita cerrar sobre el `pages` de cuando arrancó esta subida.
+        const targetPage = pagesRef.current.find((page) => hasPendingUpload(page.fullContent, tempUrl))
+        if (targetPage) {
+          setPages((prev) => prev.map((page) => (
+            page.id === targetPage.id
+              ? {
+                  ...page,
+                  fullContent: replacePendingUploadInHtml(page.fullContent, tempUrl, attrs),
+                  contentJson: replacePendingUploadInJson(page.contentJson, tempUrl, attrs),
+                }
+              : page
+          )))
+          setIsDirty(true)
+          showToast({ kind: 'info', text: `La imagen «${resolvedFileName}» quedó en «${targetPage.name}».` })
+        } else {
+          // 3) No está en ningún lado: se borró el nodo, o un conflicto de
+          // sync se resolvió por "Usar la suya" y se llevó puesto el párrafo.
+          showToast({
+            kind: 'info',
+            text: `La imagen «${resolvedFileName}» se subió, pero ya no estaba en el documento. La encuentras en Biblioteca › Documentos.`,
+          })
+        }
+      }
+    } finally {
+      // Pase lo que pase arriba (reemplazo ok, fallback ok, o cualquiera de
+      // los dos tirando), esto tiene que correr siempre.
+      inFlightUploadsRef.current.delete(tempUrl)
+      URL.revokeObjectURL(tempUrl)
+    }
   }, [showToast])
 
   const onImageUploadFailed = useCallback(({ tempUrl, error }) => {
