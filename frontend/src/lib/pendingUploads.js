@@ -164,11 +164,18 @@ export function replacePendingUploadInHtml(html, tempUrl, attrs = {}) {
 // Espejo de replacePendingUploadInHtml sobre JSON de TipTap. No muta el nodo
 // recibido — copia solo a lo largo del camino que cambia (mismo criterio que
 // stripPendingUploadImagesFromJson, arriba).
+//
+// Contrato: `attrs` debe traer el src final de la imagen ya subida —
+// normalmente el objeto que devuelve `imageAttrsFromAsset`. Si se llama sin
+// `src` (o sin `attrs` del todo) degrada a `''` en vez de dejar `src:
+// undefined`, igual que `replacePendingUploadInHtml` (que serializa
+// `escapeImgAttr(attrs.src)` → `""` cuando `attrs.src` es undefined) — un
+// `src` undefined en el nodo sería una imagen rota indistinguible de un bug.
 export function replacePendingUploadInJson(json, tempUrl, attrs = {}) {
   if (!json || typeof json !== 'object' || !tempUrl) return json
 
   if (json.type === 'image' && json.attrs?.src === tempUrl) {
-    return { ...json, attrs: { ...json.attrs, ...attrs, src: attrs.src } }
+    return { ...json, attrs: { ...json.attrs, ...attrs, src: attrs.src ?? '' } }
   }
   if (!Array.isArray(json.content)) return json
 
@@ -254,8 +261,9 @@ export function imageAttrsFromAsset(asset, fallbackFileName = '') {
     assetId: asset?.id || null,
     fileName: asset?.fileName || fallbackFileName || '',
     storagePath: asset?.path || null,
-    originalWidth: asset?.width || null,
-    originalHeight: asset?.height || null,
+    // ?? (no ||): un ancho/alto real de 0 es legítimo y no debe colapsar a null.
+    originalWidth: asset?.width ?? null,
+    originalHeight: asset?.height ?? null,
   }
 }
 

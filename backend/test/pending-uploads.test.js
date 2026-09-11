@@ -184,6 +184,28 @@ test('imageAttrsFromAsset: null-safe — asset incompleto no tira, usa el fallba
   })
 })
 
+test('imageAttrsFromAsset: width/height en 0 son legítimos y no colapsan a null', () => {
+  // asset?.width || null trataría 0 como falsy y lo pisaría con null. Una
+  // imagen con ancho/alto real 0 es un caso raro pero válido — el helper
+  // debe usar ?? para distinguir "0" de "ausente".
+  const asset = {
+    id: 'asset-1',
+    publicUrl: REAL,
+    fileName: 'x.png',
+    path: 'p/x.png',
+    width: 0,
+    height: 0,
+  }
+  assert.deepEqual(imageAttrsFromAsset(asset), {
+    src: REAL,
+    assetId: 'asset-1',
+    fileName: 'x.png',
+    storagePath: 'p/x.png',
+    originalWidth: 0,
+    originalHeight: 0,
+  })
+})
+
 // -------- 7. replacePendingUploadInHtml --------
 
 test('replacePendingUploadInHtml: reemplaza src y agrega los data-* del asset', () => {
@@ -234,6 +256,24 @@ test('replacePendingUploadInJson: mergea attrs + src en el nodo image, sin mutar
 test('replacePendingUploadInJson: identidad referencial cuando el tempUrl no está', () => {
   const json = { type: 'doc', content: [{ type: 'image', attrs: { src: REAL } }] }
   assert.equal(replacePendingUploadInJson(json, BLOB, { src: REAL }), json)
+})
+
+test('replacePendingUploadInJson: attrs sin src (o sin tercer argumento) degrada a "" en vez de dejar src undefined', () => {
+  // Contrato: attrs debe traer el src final (normalmente el de imageAttrsFromAsset).
+  // Si no lo trae, el nodo no debe quedar con src=undefined (imagen rota) — debe
+  // degradar igual que replacePendingUploadInHtml, que serializa `escapeImgAttr(attrs.src)`
+  // y con attrs.src undefined imprime src="".
+  const json = {
+    type: 'doc',
+    content: [{ type: 'image', attrs: { src: BLOB, alt: 'IMG_2542.webp' } }],
+  }
+
+  const withoutSrcKey = replacePendingUploadInJson(json, BLOB, { assetId: 'asset-1' })
+  assert.equal(withoutSrcKey.content[0].attrs.src, '')
+  assert.equal(withoutSrcKey.content[0].attrs.assetId, 'asset-1')
+
+  const withoutThirdArg = replacePendingUploadInJson(json, BLOB)
+  assert.equal(withoutThirdArg.content[0].attrs.src, '')
 })
 
 // -------- 9. removePendingUploadFromHtml / removePendingUploadFromJson --------
