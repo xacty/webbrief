@@ -47,6 +47,12 @@ import {
   stripPendingUploadImagesFromHtml,
   stripPendingUploadsFromPages,
   keepLocalPlaceholderContent,
+  hasPendingUpload,
+  replacePendingUploadInHtml,
+  replacePendingUploadInJson,
+  removePendingUploadFromHtml,
+  removePendingUploadFromJson,
+  imageAttrsFromAsset,
 } from '../lib/pendingUploads'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
@@ -806,6 +812,57 @@ function removeImageBySrc(editor, src) {
 
   editor.view.dispatch(editor.state.tr.delete(targetPos, targetPos + targetSize))
   return true
+}
+
+// Orquesta una subida de imagen de punta a punta: inserta el placeholder
+// blob:, sube el archivo con `uploadFn` (cada call site decide qué manda:
+// Toolbar no adjunta pageId/sectionId, EditorPanel sí) y reporta el
+// resultado por callbacks — nunca reemplaza el placeholder acá mismo. Antes
+// esto estaba triplicado (Toolbar.handleImageUpload, EditorPanel handleDrop
+// y handlePaste) con el mismo try/catch/finally; ahora cada call site solo
+// arma su `uploadFn`.
+//
+// El reemplazo real (¿el editor todavía tiene el placeholder? ¿alguna página
+// del estado lo tiene? ¿no está en ningún lado?) vive en ProjectEditor
+// (onImageUploadDone/onImageUploadFailed) y no acá, porque esta función no
+// sabe si el usuario cambió de página o de modo mientras la subida estaba en
+// vuelo — solo ProjectEditor tiene esa vista completa (editorRef + pages).
+async function runImageUploadFlow({
+  editor,
+  file,
+  position = null,
+  uploadFn,
+  onImageUploadStart,
+  onImageUploadDone,
+  onImageUploadFailed,
+}) {
+  if (!editor || !file) return
+
+  const tempUrl = URL.createObjectURL(file)
+  const inserted = insertTemporaryImage(editor, tempUrl, file.name, position)
+
+  if (!inserted) {
+    // No se pudo ni insertar el placeholder (p.ej. el editor perdió el foco
+    // justo antes) — abortamos sin llamar a uploadFn. Reusamos el mismo
+    // camino de aviso que un fallo de subida real: el registro nunca llegó a
+    // tener esta entrada, así que su cleanup (delete + revoke) es un no-op
+    // inofensivo.
+    onImageUploadFailed?.({
+      tempUrl,
+      fileName: file.name,
+      error: new Error('No se pudo insertar la imagen en el documento'),
+    })
+    return
+  }
+
+  onImageUploadStart?.({ tempUrl, fileName: file.name })
+
+  try {
+    const asset = await uploadFn(file)
+    onImageUploadDone?.({ tempUrl, asset, fileName: file.name })
+  } catch (error) {
+    onImageUploadFailed?.({ tempUrl, fileName: file.name, error })
+  }
 }
 
 function setCssVars(node, vars) {
@@ -2641,6 +2698,16 @@ export default function ProjectEditor() {
 
   const [projectMeta, setProjectMeta] = useState(null)
   const [pages, setPages] = useState([])
+  // Espejo de `pages` para leer el valor más reciente desde callbacks async
+  // (onImageUploadDone/Failed, que resuelven después de un round-trip a
+  // /assets) sin cerrar sobre el `pages` de cuando arrancó la subida. La
+  // escritura real de estado siempre pasa por la forma funcional de
+  // setPages, nunca por este ref — solo se usa para decidir QUÉ página tiene
+  // el placeholder ahora.
+  const pagesRef = useRef(pages)
+  useEffect(() => {
+    pagesRef.current = pages
+  }, [pages])
   const [activePageId, setActivePageId] = useState(null)
   const [activeSectionId, setActiveSectionId] = useState(null)
   // Captura el sectionId justo en mousedown (antes de que blur quite el foco del editor)
@@ -2737,6 +2804,11 @@ export default function ProjectEditor() {
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
   const toastTimerRef = useRef(null)
+  // Subidas de imagen en curso: tempUrl (blob:) → { pageId, fileName }. Vive
+  // acá (no en el nodo del editor) porque el usuario puede cambiar de página
+  // o de modo mientras la subida sigue en vuelo — ver onImageUploadStart/
+  // Done/Failed más abajo y el effect de beforeunload.
+  const inFlightUploadsRef = useRef(new Map())
 
   const activePage = pages.find((p) => p.id === activePageId)
   const projectType = inferProjectType(projectMeta, pages)
@@ -3402,6 +3474,81 @@ export default function ProjectEditor() {
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
   }, [])
+
+  // ── Ciclo de vida de una subida de imagen en curso ──────────────────────
+  // Contrapartida de runImageUploadFlow (fuera del componente, arriba): esta
+  // función sí sabe dónde está todo (editorRef, pagesRef) así que es quien
+  // decide dónde insertar la imagen ya subida.
+  const onImageUploadStart = useCallback(({ tempUrl, fileName }) => {
+    inFlightUploadsRef.current.set(tempUrl, { pageId: activePageId, fileName })
+  }, [activePageId])
+
+  const onImageUploadDone = useCallback(async ({ tempUrl, asset, fileName }) => {
+    const upload = inFlightUploadsRef.current.get(tempUrl)
+    const resolvedFileName = fileName || upload?.fileName || asset?.fileName || 'imagen'
+    const attrs = imageAttrsFromAsset(asset, resolvedFileName)
+
+    // 1) El editor montado (no destruido) todavía tiene el placeholder — el
+    // caso normal: la subida terminó mientras el usuario seguía ahí, en
+    // cualquier página (setContent al cambiar de página reinserta el mismo
+    // blob: si la página activa lo tenía guardado en `pages`).
+    const replacedInEditor = Boolean(editorRef.current)
+      && !editorRef.current.isDestroyed
+      && (await replaceImageSrc(editorRef.current, tempUrl, attrs.src, attrs))
+
+    if (!replacedInEditor) {
+      // 2) Ninguna instancia montada lo tiene, pero puede seguir vivo en el
+      // estado de otra página (el usuario navegó lejos). pagesRef.current
+      // evita cerrar sobre el `pages` de cuando arrancó esta subida.
+      const targetPage = pagesRef.current.find((page) => hasPendingUpload(page.fullContent, tempUrl))
+      if (targetPage) {
+        setPages((prev) => prev.map((page) => (
+          page.id === targetPage.id
+            ? {
+                ...page,
+                fullContent: replacePendingUploadInHtml(page.fullContent, tempUrl, attrs),
+                contentJson: replacePendingUploadInJson(page.contentJson, tempUrl, attrs),
+              }
+            : page
+        )))
+        setIsDirty(true)
+        showToast({ kind: 'info', text: `La imagen «${resolvedFileName}» quedó en «${targetPage.name}».` })
+      } else {
+        // 3) No está en ningún lado: se borró el nodo, o un conflicto de
+        // sync se resolvió por "Usar la suya" y se llevó puesto el párrafo.
+        showToast({
+          kind: 'info',
+          text: `La imagen «${resolvedFileName}» se subió, pero ya no estaba en el documento. La encuentras en Biblioteca › Documentos.`,
+        })
+      }
+    }
+
+    inFlightUploadsRef.current.delete(tempUrl)
+    URL.revokeObjectURL(tempUrl)
+  }, [showToast])
+
+  const onImageUploadFailed = useCallback(({ tempUrl, error }) => {
+    if (editorRef.current && !editorRef.current.isDestroyed) {
+      removeImageBySrc(editorRef.current, tempUrl)
+    }
+
+    const targetPage = pagesRef.current.find((page) => hasPendingUpload(page.fullContent, tempUrl))
+    if (targetPage) {
+      setPages((prev) => prev.map((page) => (
+        page.id === targetPage.id
+          ? {
+              ...page,
+              fullContent: removePendingUploadFromHtml(page.fullContent, tempUrl),
+              contentJson: removePendingUploadFromJson(page.contentJson, tempUrl),
+            }
+          : page
+      )))
+    }
+
+    showToast({ kind: 'warning', text: error?.message || 'No se pudo subir la imagen' })
+    inFlightUploadsRef.current.delete(tempUrl)
+    URL.revokeObjectURL(tempUrl)
+  }, [showToast])
 
   const saveProjectPages = useCallback(async (source = 'manual', options = {}) => {
     if (!projectId || !activePage || saveInFlightRef.current || !canWriteContent) return false
@@ -4093,7 +4240,7 @@ export default function ProjectEditor() {
 
   useEffect(() => {
     function handleBeforeUnload(event) {
-      if (!isDirty) return
+      if (!isDirty && inFlightUploadsRef.current.size === 0) return
       event.preventDefault()
       event.returnValue = ''
     }
@@ -5442,6 +5589,9 @@ export default function ProjectEditor() {
             onDeleteComment={handleDeleteComment}
             onCopyCommentLink={handleCopyCommentLink}
             commentMembersList={commentMembers}
+            onImageUploadStart={onImageUploadStart}
+            onImageUploadDone={onImageUploadDone}
+            onImageUploadFailed={onImageUploadFailed}
           />
         )}
 
@@ -7186,7 +7336,18 @@ function parseTooltipTitle(title) {
 const TOOLBAR_GROUP_ORDER = ['history', 'block', 'text', 'color', 'align', 'insert']
 
 
-function Toolbar({ editor, projectId, companyId, onUndo, onRedo, onAddComment, canComment = false }) {
+function Toolbar({
+  editor,
+  projectId,
+  companyId,
+  onUndo,
+  onRedo,
+  onAddComment,
+  canComment = false,
+  onImageUploadStart,
+  onImageUploadDone,
+  onImageUploadFailed,
+}) {
   const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
   const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
@@ -7352,36 +7513,31 @@ function Toolbar({ editor, projectId, companyId, onUndo, onRedo, onAddComment, c
 
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
+    e.target.value = ''
     if (!file || !editor) return
-    const tempUrl = URL.createObjectURL(file)
-    try {
-      if (!projectId) throw new Error('Proyecto no disponible')
-      insertTemporaryImage(editor, tempUrl, file.name)
-      const formData = new FormData()
-      formData.append('file', file)
-      const data = await apiFetch(`/api/projects/${projectId}/assets`, {
-        method: 'POST',
-        body: formData,
-      })
 
-      if (!data.asset?.renderInline || !data.asset?.publicUrl) {
-        throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
-      }
+    await runImageUploadFlow({
+      editor,
+      file,
+      uploadFn: async (uploadFile) => {
+        if (!projectId) throw new Error('Proyecto no disponible')
+        const formData = new FormData()
+        formData.append('file', uploadFile)
+        const data = await apiFetch(`/api/projects/${projectId}/assets`, {
+          method: 'POST',
+          body: formData,
+        })
 
-      await replaceImageSrc(editor, tempUrl, data.asset.publicUrl, {
-        assetId: data.asset.id || null,
-        fileName: data.asset.fileName || file.name,
-        storagePath: data.asset.path || null,
-        originalWidth: data.asset.width || null,
-        originalHeight: data.asset.height || null,
-      })
-    } catch (error) {
-      removeImageBySrc(editor, tempUrl)
-      window.alert(error.message || 'No se pudo subir la imagen')
-    } finally {
-      URL.revokeObjectURL(tempUrl)
-      e.target.value = ''
-    }
+        if (!data.asset?.renderInline || !data.asset?.publicUrl) {
+          throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
+        }
+
+        return data.asset
+      },
+      onImageUploadStart,
+      onImageUploadDone,
+      onImageUploadFailed,
+    })
   }
 
   // Insertar una imagen ya subida a la biblioteca — a diferencia de
@@ -8411,6 +8567,9 @@ function EditorPanel({
   onDeleteComment,
   onCopyCommentLink,
   commentMembersList = [],
+  onImageUploadStart,
+  onImageUploadDone,
+  onImageUploadFailed,
 }) {
   const wrapperRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -8562,27 +8721,15 @@ function EditorPanel({
 
         event.preventDefault()
         const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
-        const tempUrl = URL.createObjectURL(imageFile)
-        insertTemporaryImage(editor, tempUrl, imageFile.name, coords?.pos || null)
-
-        ;(async () => {
-          try {
-            const asset = await uploadProjectImage(imageFile)
-            if (!asset?.publicUrl) return
-            await replaceImageSrc(editor, tempUrl, asset.publicUrl, {
-              assetId: asset.id || null,
-              fileName: asset.fileName || imageFile.name,
-              storagePath: asset.path || null,
-              originalWidth: asset.width || null,
-              originalHeight: asset.height || null,
-            })
-          } catch (error) {
-            removeImageBySrc(editor, tempUrl)
-            window.alert(error.message || 'No se pudo subir la imagen')
-          } finally {
-            URL.revokeObjectURL(tempUrl)
-          }
-        })()
+        runImageUploadFlow({
+          editor,
+          file: imageFile,
+          position: coords?.pos || null,
+          uploadFn: uploadProjectImage,
+          onImageUploadStart,
+          onImageUploadDone,
+          onImageUploadFailed,
+        })
 
         return true
       },
@@ -8607,26 +8754,14 @@ function EditorPanel({
         const imageFile = files.find((file) => file.type.startsWith('image/'))
         if (imageFile && canWriteContent) {
           event.preventDefault()
-          const tempUrl = URL.createObjectURL(imageFile)
-          insertTemporaryImage(editor, tempUrl, imageFile.name, null)
-          ;(async () => {
-            try {
-              const asset = await uploadProjectImage(imageFile)
-              if (!asset?.publicUrl) return
-              await replaceImageSrc(editor, tempUrl, asset.publicUrl, {
-                assetId: asset.id || null,
-                fileName: asset.fileName || imageFile.name,
-                storagePath: asset.path || null,
-                originalWidth: asset.width || null,
-                originalHeight: asset.height || null,
-              })
-            } catch (error) {
-              removeImageBySrc(editor, tempUrl)
-              window.alert(error.message || 'No se pudo subir la imagen')
-            } finally {
-              URL.revokeObjectURL(tempUrl)
-            }
-          })()
+          runImageUploadFlow({
+            editor,
+            file: imageFile,
+            uploadFn: uploadProjectImage,
+            onImageUploadStart,
+            onImageUploadDone,
+            onImageUploadFailed,
+          })
           return true
         }
 
@@ -9136,7 +9271,18 @@ function EditorPanel({
 
   return (
     <div className={styles.centerPanel}>
-      <Toolbar editor={editor} projectId={projectId} companyId={companyId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
+      <Toolbar
+        editor={editor}
+        projectId={projectId}
+        companyId={companyId}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        onAddComment={onAddComment}
+        canComment={canComment}
+        onImageUploadStart={onImageUploadStart}
+        onImageUploadDone={onImageUploadDone}
+        onImageUploadFailed={onImageUploadFailed}
+      />
       <TableContextBar editor={editor} />
       <div
         ref={scrollAreaRef}
