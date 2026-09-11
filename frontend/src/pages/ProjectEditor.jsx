@@ -2827,6 +2827,9 @@ export default function ProjectEditor() {
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
   const toastTimerRef = useRef(null)
+  // Reintento único de autosave post-save cuando quedó contenido "kept" —
+  // ver el comentario junto a su uso en saveProjectPages.
+  const saveRetryTimerRef = useRef(null)
   // Subidas de imagen en curso: tempUrl (blob:) → { pageId, fileName }. Vive
   // acá (no en el nodo del editor) porque el usuario puede cambiar de página
   // o de modo mientras la subida sigue en vuelo — ver onImageUploadStart/
@@ -3686,6 +3689,31 @@ export default function ProjectEditor() {
       const { pages: nextPages, keptIds } = reconcilePersistedPages(pagesRef.current, persistedPages, strippedPayload)
       setPages(nextPages)
       setIsDirty(keptIds.length > 0)
+      // Si isDirty ya estaba en true, el setIsDirty(true) de arriba es un
+      // update de mismo valor: React bailea sin re-renderizar, así que el
+      // efecto de autosave (deps isDirty/loadingProject/projectId/
+      // activePageId/editorMode) nunca vuelve a correr y su timer de 8s no
+      // se rearma. handleDocUpdate tampoco lo rescata — también llama
+      // setIsDirty(true), otro no-op mientras ya está en true. Sin este
+      // reintento explícito, el contenido "kept" (p. ej. la URL final de una
+      // imagen que terminó de subir a mitad del PUT) queda sin persistir
+      // hasta que el usuario cambia de página/modo o guarda a mano.
+      // beforeunload sigue avisando, así que no hay pérdida silenciosa, pero
+      // el reintento automático que el código da a entender nunca llegaba solo.
+      if (keptIds.length > 0) {
+        if (saveRetryTimerRef.current) {
+          clearTimeout(saveRetryTimerRef.current)
+          saveRetryTimerRef.current = null
+        }
+        saveRetryTimerRef.current = setTimeout(() => {
+          saveRetryTimerRef.current = null
+          // Vía autosaveRunnerRef, nunca saveProjectPages directo: este timer
+          // puede disparar varios renders después de armarse y una referencia
+          // directa quedaría atada a esta versión (stale) de la función —
+          // mismo motivo que el reintento del 409 más arriba.
+          autosaveRunnerRef.current?.('autosave')
+        }, 8000)
+      }
       setSaveMessage(source === 'autosave' ? 'Autoguardado' : 'Guardado')
       // Hubo imágenes todavía subiendo cuando se serializó: no se guardaron
       // (su src era un `blob:` local, inservible fuera de esta pestaña). En
@@ -3807,6 +3835,10 @@ export default function ProjectEditor() {
   useEffect(() => {
     autosaveRunnerRef.current = saveProjectPages
   }, [saveProjectPages])
+
+  useEffect(() => () => {
+    if (saveRetryTimerRef.current) clearTimeout(saveRetryTimerRef.current)
+  }, [])
 
   // F3 (colaboración) — "timbre" → sync → merge. Trae los cambios que otra
   // sesión guardó: hace merge de 3 vías por sección (mergeSections) contra lo
