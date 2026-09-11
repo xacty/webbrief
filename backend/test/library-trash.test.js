@@ -29,22 +29,21 @@ test('extractReferencedAssetIds: lanza si un asset no trae storage_path ni publi
   )
 })
 
-// findReferencedAssetIds (lib/assetReferences.js) concatena
-// project_pages.content_html con project_page_change_proposals.content_html
-// (status='pending') antes de llamar a extractReferencedAssetIds, para que
-// una imagen usada solo en una propuesta de designer todavía sin publicar
-// tampoco se pueda trashear. Se testea acá al nivel de la función pura
-// porque mockear supabaseAdmin es pesado (mismo criterio documentado en
-// test/companies-create.test.js) — esta función ya captura el comportamiento
-// real de merge sin tocar la DB.
-test('extractReferencedAssetIds: detecta referencias que solo aparecen en el html de una propuesta pendiente', () => {
+// extractReferencedAssetIds es agnóstica del origen de cada content_html:
+// solo le importa recibir un array de objetos con esa propiedad.
+// findReferencedAssetIds (lib/assetReferences.js) le pasa el content_html de
+// project_pages tal cual, pero cualquier llamador que combine varios arrays
+// antes de invocarla debe seguir funcionando. Se testea acá al nivel de la
+// función pura porque mockear supabaseAdmin es pesado (mismo criterio
+// documentado en test/companies-create.test.js).
+test('extractReferencedAssetIds: detecta referencias sin importar en qué array combinado aparecen', () => {
   const assets = [
-    { id: 'a1', storage_path: '/companies/c/library/only-in-proposal.webp', public_url: null },
+    { id: 'a1', storage_path: '/companies/c/library/only-in-second-source.webp', public_url: null },
     { id: 'a2', storage_path: '/companies/c/library/unused.webp', public_url: null },
   ]
-  const publishedPages = [{ content_html: '<p>sin imágenes nuevas todavía</p>' }]
-  const pendingProposals = [{ content_html: '<img src="/companies/c/library/only-in-proposal.webp">' }]
-  const merged = [...publishedPages, ...pendingProposals]
+  const firstSource = [{ content_html: '<p>sin imágenes nuevas todavía</p>' }]
+  const secondSource = [{ content_html: '<img src="/companies/c/library/only-in-second-source.webp">' }]
+  const merged = [...firstSource, ...secondSource]
   assert.deepEqual([...extractReferencedAssetIds(assets, merged)], ['a1'])
 })
 

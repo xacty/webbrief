@@ -1,12 +1,10 @@
-// Detección de assets de biblioteca usados en páginas de proyectos o en
-// propuestas de designer pendientes: regex (substring) sobre content_html,
-// mismo enfoque que el orphan-resolve de comentarios en
-// backend/src/routes/projects.js (buscar `comment_orphaned`). Un asset
-// "referenciado" no puede enviarse a la papelera sin `force: true` porque
-// borrar su origen en ImageKit rompería la imagen ya insertada en un
-// documento — publicado o todavía en revisión.
+// Detección de assets de biblioteca usados en páginas de proyectos: regex
+// (substring) sobre content_html, mismo enfoque que el orphan-resolve de
+// comentarios en backend/src/routes/projects.js (buscar `comment_orphaned`).
+// Un asset "referenciado" no puede enviarse a la papelera sin `force: true`
+// porque borrar su origen en ImageKit rompería la imagen ya insertada en un
+// documento publicado.
 import { supabaseAdmin } from './supabase.js'
-import { isMissingTableError } from './projectAccess.js'
 
 // Contrato: cada asset necesita traer al menos storage_path o public_url
 // (idealmente ambos) para poder decidir si está en uso. Si quien llama
@@ -45,19 +43,5 @@ export async function findReferencedAssetIds(companyId, assets) {
   const { data: pages } = await supabaseAdmin
     .from('project_pages').select('content_html').in('project_id', projectIds)
 
-  // Una imagen usada solo en una propuesta de designer pendiente (todavía sin
-  // publicar en project_pages) tampoco debe poder trashearse: si el revisor
-  // la aprueba más tarde, la imagen ya estaría rota en ImageKit.
-  // isMissingTableError replica la misma degradación agraciada que ya usa
-  // projects.js para esta tabla (drift de deploy documentado en sesión 18).
-  const { data: proposals, error: proposalsError } = await supabaseAdmin
-    .from('project_page_change_proposals')
-    .select('content_html')
-    .in('project_id', projectIds)
-    .eq('status', 'pending')
-  if (proposalsError && !isMissingTableError(proposalsError, 'project_page_change_proposals')) {
-    throw proposalsError
-  }
-
-  return extractReferencedAssetIds(assets, [...(pages || []), ...(proposals || [])])
+  return extractReferencedAssetIds(assets, pages || [])
 }
