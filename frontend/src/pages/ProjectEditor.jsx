@@ -896,6 +896,24 @@ function createFlashOverlay(parentEl, top, height) {
   }, { once: true })
 }
 
+// ---------------------------------------------------------------------------
+// findScrollableAncestor — sube desde un nodo hasta el primer ancestro que
+// realmente scrollea. El canvas del editor está envuelto en varios divs de
+// layout (`.editorPageRow` es flex sin overflow) y tomar el padre directo
+// escribe `scrollTop` sobre un elemento que no scrollea: el scroll se pierde
+// en silencio y el navegador termina decidiendo la posición.
+// ---------------------------------------------------------------------------
+function findScrollableAncestor(el) {
+  let node = el?.parentElement
+  while (node && node !== document.body && node !== document.documentElement) {
+    const { overflowY } = getComputedStyle(node)
+    const scrolls = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay'
+    if (scrolls && node.scrollHeight > node.clientHeight) return node
+    node = node.parentElement
+  }
+  return null
+}
+
 function flashSectionInScrollEl(scrollEl, anchorEl, nextAnchorEl) {
   if (!scrollEl || !anchorEl) return
   // Append overlay to the canvas container if available so it stays visually
@@ -2644,6 +2662,10 @@ export default function ProjectEditor() {
   // viejos simplemente no matchean y caen en el fallback silencioso.
   const deepLinkRef = useRef({ pageId: searchParams.get('p'), sectionId: searchParams.get('s') })
   const deepLinkSectionDoneRef = useRef(false)
+  // `?commentId=<uuid>` (link de email / "Copiar link" de un comentario) se
+  // consume una sola vez por montaje. Ver el efecto que abre el thread.
+  const commentDeepLinkDoneRef = useRef(false)
+  const commentDeepLinkCancelRef = useRef(false)
   const { currentUser } = useAuth()
   const initialPersistedEditorViewRef = useRef(readPersistedProjectEditorView(projectId))
   const rootRef = useRef(null)
@@ -5257,24 +5279,53 @@ export default function ProjectEditor() {
     }
   }
 
-  function handleSelectThread(rootId) {
-    setActiveCommentId(rootId)
+  // Deja el ancla del thread a ~30% de la altura del contenedor (mínimo 90px
+  // bajo el borde superior) en vez de pegada al borde: es la "altura coherente"
+  // donde el ojo espera encontrar el texto comentado, y deja aire arriba para
+  // leer el párrafo previo. Devuelve false si el ancla todavía no está en el
+  // DOM, para que el caller pueda reintentar.
+  function scrollThreadIntoView(rootId, { focus = true, smooth = true } = {}) {
     const editor = editorRef.current
-    if (!editor) return
+    if (!editor) return false
     const range = findCommentRange(editor, rootId)
-    if (!range) return
-    editor.commands.setTextSelection(range)
-    editor.commands.focus()
+    if (!range) return false
+
+    // El foco de TipTap dispara el scrollIntoView mínimo del navegador, que
+    // deja el ancla pegada al borde inferior del viewport. Lo desactivamos y
+    // posicionamos nosotros. `focus: false` lo usan las re-correcciones de
+    // layout, para no robarle el caret al usuario si ya empezó a escribir.
+    if (focus) {
+      editor.commands.setTextSelection(range)
+      editor.commands.focus(null, { scrollIntoView: false })
+    }
+
     try {
+      const scrollEl = findScrollableAncestor(editor.view.dom)
       const coords = editor.view.coordsAtPos(range.from)
-      const scrollEl = rootRef.current?.querySelector('[data-flash-container]')?.parentElement
-      if (scrollEl && typeof coords?.top === 'number') {
-        const editorRect = scrollEl.getBoundingClientRect()
-        scrollEl.scrollTop += coords.top - editorRect.top - 100
-      }
+      if (!scrollEl || typeof coords?.top !== 'number') return false
+
+      const containerRect = scrollEl.getBoundingClientRect()
+      const offset = Math.max(90, Math.round(scrollEl.clientHeight * 0.3))
+      const rawTop = scrollEl.scrollTop + (coords.top - containerRect.top) - offset
+      const maxScrollTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
+      // `smooth: false` en la llegada por deep-link: una animación de scroll
+      // en pleno arranque del editor se cancela sola (hidratación de TipTap,
+      // focus, reflow del canvas) y el usuario se queda donde estaba. En un
+      // click del panel sí anima, porque ahí el layout ya está quieto.
+      scrollEl.scrollTo({
+        top: Math.max(0, Math.min(maxScrollTop, rawTop)),
+        behavior: smooth ? 'smooth' : 'auto',
+      })
+      return true
     } catch {
       // ignore — best-effort scroll
+      return false
     }
+  }
+
+  function handleSelectThread(rootId) {
+    setActiveCommentId(rootId)
+    scrollThreadIntoView(rootId)
   }
 
   function handleCopyCommentLink(comment) {
@@ -5289,36 +5340,82 @@ export default function ProjectEditor() {
         navigator.clipboard.writeText(url).then(() => {
           setPanelNotice('Link copiado al portapapeles')
           window.setTimeout(() => setPanelNotice(''), 2200)
-        }).catch(() => window.prompt('Copiá el link:', url))
+        }).catch(() => window.prompt('Copia el enlace:', url))
       } else {
-        window.prompt('Copiá el link:', url)
+        window.prompt('Copia el enlace:', url)
       }
     } catch {
-      window.prompt('Copiá el link:', url)
+      window.prompt('Copia el enlace:', url)
     }
   }
 
   // Si la URL trae ?commentId=<id>, abrir ese thread cuando los comentarios cargan.
   useEffect(() => {
-    if (!projectId || comments.length === 0) return
+    // `pages` tiene que estar cargado: si el fetch de comments gana la carrera
+    // al del proyecto, el salto de página se saltearía y el guard de abajo ya
+    // habría marcado el deep-link como consumido, sin nadie que lo reintente.
+    if (!projectId || comments.length === 0 || pages.length === 0) return
+    if (commentDeepLinkDoneRef.current) return
     const params = new URLSearchParams(window.location.search)
     const id = params.get('commentId')
     if (!id) return
     const target = comments.find((c) => c.id === id || c.parentCommentId === id)
     if (!target) return
+    // Una sola vez por montaje: el efecto de sincronización de `?p=` reescribe
+    // la query desde el estado de React Router (que todavía tiene `commentId`)
+    // y sin este guard el thread se reabriría solo en cada refresh de comments.
+    commentDeepLinkDoneRef.current = true
     const rootId = target.parentCommentId || target.id
-    // Navegar a la página del thread si hay otra activa
+    // Navegar a la página del thread si hay otra activa. `setActivePageId` por
+    // sí solo cambia el estado (y el `?p=` de la URL) pero NO rehidrata el
+    // canvas: el editor seguía mostrando la página anterior y la marca del
+    // comentario nunca aparecía en el doc. Mismo trío que `navigateToSection`:
+    // snapshot de la página que dejamos → cambio de id → carga del contenido.
     if (target.pageId && target.pageId !== activePageId) {
       const targetPage = pages.find((p) => p.id === target.pageId)
-      if (targetPage) setActivePageId(targetPage.id)
+      if (targetPage) {
+        snapshotActivePage()
+        setActivePageId(targetPage.id)
+        loadPageIntoEditor(targetPage, false)
+      }
     }
-    window.setTimeout(() => handleSelectThread(rootId), 300)
+    setActiveCommentId(rootId)
+
+    // Un timeout fijo no alcanza: el doc puede seguir hidratándose (cambio de
+    // página) y las imágenes de arriba pueden cargar después, empujando el
+    // ancla hacia abajo. Reintentamos hasta encontrar la marca y luego
+    // recorregimos un par de veces mientras el layout se asienta.
+    //
+    // OJO: el loop NO se cancela en el cleanup de este efecto. `comments`
+    // cambia de identidad mientras el loop corre (refetch inicial + Realtime),
+    // y como el guard de arriba ya marcó el deep-link como consumido, cancelar
+    // acá lo mataría sin que nadie lo reinicie: el thread se abría pero el
+    // scroll nunca ocurría. Solo el desmontaje lo cancela.
+    let attempts = 0
+    let corrections = 0
+
+    const tick = () => {
+      if (commentDeepLinkCancelRef.current) return
+      const landed = scrollThreadIntoView(rootId, { focus: corrections === 0, smooth: false })
+      if (!landed) {
+        attempts += 1
+        if (attempts < 40) window.setTimeout(tick, 100)
+        return
+      }
+      corrections += 1
+      if (corrections < 3) window.setTimeout(tick, 350)
+    }
+    window.setTimeout(tick, 120)
+
     // Limpiar el query param para que sucesivos refreshes no vuelvan a abrirlo.
     const url = new URL(window.location.href)
     url.searchParams.delete('commentId')
     window.history.replaceState({}, '', url.toString())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comments, projectId])
+  }, [comments, pages, projectId])
+
+  // Único punto que corta el loop de scroll del deep-link: el desmontaje.
+  useEffect(() => () => { commentDeepLinkCancelRef.current = true }, [])
 
   if (loadingProject) {
     return <div className={styles.loadingState}>Cargando proyecto...</div>
