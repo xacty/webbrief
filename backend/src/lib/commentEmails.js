@@ -45,7 +45,7 @@ function buildHtml({ recipientName, actorName, projectName, body, ctaUrl }) {
               <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:#0088ff;color:#ffffff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">Ver en WeBrief</a>
             </div>
             <p style="font-size:12px;color:#9ca3af;margin:24px 0 0;text-align:center">
-              Recibís este email porque sos miembro del proyecto en WeBrief.
+              Recibes este email porque eres miembro del proyecto en WeBrief.
             </p>
           </td></tr>
         </table>

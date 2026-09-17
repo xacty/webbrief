@@ -9,6 +9,7 @@ import CompanyRedirect from './components/layout/CompanyRedirect'
 // catch other chunks failing to load (stale tab after a deploy).
 import ErrorBoundary from './components/ErrorBoundary'
 import { companyToSlug } from './lib/companySlug'
+import { buildReturnTo } from './lib/returnTo'
 import { Select } from './components/ui'
 import {
   COMPANY_ROLE_ORDER,
@@ -54,12 +55,21 @@ const ROLE_PREVIEW_OPTIONS = [
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return <div className="pageLoading">Cargando...</div>
   }
 
-  return isAuthenticated ? children : <Navigate to="/login" replace />
+  if (isAuthenticated) return children
+
+  // La ruta original viaja en `?return_to=` para que el login pueda devolver
+  // al usuario exactamente adonde iba. Sin esto, un deep-link de comentario
+  // (`/project/:id/editor?commentId=...`) llegado por email se pierde y el
+  // usuario aterriza en el dashboard.
+  const returnTo = buildReturnTo(location)
+  const target = returnTo ? `/login?return_to=${encodeURIComponent(returnTo)}` : '/login'
+  return <Navigate to={target} replace />
 }
 
 function WelcomeGate() {

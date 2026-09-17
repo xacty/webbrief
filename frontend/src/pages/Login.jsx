@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Button, Input, Card } from '../components/ui'
+import { sanitizeReturnTo } from '../lib/returnTo'
 import styles from './AuthPage.module.css'
 
 export default function Login() {
@@ -25,15 +26,13 @@ export default function Login() {
 
     try {
       await signIn(email, password)
-      // Honor a same-origin return_to (used by the OAuth consent flow and by
-      // the share-page login link). Only allow relative paths to
-      // /oauth/authorize or /share/ to avoid open-redirect.
-      const returnTo = searchParams.get('return_to')
-      if (returnTo && (returnTo.startsWith('/oauth/authorize') || returnTo.startsWith('/share/'))) {
-        navigate(returnTo)
-      } else {
-        navigate('/dashboard')
-      }
+      // Honor a same-origin return_to: lo setean el flujo de consentimiento
+      // OAuth, el link de login de la share page y `PrivateRoute` cuando
+      // expulsa a un usuario sin sesión. `sanitizeReturnTo` solo deja pasar
+      // rutas relativas del mismo origen, para evitar open-redirect desde un
+      // link de email.
+      const returnTo = sanitizeReturnTo(searchParams.get('return_to'))
+      navigate(returnTo || '/dashboard', { replace: true })
     } catch (err) {
       setError(err.message || 'No se pudo iniciar sesión')
     } finally {
