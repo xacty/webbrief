@@ -1,5 +1,5 @@
 // Pantalla de inicio de sesión del diseñador
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -16,7 +16,18 @@ export default function Login() {
   const [resetMode, setResetMode] = useState(false)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { signIn } = useAuth()
+  const { signIn, isAuthenticated, loading } = useAuth()
+
+  // Si ya hay sesión válida, o llega mientras esta pantalla está abierta (por
+  // ejemplo cuando la renovación del token termina después de que
+  // PrivateRoute redirigió), no tiene sentido pedir la contraseña otra vez:
+  // se vuelve directo a donde iba el usuario. Sin esto, cada regreso después
+  // de horas terminaba en un login innecesario y una sesión duplicada.
+  useEffect(() => {
+    if (loading || !isAuthenticated) return
+    const returnTo = sanitizeReturnTo(searchParams.get('return_to'))
+    navigate(returnTo || '/dashboard', { replace: true })
+  }, [loading, isAuthenticated, navigate, searchParams])
 
   async function handleSubmit(e) {
     e.preventDefault()

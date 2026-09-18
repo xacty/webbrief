@@ -8,6 +8,50 @@
         if (t === 'dark') document.documentElement.dataset.theme = 'dark';
       })();
     </script>
+    <script>
+      // Red de seguridad del arranque (incidentes 2026-08-27 y 2026-09-18). Si
+      // el JS de entrada no llega a ejecutarse, no corre NADA del bundle: ni el
+      // ErrorBoundary ni chunkReload.js, que viven dentro de ese mismo archivo.
+      // El sintoma es una pagina en blanco que solo se arregla recargando a
+      // mano. Este script es inline a proposito: es lo unico que sigue vivo en
+      // ese escenario. Solo actua mientras #root esta vacio (antes de que React
+      // monte); despues, los fallos de chunks son cosa de chunkReload.js.
+      //   1. Falla la carga del <script type="module"> de entrada o de un
+      //      modulepreload -> recarga de inmediato.
+      //   2. A los 10 s #root sigue vacio -> recarga.
+      // Anti-bucle: como mucho una recarga cada 30 s por pestana (marca en
+      // sessionStorage). Sin sessionStorage no se recarga: un bucle infinito es
+      // peor que una pagina en blanco.
+      (function () {
+        var KEY = 'webrief:boot-recovery-at';
+        var COOLDOWN_MS = 30000;
+        var done = false;
+        function appMounted() {
+          var root = document.getElementById('root');
+          return !!(root && root.firstChild);
+        }
+        function recover() {
+          if (done || appMounted()) return;
+          done = true;
+          try {
+            var last = Number(sessionStorage.getItem(KEY));
+            if (last && Date.now() - last < COOLDOWN_MS) return;
+            sessionStorage.setItem(KEY, String(Date.now()));
+          } catch (e) {
+            return;
+          }
+          location.reload();
+        }
+        window.addEventListener('error', function (event) {
+          var el = event.target;
+          if (!el || !el.tagName) return;
+          var isEntry = el.tagName === 'SCRIPT' && el.type === 'module';
+          var isPreload = el.tagName === 'LINK' && el.rel === 'modulepreload';
+          if (isEntry || isPreload) recover();
+        }, true);
+        setTimeout(recover, 10000);
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/src/assets/brand/webrief--favicon-v2.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WeBrief</title>
