@@ -16,8 +16,8 @@ import styles from './ConflictCompareModal.module.css'
 // mergeSections (lib/sectionMerge.js), que los toma del HTML serializado por el
 // propio TipTap (local) o del `content_html` que devuelve el backend (remoto).
 // Este era el 4º sink sin sanitizar; ahora pasa por `sanitizeContentHtml`
-// (lib/sanitizeHtml.js, DOMPurify) igual que Preview/Handoff/SharePage y el panel
-// de propuestas. El backend además sanea al escribir y en la salida pública
+// (lib/sanitizeHtml.js, DOMPurify) igual que Preview/Handoff/SharePage. El backend
+// además sanea al escribir y en la salida pública
 // (backend/src/lib/htmlSanitizer.js), así que esto es defensa en profundidad:
 // cubre el contenido legacy ya almacenado sin depender de un backfill.
 //

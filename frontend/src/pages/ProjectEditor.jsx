@@ -41,11 +41,20 @@ import {
 } from '../lib/commentsApi'
 import { subscribeProjectComments } from '../lib/commentsRealtime'
 import { createEditorChannel } from '../lib/editorPresence'
-import { mergeSections, buildHtmlFromSections, normalizeHtml, splitSections } from '../lib/sectionMerge'
+import { mergeSections, buildHtmlFromSections, normalizeHtml } from '../lib/sectionMerge'
 import { buildSectionOrderIndex, orderSectionActivityGroups } from '../lib/activityOrdering'
-import { stripPendingUploadImagesFromHtml, stripPendingUploadImagesFromJson, countPendingUploadImages } from '../lib/pendingUploads'
-import { diffProposalSections, summarizeProposalDiff } from '../lib/proposalDiff'
-import { diffProposalBlocks } from '../lib/proposalBlockDiff'
+import {
+  stripPendingUploadImagesFromHtml,
+  isPendingUploadSrc,
+  stripPendingUploadsFromPages,
+  reconcilePersistedPages,
+  hasPendingUpload,
+  replacePendingUploadInHtml,
+  replacePendingUploadInJson,
+  removePendingUploadFromHtml,
+  removePendingUploadFromJson,
+  imageAttrsFromAsset,
+} from '../lib/pendingUploads'
 import PresenceAvatars from '../components/editor/PresenceAvatars'
 import useAnchoredDropdown from '../hooks/useAnchoredDropdown.js'
 import { Undo2, Redo2, Plus, Bell, User, MoreVertical, Tag, Info, GripVertical, X, Strikethrough, List, ListOrdered, Quote, TableIcon, Rows3, Columns3, Trash2, Copy, Link2, Code2, Palette, Eye, FileText, MousePointerClick, Globe, Download, Sheet, FileSpreadsheet, ArrowLeft, AlignLeft, AlignCenter, AlignRight, AlignJustify, IndentIncrease, IndentDecrease, ChevronDown, ChevronLeft, ChevronRight, ListCollapse, Pencil, Image as ImageIcon, Images, RefreshCw, BookTemplate, MessageSquare, Reply, CheckCircle2, Check, Send, MoreHorizontal, AtSign, MessagesSquare, Minus } from 'lucide-react'
@@ -292,6 +301,7 @@ function EditableImageView({ node, editor, extension, getPos, updateAttributes, 
   const [measuredWidth, setMeasuredWidth] = useState(0)
 
   const currentWidth = Number(node.attrs.width) || null
+  const isUploading = isPendingUploadSrc(node.attrs.src)
 
   function showSizeNotice(message) {
     setSizeNotice(message)
@@ -467,11 +477,16 @@ function EditableImageView({ node, editor, extension, getPos, updateAttributes, 
       >
         <img
           ref={imageRef}
-          className={styles.imageNodeImage}
+          className={cx(styles.imageNodeImage, isUploading && styles.imageNodeImageUploading)}
           src={node.attrs.src}
           alt={node.attrs.alt || ''}
           draggable={false}
         />
+        {isUploading && (
+          <div className={styles.imageUploadingNotice} role="status">
+            Subiendo…
+          </div>
+        )}
         {sizeNotice && <div className={styles.imageSizeNotice}>{sizeNotice}</div>}
         {selected && (
           <>
@@ -700,6 +715,13 @@ async function replaceImageSrc(editor, previousSrc, nextSrc, nextAttrs = {}) {
     image.src = nextSrc
   })
 
+  // El editor pudo destruirse MIENTRAS esperábamos el preload de arriba (p.ej.
+  // el usuario pasó de "brief" a Preview/Handoff, que desmonta EditorPanel).
+  // El chequeo de "no destruido" que hace el caller es de ANTES del await, así
+  // que acá hay que repetirlo: si no, `editor.state`/`editor.view.dispatch` de
+  // abajo operan sobre una instancia muerta.
+  if (!editor || editor.isDestroyed) return false
+
   const tr = editor.state.tr
   let replaced = false
 
@@ -716,7 +738,16 @@ async function replaceImageSrc(editor, previousSrc, nextSrc, nextAttrs = {}) {
   })
 
   if (!replaced) return false
-  editor.view.dispatch(tr)
+
+  try {
+    editor.view.dispatch(tr)
+  } catch {
+    // Dispatch sobre una view a medio desmontar puede tirar en vez de ser un
+    // no-op silencioso. Lo tratamos igual que "no se reemplazó" para que
+    // onImageUploadDone caiga al fallback de estado de página en vez de dar
+    // por hecho un reemplazo que nunca pasó.
+    return false
+  }
   return true
 }
 
@@ -804,6 +835,57 @@ function removeImageBySrc(editor, src) {
 
   editor.view.dispatch(editor.state.tr.delete(targetPos, targetPos + targetSize))
   return true
+}
+
+// Orquesta una subida de imagen de punta a punta: inserta el placeholder
+// blob:, sube el archivo con `uploadFn` (cada call site decide qué manda:
+// Toolbar no adjunta pageId/sectionId, EditorPanel sí) y reporta el
+// resultado por callbacks — nunca reemplaza el placeholder acá mismo. Antes
+// esto estaba triplicado (Toolbar.handleImageUpload, EditorPanel handleDrop
+// y handlePaste) con el mismo try/catch/finally; ahora cada call site solo
+// arma su `uploadFn`.
+//
+// El reemplazo real (¿el editor todavía tiene el placeholder? ¿alguna página
+// del estado lo tiene? ¿no está en ningún lado?) vive en ProjectEditor
+// (onImageUploadDone/onImageUploadFailed) y no acá, porque esta función no
+// sabe si el usuario cambió de página o de modo mientras la subida estaba en
+// vuelo — solo ProjectEditor tiene esa vista completa (editorRef + pages).
+async function runImageUploadFlow({
+  editor,
+  file,
+  position = null,
+  uploadFn,
+  onImageUploadStart,
+  onImageUploadDone,
+  onImageUploadFailed,
+}) {
+  if (!editor || !file) return
+
+  const tempUrl = URL.createObjectURL(file)
+  const inserted = insertTemporaryImage(editor, tempUrl, file.name, position)
+
+  if (!inserted) {
+    // No se pudo ni insertar el placeholder (p.ej. el editor perdió el foco
+    // justo antes) — abortamos sin llamar a uploadFn. Reusamos el mismo
+    // camino de aviso que un fallo de subida real: el registro nunca llegó a
+    // tener esta entrada, así que su cleanup (delete + revoke) es un no-op
+    // inofensivo.
+    onImageUploadFailed?.({
+      tempUrl,
+      fileName: file.name,
+      error: new Error('No se pudo insertar la imagen en el documento'),
+    })
+    return
+  }
+
+  onImageUploadStart?.({ tempUrl, fileName: file.name })
+
+  try {
+    const asset = await uploadFn(file)
+    onImageUploadDone?.({ tempUrl, asset, fileName: file.name })
+  } catch (error) {
+    onImageUploadFailed?.({ tempUrl, fileName: file.name, error })
+  }
 }
 
 function setCssVars(node, vars) {
@@ -1877,19 +1959,6 @@ function mapPersistedPage(page, projectType = 'page') {
     reviewBaselineVersionId: page.reviewBaselineVersionId || null,
     reviewBaselineAt: page.reviewBaselineAt || null,
     reviewRequestedBy: page.reviewRequestedBy || null,
-    pendingProposal: page.pendingProposal ? {
-      id: page.pendingProposal.id,
-      proposerUserId: page.pendingProposal.proposerUserId,
-      contentHtml: page.pendingProposal.contentHtml || '',
-      contentJson: page.pendingProposal.contentJson || null,
-      seoMetadata: page.pendingProposal.seoMetadata || {},
-      status: page.pendingProposal.status || 'pending',
-      reviewerUserId: page.pendingProposal.reviewerUserId || null,
-      reviewerNote: page.pendingProposal.reviewerNote || '',
-      reviewedAt: page.pendingProposal.reviewedAt || null,
-      createdAt: page.pendingProposal.createdAt || null,
-      updatedAt: page.pendingProposal.updatedAt || null,
-    } : null,
   }
 }
 
@@ -2674,6 +2743,16 @@ export default function ProjectEditor() {
 
   const [projectMeta, setProjectMeta] = useState(null)
   const [pages, setPages] = useState([])
+  // Espejo de `pages` para leer el valor más reciente desde callbacks async
+  // (onImageUploadDone/Failed, que resuelven después de un round-trip a
+  // /assets) sin cerrar sobre el `pages` de cuando arrancó la subida. La
+  // escritura real de estado siempre pasa por la forma funcional de
+  // setPages, nunca por este ref — solo se usa para decidir QUÉ página tiene
+  // el placeholder ahora.
+  const pagesRef = useRef(pages)
+  useEffect(() => {
+    pagesRef.current = pages
+  }, [pages])
   const [activePageId, setActivePageId] = useState(null)
   const [activeSectionId, setActiveSectionId] = useState(null)
   // Captura el sectionId justo en mousedown (antes de que blur quite el foco del editor)
@@ -2695,15 +2774,6 @@ export default function ProjectEditor() {
   const [editorToast, setEditorToast] = useState(null)
   const [editorMode, setEditorMode] = useState(() => initialPersistedEditorViewRef.current?.editorMode || 'brief')
   const [handoffAudience, setHandoffAudience] = useState(() => initialPersistedEditorViewRef.current?.handoffAudience || 'designer')
-  // Comparador de propuesta de diseño: false = se ve lo publicado (el editor
-  // normal), true = se ve la propuesta pendiente en solo lectura. Es un eje
-  // aparte del modo Brief/Handoff/Preview (qué versión, no qué vista), y NO se
-  // persiste en la vista guardada: siempre se entra por lo publicado.
-  const [proposalViewOpen, setProposalViewOpen] = useState(false)
-  // Loading state de la decisión de Aprobar — deshabilita el botón en ambos
-  // lugares (proposalBox y header del comparador) y evita doble-click
-  // mientras el POST /decision está en vuelo.
-  const [isDecidingProposal, setIsDecidingProposal] = useState(false)
   const [activity, setActivity] = useState([])
   const [notifications, setNotifications] = useState([])
   const [deliverables, setDeliverables] = useState([])
@@ -2779,10 +2849,14 @@ export default function ProjectEditor() {
   const activeSeoMetadataRef = useRef(getPageSeoMetadata(null))
   const activeContentRulesRef = useRef(getPageContentRules(null))
   const toastTimerRef = useRef(null)
-  // Cuántos placeholders de subida (`blob:`) descartó el último snapshot. Se
-  // avisa solo en guardado manual: en autosave el nodo sigue en el editor y
-  // entra bien en el siguiente ciclo, cuando la subida ya resolvió su URL.
-  const pendingUploadsRef = useRef(0)
+  // Reintento único de autosave post-save cuando quedó contenido "kept" —
+  // ver el comentario junto a su uso en saveProjectPages.
+  const saveRetryTimerRef = useRef(null)
+  // Subidas de imagen en curso: tempUrl (blob:) → { pageId, fileName }. Vive
+  // acá (no en el nodo del editor) porque el usuario puede cambiar de página
+  // o de modo mientras la subida sigue en vuelo — ver onImageUploadStart/
+  // Done/Failed más abajo y el effect de beforeunload.
+  const inFlightUploadsRef = useRef(new Map())
 
   const activePage = pages.find((p) => p.id === activePageId)
   const projectType = inferProjectType(projectMeta, pages)
@@ -2823,8 +2897,6 @@ export default function ProjectEditor() {
     canWriteContent,
     canUseHandoff,
     canSendToReview,
-    canReviewDesignerProposals,
-    isDesigner,
     canEditContentRules,
   } = useMemo(() => (
     getProjectEditorCapabilities(currentUser, projectMeta?.companyId)
@@ -2833,42 +2905,6 @@ export default function ProjectEditor() {
     canUseHandoff ? ['brief', 'handoff', 'preview'] : ['brief', 'preview']
   ), [canUseHandoff])
 
-  // ── Revisión de propuesta de diseño ────────────────────────────────────
-  // Un `designer` no escribe la página: cada guardado suyo queda como
-  // propuesta pendiente (project_page_change_proposals) y el backend solo
-  // superpone ese contenido para el propio designer. El revisor veía
-  // "Aprobar / Pedir cambios" sin poder ver QUÉ aprobaba — de ahí este
-  // comparador. El backend YA manda `pendingProposal` completo a los
-  // revisores, así que todo esto es cliente: no hace falta endpoint nuevo.
-  const pendingProposal = activePage?.pendingProposal || null
-  const proposalDiff = useMemo(() => (
-    pendingProposal
-      ? diffProposalSections(activePage?.fullContent || '', pendingProposal.contentHtml || '')
-      : null
-  ), [pendingProposal, activePage?.fullContent])
-  const proposerName = useMemo(() => {
-    const proposerId = pendingProposal?.proposerUserId
-    if (!proposerId) return ''
-    const profile = commentMembers.find((member) => member.id === proposerId)
-      || (Array.isArray(commentProfiles) ? commentProfiles.find((item) => item.id === proposerId) : null)
-    return profile?.fullName || profile?.email || ''
-  }, [pendingProposal, commentMembers, commentProfiles])
-  const canSeeProposalReview = Boolean(canReviewDesignerProposals && pendingProposal)
-  const proposalReviewActive = canSeeProposalReview && proposalViewOpen
-
-  // Cambiar de página vuelve siempre a lo publicado: la aprobación es por
-  // página, y el panel de secciones sigue derivando del doc montado (que en
-  // vista propuesta no existe), así que arrastrar la vista entre páginas
-  // dejaría la columna izquierda describiendo otra cosa.
-  useEffect(() => {
-    setProposalViewOpen(false)
-  }, [activePageId])
-
-  // La propuesta desapareció (aprobada, rechazada, o el rol dejó de poder
-  // revisarla) → no hay nada que comparar.
-  useEffect(() => {
-    if (!canSeeProposalReview) setProposalViewOpen(false)
-  }, [canSeeProposalReview])
   const [contentRuleNotice, setContentRuleNotice] = useState('')
   const activePageForRead = useMemo(() => {
     if (!activePage) return null
@@ -3399,19 +3435,15 @@ export default function ProjectEditor() {
   const snapshotActivePage = useCallback(() => {
     if (!editorRef.current || !activePageId) return null
 
-    // Último filtro antes de persistir: un <img src="blob:…"> es el placeholder
-    // de una subida todavía en vuelo (o fallada). El object URL muere con la
-    // pestaña, así que guardarlo deja una imagen rota para siempre — pasó en
-    // Prod. Se limpia acá, el único chokepoint por el que pasan autosave y
-    // guardado manual; el nodo sigue vivo en el editor, así que si la subida
-    // termina bien `replaceImageSrc` lo completa y el próximo save lo persiste
-    // ya con su URL pública. Ver frontend/src/lib/pendingUploads.js.
-    const rawHtml = editorRef.current.getHTML()
-    const rawJson = editorRef.current.getJSON()
-    const pendingUploads = countPendingUploadImages(rawHtml)
-    const html = pendingUploads ? stripPendingUploadImagesFromHtml(rawHtml) : rawHtml
-    const json = pendingUploads ? stripPendingUploadImagesFromJson(rawJson) : rawJson
-    if (pendingUploads) pendingUploadsRef.current = pendingUploads
+    // Ya NO filtra los placeholders `blob:` acá (hasta v2.15.x sí lo hacía).
+    // Este es el chokepoint que usan autosave, guardado manual, cambio de
+    // página/modo Y syncRemoteChanges como "local" del merge de 3 vías — si
+    // filtrara acá, un marcador en vuelo se perdía en cualquiera de esos
+    // caminos (bug confirmado en Prod, página "Coapa"). El filtro real vive
+    // en el único punto que de verdad viaja al servidor: saveProjectPages,
+    // vía stripPendingUploadsFromPages. Ver frontend/src/lib/pendingUploads.js.
+    const html = editorRef.current.getHTML()
+    const json = editorRef.current.getJSON()
     const sections = parseSectionsFromHtml(html)
     const seoMetadata = getPageSeoMetadata({ seoMetadata: activeSeoMetadataRef.current })
     const contentRules = getPageContentRules({ contentRules: activeContentRulesRef.current })
@@ -3424,17 +3456,6 @@ export default function ProjectEditor() {
 
     return { html, json, sections, seoMetadata, contentRules }
   }, [activePageId])
-
-  // Abre el comparador de propuesta. Vive acá y no junto al resto del estado
-  // de propuesta porque necesita snapshotActivePage (declarado justo arriba):
-  // si el revisor tenía cambios sin guardar, el snapshot los deja en `pages` y
-  // vuelven al editor al cerrar el comparador — mismo contrato que el cambio
-  // de modo Brief→Preview, que también desmonta EditorPanel.
-  const openProposalView = useCallback(() => {
-    if (!canSeeProposalReview) return
-    snapshotActivePage()
-    setProposalViewOpen(true)
-  }, [canSeeProposalReview, snapshotActivePage])
 
   const loadPageIntoEditor = useCallback((page, shouldScroll = true) => {
     if (!editorRef.current || !page) return
@@ -3502,6 +3523,103 @@ export default function ProjectEditor() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
   }, [])
 
+  // ── Ciclo de vida de una subida de imagen en curso ──────────────────────
+  // Contrapartida de runImageUploadFlow (fuera del componente, arriba): esta
+  // función sí sabe dónde está todo (editorRef, pagesRef) así que es quien
+  // decide dónde insertar la imagen ya subida.
+  const onImageUploadStart = useCallback(({ tempUrl, fileName }) => {
+    inFlightUploadsRef.current.set(tempUrl, { pageId: activePageId, fileName })
+  }, [activePageId])
+
+  const onImageUploadDone = useCallback(async ({ tempUrl, asset, fileName }) => {
+    const upload = inFlightUploadsRef.current.get(tempUrl)
+    const resolvedFileName = fileName || upload?.fileName || asset?.fileName || 'imagen'
+    const attrs = imageAttrsFromAsset(asset, resolvedFileName)
+
+    // Todo lo de abajo va en try/finally: replaceImageSrc espera un preload
+    // de imagen antes de tocar el editor, y en esa ventana el usuario puede
+    // salir de "brief" (Preview/Handoff desmontan EditorPanel) y destruir
+    // editorRef.current a mitad de camino. Si eso escapara del callback sin
+    // pasar por el finally, la entrada en inFlightUploadsRef nunca se
+    // borraría — y el guard de beforeunload bloquearía la pestaña para
+    // siempre creyendo que todavía hay una subida en curso.
+    try {
+      // 1) El editor montado (no destruido) todavía tiene el placeholder — el
+      // caso normal: la subida terminó mientras el usuario seguía ahí, en
+      // cualquier página (setContent al cambiar de página reinserta el mismo
+      // blob: si la página activa lo tenía guardado en `pages`).
+      //
+      // El intento va en su propio try/catch: replaceImageSrc ya se defiende
+      // del editor destruido durante el preload, pero cualquier falla
+      // imprevista acá se trata igual que "no se reemplazó" en vez de
+      // escapar — así siempre caemos al fallback de estado de página (2/3)
+      // en lugar de dejar la imagen subida sin destino.
+      let replacedInEditor = false
+      try {
+        replacedInEditor = Boolean(editorRef.current)
+          && !editorRef.current.isDestroyed
+          && (await replaceImageSrc(editorRef.current, tempUrl, attrs.src, attrs))
+      } catch {
+        replacedInEditor = false
+      }
+
+      if (!replacedInEditor) {
+        // 2) Ninguna instancia montada lo tiene, pero puede seguir vivo en el
+        // estado de otra página (el usuario navegó lejos). pagesRef.current
+        // evita cerrar sobre el `pages` de cuando arrancó esta subida.
+        const targetPage = pagesRef.current.find((page) => hasPendingUpload(page.fullContent, tempUrl))
+        if (targetPage) {
+          setPages((prev) => prev.map((page) => (
+            page.id === targetPage.id
+              ? {
+                  ...page,
+                  fullContent: replacePendingUploadInHtml(page.fullContent, tempUrl, attrs),
+                  contentJson: replacePendingUploadInJson(page.contentJson, tempUrl, attrs),
+                }
+              : page
+          )))
+          setIsDirty(true)
+          showToast({ kind: 'info', text: `La imagen «${resolvedFileName}» quedó en «${targetPage.name}».` })
+        } else {
+          // 3) No está en ningún lado: se borró el nodo, o un conflicto de
+          // sync se resolvió por "Usar la suya" y se llevó puesto el párrafo.
+          showToast({
+            kind: 'info',
+            text: `La imagen «${resolvedFileName}» se subió, pero ya no estaba en el documento. La encuentras en Biblioteca › Documentos.`,
+          })
+        }
+      }
+    } finally {
+      // Pase lo que pase arriba (reemplazo ok, fallback ok, o cualquiera de
+      // los dos tirando), esto tiene que correr siempre.
+      inFlightUploadsRef.current.delete(tempUrl)
+      URL.revokeObjectURL(tempUrl)
+    }
+  }, [showToast])
+
+  const onImageUploadFailed = useCallback(({ tempUrl, error }) => {
+    if (editorRef.current && !editorRef.current.isDestroyed) {
+      removeImageBySrc(editorRef.current, tempUrl)
+    }
+
+    const targetPage = pagesRef.current.find((page) => hasPendingUpload(page.fullContent, tempUrl))
+    if (targetPage) {
+      setPages((prev) => prev.map((page) => (
+        page.id === targetPage.id
+          ? {
+              ...page,
+              fullContent: removePendingUploadFromHtml(page.fullContent, tempUrl),
+              contentJson: removePendingUploadFromJson(page.contentJson, tempUrl),
+            }
+          : page
+      )))
+    }
+
+    showToast({ kind: 'warning', text: error?.message || 'No se pudo subir la imagen' })
+    inFlightUploadsRef.current.delete(tempUrl)
+    URL.revokeObjectURL(tempUrl)
+  }, [showToast])
+
   const saveProjectPages = useCallback(async (source = 'manual', options = {}) => {
     if (!projectId || !activePage || saveInFlightRef.current || !canWriteContent) return false
 
@@ -3537,12 +3655,27 @@ export default function ProjectEditor() {
         reviewRequestedBy: page.reviewRequestedBy || null,
       }
     })
+    // Último filtro antes de persistir — ver frontend/src/lib/pendingUploads.js.
+    // snapshotActivePage ya NO filtra (así el marcador sobrevive a
+    // syncRemoteChanges y a los cambios de página/modo); acá se filtran TODAS
+    // las páginas del payload, no solo la activa, porque una página no-activa
+    // puede seguir teniendo el placeholder de una subida que arrancó antes de
+    // navegar a otra.
+    const { pages: strippedPayload, dropped } = stripPendingUploadsFromPages(payload)
+    // El lado "previo" de la comparación también se filtra, para no comparar
+    // manzanas con peras: si no se filtrara, un placeholder en vuelo que
+    // estaba en `pages` (previo) y se cae del payload filtrado (nuevo) se
+    // leería como un image_removed falso.
+    const strippedPreviousPages = pages.map((page) => ({
+      ...page,
+      fullContent: stripPendingUploadImagesFromHtml(page.fullContent || buildDocumentHTML(page.sections || [])),
+    }))
     // FAQ usa el mismo modelo de sectionDivider que page → reusamos el builder
     // por sección (eventos granulares por FAQ). Document es lineal → builder
     // a nivel documento con sectionId virtual __document__.
     const sectionEvents = (projectType === 'page' || projectType === 'faq')
-      ? buildSectionActivityEvents(pages, payload)
-      : buildDocumentActivityEvents(pages, payload)
+      ? buildSectionActivityEvents(strippedPreviousPages, strippedPayload)
+      : buildDocumentActivityEvents(strippedPreviousPages, strippedPayload)
 
     saveInFlightRef.current = true
     setIsSaving(true)
@@ -3551,7 +3684,7 @@ export default function ProjectEditor() {
     try {
       const data = await apiFetch(`/api/projects/${projectId}/pages`, {
         method: 'PUT',
-        body: JSON.stringify({ pages: payload, source, sectionEvents }),
+        body: JSON.stringify({ pages: strippedPayload, source, sectionEvents }),
       })
 
       const persistedPages = data.pages.map((page) => {
@@ -3563,25 +3696,59 @@ export default function ProjectEditor() {
           contentRules: getPageContentRules({ contentRules: activeContentRulesRef.current }),
         }
       })
-      setPages(persistedPages)
-      setIsDirty(false)
-      setSaveMessage(
-        data.proposalSaved
-          ? (source === 'autosave' ? 'Propuesta autoguardada' : 'Propuesta guardada')
-          : (source === 'autosave' ? 'Autoguardado' : 'Guardado')
-      )
+      // Reconciliamos contra pagesRef.current (espejo vivo), no contra el
+      // `pages` cerrado en el closure de este save: entre armar el payload y
+      // esta respuesta puede haber avanzado el estado real — un caso-2 de
+      // onImageUploadDone (ver más abajo) pudo resolver un placeholder
+      // DURANTE este PUT y pisar el blob: por la URL final directo en el
+      // estado de otra página. persistedPages nunca tuvo esa imagen (salió
+      // del payload vía stripPendingUploadsFromPages), así que si esta
+      // reconciliación comparara contra el `pages` viejo (o solo mirara si
+      // queda un blob:, como hacía keepLocalPlaceholderContent) la
+      // perderíamos en silencio. keptIds.length > 0 dice que alguna página
+      // quedó con contenido más nuevo que lo persisted: no podemos limpiar
+      // isDirty del todo o ese contenido se queda sin guardar para siempre.
+      const { pages: nextPages, keptIds } = reconcilePersistedPages(pagesRef.current, persistedPages, strippedPayload)
+      setPages(nextPages)
+      setIsDirty(keptIds.length > 0)
+      // Si isDirty ya estaba en true, el setIsDirty(true) de arriba es un
+      // update de mismo valor: React bailea sin re-renderizar, así que el
+      // efecto de autosave (deps isDirty/loadingProject/projectId/
+      // activePageId/editorMode) nunca vuelve a correr y su timer de 8s no
+      // se rearma. handleDocUpdate tampoco lo rescata — también llama
+      // setIsDirty(true), otro no-op mientras ya está en true. Sin este
+      // reintento explícito, el contenido "kept" (p. ej. la URL final de una
+      // imagen que terminó de subir a mitad del PUT) queda sin persistir
+      // hasta que el usuario cambia de página/modo o guarda a mano.
+      // beforeunload sigue avisando, así que no hay pérdida silenciosa, pero
+      // el reintento automático que el código da a entender nunca llegaba solo.
+      if (keptIds.length > 0) {
+        if (saveRetryTimerRef.current) {
+          clearTimeout(saveRetryTimerRef.current)
+          saveRetryTimerRef.current = null
+        }
+        saveRetryTimerRef.current = setTimeout(() => {
+          saveRetryTimerRef.current = null
+          // Vía autosaveRunnerRef, nunca saveProjectPages directo: este timer
+          // puede disparar varios renders después de armarse y una referencia
+          // directa quedaría atada a esta versión (stale) de la función —
+          // mismo motivo que el reintento del 409 más arriba.
+          autosaveRunnerRef.current?.('autosave')
+        }, 8000)
+      }
+      setSaveMessage(source === 'autosave' ? 'Autoguardado' : 'Guardado')
       // Hubo imágenes todavía subiendo cuando se serializó: no se guardaron
       // (su src era un `blob:` local, inservible fuera de esta pestaña). En
       // autosave no se avisa — el nodo sigue en el editor y entra solo en el
       // ciclo siguiente. En manual sí, porque el usuario cree que guardó todo.
-      const droppedUploads = pendingUploadsRef.current
-      pendingUploadsRef.current = 0
-      if (droppedUploads > 0 && source !== 'autosave') {
+      // `dropped` viene de stripPendingUploadsFromPages, calculado arriba
+      // sobre TODAS las páginas (no solo la activa).
+      if (dropped > 0 && source !== 'autosave') {
         showToast({
           kind: 'warning',
-          text: droppedUploads === 1
+          text: dropped === 1
             ? 'Una imagen todavía se estaba subiendo y no se guardó. Espera a que termine y guarda de nuevo.'
-            : `${droppedUploads} imágenes todavía se estaban subiendo y no se guardaron. Espera a que terminen y guarda de nuevo.`,
+            : `${dropped} imágenes todavía se estaban subiendo y no se guardaron. Espera a que terminen y guarda de nuevo.`,
         })
       }
       // F3 (colaboración): lo que acaba de persistir el servidor pasa a ser la
@@ -3691,6 +3858,10 @@ export default function ProjectEditor() {
     autosaveRunnerRef.current = saveProjectPages
   }, [saveProjectPages])
 
+  useEffect(() => () => {
+    if (saveRetryTimerRef.current) clearTimeout(saveRetryTimerRef.current)
+  }, [])
+
   // F3 (colaboración) — "timbre" → sync → merge. Trae los cambios que otra
   // sesión guardó: hace merge de 3 vías por sección (mergeSections) contra lo
   // último persistido en servidor (serverPagesRef = 'base'), aplica solo las
@@ -3711,7 +3882,15 @@ export default function ProjectEditor() {
       const data = await apiFetch(`/api/projects/${projectId}`)
       const remotePages = data.pages.map((page) => mapPersistedPage(page, projectType))
       const remoteById = new Map(remotePages.map((page) => [page.id, page]))
-      const localById = new Map(pages.map((page) => [page.id, page]))
+      // pagesRef.current en vez del `pages` cerrado en este callback: la
+      // ventana del GET es la misma que la del PUT de saveProjectPages — un
+      // caso-2 de onImageUploadDone puede resolver un placeholder MIENTRAS
+      // este sync está en vuelo. Si el merge usara el `pages` viejo, el
+      // resultado del merge reinstalaría el blob: que ya se reemplazó (y
+      // cuyo object URL ya se revocó); el próximo guardado lo filtra y la
+      // imagen recién subida se pierde para siempre.
+      const localPages = pagesRef.current
+      const localById = new Map(localPages.map((page) => [page.id, page]))
       const usesSections = projectType === 'page' || projectType === 'faq'
 
       // Snapshot único de la página activa (si el editor está montado) — se usa
@@ -3719,6 +3898,10 @@ export default function ProjectEditor() {
       // (efecto secundario propio de snapshotActivePage), pero el único
       // setPages real de esta función es el de más abajo con nextPages ya
       // resuelto, así que ese pisado intermedio queda sobrescrito sin efecto.
+      // Desde que snapshotActivePage dejó de filtrar `blob:`, un placeholder
+      // en vuelo viaja intacto como local del merge (mergeSections no lo
+      // toca: para él es HTML de sección como cualquier otro) y vuelve a
+      // aparecer en nextPages/el editor — no hace falta reinyectarlo a mano.
       const activeSnapshot = activePageId ? snapshotActivePage() : null
 
       let appliedRemoteCount = 0
@@ -3726,7 +3909,7 @@ export default function ProjectEditor() {
       let anyLocalDifference = false
       const nextPages = []
 
-      pages.forEach((localPage) => {
+      localPages.forEach((localPage) => {
         const remotePage = remoteById.get(localPage.id)
         const isActivePage = localPage.id === activePageId
         const localHtml = isActivePage && activeSnapshot
@@ -3891,7 +4074,7 @@ export default function ProjectEditor() {
         setTimeout(() => syncRemoteChangesRef.current?.({ actorName }), 250)
       }
     }
-  }, [activePageId, pages, projectId, projectType, renumberAutoSections, showToast, snapshotActivePage])
+  }, [activePageId, projectId, projectType, renumberAutoSections, showToast, snapshotActivePage])
 
   useEffect(() => {
     syncRemoteChangesRef.current = syncRemoteChanges
@@ -3999,68 +4182,6 @@ export default function ProjectEditor() {
       loadSidePanelData()
     } catch (error) {
       setPanelError(error.message || 'No se pudo actualizar el entregable')
-    }
-  }
-
-  async function handleDesignerProposalDecision(status) {
-    if (!canReviewDesignerProposals || !activePage?.pendingProposal?.id) return
-    if (isDecidingProposal) return // guard: evita doble-click mientras la decisión está en vuelo
-
-    // proposalDiff refleja la propuesta ANTES de decidirla — capturarlo acá
-    // porque una vez que setPages reemplace la página, pendingProposal pasa a
-    // null y proposalDiff se vacía en el próximo render.
-    const diffSummary = summarizeProposalDiff(proposalDiff?.counts)
-
-    setPanelError('')
-    setIsDecidingProposal(true)
-    setSaveMessage(status === 'accepted' ? 'Aprobando propuesta...' : 'Rechazando propuesta...')
-
-    try {
-      const data = await apiFetch(`/api/projects/${projectId}/pages/${activePage.id}/proposals/${activePage.pendingProposal.id}/decision`, {
-        method: 'POST',
-        body: JSON.stringify({ status }),
-      })
-
-      // El endpoint ya devuelve la página actualizada (ver POST .../decision
-      // en backend/src/routes/projects.js) — evita el GET completo del
-      // proyecto que antes agregaba un segundo round-trip bloqueante acá.
-      // loadSidePanelData() abajo queda fire-and-forget: solo trae
-      // actividad/notificaciones/entregables, nada que bloquee el canvas.
-      if (data.page) {
-        const mappedPage = mapPersistedPage(data.page, projectType)
-        setPages((prev) => prev.map((page) => (page.id === mappedPage.id ? mappedPage : page)))
-        // F3 (colaboración): este es un fill point de serverPagesRef igual que
-        // la carga inicial y el post-save — si no se refresca acá, la 'base'
-        // del próximo merge de 3 vías queda stale (pre-propuesta) y puede
-        // generar conflictos falsos con una tercera sesión que edite después.
-        serverPagesRef.current.set(mappedPage.id, { contentHtml: mappedPage.fullContent, version: mappedPage.version })
-        // Aprobar reemplaza el content_html de la página, pero el editor montado
-        // sigue con el doc viejo: setPages actualiza el state, no el doc de
-        // TipTap (loadPageIntoEditor solo corría al cambiar de página). Sin esto
-        // el revisor aprueba y el canvas no cambia hasta recargar — justo la
-        // sensación de "aprobé y no pasó nada". Cuando el comparador está
-        // abierto no hace falta: EditorPanel está desmontado y al volver se
-        // monta con el `initialContent` ya fresco.
-        if (!proposalViewOpen && editorRef.current && !editorRef.current.isDestroyed) {
-          loadPageIntoEditor(mappedPage, false)
-        }
-      }
-
-      loadSidePanelData()
-
-      const summaryText = status === 'accepted'
-        ? (diffSummary ? `Propuesta aprobada: ${diffSummary}` : 'Propuesta aprobada')
-        : 'Propuesta rechazada'
-      setSaveMessage(summaryText)
-      setIsDirty(false)
-      showToast({ kind: 'info', text: summaryText })
-    } catch (error) {
-      const message = error.message || 'No se pudo revisar la propuesta'
-      setSaveMessage(message)
-      setPanelError(message)
-      showToast({ kind: 'warning', text: message })
-    } finally {
-      setIsDecidingProposal(false)
     }
   }
 
@@ -4234,7 +4355,7 @@ export default function ProjectEditor() {
 
   useEffect(() => {
     function handleBeforeUnload(event) {
-      if (!isDirty) return
+      if (!isDirty && inFlightUploadsRef.current.size === 0) return
       event.preventDefault()
       event.returnValue = ''
     }
@@ -5603,23 +5724,7 @@ export default function ProjectEditor() {
           />
         )}
 
-        {/* Área central: comparador de propuesta / editor / handoff / preview.
-            El comparador es un eje aparte del modo (qué versión se ve, no qué
-            vista), así que reemplaza a los tres mientras está abierto. */}
-        {proposalReviewActive && (
-          <ProposalReviewPanel
-            pageName={activePage?.name || 'Página'}
-            proposal={pendingProposal}
-            diff={proposalDiff}
-            proposerName={proposerName}
-            scrollRequest={scrollRequest}
-            onShowPublished={() => setProposalViewOpen(false)}
-            onApprove={() => handleDesignerProposalDecision('accepted')}
-            isDeciding={isDecidingProposal}
-          />
-        )}
-
-        {!proposalReviewActive && editorMode === 'brief' && (
+        {editorMode === 'brief' && (
           <EditorPanel
             projectId={projectId}
             companyId={projectMeta?.companyId || ''}
@@ -5674,10 +5779,13 @@ export default function ProjectEditor() {
             onDeleteComment={handleDeleteComment}
             onCopyCommentLink={handleCopyCommentLink}
             commentMembersList={commentMembers}
+            onImageUploadStart={onImageUploadStart}
+            onImageUploadDone={onImageUploadDone}
+            onImageUploadFailed={onImageUploadFailed}
           />
         )}
 
-        {!proposalReviewActive && editorMode === 'handoff' && (
+        {editorMode === 'handoff' && (
           <HandoffPanel
             projectId={projectId}
             page={activePageForRead}
@@ -5690,7 +5798,7 @@ export default function ProjectEditor() {
           />
         )}
 
-        {!proposalReviewActive && editorMode === 'preview' && (
+        {editorMode === 'preview' && (
           <PreviewPanel
             page={activePageForRead}
             projectType={projectType}
@@ -5716,8 +5824,6 @@ export default function ProjectEditor() {
           error={panelError}
           notice={panelNotice}
           canManageProjectMeta={canManageProjectMeta}
-          canReviewDesignerProposals={canReviewDesignerProposals}
-          isDesigner={isDesigner}
           onRefresh={refreshSidePanelData}
           isRefreshing={isRefreshingActivity}
           shareUrl={shareUrl}
@@ -5727,11 +5833,6 @@ export default function ProjectEditor() {
           showToast={showToast}
           onCreateDeliverable={createDeliverable}
           onUpdateDeliverableStatus={updateDeliverableStatus}
-          onApproveDesignerProposal={() => handleDesignerProposalDecision('accepted')}
-          isDecidingProposal={isDecidingProposal}
-          proposalDiff={proposalDiff}
-          proposalViewOpen={proposalViewOpen}
-          onOpenProposalView={openProposalView}
           onActivityClick={navigateToActivity}
           onMarkActivityRead={markActivityRead}
           onNavigateToSection={navigateToSection}
@@ -7425,7 +7526,18 @@ function parseTooltipTitle(title) {
 const TOOLBAR_GROUP_ORDER = ['history', 'block', 'text', 'color', 'align', 'insert']
 
 
-function Toolbar({ editor, projectId, companyId, onUndo, onRedo, onAddComment, canComment = false }) {
+function Toolbar({
+  editor,
+  projectId,
+  companyId,
+  onUndo,
+  onRedo,
+  onAddComment,
+  canComment = false,
+  onImageUploadStart,
+  onImageUploadDone,
+  onImageUploadFailed,
+}) {
   const toolbarRef = useRef(null)
   const [, forceUpdate] = useState(0)
   const [openToolbarMenu, setOpenToolbarMenu] = useState(null)
@@ -7591,36 +7703,31 @@ function Toolbar({ editor, projectId, companyId, onUndo, onRedo, onAddComment, c
 
   async function handleImageUpload(e) {
     const file = e.target.files?.[0]
+    e.target.value = ''
     if (!file || !editor) return
-    const tempUrl = URL.createObjectURL(file)
-    try {
-      if (!projectId) throw new Error('Proyecto no disponible')
-      insertTemporaryImage(editor, tempUrl, file.name)
-      const formData = new FormData()
-      formData.append('file', file)
-      const data = await apiFetch(`/api/projects/${projectId}/assets`, {
-        method: 'POST',
-        body: formData,
-      })
 
-      if (!data.asset?.renderInline || !data.asset?.publicUrl) {
-        throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
-      }
+    await runImageUploadFlow({
+      editor,
+      file,
+      uploadFn: async (uploadFile) => {
+        if (!projectId) throw new Error('Proyecto no disponible')
+        const formData = new FormData()
+        formData.append('file', uploadFile)
+        const data = await apiFetch(`/api/projects/${projectId}/assets`, {
+          method: 'POST',
+          body: formData,
+        })
 
-      await replaceImageSrc(editor, tempUrl, data.asset.publicUrl, {
-        assetId: data.asset.id || null,
-        fileName: data.asset.fileName || file.name,
-        storagePath: data.asset.path || null,
-        originalWidth: data.asset.width || null,
-        originalHeight: data.asset.height || null,
-      })
-    } catch (error) {
-      removeImageBySrc(editor, tempUrl)
-      window.alert(error.message || 'No se pudo subir la imagen')
-    } finally {
-      URL.revokeObjectURL(tempUrl)
-      e.target.value = ''
-    }
+        if (!data.asset?.renderInline || !data.asset?.publicUrl) {
+          throw new Error('El archivo quedó guardado como adjunto. Los SVG no se insertan inline por seguridad.')
+        }
+
+        return data.asset
+      },
+      onImageUploadStart,
+      onImageUploadDone,
+      onImageUploadFailed,
+    })
   }
 
   // Insertar una imagen ya subida a la biblioteca — a diferencia de
@@ -8650,6 +8757,9 @@ function EditorPanel({
   onDeleteComment,
   onCopyCommentLink,
   commentMembersList = [],
+  onImageUploadStart,
+  onImageUploadDone,
+  onImageUploadFailed,
 }) {
   const wrapperRef = useRef(null)
   const scrollAreaRef = useRef(null)
@@ -8801,27 +8911,15 @@ function EditorPanel({
 
         event.preventDefault()
         const coords = view.posAtCoords({ left: event.clientX, top: event.clientY })
-        const tempUrl = URL.createObjectURL(imageFile)
-        insertTemporaryImage(editor, tempUrl, imageFile.name, coords?.pos || null)
-
-        ;(async () => {
-          try {
-            const asset = await uploadProjectImage(imageFile)
-            if (!asset?.publicUrl) return
-            await replaceImageSrc(editor, tempUrl, asset.publicUrl, {
-              assetId: asset.id || null,
-              fileName: asset.fileName || imageFile.name,
-              storagePath: asset.path || null,
-              originalWidth: asset.width || null,
-              originalHeight: asset.height || null,
-            })
-          } catch (error) {
-            removeImageBySrc(editor, tempUrl)
-            window.alert(error.message || 'No se pudo subir la imagen')
-          } finally {
-            URL.revokeObjectURL(tempUrl)
-          }
-        })()
+        runImageUploadFlow({
+          editor,
+          file: imageFile,
+          position: coords?.pos || null,
+          uploadFn: uploadProjectImage,
+          onImageUploadStart,
+          onImageUploadDone,
+          onImageUploadFailed,
+        })
 
         return true
       },
@@ -8846,26 +8944,14 @@ function EditorPanel({
         const imageFile = files.find((file) => file.type.startsWith('image/'))
         if (imageFile && canWriteContent) {
           event.preventDefault()
-          const tempUrl = URL.createObjectURL(imageFile)
-          insertTemporaryImage(editor, tempUrl, imageFile.name, null)
-          ;(async () => {
-            try {
-              const asset = await uploadProjectImage(imageFile)
-              if (!asset?.publicUrl) return
-              await replaceImageSrc(editor, tempUrl, asset.publicUrl, {
-                assetId: asset.id || null,
-                fileName: asset.fileName || imageFile.name,
-                storagePath: asset.path || null,
-                originalWidth: asset.width || null,
-                originalHeight: asset.height || null,
-              })
-            } catch (error) {
-              removeImageBySrc(editor, tempUrl)
-              window.alert(error.message || 'No se pudo subir la imagen')
-            } finally {
-              URL.revokeObjectURL(tempUrl)
-            }
-          })()
+          runImageUploadFlow({
+            editor,
+            file: imageFile,
+            uploadFn: uploadProjectImage,
+            onImageUploadStart,
+            onImageUploadDone,
+            onImageUploadFailed,
+          })
           return true
         }
 
@@ -9375,7 +9461,18 @@ function EditorPanel({
 
   return (
     <div className={styles.centerPanel}>
-      <Toolbar editor={editor} projectId={projectId} companyId={companyId} onUndo={onUndo} onRedo={onRedo} onAddComment={onAddComment} canComment={canComment} />
+      <Toolbar
+        editor={editor}
+        projectId={projectId}
+        companyId={companyId}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        onAddComment={onAddComment}
+        canComment={canComment}
+        onImageUploadStart={onImageUploadStart}
+        onImageUploadDone={onImageUploadDone}
+        onImageUploadFailed={onImageUploadFailed}
+      />
       <TableContextBar editor={editor} />
       <div
         ref={scrollAreaRef}
@@ -11003,182 +11100,6 @@ function HandoffPanel({ page, projectId, projectType = 'page', audience, scrollR
   )
 }
 
-// ---------------------------------------------------------------------------
-// ProposalReviewPanel — comparador Publicado ↔ Propuesta (solo lectura)
-// ---------------------------------------------------------------------------
-// Ocupa la columna central en lugar del editor mientras el revisor mira la
-// propuesta. Es deliberadamente NO editable: lo que se ve es el contenido que
-// aprobar/rechazar, no un borrador propio — editar acá escribiría sobre la
-// página publicada y no sobre la propuesta, que es justo la confusión que este
-// panel viene a resolver.
-//
-// Reusa las clases de PreviewPanel (previewPanel/previewToolbar/previewScroll/
-// previewPage) para que lea como la misma superficie de producto, y el atributo
-// data-preview-page para heredar los estilos de tabla/hr/CTA del HTML crudo.
-// Lo propio son los chips por sección que vienen del diff.
-const PROPOSAL_STATUS_META = {
-  added: { label: 'Nueva', chipClass: 'proposalChipAdded' },
-  changed: { label: 'Modificada', chipClass: 'proposalChipChanged' },
-  removed: { label: 'Eliminada', chipClass: 'proposalChipRemoved' },
-}
-
-function ProposalReviewPanel({
-  pageName = 'Página',
-  proposal,
-  diff,
-  proposerName = '',
-  scrollRequest,
-  onShowPublished,
-  onApprove,
-  isDeciding = false,
-}) {
-  const scrollRef = useRef(null)
-  const contentRef = useRef(null)
-
-  // Click en el panel de secciones (o deep-link ?s=) mientras el comparador
-  // está abierto: acá no hay canvas ni dividers, así que el ancla es el
-  // wrapper de cada sección. Sin animación de flash — el chip ya marca qué
-  // cambió, y un flash amarillo encima competiría con esa señal.
-  useEffect(() => {
-    if (!scrollRequest || scrollRequest.type !== 'section') return
-    const scroller = scrollRef.current
-    const content = contentRef.current
-    if (!scroller || !content) return
-    const target = content.querySelector(`[data-proposal-section="${scrollRequest.sectionId}"]`)
-    if (!target) return
-    const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 70
-    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-  }, [scrollRequest])
-
-  const sections = diff?.sections || []
-  const removedSections = diff?.removedSections || []
-  const summary = summarizeProposalDiff(diff?.counts)
-  const updatedAt = formatPanelDate(proposal?.updatedAt)
-  const metaLine = [
-    proposerName && `Por ${proposerName}`,
-    updatedAt && `Actualizada ${updatedAt}`,
-    summary ? `${summary}` : 'Sin cambios respecto a lo publicado',
-  ].filter(Boolean).join(' · ')
-
-  // Diff a nivel bloque solo para secciones 'changed': published/proposal
-  // ambos existen (publishedInnerHtml viene de proposalDiff.js). Memoizado
-  // por `sections` para no recalcular el LCS en cada render del panel (p.ej.
-  // al togglear isDeciding).
-  const changedSectionBlocks = useMemo(() => {
-    const map = new Map()
-    sections.forEach((section) => {
-      if (section.status === 'changed' && section.publishedInnerHtml != null) {
-        map.set(section.sectionId, diffProposalBlocks(section.publishedInnerHtml, section.innerHtml))
-      }
-    })
-    return map
-  }, [sections])
-
-  function renderSection(section) {
-    const meta = PROPOSAL_STATUS_META[section.status] || null
-    const blockDiff = changedSectionBlocks.get(section.sectionId) || null
-    return (
-      <div
-        key={`${section.status}-${section.sectionId}`}
-        data-proposal-section={section.sectionId}
-        className={cx(
-          styles.proposalSection,
-          section.status === 'removed' && styles.proposalSectionRemoved,
-        )}
-      >
-        {meta && (
-          <div className={styles.proposalSectionHeader}>
-            <span className={cx(styles.proposalChip, styles[meta.chipClass])}>{meta.label}</span>
-            <span className={styles.proposalSectionName}>{section.sectionName}</span>
-            {section.renamedFrom && (
-              <span className={styles.proposalSectionRename}>antes: {section.renamedFrom}</span>
-            )}
-          </div>
-        )}
-        {/* Mismo sink de HTML crudo que Preview/Handoff — ver nota de
-            sanitización en CONTEXT.min.md (target=editor.collab). */}
-        {blockDiff ? (
-          blockDiff.blocks.map((block, index) => (
-            <div
-              key={`${section.sectionId}-block-${index}`}
-              className={cx(
-                styles.proposalBlock,
-                block.type === 'added' && styles.proposalBlockAdded,
-                block.type === 'removed' && styles.proposalBlockRemoved,
-              )}
-              dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(block.html) }}
-            />
-          ))
-        ) : (
-          <div
-            className={cx(
-              section.status === 'added' && styles.proposalContentAdded,
-              section.status === 'removed' && styles.proposalContentRemoved,
-            )}
-            dangerouslySetInnerHTML={{ __html: sanitizeContentHtml(section.innerHtml) }}
-          />
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.previewPanel}>
-      <div className={styles.previewToolbar}>
-        <div className={styles.proposalReviewHeaderMain}>
-          <p className={styles.handoffEyebrow}>Propuesta de diseño · solo lectura</p>
-          <h2 className={styles.handoffTitle}>{pageName}</h2>
-          <p className={styles.proposalReviewMeta}>{metaLine}</p>
-          {diff?.hasChanges && (
-            <p className={styles.proposalReviewLegend}>verde = agregado · rojo = eliminado</p>
-          )}
-        </div>
-        <div className={styles.proposalReviewHeaderActions}>
-          <div
-            className={styles.segmentedControl}
-            style={{ '--seg-count': 2, '--seg-index': 1 }}
-            role="tablist"
-            aria-label="Versión que se está viendo"
-          >
-            <div className={styles.segmentedIndicator} aria-hidden="true" />
-            <button
-              type="button"
-              role="tab"
-              aria-selected={false}
-              className={styles.segmentedOption}
-              onClick={onShowPublished}
-            >
-              Publicado
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected
-              className={cx(styles.segmentedOption, styles.segmentedOptionActive)}
-            >
-              Propuesta
-            </button>
-          </div>
-          <div className={styles.proposalReviewDecisions}>
-            <Button variant="primary" size="sm" onClick={onApprove} disabled={isDeciding}>
-              {isDeciding ? 'Aprobando…' : 'Aprobar'}
-            </Button>
-          </div>
-        </div>
-      </div>
-      <div ref={scrollRef} className={styles.previewScroll}>
-        <article ref={contentRef} data-preview-page="" className={styles.previewPage}>
-          {sections.map(renderSection)}
-          {removedSections.map(renderSection)}
-          {!sections.length && !removedSections.length && (
-            <p className={styles.proposalReviewEmpty}>La propuesta no tiene contenido.</p>
-          )}
-        </article>
-      </div>
-    </div>
-  )
-}
-
 function PreviewPanel({ page, projectType = 'page', scrollRequest, flashRequest, onScrollHeadingChange }) {
   const scrollRef = useRef(null)
   const contentRef = useRef(null)
@@ -11721,8 +11642,6 @@ function UpdatesPanel({
   error = '',
   notice = '',
   canManageProjectMeta = true,
-  canReviewDesignerProposals = false,
-  isDesigner = false,
   onRefresh,
   isRefreshing = false,
   shareUrl = '',
@@ -11732,11 +11651,6 @@ function UpdatesPanel({
   showToast,
   onCreateDeliverable,
   onUpdateDeliverableStatus,
-  onApproveDesignerProposal,
-  isDecidingProposal = false,
-  proposalDiff = null,
-  proposalViewOpen = false,
-  onOpenProposalView,
   onActivityClick,
   onMarkActivityRead,
   onNavigateToSection,
@@ -11763,14 +11677,10 @@ function UpdatesPanel({
   const [activeTab, setActiveTab] = useState('actividad') // 'actividad' | 'comentarios' | 'historial'
   const [diffEntry, setDiffEntry] = useState(null)
   // Orden SIEMPRE por posición de sección en el documento — nunca por fecha
-  // ni por lectura (ver frontend/src/lib/activityOrdering.js). Secciones que
-  // solo existen en una propuesta de diseño pendiente (designer aún no
-  // aprobado) se agrupan igual que las demás, después de las del doc
-  // publicado, en el orden de la propuesta.
-  const pendingProposalHtml = activePage?.pendingProposal?.contentHtml || ''
+  // ni por lectura (ver frontend/src/lib/activityOrdering.js).
   const sectionOrderIndex = useMemo(() => (
-    buildSectionOrderIndex(sections, pendingProposalHtml)
-  ), [sections, pendingProposalHtml])
+    buildSectionOrderIndex(sections)
+  ), [sections])
   const sectionActivity = useMemo(() => (
     activity.filter((item) => (
       (item.eventType === 'section_edited' || item.eventType === 'asset_uploaded' || item.eventType === 'seo_changed')
@@ -11778,20 +11688,18 @@ function UpdatesPanel({
       && item.metadata?.pageId === activePageId
     ))
   ), [activity, activePageId])
-  const groupedSectionActivity = useMemo(() => {
-    const proposalSections = pendingProposalHtml ? splitSections(pendingProposalHtml) : []
-    return orderSectionActivityGroups(sectionActivity, sectionOrderIndex).map(({ sectionId, items }) => {
+  const groupedSectionActivity = useMemo(() => (
+    orderSectionActivityGroups(sectionActivity, sectionOrderIndex).map(({ sectionId, items }) => {
       const section = sections.find((s) => s.id === sectionId)
-      const proposalSection = !section ? proposalSections.find((s) => s.sectionId === sectionId) : null
       // Special virtual section IDs use the metadata-stored sectionName
       const sectionName = sectionId === '__document__'
         ? (items[0]?.metadata?.sectionName || 'Documento')
         : sectionId === '__seo__'
         ? (items[0]?.metadata?.sectionName || 'SEO metadata')
-        : (section?.name || proposalSection?.sectionName || items[0]?.metadata?.sectionName || 'Sección')
+        : (section?.name || items[0]?.metadata?.sectionName || 'Sección')
       return { sectionId, sectionName, items }
     })
-  }, [sectionActivity, sectionOrderIndex, sections, pendingProposalHtml])
+  ), [sectionActivity, sectionOrderIndex, sections])
   // Only document-content events stay in the activity panel.
   // Everything else lives in the notifications dropdown (navbar bell).
   // asset_uploaded items with a sectionId on the active page are folded into
@@ -11809,10 +11717,6 @@ function UpdatesPanel({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   ), [activity, activePageId])
   const hasActivity = groupedSectionActivity.length > 0 || generalActivity.length > 0
-  const pendingProposal = activePage?.pendingProposal || null
-  // "2 nuevas · 1 modificada" — el revisor sabe cuánto hay antes de abrir el
-  // comparador. Vacío cuando la propuesta no difiere de lo publicado.
-  const proposalDiffSummary = summarizeProposalDiff(proposalDiff?.counts)
 
   useEffect(() => {
     if (!selectedActivityId) return
@@ -11876,46 +11780,6 @@ function UpdatesPanel({
         <>
         {error && <p className={panelStyles.updatesError}>{error}</p>}
         {!error && notice && <p className={panelStyles.updatesNotice}>{notice}</p>}
-        {pendingProposal && projectType === 'page' && (
-          <div className={panelStyles.proposalBox}>
-            <div className={panelStyles.proposalHeader}>
-              <span className={panelStyles.pendingTitle}>
-                {canReviewDesignerProposals ? 'Propuesta de diseño' : 'Tu propuesta'}
-              </span>
-              <span className={panelStyles.proposalBadge}>Pendiente</span>
-            </div>
-            <p className={panelStyles.proposalText}>
-              {canReviewDesignerProposals
-                ? (proposalDiffSummary
-                    ? `Cambios en esta página: ${proposalDiffSummary}.`
-                    : 'Revisa la propuesta y apruébala para publicarla. Si necesitas ajustes, deja comentarios al diseñador.')
-                : 'Tus cambios no afectan el contenido publicado hasta que editor o manager los aprueben.'}
-            </p>
-            {pendingProposal.reviewerNote && (
-              <p className={panelStyles.proposalText}>Nota: {pendingProposal.reviewerNote}</p>
-            )}
-            {canReviewDesignerProposals ? (
-              <div className={panelStyles.proposalActions}>
-                {/* Primero VER, después decidir: aprobar sin haber abierto el
-                    comparador es exactamente el agujero que esto cierra. */}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={<Eye size={14} />}
-                  onClick={onOpenProposalView}
-                  disabled={proposalViewOpen}
-                >
-                  {proposalViewOpen ? 'Viendo propuesta' : 'Ver propuesta'}
-                </Button>
-                <Button variant="primary" size="sm" onClick={onApproveDesignerProposal} disabled={isDecidingProposal}>
-                  {isDecidingProposal ? 'Aprobando…' : 'Aprobar'}
-                </Button>
-              </div>
-            ) : isDesigner ? (
-              <p className={panelStyles.deliverablesEmpty}>Puedes seguir editando y guardando sobre esta propuesta.</p>
-            ) : null}
-          </div>
-        )}
         {false && projectType === 'page' && (
         <div className={panelStyles.deliverablesBox}>
           <span className={panelStyles.pendingTitle}>Entregables</span>

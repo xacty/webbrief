@@ -85,3 +85,235 @@ export function countPendingUploadImages(html) {
   }
   return count
 }
+
+// ---------------------------------------------------------------------------
+// F2 (robustez de subidas, 2026-09-11) — ver docs/superpowers/specs/
+// 2026-09-11-remove-approval-robust-uploads-design.md Parte B. A diferencia
+// de las funciones de arriba (que borran TODOS los blob: del documento antes
+// de persistir), estas operan sobre UN placeholder puntual por tempUrl: son
+// la contrapartida de una subida que ya terminó (bien o mal) y necesita
+// resolverse exactamente donde quedó, sea el editor montado o el estado de
+// otra página.
+
+const ALT_ATTR_RE = /\balt\s*=\s*"([^"]*)"/i
+
+function escapeImgAttr(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+// Serializa exactamente como EditableImageNode.addAttributes()/renderHTML
+// (frontend/src/pages/ProjectEditor.jsx, la extensión Image.extend(...) justo
+// antes de GoogleDocsHeadingShortcuts): src + alt (de la extensión Image
+// base) y los data-* custom, cada uno solo si tiene valor. Nunca toca
+// width/data-width — es tamaño elegido por el usuario, ajeno a la subida.
+function serializePendingUploadImageTag(attrs) {
+  const parts = [`src="${escapeImgAttr(attrs.src)}"`, `alt="${escapeImgAttr(attrs.alt || '')}"`]
+  if (attrs.assetId) parts.push(`data-asset-id="${escapeImgAttr(attrs.assetId)}"`)
+  if (attrs.fileName) parts.push(`data-file-name="${escapeImgAttr(attrs.fileName)}"`)
+  if (attrs.storagePath) parts.push(`data-storage-path="${escapeImgAttr(attrs.storagePath)}"`)
+  if (attrs.originalWidth) parts.push(`data-original-width="${escapeImgAttr(attrs.originalWidth)}"`)
+  if (attrs.originalHeight) parts.push(`data-original-height="${escapeImgAttr(attrs.originalHeight)}"`)
+  return `<img ${parts.join(' ')}>`
+}
+
+function jsonNodeHasPendingUpload(node, tempUrl) {
+  if (!node || typeof node !== 'object') return false
+  if (node.type === 'image' && node.attrs?.src === tempUrl) return true
+  if (!Array.isArray(node.content)) return false
+  return node.content.some((child) => jsonNodeHasPendingUpload(child, tempUrl))
+}
+
+// source: HTML (string) o JSON de TipTap (objeto/nodo). true si ese tempUrl
+// todavía está insertado como <img>/nodo image.
+export function hasPendingUpload(source, tempUrl) {
+  if (!tempUrl) return false
+
+  if (typeof source === 'string') {
+    if (!source.includes(tempUrl)) return false
+    const re = new RegExp(IMG_TAG_RE.source, 'gi')
+    let match
+    while ((match = re.exec(source))) {
+      const src = match[0].match(SRC_ATTR_RE)
+      if (src && src[1] === tempUrl) return true
+    }
+    return false
+  }
+
+  return jsonNodeHasPendingUpload(source, tempUrl)
+}
+
+// Reemplaza el <img src="tempUrl"> por uno con los attrs finales (post-
+// upload). Conserva el `alt` original salvo que attrs traiga uno propio.
+export function replacePendingUploadInHtml(html, tempUrl, attrs = {}) {
+  const source = html || ''
+  if (!tempUrl || !source.includes(tempUrl)) return source
+
+  return source.replace(IMG_TAG_RE, (tag) => {
+    const srcMatch = tag.match(SRC_ATTR_RE)
+    if (!srcMatch || srcMatch[1] !== tempUrl) return tag
+    const altMatch = tag.match(ALT_ATTR_RE)
+    const inheritedAlt = altMatch ? altMatch[1] : ''
+    return serializePendingUploadImageTag({ ...attrs, alt: attrs.alt ?? inheritedAlt })
+  })
+}
+
+// Espejo de replacePendingUploadInHtml sobre JSON de TipTap. No muta el nodo
+// recibido — copia solo a lo largo del camino que cambia (mismo criterio que
+// stripPendingUploadImagesFromJson, arriba).
+//
+// Contrato: `attrs` debe traer el src final de la imagen ya subida —
+// normalmente el objeto que devuelve `imageAttrsFromAsset`. Si se llama sin
+// `src` (o sin `attrs` del todo) degrada a `''` en vez de dejar `src:
+// undefined`, igual que `replacePendingUploadInHtml` (que serializa
+// `escapeImgAttr(attrs.src)` → `""` cuando `attrs.src` es undefined) — un
+// `src` undefined en el nodo sería una imagen rota indistinguible de un bug.
+export function replacePendingUploadInJson(json, tempUrl, attrs = {}) {
+  if (!json || typeof json !== 'object' || !tempUrl) return json
+
+  if (json.type === 'image' && json.attrs?.src === tempUrl) {
+    return { ...json, attrs: { ...json.attrs, ...attrs, src: attrs.src ?? '' } }
+  }
+  if (!Array.isArray(json.content)) return json
+
+  let changed = false
+  const content = json.content.map((child) => {
+    const next = replacePendingUploadInJson(child, tempUrl, attrs)
+    if (next !== child) changed = true
+    return next
+  })
+
+  return changed ? { ...json, content } : json
+}
+
+// Quita el <img src="tempUrl"> puntual (subida fallida) — a diferencia de
+// stripPendingUploadImagesFromHtml, que quita TODOS los blob:, esto apunta a
+// uno solo por tempUrl.
+export function removePendingUploadFromHtml(html, tempUrl) {
+  const source = html || ''
+  if (!tempUrl || !source.includes(tempUrl)) return source
+
+  return source.replace(IMG_TAG_RE, (tag) => {
+    const match = tag.match(SRC_ATTR_RE)
+    return match && match[1] === tempUrl ? '' : tag
+  })
+}
+
+// Espejo de removePendingUploadFromHtml sobre JSON de TipTap.
+export function removePendingUploadFromJson(json, tempUrl) {
+  if (!json || typeof json !== 'object' || !tempUrl) return json
+  if (!Array.isArray(json.content)) return json
+
+  const content = []
+  let changed = false
+
+  for (const child of json.content) {
+    if (child?.type === 'image' && child?.attrs?.src === tempUrl) {
+      changed = true
+      continue
+    }
+    const next = removePendingUploadFromJson(child, tempUrl)
+    if (next !== child) changed = true
+    content.push(next)
+  }
+
+  if (!changed) return json
+  const cleaned = { ...json, content }
+  if (!content.length) delete cleaned.content
+  return cleaned
+}
+
+// Filtra TODAS las páginas de un payload de PUT /api/projects/:id/pages
+// (items { contentHtml, contentJson, ... }), no solo la activa — una página
+// no-activa puede tener un placeholder de una subida que arrancó antes de
+// navegar a otra. `dropped` es el total de placeholders descartados, para el
+// aviso de guardado manual.
+export function stripPendingUploadsFromPages(payloadPages) {
+  const pages = []
+  let dropped = 0
+
+  for (const page of payloadPages || []) {
+    const count = countPendingUploadImages(page?.contentHtml)
+    if (!count) {
+      pages.push(page)
+      continue
+    }
+    dropped += count
+    pages.push({
+      ...page,
+      contentHtml: stripPendingUploadImagesFromHtml(page.contentHtml),
+      contentJson: stripPendingUploadImagesFromJson(page.contentJson),
+    })
+  }
+
+  return { pages, dropped }
+}
+
+// Shape que deja un asset recién subido (POST /api/projects/:id/assets),
+// listo para pasarle a replaceImageSrc / replacePendingUploadInHtml/Json.
+// Null-safe: un asset incompleto no debe tirar, solo producir attrs vacíos.
+export function imageAttrsFromAsset(asset, fallbackFileName = '') {
+  return {
+    src: asset?.publicUrl || '',
+    assetId: asset?.id || null,
+    fileName: asset?.fileName || fallbackFileName || '',
+    storagePath: asset?.path || null,
+    // ?? (no ||): un ancho/alto real de 0 es legítimo y no debe colapsar a null.
+    originalWidth: asset?.width ?? null,
+    originalHeight: asset?.height ?? null,
+  }
+}
+
+// Tras un guardado (PUT) o un sync (GET), reconcilia lo que volvió del
+// servidor con el estado actual — pagesRef.current en ProjectEditor.jsx, NO
+// el `pages` cerrado en el closure de saveProjectPages/syncRemoteChanges al
+// arrancar la request. Reemplaza a keepLocalPlaceholderContent, que solo
+// protegía una página cuyo contenido local TODAVÍA tuviera un placeholder
+// blob:. Eso deja un agujero: si la subida resuelve a su URL final DURANTE
+// el PUT (caso 2 de onImageUploadDone — el editor montado ya no tiene el
+// placeholder, así que el swap fue directo al estado de otra página), el
+// contenido local deja de tener blob: pero tampoco es el que se envió
+// (que salió sin esa imagen, porque stripPendingUploadsFromPages la sacó
+// del payload antes de armar la request) — keepLocalPlaceholderContent lo
+// daba por "sin cambios" y lo pisaba con la versión del servidor, perdiendo
+// la imagen recién subida en silencio.
+//
+// currentPages: estado local en el momento de reconciliar.
+// persistedPages: lo que devolvió el servidor (ya mapeado).
+// sentPages: el payload que efectivamente viajó, items
+// { id, contentHtml, contentJson, ... } (ver stripPendingUploadsFromPages).
+//
+// Por cada página persisted: si hay una página actual con ese id y su
+// `fullContent` ya no coincide con el `contentHtml` que se envió — placeholder
+// todavía pendiente, subida recién resuelta, o el usuario tipeando mientras
+// la request estaba en vuelo — se conserva fullContent/contentJson/sections
+// locales encima de la persisted (version y el resto de los campos los gana
+// el servidor) y se anota el id en keptIds, para que el caller NO limpie
+// isDirty del todo y el próximo autosave la persista. Si no hay diferencia,
+// o no hay página local con ese id, la persisted pasa intacta.
+export function reconcilePersistedPages(currentPages, persistedPages, sentPages) {
+  const currentById = new Map((currentPages || []).map((page) => [page.id, page]))
+  const sentById = new Map((sentPages || []).map((page) => [page.id, page]))
+  const keptIds = []
+
+  const pages = (persistedPages || []).map((persistedPage) => {
+    const currentPage = currentById.get(persistedPage.id)
+    if (!currentPage) return persistedPage
+
+    const sentPage = sentById.get(persistedPage.id)
+    if (currentPage.fullContent === sentPage?.contentHtml) return persistedPage
+
+    keptIds.push(persistedPage.id)
+    return {
+      ...persistedPage,
+      fullContent: currentPage.fullContent,
+      contentJson: currentPage.contentJson,
+      sections: currentPage.sections,
+    }
+  })
+
+  return { pages, keptIds }
+}

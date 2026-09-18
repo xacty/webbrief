@@ -8,19 +8,13 @@
 // item — nunca su sectionId ni su createdAt — así que no puede alterar el
 // orden acá computado.
 //
-// Caso real que motivó esto: un `designer` nunca escribe en `project_pages`
-// (cada guardado suyo va a `project_page_change_proposals`, status pending —
-// ver sectionMerge.js/proposalDiff.js). Si sube una imagen a una sección que
-// solo existe en SU propuesta, el evento `asset_uploaded` trae un `sectionId`
-// que no aparece en el doc publicado/montado. Antes caía a un bucket aparte
-// ("Actividad general") ordenado por `created_at DESC` del backend — se veía
-// como si el panel reordenara solo. Ahora esa sección se agrupa igual que las
-// demás, después de las del doc, en el orden en que aparece en la propuesta.
+// sectionIds que no aparecen en el doc montado (p.ej. una sección borrada
+// después de generarse la actividad) van al final, ordenados por el evento
+// más viejo del grupo — ver orderSectionActivityGroups más abajo.
 //
 // Puro y sin DOM: corre igual en el navegador y en node (tests en
 // backend/test/activity-ordering.test.js, import con extensión .js porque
 // ESM no resuelve extensionless en node).
-import { splitSections } from './sectionMerge.js'
 
 // IDs de pseudo-sección que siempre van primero, en este orden fijo.
 const PINNED_SECTION_IDS = ['__seo__', '__document__']
@@ -29,18 +23,14 @@ const PINNED_SECTION_IDS = ['__seo__', '__document__']
  * Mapa sectionId -> ordinal, combinando:
  *   1. IDs de pseudo-sección fijos (__seo__, __document__)
  *   2. Secciones del documento montado/publicado, en su orden real
- *   3. Secciones que SOLO existen en una propuesta de diseño pendiente
- *      (parseadas del contentHtml de la propuesta), en el orden de la
- *      propuesta — agregadas después de todo lo anterior
  *
- * sectionIds ausentes de las tres fuentes no entran en el mapa: el caller
+ * sectionIds ausentes de las dos fuentes no entran en el mapa: el caller
  * (orderSectionActivityGroups) los manda al final, en orden estable.
  *
  * @param {Array<{id: string}>} docSections secciones derivadas del doc activo (orden = posición real)
- * @param {string} proposalHtml content_html de activePage.pendingProposal (puede ser '' o null)
  * @returns {Map<string, number>}
  */
-export function buildSectionOrderIndex(docSections = [], proposalHtml = '') {
+export function buildSectionOrderIndex(docSections = []) {
   const order = new Map()
   PINNED_SECTION_IDS.forEach((id, index) => order.set(id, index))
 
@@ -51,14 +41,6 @@ export function buildSectionOrderIndex(docSections = [], proposalHtml = '') {
     order.set(id, next++)
   })
 
-  if (proposalHtml) {
-    splitSections(proposalHtml).forEach((section) => {
-      const id = section?.sectionId
-      if (!id || order.has(id)) return
-      order.set(id, next++)
-    })
-  }
-
   return order
 }
 
@@ -66,7 +48,7 @@ export function buildSectionOrderIndex(docSections = [], proposalHtml = '') {
  * Agrupa items de actividad por metadata.sectionId y ordena los grupos
  * resultantes: primero por `orderIndex` (posición real de la sección),
  * y para sectionIds ausentes de `orderIndex` (datos legacy/huérfanos sin
- * relación con el doc ni con la propuesta), al final, por el createdAt MÁS
+ * relación con el doc), al final, por el createdAt MÁS
  * VIEJO del grupo, ascendente — nunca por el más reciente ni por lectura.
  *
  * Dentro de cada grupo, los items se ordenan por createdAt DESC (el más

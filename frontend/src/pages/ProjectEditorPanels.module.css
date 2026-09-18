@@ -504,8 +504,7 @@
   pointer-events: auto;
 }
 
-.markReadBtn,
-.proposalSecondaryButton {
+.markReadBtn {
   border: 1px solid var(--wb-border);
   border-radius: 999px;
   background: var(--wb-surface);
@@ -517,14 +516,12 @@
   transition: background 120ms, border-color 120ms;
 }
 
-.markReadBtn:hover:not(:disabled),
-.proposalSecondaryButton:hover:not(:disabled) {
+.markReadBtn:hover:not(:disabled) {
   background: #f0f4f9;
   border-color: var(--wb-text-muted);
 }
 
-.markReadBtn:disabled,
-.proposalSecondaryButton:disabled {
+.markReadBtn:disabled {
   cursor: default;
   opacity: 0.6;
 }
@@ -573,7 +570,6 @@
 .updatesError,
 .updatesNotice,
 .pendingItem,
-.proposalText,
 .deliverablesEmpty {
   font-size: 13px;
   line-height: 1.4;
@@ -590,7 +586,6 @@
 }
 
 .pendingBox,
-.proposalBox,
 .deliverablesBox,
 .shareBox {
   margin-top: var(--wb-space-4);
@@ -616,50 +611,6 @@
 .pendingItem {
   margin: 6px 0 0;
   color: var(--wb-color-neutral-500);
-}
-
-.proposalHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.proposalBadge {
-  min-height: 22px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--wb-color-warning-100);
-  color: var(--wb-color-warning-800);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.proposalText {
-  margin: 0 0 8px;
-  color: var(--wb-color-neutral-500);
-}
-
-/* Fila única y estable: "Ver propuesta" + "Aprobar" (sin "Pedir cambios" —
-   el feedback al diseñador se da por comentarios). Cada botón puede
-   encogerse dentro de su columna en vez de forzar su ancho de contenido
-   (min-width: 0 + flex-basis 0), así el ancho lo decide el contenedor y la
-   fila nunca desborda la card. Ver DESIGN-SYSTEM.md §"min-width: 0 on flex
-   children". */
-/* Columna, no fila: el panel derecho es angosto (~150-220px de card útil) y
-   dos botones con estos labels lado a lado truncan el texto. Apilados a ancho
-   completo siempre se leen enteros, sin importar el viewport. */
-.proposalActions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--wb-space-2);
-}
-
-.proposalActions > * {
-  width: 100%;
 }
 
 .deliverableButton,
