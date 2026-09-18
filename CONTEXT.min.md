@@ -123,8 +123,11 @@
 ## Touch / Keep / Watch
 
 - `target=login`
-  - `keep`: valid Supabase session -> redirect to dashboard
-  - `watch`: session bootstrap must never leave the app stuck on global `Cargando...`
+  - `keep`: valid Supabase session -> redirect to `return_to` (sanitized) or dashboard, also when the session arrives AFTER Login mounted (`useEffect` on `isAuthenticated`/`loading`, v2.15.5)
+  - `watch`: session bootstrap must never leave the app stuck on global `Cargando...`, but NEVER conclude "signed out" from a timer: `INITIAL_SESSION` waits for the network refresh when the stored token expired (1-3 s on a cold connection). An 800 ms timer used to send valid sessions to /login (37 duplicate sessions, fixed v2.15.5); supabase-js already bounds its own wait (5 s lock timeout)
+- `target=boot`
+  - `keep`: `index.html` served `Cache-Control: no-store` (tab restore / back-forward IGNORE `no-cache` and reuse stale HTML -> entry JS 404 -> blank page); one-time browser cache purge via `Clear-Site-Data: "cache"` gated by cookie `wb_cache_v` (bump the number to force another purge); `/assets/` immutable 1y with real 404 (`try_files $uri =404`); inline boot guard in `index.html` reloads once if the entry fails or `#root` is still empty at 10 s (30 s anti-loop)
+  - `watch`: editing either inline script in `index.html` requires recomputing its CSP hash in `deploy/nginx/security-headers.conf`; live Nginx is mirrored in `deploy/nginx/webrief.app.conf`
 - `target=dashboard`
   - `keep`: open project route, logout behavior
   - `watch`: legacy route should redirect to companies home
