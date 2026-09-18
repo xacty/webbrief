@@ -117,12 +117,19 @@ export function AuthProvider({ children }) {
     let active = true
     let initialSessionReceived = false
 
-    // Safety-net: if INITIAL_SESSION never fires (shouldn't happen), unblock after 800ms
-    const safetyTimer = window.setTimeout(() => {
+    // INITIAL_SESSION is NOT instant. When the stored access token has expired
+    // (coming back after more than an hour), supabase-js refreshes it over the
+    // network BEFORE emitting INITIAL_SESSION, which takes 1-3 s on a cold
+    // connection. This used to be an 800 ms timer that unblocked the UI with
+    // session=null: PrivateRoute sent users with a perfectly valid session to
+    // /login while the refresh succeeded a moment later (incident 2026-09-18:
+    // 37 duplicate sessions on the admin account). Never conclude "signed out"
+    // from a timeout; the library already bounds its own wait (5 s
+    // lockAcquireTimeout). This watchdog only leaves a trace in the console.
+    const slowBootTimer = window.setTimeout(() => {
       if (!active || initialSessionReceived) return
-      console.warn('AuthContext: INITIAL_SESSION not received; unblocking UI')
-      setLoading(false)
-    }, 800)
+      console.warn('AuthContext: INITIAL_SESSION still pending after 10s (slow or no network?)')
+    }, 10000)
 
     function hydrateCurrentUser(nextSession) {
       return refreshUser(nextSession).catch((error) => {
@@ -136,10 +143,11 @@ export function AuthProvider({ children }) {
       if (!active) return
 
       if (event === 'INITIAL_SESSION') {
-        // Fires immediately from localStorage — no network call needed.
-        // This is the fast path: unblock the UI right away.
+        // Emitted once supabase-js finishes initializing: right away from
+        // storage when the token is still valid, or after a network refresh
+        // when it has expired. Either way it is the authoritative answer.
         initialSessionReceived = true
-        clearTimeout(safetyTimer)
+        clearTimeout(slowBootTimer)
         setSession(nextSession)
         setLoading(false)
         if (nextSession) {
@@ -173,7 +181,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       active = false
-      clearTimeout(safetyTimer)
+      clearTimeout(slowBootTimer)
       listener.subscription.unsubscribe()
     }
   }, [])
