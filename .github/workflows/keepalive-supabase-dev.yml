@@ -1,34 +1,93 @@
 name: Keepalive Supabase Dev
 
+# Evita el auto-pause del free-tier de Supabase en el proyecto Dev.
+#
+# INCIDENTE 2026-08-31 — NO bajes la frecuencia:
+# La versión anterior pingueaba 1 vez cada 5 días y el proyecto se pausó igual,
+# a pesar de que todos los pings devolvían HTTP 200. El criterio de Supabase no
+# es "tiempo desde la última request" sino volumen de actividad en la ventana
+# de 7 días: "Typically a few user requests to the database each day over the
+# previous week is enough to keep the project from being paused."
+# (https://supabase.com/docs/guides/platform/free-project-pausing)
+# 1 request cada 5 días queda muy por debajo de ese umbral.
+
 on:
   schedule:
-    - cron: '0 12 */5 * *'
+    # 4 veces al día (~00:17, 06:17, 12:17, 18:17 UTC) × 3 consultas = 12
+    # requests diarias a la base. El minuto 17 evita el pico del minuto 0,
+    # donde GitHub retrasa los cron hasta varias horas.
+    - cron: '17 */6 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: keepalive-supabase-dev
+  cancel-in-progress: false
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
       - name: Ping Supabase Dev REST API
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_DEV_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_DEV_ANON_KEY }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+
           if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
-            echo "ERROR: missing SUPABASE_DEV_URL or SUPABASE_DEV_ANON_KEY secret"
+            echo "::error::Falta el secret SUPABASE_DEV_URL o SUPABASE_DEV_ANON_KEY."
             exit 1
           fi
-          echo "Pinging ${SUPABASE_URL} at $(date -u)"
-          http_code=$(curl -sS -o /tmp/body.txt -w "%{http_code}" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${SUPABASE_URL}/rest/v1/companies?select=id&limit=1")
-          echo "HTTP ${http_code}"
-          if [ "${http_code}" -ge 500 ]; then
-            echo "Response body:"
-            cat /tmp/body.txt
+
+          echo "Pinging Supabase Dev a las $(date -u) UTC"
+          ok=0
+          total=0
+          dns_fail=0
+          for table in companies projects project_pages; do
+            total=$((total + 1))
+            code="$(curl -sS -o /tmp/body.txt -w '%{http_code}' \
+              --max-time 20 --retry 2 --retry-delay 5 \
+              -H "apikey: ${SUPABASE_ANON_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+              "${SUPABASE_URL}/rest/v1/${table}?select=id&limit=1")"
+            rc=$?
+            if [ "${rc}" -ne 0 ]; then
+              code="000"
+              # curl 6 = "Couldn't resolve host". Supabase elimina el registro
+              # DNS al pausar un proyecto, así que es el síntoma inequívoco.
+              if [ "${rc}" -eq 6 ]; then
+                dns_fail=$((dns_fail + 1))
+              fi
+              echo "  ${table} -> curl error ${rc}"
+              continue
+            fi
+            echo "  ${table} -> HTTP ${code}"
+            case "${code}" in
+              2*)
+                ok=$((ok + 1))
+                ;;
+              401|403)
+                echo "    Sin permiso. La anon key pudo rotar, o falta GRANT para 'anon' en esta tabla."
+                head -c 300 /tmp/body.txt; echo
+                ;;
+              *)
+                head -c 300 /tmp/body.txt; echo
+                ;;
+            esac
+          done
+
+          if [ "${ok}" -eq 0 ] && [ "${dns_fail}" -gt 0 ]; then
+            echo "::error::El host de Supabase Dev no resuelve por DNS. El proyecto está PAUSADO — restáuralo en https://supabase.com/dashboard/project/_ (Resume project) y vuelve a lanzar este workflow."
             exit 1
           fi
-          echo "Ping OK — DB reached (any non-5xx counts as DB activity)"
+
+          # Un 401 en todas las consultas nunca llega a Postgres: el keepalive
+          # se vería "verde" sin generar actividad y el proyecto se pausaría
+          # igual. Por eso se exige al menos una respuesta 2xx real.
+          if [ "${ok}" -eq 0 ]; then
+            echo "::error::Ninguna de las ${total} consultas devolvió 2xx. La base no respondió o la anon key ya no es válida: este keepalive NO está generando actividad y el proyecto se pausará."
+            exit 1
+          fi
+
+          echo "Ping OK — ${ok}/${total} consultas llegaron a la base."

@@ -325,7 +325,13 @@ Keep Prod keys on VPS:
 
 ### Keepalive del free-tier
 
-Dev free-tier se pausa tras ~7 días sin actividad. El workflow `.github/workflows/keepalive-supabase-dev.yml` hace un `GET` al REST API cada 5 días (`cron '0 12 */5 * *'`) y también acepta `workflow_dispatch` manual.
+Supabase pausa los proyectos free que no reciben **suficiente actividad de base** en la ventana de 7 días. El criterio no es "tiempo desde la última request": la [doc oficial](https://supabase.com/docs/guides/platform/free-project-pausing) pide "a few user requests to the database each day over the previous week".
+
+El workflow `.github/workflows/keepalive-supabase-dev.yml` corre `cron '17 */6 * * *'` (4 veces al día) y hace 3 `GET` al REST API por run (`companies`, `projects`, `project_pages`) = 12 requests diarias. También acepta `workflow_dispatch` manual.
+
+> **No bajes la frecuencia.** La versión original pingueaba 1 vez cada 5 días. Todos los runs devolvían HTTP 200 y aun así Dev se pausó el 2026-08-31 (restaurado el 2026-09-01).
+
+Cuando Supabase pausa un proyecto **elimina su registro DNS**, así que el síntoma en el workflow es `curl: (6) Could not resolve host`, no un error HTTP. En ese caso la única salida es **Resume project** desde el dashboard de Supabase (ventana de 90 días desde la pausa); ninguna query la reactiva porque el host ni siquiera resuelve.
 
 Secrets del repo `xacty/webbrief`:
 
