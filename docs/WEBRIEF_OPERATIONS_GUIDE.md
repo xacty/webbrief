@@ -412,27 +412,14 @@ cat manifest.txt
 
 ### Recuperar filas puntuales (el caso más común)
 
-Por ejemplo, una página sobrescrita. Se carga **solo la tabla necesaria** en un Postgres 17 local y desechable (Docker), sin tocar Prod ni Dev:
+Por ejemplo, una página sobrescrita. No hace falta instalar nada extra: se usa la misma técnica del simulacro (ver abajo). El backup se carga en Dev **dentro de una transacción**, se lee la fila necesaria y se hace `rollback`, así Dev no cambia.
 
-```bash
-docker run -d --name wb-restore -e POSTGRES_PASSWORD=restore -p 127.0.0.1:55432:5432 postgres:17
-export PGURL=postgresql://postgres:restore@127.0.0.1:55432/postgres
-export PATH="$(brew --prefix libpq)/bin:$PATH"
-T=project_pages
-# DDL de la tabla sin DEFAULTs (pueden depender de extensiones de Supabase) + sus filas
-awk -v t="CREATE TABLE IF NOT EXISTS \"public\".\"$T\" (" 'index($0, t) == 1 {p = 1} p {print} p && /^\);/ {exit}' schema.sql \
-  | sed -E 's/ DEFAULT .*[^,]//' > table.sql
-awk -v t="COPY \"public\".\"$T\" " 'index($0, t) == 1 {p = 1} p {print} p && $0 == "\\." {exit}' data.sql >> table.sql
-psql "$PGURL" -v ON_ERROR_STOP=1 -f table.sql
-psql "$PGURL" -c "select id, name, version, updated_at, length(content_html) from public.$T where project_id = '<project-uuid>'"
-```
-
-Para aplicar lo recuperado en Prod:
-
-1. Corre el workflow a mano (`gh workflow run backup-prod-db.yml -R xacty/webbrief-backups`) para guardar el estado actual antes de tocar nada.
-2. Prepara un `UPDATE` por `id` que escriba **`content_html` y `content_json` juntos** (nunca dejes `content_json` en NULL) y que sume 1 a `version`, para que los editores abiertos detecten el cambio.
-3. **Solo con el OK explícito del owner**, aplícalo en Prod y verifica la página en la app.
-4. Limpia: `docker rm -f wb-restore && rm -rf ~/webrief-restore`.
+1. Descarga y descifra el backup de la noche anterior al incidente.
+2. En `drill.sql` (sección "Simulacro"), reemplaza la consulta de conteos por la de la fila buscada. Por ejemplo, `select id, name, version, content_html, content_json from public.project_pages where id = '<page-uuid>';`, redirigiendo la salida a un archivo.
+3. Corre una manual del workflow (`gh workflow run backup-prod-db.yml -R xacty/webbrief-backups`) para guardar el estado actual de Prod antes de tocar nada.
+4. Prepara un `UPDATE` por `id` que escriba **`content_html` y `content_json` juntos** (nunca dejes `content_json` en NULL) y que sume 1 a `version`, para que los editores abiertos detecten el cambio.
+5. **Solo con el OK explícito del owner**, aplícalo en Prod y verifica la página en la app.
+6. Limpia: `rm -rf ~/webrief-restore`.
 
 ### Restauración completa (desastre: proyecto borrado o corrupto)
 
@@ -500,7 +487,7 @@ Si la carga falla por un error de esquema (`violates not-null constraint`, colum
 
 Al terminar: `rm -rf ~/webrief-restore`.
 
-> Validado el 2026-09-21 con el backup `webrief-prod-db-2026-09-21T2059Z`: 7 empresas, 14 perfiles/usuarios, 17 proyectos, 40 páginas, 94 comentarios y 876 actividades, idénticos al backup. Dev quedó intacto. Los pasos de "Recuperar filas puntuales" (Docker local) siguen **pendientes de validar**.
+> Validado el 2026-09-21 con el backup `webrief-prod-db-2026-09-21T2059Z`: 7 empresas, 14 perfiles/usuarios, 17 proyectos, 40 páginas, 94 comentarios y 876 actividades, idénticos al backup. Dev quedó intacto.
 
 ### Rotación
 
