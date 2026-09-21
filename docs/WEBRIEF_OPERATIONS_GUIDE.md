@@ -479,8 +479,6 @@ end $$;
 delete from auth.users;
 delete from auth.audit_log_entries;
 delete from auth.flow_state;
--- Deriva conocida Dev↔Prod: en Prod hay proyectos legacy con project_type NULL
-alter table public.projects alter column project_type drop not null;
 set session_replication_role = replica;
 \i data-public-auth.sql
 set session_replication_role = origin;
