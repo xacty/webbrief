@@ -416,7 +416,7 @@ Por ejemplo, una página sobrescrita. No hace falta instalar nada extra: se usa 
 
 1. Descarga y descifra el backup de la noche anterior al incidente.
 2. En `drill.sql` (sección "Simulacro"), reemplaza la consulta de conteos por la de la fila buscada. Por ejemplo, `select id, name, version, content_html, content_json from public.project_pages where id = '<page-uuid>';`, redirigiendo la salida a un archivo.
-3. Corre una manual del workflow (`gh workflow run backup-prod-db.yml -R xacty/webbrief-backups`) para guardar el estado actual de Prod antes de tocar nada.
+3. Lanza una corrida manual del workflow (`gh workflow run backup-prod-db.yml -R xacty/webbrief-backups`) para guardar el estado actual de Prod antes de tocar nada.
 4. Prepara un `UPDATE` por `id` que escriba **`content_html` y `content_json` juntos** (nunca dejes `content_json` en NULL) y que sume 1 a `version`, para que los editores abiertos detecten el cambio.
 5. **Solo con el OK explícito del owner**, aplícalo en Prod y verifica la página en la app.
 6. Limpia: `rm -rf ~/webrief-restore`.
