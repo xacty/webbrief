@@ -23,7 +23,7 @@
  *     - page_not_found / invalid_project_type (brief)
  *     - PUT 403 -> structure_forbidden
  *     - response echoes the version bump from a dynamic PUT response
- *   Registration smoke test: 20 tools including pages_delete / pages_rename.
+ *   Registration smoke test: 21 tools including pages_delete / pages_rename.
  *
  * Run with: node src/__tests__/pages_manage.test.js
  */
@@ -537,7 +537,7 @@ await test('returns mcp_token_missing when no token is configured', async () => 
 
 console.log('\nMcpServer — registration smoke test');
 
-await test('all exported tools register without throwing (20 tools incl. pages_delete/pages_rename)', async () => {
+await test('all exported tools register without throwing (21 tools incl. pages_delete/pages_rename)', async () => {
   const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
   const tools = await import('../tools/index.js');
   const server = new McpServer(
@@ -553,7 +553,7 @@ await test('all exported tools register without throwing (20 tools incl. pages_d
     );
     names.push(tool.name);
   }
-  assert.equal(names.length, 20, `expected 20 tools, got ${names.length}: ${names.join(', ')}`);
+  assert.equal(names.length, 21, `expected 21 tools, got ${names.length}: ${names.join(', ')}`);
   assert.ok(names.includes('pages_delete'), 'missing pages_delete');
   assert.ok(names.includes('pages_rename'), 'missing pages_rename');
 });

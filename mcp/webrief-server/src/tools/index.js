@@ -10,6 +10,7 @@ export * as projectsList from './projects_list.js';
 export * as projectsGet from './projects_get.js';
 export * as pagesGet from './pages_get.js';
 export * as sectionsList from './sections_list.js';
+export * as commentsList from './comments_list.js';
 export * as pagesPreviewEdits from './pages_previewEdits.js';
 export * as pagesApplyEdits from './pages_applyEdits.js';
 export * as pagesCreate from './pages_create.js';
