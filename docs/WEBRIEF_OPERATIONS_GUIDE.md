@@ -355,12 +355,152 @@ Si el cron falla varias corridas seguidas (ej. rotación de anon key), la DB ter
 7. Verify https://webrief.app/api/health
 ```
 
+## Backups de la base de Prod
+
+Prod está en el plan Free de Supabase, que **no incluye backups**. La única copia es un dump lógico nocturno que hacemos nosotros.
+
+| Qué | Dónde |
+|---|---|
+| Workflow | `.github/workflows/backup-prod-db.yml` en el repo **privado** `xacty/webbrief-backups` |
+| Horario | Todos los días a las 06:17 UTC, y a mano con `gh workflow run` |
+| Contenido | `roles.sql`, `schema.sql` y `data.sql` (incluye `auth.users`), más `row-counts.tsv`, `manifest.txt` y `SHA256SUMS` |
+| Formato | `webrief-prod-db-<fecha>.tar.gz.age`, cifrado con age hacia la clave pública del owner |
+| Retención | 30 días (artifacts de GitHub Actions; se borran solos) |
+| Clave privada | `~/.config/webrief-backups/prod-db-backup.agekey` en la Mac del owner, **más una copia en su gestor de contraseñas** |
+
+- El workflow no vive en `xacty/webbrief` porque ese repo es público: cualquier usuario de GitHub puede descargar sus artifacts.
+- **Sin la clave privada, los backups no se pueden leer.** Si se pierde, genera una nueva (ver "Rotación") y asume que los backups anteriores son inaccesibles.
+- No cubre las imágenes (viven en ImageKit), la configuración de Auth/SMTP/buckets del dashboard ni los `.env` del VPS. Hoy Supabase Storage de Prod tiene 0 objetos.
+- Si el dump sale vacío o faltan filas en `companies`, `projects`, `project_pages`, `profiles` o `auth.users`, el job falla.
+
+### Configuración (una sola vez)
+
+```text
+Secret   SUPABASE_PROD_DB_URL  → lo carga el owner a mano:
+         github.com/xacty/webbrief-backups → Settings → Secrets and variables → Actions → New repository secret
+         Valor: Supabase (proyecto WeBrief) → Connect → Session pooler → URI, con la contraseña de la base
+         (postgresql://postgres.gmrlhhszrdahcxyoywvt:<password>@aws-…pooler.supabase.com:5432/postgres)
+Variable BACKUP_AGE_RECIPIENT  → clave pública age (age1…); no es secreta
+```
+
+- Usa el **Session pooler (puerto 5432)**. La conexión directa `db.<ref>.supabase.co` es solo IPv6 y falla en los runners de GitHub. El puerto 6543 (transaction pooler) no sirve para `pg_dump`.
+- Si cambias la contraseña de la base de Prod, actualiza el secret o el próximo backup va a fallar.
+
+### Monitoreo
+
+- Si una corrida programada falla, GitHub manda un email a `xacty`. Revisa que las notificaciones de Actions estén activas en github.com/settings/notifications.
+- Una vez al mes, confirma que haya backups recientes:
+
+```bash
+gh run list -R xacty/webbrief-backups --workflow backup-prod-db.yml -L 5
+```
+
+### Descargar y descifrar
+
+Trabaja siempre **fuera de cualquier repo** y borra la carpeta al terminar: contiene datos reales de clientes, emails y hashes de contraseñas.
+
+```bash
+brew install age libpq                      # una vez; psql queda en $(brew --prefix libpq)/bin
+mkdir -p ~/webrief-restore && cd ~/webrief-restore
+gh run list -R xacty/webbrief-backups --workflow backup-prod-db.yml -L 10
+gh run download <RUN_ID> -R xacty/webbrief-backups -D .
+age -d -i ~/.config/webrief-backups/prod-db-backup.agekey -o backup.tar.gz webrief-prod-db-*/*.tar.gz.age
+shasum -a 256 backup.tar.gz                 # debe coincidir con el sha256 del resumen del run
+tar -xzf backup.tar.gz && shasum -a 256 -c SHA256SUMS
+cat manifest.txt
+```
+
+### Recuperar filas puntuales (el caso más común)
+
+Por ejemplo, una página sobrescrita. No hace falta instalar nada extra: se usa la misma técnica del simulacro (ver abajo). El backup se carga en Dev **dentro de una transacción**, se lee la fila necesaria y se hace `rollback`, así Dev no cambia.
+
+1. Descarga y descifra el backup de la noche anterior al incidente.
+2. En `drill.sql` (sección "Simulacro"), reemplaza la consulta de conteos por la de la fila buscada. Por ejemplo, `select id, name, version, content_html, content_json from public.project_pages where id = '<page-uuid>';`, redirigiendo la salida a un archivo.
+3. Corre una manual del workflow (`gh workflow run backup-prod-db.yml -R xacty/webbrief-backups`) para guardar el estado actual de Prod antes de tocar nada.
+4. Prepara un `UPDATE` por `id` que escriba **`content_html` y `content_json` juntos** (nunca dejes `content_json` en NULL) y que sume 1 a `version`, para que los editores abiertos detecten el cambio.
+5. **Solo con el OK explícito del owner**, aplícalo en Prod y verifica la página en la app.
+6. Limpia: `rm -rf ~/webrief-restore`.
+
+### Restauración completa (desastre: proyecto borrado o corrupto)
+
+1. Crea un proyecto Supabase nuevo en la misma región (us-west-2) con Postgres 17 y toma su URI del Session pooler (`NEW_DB_URL`).
+2. Restaura siguiendo el procedimiento de Supabase:
+
+```bash
+psql --single-transaction --variable ON_ERROR_STOP=1 \
+  --file roles.sql --file schema.sql \
+  --command 'SET session_replication_role = replica' \
+  --file data.sql --dbname "$NEW_DB_URL"
+```
+
+3. Reconfigura en el dashboard lo que no viaja en el dump: Auth (Site URL, redirect URLs, SMTP de Resend, plantillas), buckets y publicación Realtime de `project_comments`.
+4. Apunta el VPS al proyecto nuevo (`SUPABASE_URL` y claves en `backend/.env`, `VITE_SUPABASE_*` en el frontend), `pm2 restart webrief-backend --update-env`, rebuild del frontend y actualiza el secret `SUPABASE_PROD_DB_URL`.
+5. Los usuarios conservan sus contraseñas (se restauran los hashes), pero todas las sesiones se cierran.
+
+### Simulacro de restauración en Dev
+
+Sirve para comprobar que un backup realmente se puede restaurar. Se hace **siempre en Dev (`iimqxacagxuemwgaunis`), nunca en Prod**, y con el OK del owner.
+
+- Todo corre dentro de una transacción que termina en `rollback`: Dev **nunca cambia**, ni siquiera por unos minutos, y los datos reales no quedan en Dev.
+- Dev ya tiene el esquema, así que solo se cargan los datos de `public` y `auth` sobre tablas vaciadas dentro de la misma transacción.
+- `DEV_DB_URL` = URI del Session pooler de Dev (puerto 5432). Tenla solo en la variable del shell, nunca en archivos.
+
+```bash
+cd ~/webrief-restore && export PATH="$(brew --prefix libpq)/bin:$PATH"
+# 1. Solo los bloques de public y auth del backup de Prod
+awk -v q="'" '
+  /^COPY / { keep = ($2 ~ /^"(public|auth)"\./); inblk = 1 }
+  inblk { if (keep) print; if ($0 == "\\.") inblk = 0; next }
+  /^SELECT pg_catalog.setval/ { if (index($0, "setval(" q "\"public\".") || index($0, "setval(" q "\"auth\".")) print; next }
+  { print }
+' data.sql > data-public-auth.sql
+# 2. Vaciar, cargar, contar y deshacer, todo en una transacción
+cat > drill.sql <<'SQL'
+\set ON_ERROR_STOP 1
+begin;
+do $$ declare r record; begin
+  for r in select tablename from pg_tables where schemaname = 'public' loop
+    execute format('truncate table public.%I cascade', r.tablename);
+  end loop;
+end $$;
+delete from auth.users;
+delete from auth.audit_log_entries;
+delete from auth.flow_state;
+set session_replication_role = replica;
+\i data-public-auth.sql
+set session_replication_role = origin;
+select 'auth.users' t, count(*) from auth.users union all
+select 'public.companies', count(*) from public.companies union all
+select 'public.profiles', count(*) from public.profiles union all
+select 'public.projects', count(*) from public.projects union all
+select 'public.project_pages', count(*) from public.project_pages union all
+select 'public.project_comments', count(*) from public.project_comments union all
+select 'public.project_activity', count(*) from public.project_activity order by 1;
+rollback;
+SQL
+psql "$DEV_DB_URL" -q -At -F $'\t' -f drill.sql 2>&1 | grep -v NOTICE
+# 3. Los conteos tienen que ser idénticos a los del backup
+grep -E '^(public\.(companies|profiles|projects|project_pages|project_comments|project_activity)|auth\.users)\s' row-counts.tsv
+```
+
+Si la carga falla por un error de esquema (`violates not-null constraint`, columna inexistente…), es una **deriva entre Dev y Prod**. La transacción se deshace sola y Dev no cambia. Anota la deriva y corrígela con el flujo normal de migraciones.
+
+Al terminar: `rm -rf ~/webrief-restore`.
+
+> Validado el 2026-09-21 con el backup `webrief-prod-db-2026-09-21T2059Z`: 7 empresas, 14 perfiles/usuarios, 17 proyectos, 40 páginas, 94 comentarios y 876 actividades, idénticos al backup. Dev quedó intacto.
+
+### Rotación
+
+- **Contraseña de la base de Prod:** actualiza el secret `SUPABASE_PROD_DB_URL`.
+- **Clave age:** `age-keygen -o` a un archivo nuevo, actualiza la variable `BACKUP_AGE_RECIPIENT` con la clave pública nueva y guarda la privada nueva en el gestor de contraseñas. Conserva la clave vieja 30 días (lo que duran los backups cifrados con ella).
+
 ## Rules
 
 ```text
 Do not commit .env files.
 Do not put service_role key in frontend.
 Do not run destructive SQL in Prod first.
+Never restore a backup into Prod without the owner's explicit OK; restore drills go to Dev.
 Do not assume local uses Dev unless .env points to Dev.
 Resolve sharp/image processing before serious beta.
 ```
