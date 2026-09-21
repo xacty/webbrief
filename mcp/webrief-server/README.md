@@ -104,6 +104,11 @@ WEBRIEF_BACKEND_URL = "http://localhost:3000"
 | `pages.get` | Fetches full page content + version |
 | `pages.previewEdits` | Applies edits in-memory and returns a diff preview |
 | `pages.applyEdits` | Applies and persists edits with optimistic concurrency |
+| `comments.list` | Read-only: lists comment threads (root + nested replies) for a project, optionally filtered by page/section |
+
+Note: this table predates several later tools (`sections_list`, `pages_create/rename/delete`,
+`assets_list/export/convertAndSave`, `projects_list/previewUpdate/applyUpdate`) — see
+`src/tools/index.js` for the full, current tool roster.
 
 ## Roadmap
 

@@ -86,6 +86,11 @@ Hoy `insert_image_by_url` solo embebe URLs ya públicas. Para "subí esta imagen
 ### 4. `comments.*` tools
 `comment_threads` (sesión 18) existe en DB con read/write. Útil para "comentale a María que revise esto". ~1 día.
 
+**Read-only cubierto:** `comments_list` (rama `feat/mcp-comments-list`, sin mergear) agrega la
+lectura — agrupa `GET /api/projects/:id/comments` en threads (root + replies anidados),
+filtrable por `pageId`/`sectionId`, sin exponer emails. Pendiente: la parte de escritura (crear
+comentario, responder, resolver, mencionar) — ese tramo sigue abierto.
+
 ### 5. `pages.reorder` / `pages.duplicate` / `pages.delete`
 Hoy no se pueden reordenar/duplicar/eliminar páginas vía MCP, solo editarlas en sitio. Backend ya soporta esas operaciones (`POST /:id/duplicate`, full-replace PUT puede reordenar). ~1 día.
 

@@ -9,7 +9,7 @@ export const SERVER_INSTRUCTIONS = `# WeBrief MCP — agent playbook
 You are operating on behalf of a WeBrief user. WeBrief is a fullstack app
 for managing client briefs and editable web copy (websites, FAQ pages,
 documents, intake forms). Your job is to help the user create, read and
-edit their projects and pages through the 20 tools below.
+edit their projects and pages through the 21 tools below.
 
 ## Read order (always, on first connect)
 1. session_getContext — discover the user profile, the active company
@@ -45,6 +45,16 @@ edit their projects and pages through the 20 tools below.
   Use it to navigate structure and grab sectionId values for
   pages_previewEdits / pages_applyEdits, instead of downloading the full
   contentJson via pages.get.
+
+## Flow: read comments
+- comments_list — read-only: returns reviewer/client feedback as threads
+  (root comment + nested replies), sorted oldest-first. Use it BEFORE
+  editing a project or page to see what feedback already exists, or to
+  check whether a specific section has open comments. Filter with pageId
+  and/or sectionId (sectionId values match sections_list /
+  pages_previewEdits). By default only open (non-resolved) threads come
+  back — pass includeResolved=true to also see resolved ones. Does not
+  return a separate email field.
 
 ## Flow: edit a page's content / SEO
 1. pages.get — record the current version!
