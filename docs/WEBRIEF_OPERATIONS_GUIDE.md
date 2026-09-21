@@ -452,27 +452,25 @@ psql --single-transaction --variable ON_ERROR_STOP=1 \
 
 ### Simulacro de restauración en Dev
 
-Sirve para comprobar que los backups se pueden restaurar. Se hace **siempre en Dev (`iimqxacagxuemwgaunis`), nunca en Prod**, y con el OK del owner, porque reemplaza temporalmente los datos de Dev (incluida la cuenta `claude-bot`) por datos reales de Prod.
+Sirve para comprobar que un backup realmente se puede restaurar. Se hace **siempre en Dev (`iimqxacagxuemwgaunis`), nunca en Prod**, y con el OK del owner.
 
-- Antes: nadie usando Dev, y `EMAIL_ENABLED=false` en el backend local para no mandar emails a usuarios reales.
-- Dev ya tiene el esquema, así que solo se cargan los datos de `public` y `auth`. El borrado y la carga van en **una sola transacción**: si algo falla, Dev queda como estaba.
-- `DEV_DB_URL` = URI del Session pooler de Dev. Tenla solo en la variable del shell, nunca en archivos.
+- Todo corre dentro de una transacción que termina en `rollback`: Dev **nunca cambia**, ni siquiera por unos minutos, y los datos reales no quedan en Dev.
+- Dev ya tiene el esquema, así que solo se cargan los datos de `public` y `auth` sobre tablas vaciadas dentro de la misma transacción.
+- `DEV_DB_URL` = URI del Session pooler de Dev (puerto 5432). Tenla solo en la variable del shell, nunca en archivos.
 
 ```bash
 cd ~/webrief-restore && export PATH="$(brew --prefix libpq)/bin:$PATH"
-# 1. Copia de seguridad de Dev para devolverlo a su estado original
-mkdir -p dev-before
-pg_dump "$DEV_DB_URL" --data-only --schema=public --schema=auth \
-  --exclude-table=auth.schema_migrations -f dev-before/data.sql
-# 2. Solo los bloques de public y auth del backup de Prod
+# 1. Solo los bloques de public y auth del backup de Prod
 awk -v q="'" '
   /^COPY / { keep = ($2 ~ /^"(public|auth)"\./); inblk = 1 }
   inblk { if (keep) print; if ($0 == "\\.") inblk = 0; next }
   /^SELECT pg_catalog.setval/ { if (index($0, "setval(" q "\"public\".") || index($0, "setval(" q "\"auth\".")) print; next }
   { print }
 ' data.sql > data-public-auth.sql
-# 3. Vaciar y cargar en una sola transacción
-cat > wipe-dev.sql <<'SQL'
+# 2. Vaciar, cargar, contar y deshacer, todo en una transacción
+cat > drill.sql <<'SQL'
+\set ON_ERROR_STOP 1
+begin;
 do $$ declare r record; begin
   for r in select tablename from pg_tables where schemaname = 'public' loop
     execute format('truncate table public.%I cascade', r.tablename);
@@ -481,20 +479,30 @@ end $$;
 delete from auth.users;
 delete from auth.audit_log_entries;
 delete from auth.flow_state;
+-- Deriva conocida Dev↔Prod: en Prod hay proyectos legacy con project_type NULL
+alter table public.projects alter column project_type drop not null;
+set session_replication_role = replica;
+\i data-public-auth.sql
+set session_replication_role = origin;
+select 'auth.users' t, count(*) from auth.users union all
+select 'public.companies', count(*) from public.companies union all
+select 'public.profiles', count(*) from public.profiles union all
+select 'public.projects', count(*) from public.projects union all
+select 'public.project_pages', count(*) from public.project_pages union all
+select 'public.project_comments', count(*) from public.project_comments union all
+select 'public.project_activity', count(*) from public.project_activity order by 1;
+rollback;
 SQL
-psql "$DEV_DB_URL" --single-transaction -v ON_ERROR_STOP=1 \
-  -f wipe-dev.sql -c 'SET session_replication_role = replica' -f data-public-auth.sql
-# 4. Verificar: los conteos de Dev tienen que coincidir con row-counts.tsv
-psql "$DEV_DB_URL" -At -c "select 'public.projects', count(*) from public.projects union all select 'public.project_pages', count(*) from public.project_pages union all select 'auth.users', count(*) from auth.users"
-grep -E '^(public\.projects|public\.project_pages|auth\.users)\s' row-counts.tsv
-# 5. Devolver Dev a su estado original (misma técnica, con la copia del paso 1)
-psql "$DEV_DB_URL" --single-transaction -v ON_ERROR_STOP=1 \
-  -f wipe-dev.sql -c 'SET session_replication_role = replica' -f dev-before/data.sql
+psql "$DEV_DB_URL" -q -At -F $'\t' -f drill.sql 2>&1 | grep -v NOTICE
+# 3. Los conteos tienen que ser idénticos a los del backup
+grep -E '^(public\.(companies|profiles|projects|project_pages|project_comments|project_activity)|auth\.users)\s' row-counts.tsv
 ```
 
-Después: comprueba que `claude-bot` puede iniciar sesión en local y borra `~/webrief-restore`.
+Si la carga falla por un error de esquema (`violates not-null constraint`, columna inexistente…), es una **deriva entre Dev y Prod**. La transacción se deshace sola y Dev no cambia. Anota la deriva y corrígela con el flujo normal de migraciones.
 
-> Estado: los pasos de "Recuperar filas puntuales" y del simulacro quedan **pendientes de validar** contra el primer backup real.
+Al terminar: `rm -rf ~/webrief-restore`.
+
+> Validado el 2026-09-21 con el backup `webrief-prod-db-2026-09-21T2059Z`: 7 empresas, 14 perfiles/usuarios, 17 proyectos, 40 páginas, 94 comentarios y 876 actividades, idénticos al backup. Dev quedó intacto. Los pasos de "Recuperar filas puntuales" (Docker local) siguen **pendientes de validar**.
 
 ### Rotación
 
